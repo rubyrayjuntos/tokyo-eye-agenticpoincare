@@ -1,0 +1,45 @@
+[project]
+name = "tokyo-eye-agenticpoincare"
+version = "0.1.0"
+description = "Hybrid platform for hyperbolic GNNs, DTIE pipelines, and agentic structural biology"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # Core scientific stack (to be refined during migration)
+    "torch>=2.1",
+    "torch-geometric>=2.3",
+    "numpy",
+    "pandas",
+    "biotite",
+    "scipy",
+    # Agent / API
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+    # DB
+    "psycopg[binary]",
+    # Utils
+    "python-dotenv",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.workspace]
+members = ["science", "agent", "visualizer/server"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+
+# Note: This is an initial skeleton. Exact dependencies and workspace layout
+# will be refined during Phase 1 (Science Core Extraction).

@@ -1,0 +1,77 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Node / Frontend
+node_modules/
+dist/
+*.local
+
+# Terraform - CRITICAL: never commit state
+**/*.tfstate
+**/*.tfstate.*
+**/.terraform/
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Large artifacts we don't want in git
+*.pt
+*.pth
+*.npz
+*.pickle
+*.pkl
+checkpoints/
+cache/
+results/
+*.sdf
+*.pdb
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+.env.local
+secrets/
+
+# Misc
+*.log
+*.tmp
+tmp/
