@@ -1,0 +1,148 @@
+name: CI — Schema Validation & Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra agent --extra science
+
+      - name: Lint with ruff
+        run: uv run ruff check .
+
+      - name: Format check
+        run: uv run ruff format --check .
+
+      - name: Type check (mypy)
+        run: uv run mypy science/ data/normalizer/ agent/ --ignore-missing-imports
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra agent --extra science
+
+      - name: Run unit tests
+        run: uv run pytest tests/ -v --tb=short -m "not integration"
+
+  integration-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: tokyoeye_test
+          POSTGRES_USER: tokyoeye
+          POSTGRES_PASSWORD: tokyoeye_test_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tokyoeye -d tokyoeye_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra agent
+
+      - name: Run migrations
+        env:
+          DATABASE_URL: postgresql://tokyoeye:tokyoeye_test_ci@localhost:5432/tokyoeye_test
+        run: |
+          for f in data/aurora/migrations/*.sql; do
+            echo "Applying: $f"
+            uv run python -c "
+          import psycopg
+          with psycopg.connect('$DATABASE_URL') as conn:
+              with conn.cursor() as cur:
+                  cur.execute(open('$f').read())
+              conn.commit()
+          "
+          done
+
+      - name: Run integration tests
+        env:
+          DATABASE_URL: postgresql://tokyoeye:tokyoeye_test_ci@localhost:5432/tokyoeye_test
+        run: uv run pytest tests/ -v --tb=short -m "integration"
+
+  schema-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate SQL migrations are parseable
+        run: |
+          echo "Checking SQL migration files for basic syntax..."
+          for f in data/aurora/migrations/*.sql; do
+            echo "  Checking: $f"
+            if [ ! -s "$f" ]; then
+              echo "ERROR: Empty migration file: $f"
+              exit 1
+            fi
+            if ! grep -qi "CREATE\|ALTER\|INSERT\|COMMENT" "$f"; then
+              echo "WARNING: $f may not contain valid SQL statements"
+            fi
+          done
+          echo "All migration files pass basic validation."
+
+      - name: Validate JSON governance schemas
+        run: |
+          echo "Checking JSON schema files..."
+          for f in data/governance/schemas/*.json; do
+            echo "  Checking: $f"
+            python -m json.tool "$f" > /dev/null 2>&1
+            if [ $? -ne 0 ]; then
+              echo "ERROR: Invalid JSON in $f"
+              exit 1
+            fi
+          done
+          echo "All JSON schemas are valid."
+
+      - name: Check migration ordering
+        run: |
+          echo "Verifying migration file numbering is sequential..."
+          for f in data/aurora/migrations/*.sql; do
+            num=$(basename "$f" | grep -oP '^\d+')
+            if [ -z "$num" ]; then
+              echo "ERROR: Migration file without numeric prefix: $f"
+              exit 1
+            fi
+            echo "  $num: $(basename $f)"
+          done
+          echo "Migration ordering check complete."

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tokyoeyes.dev/schemas/v3/tokyoeyes_annotations.schema.json",
+  "title": "Tokyo Eyes v3 Annotations (JSON fallback)",
+  "description": "Canonical production sidecar should be parquet. This schema is for early JSON prototyping and test fixtures.",
+  "type": "object",
+  "required": ["schema", "schema_version", "pdb_id", "records"],
+  "properties": {
+    "schema": {
+      "const": "tokyoeyes.annotations"
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "pdb_id": {
+      "type": "string"
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["entity_id", "asym_id", "label_seq_id"],
+        "properties": {
+          "entity_id": { "type": "string" },
+          "asym_id": { "type": "string" },
+          "label_seq_id": { "type": "integer", "minimum": 1 },
+          "atom_id": { "type": "integer", "minimum": 1 },
+          "features": {
+            "type": "object",
+            "additionalProperties": {
+              "type": ["number", "string", "boolean", "null"]
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

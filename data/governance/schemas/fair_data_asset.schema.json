@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tokyoeyes/contracts/tokyoeyes_v3/schemas/fair_data_asset.schema.json",
+  "title": "Tokyo Eyes FAIR Data Asset",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "asset_id",
+    "asset_type",
+    "owner_domain",
+    "storage_uri",
+    "access_level",
+    "created_at_utc",
+    "last_updated_utc",
+    "lineage",
+    "interoperability"
+  ],
+  "properties": {
+    "asset_id": {
+      "type": "string",
+      "minLength": 3
+    },
+    "asset_type": {
+      "type": "string",
+      "enum": [
+        "raw_instrument",
+        "curated_dataset",
+        "analysis_output",
+        "model_artifact",
+        "catalog_index"
+      ]
+    },
+    "owner_domain": {
+      "type": "string",
+      "minLength": 2
+    },
+    "storage_uri": {
+      "type": "string",
+      "minLength": 1
+    },
+    "access_level": {
+      "type": "string",
+      "enum": [
+        "public",
+        "internal",
+        "restricted",
+        "regulated"
+      ]
+    },
+    "created_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_updated_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "checksum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "value"
+      ],
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "enum": [
+            "sha256"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "minLength": 32
+        }
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "upstream_ids",
+        "pipeline",
+        "run_id"
+      ],
+      "properties": {
+        "upstream_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pipeline": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "code_version": {
+          "type": "string"
+        }
+      }
+    },
+    "interoperability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "schema",
+        "schema_version"
+      ],
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": [
+            "json",
+            "parquet",
+            "cif",
+            "pt",
+            "bin",
+            "csv"
+          ]
+        },
+        "schema": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "string"
+        },
+        "ontology_terms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "quality_slo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "freshness_hours_max": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "min_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "required_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

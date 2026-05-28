@@ -1,0 +1,66 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: tokyoeye_db
+    environment:
+      POSTGRES_DB: tokyoeye_dev
+      POSTGRES_USER: tokyoeye
+      POSTGRES_PASSWORD: tokyoeye_dev_local
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tokyoeye -d tokyoeye_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  science:
+    build:
+      context: .
+      dockerfile: Dockerfile.science
+    container_name: tokyoeye_science
+    environment:
+      DATABASE_URL: postgresql://tokyoeye:tokyoeye_dev_local@db:5432/tokyoeye_dev
+      CHECKPOINT_DIR: /app/checkpoints
+    volumes:
+      - ./checkpoints:/app/checkpoints
+      - ./science:/app/science
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    # No default command — used via docker compose run
+    entrypoint: ["python"]
+    command: ["-c", "print('Science container ready. Use: docker compose run science python -m ...')"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: tokyoeye_agent
+    environment:
+      DATABASE_URL: postgresql://tokyoeye:tokyoeye_dev_local@db:5432/tokyoeye_dev
+      JWT_SECRET: dev-secret-change-in-production
+      PORT: "8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./agent:/app/agent
+      - ./data:/app/data
+      - ./shared:/app/shared
+      - ./science:/app/science
+
+volumes:
+  pgdata:

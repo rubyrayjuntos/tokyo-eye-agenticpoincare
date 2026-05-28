@@ -1,0 +1,541 @@
+"""Sub-agent definitions for the Tokyo Eyes multi-agent system.
+
+Architecture:
+- coordinator: Routes user requests, maintains conversation context
+- dtie_agent: Runs pipelines, analyzes structures, detects source leaks
+- visualization_agent: Generates viewport directives, controls the viewer
+- knowledge_agent: Answers questions about findings, biology, methodology
+
+The coordinator delegates to sub-agents based on user intent.
+Each sub-agent has its own system prompt and tool set.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from agent.llm.base import Agent, ToolDefinition
+from agent.llm.providers import LLMProvider
+
+
+# ---------------------------------------------------------------------------
+# Tool definitions (JSON Schema format for LLM tool calling)
+# ---------------------------------------------------------------------------
+
+DTIE_TOOLS = [
+    ToolDefinition(
+        name="run_gnn_inference",
+        description="Run the v5 GNN (decoupled radial-angular) on a protein structure. Produces hyperbolic embeddings, cone depth, and uncertainty for every residue.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "structure_id": {"type": "string", "description": "Canonical structure ID (e.g., '4obe')"},
+                "model_version": {"type": "string", "enum": ["v5", "v4", "v3"], "default": "v5"},
+            },
+            "required": ["structure_id"],
+        },
+        handler=None,  # Wired at runtime
+    ),
+    ToolDefinition(
+        name="run_full_pipeline",
+        description="Run the complete DTIE v5 pipeline on a structure: GNN inference → all phases (1-6d) → source-leak detection → allosteric site identification.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "structure_id": {"type": "string"},
+                "source_leak_only": {"type": "boolean", "default": False, "description": "If true, skip phases 1-2, 3.5-6 and only run GNN + Phase 3 + source-leak detection"},
+            },
+            "required": ["structure_id"],
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="get_source_leaks",
+        description="Identify source-leak candidates: residues with high epistemic uncertainty at significant hyperbolic depth. These represent structural ambiguity deep in the conformational hierarchy.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "structure_id": {"type": "string"},
+                "uncertainty_threshold": {"type": "number", "default": 0.3},
+                "min_depth": {"type": "number", "default": 1.5},
+            },
+            "required": ["structure_id"],
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="get_high_uncertainty_residues",
+        description="Get the residues with highest uncertainty (epistemic, aleatoric, or total). Useful for identifying regions where the GNN is least confident.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "structure_id": {"type": "string"},
+                "top_n": {"type": "integer", "default": 20},
+                "uncertainty_type": {"type": "string", "enum": ["epistemic", "aleatoric", "total"], "default": "epistemic"},
+            },
+            "required": ["structure_id"],
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="get_residue_state",
+        description="Get the current governed state of specific residues: latest embeddings, uncertainty, dehydron status, and site membership.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "structure_id": {"type": "string"},
+                "residue_ids": {"type": "array", "items": {"type": "string"}, "description": "Specific residue IDs to query. Omit for all residues."},
+            },
+            "required": ["structure_id"],
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="compare_wt_mutant",
+        description="Compare wild-type and mutant protein embeddings in hyperbolic space. Identifies residues with significant displacement between conformations (e.g., Switch-I in KRAS G12D).",
+        parameters={
+            "type": "object",
+            "properties": {
+                "wt_structure_id": {"type": "string", "description": "Wild-type structure ID"},
+                "mutant_structure_id": {"type": "string", "description": "Mutant structure ID"},
+                "focus_residues": {"type": "array", "items": {"type": "string"}, "description": "Optional: specific residues to compare"},
+            },
+            "required": ["wt_structure_id", "mutant_structure_id"],
+        },
+        handler=None,
+    ),
+]
+
+DATA_TOOLS = [
+    ToolDefinition(
+        name="export_structure_data",
+        description="Export pipeline results for a structure as CSV or JSON file. Includes per-residue cone depth, uncertainty, and chain info. Useful for external tools (PyMOL, ChimeraX) or publications.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "structure_id": {"type": "string", "description": "Structure to export"},
+                "format": {"type": "string", "enum": ["csv", "json"], "default": "csv"},
+                "include_fields": {"type": "array", "items": {"type": "string"}, "description": "Specific fields to include (omit for all)"},
+            },
+            "required": ["structure_id"],
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="get_allosteric_sites",
+        description="Retrieve identified allosteric site clusters for a structure. Shows site membership, contributing residues, confidence scores, and highlights them in the viewer.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "structure_id": {"type": "string"},
+            },
+            "required": ["structure_id"],
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="get_provenance_lineage",
+        description="Query provenance lineage: what pipeline run produced a result, which checkpoint was used, parent/child relationships. Provide either run_id or structure_id.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "string", "description": "Specific run to trace lineage for"},
+                "structure_id": {"type": "string", "description": "Get all runs for a structure"},
+            },
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="search_residues",
+        description="Search and filter residues with flexible criteria: by chain, residue name, uncertainty range, cone depth range. Returns matching residues and highlights them.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "structure_id": {"type": "string"},
+                "chain": {"type": "string", "description": "Filter by chain label (e.g., 'A')"},
+                "residue_name": {"type": "string", "description": "Filter by residue name (e.g., 'G', 'ALA')"},
+                "min_uncertainty": {"type": "number", "description": "Minimum uncertainty threshold"},
+                "max_uncertainty": {"type": "number", "description": "Maximum uncertainty threshold"},
+                "min_depth": {"type": "number", "description": "Minimum cone depth"},
+                "max_depth": {"type": "number", "description": "Maximum cone depth"},
+                "uncertainty_type": {"type": "string", "enum": ["epistemic", "aleatoric", "total"], "default": "epistemic"},
+                "limit": {"type": "integer", "default": 100, "description": "Max results"},
+            },
+            "required": ["structure_id"],
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="annotate_structure",
+        description="Add a text annotation to a structure or specific residues. Annotations are stored in the governed layer for later retrieval, reports, or collaboration.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "structure_id": {"type": "string"},
+                "residue_ids": {"type": "array", "items": {"type": "string"}, "description": "Specific residues to annotate (omit for structure-level)"},
+                "annotation": {"type": "string", "description": "The annotation text"},
+                "annotation_type": {"type": "string", "enum": ["finding", "hypothesis", "note", "warning"], "default": "finding"},
+            },
+            "required": ["structure_id", "annotation"],
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="list_structures",
+        description="List all structures that have been analyzed (have GNN embeddings). Shows structure IDs, model versions, residue counts, and last computation time.",
+        parameters={"type": "object", "properties": {}},
+        handler=None,
+    ),
+    ToolDefinition(
+        name="get_run_summary",
+        description="Summarize a pipeline run: what was computed, how long it took, how many assets were created, any errors or warnings.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "run_id": {"type": "string", "description": "The pipeline run ID to summarize"},
+            },
+            "required": ["run_id"],
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="compare_runs",
+        description="Compare two pipeline runs (e.g., different model versions or checkpoints on the same structure). Shows per-residue differences in cone depth and uncertainty.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "run_id_a": {"type": "string", "description": "First run ID"},
+                "run_id_b": {"type": "string", "description": "Second run ID"},
+            },
+            "required": ["run_id_a", "run_id_b"],
+        },
+        handler=None,
+    ),
+]
+
+VISUALIZATION_TOOLS = [
+    ToolDefinition(
+        name="highlight_residues",
+        description="Highlight specific residues in the Poincaré disc viewer with a color and style. Use to draw attention to important findings.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "residue_ids": {"type": "array", "items": {"type": "string"}},
+                "color": {"type": "string", "default": "#ff6b6b", "description": "CSS color"},
+                "style": {"type": "string", "enum": ["glow", "pulse", "outline", "color"], "default": "glow"},
+                "label": {"type": "string", "description": "Group label shown in legend"},
+            },
+            "required": ["residue_ids"],
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="set_metric",
+        description="Change the coloring metric in the viewer. Options: cone_depth, epistemic, aleatoric, total_uncertainty.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "metric": {"type": "string", "enum": ["cone_depth", "epistemic", "aleatoric", "total_uncertainty"]},
+            },
+            "required": ["metric"],
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="focus_residues",
+        description="Animate the camera to focus on specific residues in the viewer.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "residue_ids": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["residue_ids"],
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="clear_highlights",
+        description="Remove all highlights from the viewer.",
+        parameters={"type": "object", "properties": {}},
+        handler=None,
+    ),
+]
+
+PLOTTING_TOOLS = [
+    ToolDefinition(
+        name="generate_plot",
+        description=(
+            "Generate a matplotlib figure from pipeline data and save it as a PNG image. "
+            "Use this to create publication-quality visualizations of analysis results. "
+            "Available plot types: poincare_disc (residues on hyperbolic disc colored by metric), "
+            "uncertainty_profile (per-residue uncertainty along sequence), "
+            "cone_depth_histogram (distribution of cone depths), "
+            "wt_vs_mutant (displacement comparison between two structures), "
+            "persistence_barcode (topological persistence diagram from Phase 3), "
+            "source_leak_map (source-leak candidates highlighted on sequence with depth + uncertainty)."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "structure_id": {"type": "string", "description": "Structure to plot data for"},
+                "plot_type": {
+                    "type": "string",
+                    "enum": [
+                        "poincare_disc",
+                        "uncertainty_profile",
+                        "cone_depth_histogram",
+                        "wt_vs_mutant",
+                        "persistence_barcode",
+                        "source_leak_map",
+                    ],
+                    "description": "Type of plot to generate",
+                },
+                "parameters": {
+                    "type": "object",
+                    "description": (
+                        "Plot-specific options. Examples: "
+                        "poincare_disc: {color_by: 'cone_depth'|'epistemic_uncertainty'}. "
+                        "uncertainty_profile: {threshold: 0.3}. "
+                        "cone_depth_histogram: {bins: 30}. "
+                        "wt_vs_mutant: {mutant_structure_id: '4obe_g12d'}. "
+                        "source_leak_map: {uncertainty_threshold: 0.3, min_depth: 1.5}."
+                    ),
+                },
+            },
+            "required": ["structure_id", "plot_type"],
+        },
+        handler=None,
+    ),
+]
+
+
+# ---------------------------------------------------------------------------
+# System prompts
+# ---------------------------------------------------------------------------
+
+COORDINATOR_PROMPT = """You are the Tokyo Eyes Data Science Coordinator — an expert AI assistant for structural biology and drug discovery research.
+
+You help researchers analyze protein structures using the DTIE (Dynamic Topology Inference Engine) v5 pipeline, which operates in hyperbolic geometry to detect allosteric sites and source leaks in oncogenic proteins.
+
+Your capabilities:
+- Run GNN inference on protein structures (v5 decoupled radial-angular architecture)
+- Detect source leaks (high uncertainty + deep in conformational hierarchy)
+- Analyze uncertainty patterns (epistemic vs aleatoric)
+- Compare wild-type vs mutant conformations
+- Control the Poincaré disc/ball visualizer to show findings
+- Generate matplotlib figures (Poincaré disc plots, uncertainty profiles, persistence barcodes, source-leak maps, WT vs mutant comparisons)
+- Run the full DTIE pipeline (Phases 1-6d)
+
+When the user asks about a structure, use your tools to analyze it and present findings clearly. Always highlight relevant residues in the viewer so the user can see what you're discussing.
+
+Key concepts:
+- Cone depth: how deep a residue sits in the learned conformational hierarchy (deeper = more structurally constrained)
+- Epistemic uncertainty: model uncertainty (high = training gap, the GNN hasn't seen enough similar structures)
+- Aleatoric uncertainty: genuine structural ambiguity (high = the residue is genuinely flexible/disordered)
+- Source leak: a residue with high epistemic uncertainty at significant depth — indicates a structural vulnerability the model detects but can't fully characterize
+
+The current structure being viewed is provided in the context. Use it to ground your analysis."""
+
+DTIE_AGENT_PROMPT = """You are the DTIE Analysis Sub-Agent. You execute scientific computations on protein structures using the v5 GNN pipeline.
+
+Your role:
+- Run GNN inference when asked
+- Detect source leaks and allosteric sites
+- Analyze uncertainty patterns
+- Compare WT vs mutant conformations
+- Report findings in clear, scientific language
+
+Always include specific residue IDs in your findings so the coordinator can highlight them in the viewer. Use the canonical format: structure_id:chain:index (e.g., 4obe:A:12)."""
+
+VISUALIZATION_AGENT_PROMPT = """You are the Visualization Sub-Agent. You control the Poincaré disc/ball viewer to help researchers see structural findings.
+
+Your role:
+- Highlight residues that are being discussed
+- Change coloring metrics to show different aspects of the analysis
+- Focus the camera on regions of interest
+- Clear highlights when moving to a new topic
+
+Use colors meaningfully:
+- Red (#ff4444): source leaks, high-risk regions
+- Orange (#ffaa00): high uncertainty
+- Cyan (#4ecdc4): referenced residues
+- Purple (#ff00ff): high displacement (WT vs mutant)
+- Green (#44ff44): stable/low-risk regions"""
+
+
+# ---------------------------------------------------------------------------
+# Agent factory
+# ---------------------------------------------------------------------------
+
+
+def create_coordinator(llm: LLMProvider, db: Any = None) -> Agent:
+    """Create the coordinator agent with all tools wired to the DB."""
+    from agent.tools.dtie.tools import (
+        run_gnn_inference,
+        get_source_leaks,
+        get_high_uncertainty_residues,
+        get_residue_state,
+        compare_wt_mutant,
+    )
+    from agent.models.viewport import DirectiveAction, HighlightGroup, ViewportDirective
+
+    # Wire DTIE tools to actual handlers with DB
+    tools = []
+    for tool_def in DTIE_TOOLS:
+        handler_map = {
+            "run_gnn_inference": lambda db=db, **kwargs: run_gnn_inference(db=db, **kwargs),
+            "run_full_pipeline": lambda db=db, **kwargs: _run_pipeline(db=db, **kwargs),
+            "get_source_leaks": lambda db=db, **kwargs: get_source_leaks(db=db, **kwargs),
+            "get_high_uncertainty_residues": lambda db=db, **kwargs: get_high_uncertainty_residues(db=db, **kwargs),
+            "get_residue_state": lambda db=db, **kwargs: get_residue_state(db=db, **kwargs),
+            "compare_wt_mutant": lambda db=db, **kwargs: compare_wt_mutant(db=db, **kwargs),
+        }
+        handler = handler_map.get(tool_def.name)
+        if handler:
+            tools.append(ToolDefinition(
+                name=tool_def.name,
+                description=tool_def.description,
+                parameters=tool_def.parameters,
+                handler=handler,
+            ))
+
+    # Wire visualization tools
+    for tool_def in VISUALIZATION_TOOLS:
+        viz_handler_map = {
+            "highlight_residues": _highlight_residues,
+            "set_metric": _set_metric,
+            "focus_residues": _focus_residues,
+            "clear_highlights": _clear_highlights,
+        }
+        handler = viz_handler_map.get(tool_def.name)
+        if handler:
+            tools.append(ToolDefinition(
+                name=tool_def.name,
+                description=tool_def.description,
+                parameters=tool_def.parameters,
+                handler=handler,
+            ))
+
+    # Wire plotting tools
+    from agent.tools.plotting.tools import generate_plot
+
+    for tool_def in PLOTTING_TOOLS:
+        if tool_def.name == "generate_plot":
+            tools.append(ToolDefinition(
+                name=tool_def.name,
+                description=tool_def.description,
+                parameters=tool_def.parameters,
+                handler=lambda db=db, **kwargs: generate_plot(db=db, **kwargs),
+            ))
+
+    # Wire data tools
+    from agent.tools.data_tools import (
+        export_structure_data,
+        get_allosteric_sites,
+        get_provenance_lineage,
+        search_residues,
+        annotate_structure,
+        list_structures,
+        get_run_summary,
+        compare_runs,
+    )
+
+    data_handler_map = {
+        "export_structure_data": lambda db=db, **kwargs: export_structure_data(db=db, **kwargs),
+        "get_allosteric_sites": lambda db=db, **kwargs: get_allosteric_sites(db=db, **kwargs),
+        "get_provenance_lineage": lambda db=db, **kwargs: get_provenance_lineage(db=db, **kwargs),
+        "search_residues": lambda db=db, **kwargs: search_residues(db=db, **kwargs),
+        "annotate_structure": lambda db=db, **kwargs: annotate_structure(db=db, **kwargs),
+        "list_structures": lambda db=db, **kwargs: list_structures(db=db, **kwargs),
+        "get_run_summary": lambda db=db, **kwargs: get_run_summary(db=db, **kwargs),
+        "compare_runs": lambda db=db, **kwargs: compare_runs(db=db, **kwargs),
+    }
+    for tool_def in DATA_TOOLS:
+        handler = data_handler_map.get(tool_def.name)
+        if handler:
+            tools.append(ToolDefinition(
+                name=tool_def.name,
+                description=tool_def.description,
+                parameters=tool_def.parameters,
+                handler=handler,
+            ))
+
+    return Agent(
+        name="coordinator",
+        system_prompt=COORDINATOR_PROMPT,
+        tools=tools,
+        llm=llm,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Visualization tool handlers (generate directives)
+# ---------------------------------------------------------------------------
+
+
+async def _highlight_residues(
+    residue_ids: list[str],
+    color: str = "#ff6b6b",
+    style: str = "glow",
+    label: str | None = None,
+) -> dict:
+    return {
+        "viewport_directives": [{
+            "action": "highlight",
+            "highlight_groups": [{
+                "residue_ids": residue_ids,
+                "color": color,
+                "style": style,
+                "label": label,
+            }],
+            "message": f"Highlighting {len(residue_ids)} residues" + (f" ({label})" if label else ""),
+        }]
+    }
+
+
+async def _set_metric(metric: str) -> dict:
+    return {
+        "viewport_directives": [{
+            "action": "set_metric",
+            "metric": metric,
+            "message": f"Coloring by {metric}",
+        }]
+    }
+
+
+async def _focus_residues(residue_ids: list[str]) -> dict:
+    return {
+        "viewport_directives": [{
+            "action": "focus",
+            "focus_residues": residue_ids,
+            "message": f"Focusing on {len(residue_ids)} residues",
+        }]
+    }
+
+
+async def _clear_highlights() -> dict:
+    return {
+        "viewport_directives": [{
+            "action": "clear",
+            "message": "Cleared all highlights",
+        }]
+    }
+
+
+async def _run_pipeline(db: Any = None, structure_id: str = "", source_leak_only: bool = False) -> dict:
+    """Run the full DTIE pipeline via the orchestrator."""
+    from science.dtie import DTIEOrchestrator, PipelineConfig
+
+    orchestrator = DTIEOrchestrator(db=db)
+    config = PipelineConfig(
+        structure_id=structure_id,
+        source_leak_only=source_leak_only,
+    )
+    result = await orchestrator.run(config)
+
+    return {
+        "success": result.success,
+        "run_id": result.run_id,
+        "phases_run": list(result.phase_results.keys()),
+        "warnings": result.warnings,
+    }

@@ -1,0 +1,41 @@
+{
+  "schema": "tokyoeyes.data_catalog",
+  "schema_version": "1.0.0",
+  "catalog_id": "tokyoeyes-governance-catalog",
+  "generated_at_utc": "2026-03-07T00:00:00Z",
+  "assets": [
+    {
+      "asset_id": "tokyoeyes.example.asset",
+      "asset_type": "analysis_output",
+      "owner_domain": "tokyoeyes-research",
+      "storage_uri": "gs://YOUR_BUCKET/path/to/asset.json",
+      "access_level": "internal",
+      "created_at_utc": "2026-03-07T00:00:00Z",
+      "last_updated_utc": "2026-03-07T00:00:00Z",
+      "lineage": {
+        "upstream_ids": [],
+        "pipeline": "pipelines/tokyoeyes_v3_package_pipeline.py",
+        "run_id": "example-run-id"
+      },
+      "interoperability": {
+        "format": "json",
+        "schema": "tokyoeyes.package_manifest",
+        "schema_version": "1.0.0",
+        "ontology_terms": [
+          "EDAM:data_2044"
+        ]
+      },
+      "quality_slo": {
+        "freshness_hours_max": 168,
+        "min_bytes": 256,
+        "required_fields": [
+          "schema",
+          "schema_version"
+        ]
+      },
+      "tags": [
+        "fair"
+      ]
+    }
+  ]
+}

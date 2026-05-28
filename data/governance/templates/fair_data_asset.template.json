@@ -1,0 +1,43 @@
+{
+  "asset_id": "tokyoeyes.example.asset",
+  "asset_type": "analysis_output",
+  "owner_domain": "tokyoeyes-research",
+  "storage_uri": "gs://YOUR_BUCKET/path/to/asset.json",
+  "access_level": "internal",
+  "created_at_utc": "2026-03-07T00:00:00Z",
+  "last_updated_utc": "2026-03-07T00:00:00Z",
+  "checksum": {
+    "algorithm": "sha256",
+    "value": "REPLACE_WITH_SHA256"
+  },
+  "lineage": {
+    "upstream_ids": [
+      "tokyoeyes.upstream.asset"
+    ],
+    "pipeline": "pipelines/tokyoeyes_v3_package_pipeline.py",
+    "run_id": "example-run-id",
+    "code_version": "git:YOUR_SHA"
+  },
+  "interoperability": {
+    "format": "json",
+    "schema": "tokyoeyes.package_manifest",
+    "schema_version": "1.0.0",
+    "ontology_terms": [
+      "EDAM:data_2044",
+      "EDAM:format_3464"
+    ]
+  },
+  "quality_slo": {
+    "freshness_hours_max": 168,
+    "min_bytes": 256,
+    "required_fields": [
+      "schema",
+      "schema_version"
+    ]
+  },
+  "tags": [
+    "fair",
+    "lineage",
+    "tokyoeyes"
+  ]
+}

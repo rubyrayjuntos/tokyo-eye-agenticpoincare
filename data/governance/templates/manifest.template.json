@@ -1,0 +1,63 @@
+{
+  "schema": "tokyoeyes.package_manifest",
+  "schema_version": "1.0.0",
+  "package_id": "teye-1abc-r1-v3-20260305T000000Z",
+  "pdb_id": "1ABC",
+  "model_version": "tokyoeyes-v3.0.0",
+  "created_at_utc": "2026-03-05T00:00:00Z",
+  "hash_algorithm": "sha256",
+  "files": [
+    {
+      "role": "structure",
+      "path": "structure.cif",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "bytes": 0,
+      "required": true,
+      "media_type": "chemical/x-mmcif"
+    },
+    {
+      "role": "annotations",
+      "path": "tokyoeyes_annotations.parquet",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "bytes": 0,
+      "required": true,
+      "media_type": "application/vnd.apache.parquet"
+    },
+    {
+      "role": "model_output",
+      "path": "tokyoeyes_model_output.json",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "bytes": 0,
+      "required": true,
+      "media_type": "application/json"
+    },
+    {
+      "role": "provenance",
+      "path": "provenance.json",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "bytes": 0,
+      "required": true,
+      "media_type": "application/json"
+    },
+    {
+      "role": "graph",
+      "path": "graph.pt",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "bytes": 0,
+      "required": false,
+      "media_type": "application/octet-stream"
+    }
+  ],
+  "pointers": {
+    "structure": "structure.cif",
+    "annotations": "tokyoeyes_annotations.parquet",
+    "model_output": "tokyoeyes_model_output.json",
+    "provenance": "provenance.json",
+    "graph": "graph.pt"
+  },
+  "lineage": {
+    "pipeline_run_id": "vertex-run-20260305-000000",
+    "code_version": "git:abcdef1",
+    "input_structure_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}

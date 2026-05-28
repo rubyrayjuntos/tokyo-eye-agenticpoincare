@@ -1,0 +1,32 @@
+{
+  "schema": "tokyoeyes.model_output",
+  "schema_version": "1.0.0",
+  "pdb_id": "1ABC",
+  "model_version": "tokyoeyes-v3.0.0",
+  "uncertainty": {
+    "global_score": 0.12,
+    "per_residue": [
+      {
+        "label_seq_id": 1,
+        "score": 0.08
+      },
+      {
+        "label_seq_id": 2,
+        "score": 0.21
+      }
+    ]
+  },
+  "routing": {
+    "selected_expert": "kinase_allosteric_expert",
+    "depth": 2,
+    "candidate_experts": [
+      "kinase_allosteric_expert",
+      "gpcr_dynamic_expert"
+    ]
+  },
+  "cone": {
+    "angle_degrees": 38.5,
+    "confidence": 0.87,
+    "apex_atom_id": 1142
+  }
+}

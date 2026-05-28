@@ -1,0 +1,18 @@
+{
+  "schema": "tokyoeyes.annotations",
+  "schema_version": "1.0.0",
+  "pdb_id": "1ABC",
+  "records": [
+    {
+      "entity_id": "1",
+      "asym_id": "A",
+      "label_seq_id": 10,
+      "atom_id": 101,
+      "features": {
+        "flexibility_score": 0.42,
+        "local_uncertainty": 0.16,
+        "is_hinge": true
+      }
+    }
+  ]
+}

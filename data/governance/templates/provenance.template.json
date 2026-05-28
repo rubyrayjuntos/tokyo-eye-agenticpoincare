@@ -1,0 +1,23 @@
+{
+  "schema": "tokyoeyes.provenance",
+  "schema_version": "1.0.0",
+  "generated_at_utc": "2026-03-05T00:00:00Z",
+  "model": {
+    "name": "tokyoeyes-gnn-v3",
+    "version": "v3.0.0",
+    "vertex_model_registry_id": "projects/PROJECT/locations/REGION/models/123456789",
+    "checkpoint_uri": "gs://bucket/checkpoints/tokyoeyes-gnn-v3/model.pt",
+    "checkpoint_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "pipeline": {
+    "run_id": "vertex-run-20260305-000000",
+    "orchestrator": "vertex-pipelines",
+    "pipeline_name": "tokyoeyes-hydrate-package-v3",
+    "code_version": "git:abcdef1"
+  },
+  "input": {
+    "pdb_id": "1ABC",
+    "structure_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "structure_source_uri": "gs://bucket/structures/1ABC/structure.cif"
+  }
+}

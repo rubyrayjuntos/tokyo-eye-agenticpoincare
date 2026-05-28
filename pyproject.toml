@@ -5,21 +5,43 @@ description = "Hybrid platform for hyperbolic GNNs, DTIE pipelines, and agentic 
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    # Core scientific stack (to be refined during migration)
-    "torch>=2.1",
-    "torch-geometric>=2.3",
-    "numpy",
-    "pandas",
-    "biotite",
-    "scipy",
-    # Agent / API
-    "fastapi",
-    "uvicorn[standard]",
-    "pydantic",
-    # DB
-    "psycopg[binary]",
-    # Utils
-    "python-dotenv",
+    # Shared across agent and science containers
+    "numpy>=1.26,<2",
+    "pydantic>=2.8,<3",
+    "psycopg[binary]>=3.2,<4",
+    "psycopg-pool>=3.2,<4",
+    "python-dotenv>=1.0,<2",
+]
+
+[project.optional-dependencies]
+agent = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30,<1",
+    "python-jose[cryptography]>=3.3,<4",
+    "bcrypt>=4.2,<5",
+    "matplotlib>=3.8,<4",
+]
+science = [
+    "torch>=2.3,<3",
+    "torch-geometric>=2.5,<3",
+    "torch-scatter>=2.1,<3",
+    "torch-sparse>=0.6,<1",
+    "geoopt>=0.5,<1",
+    "e3nn>=0.5,<1",
+    "gudhi>=3.10,<4",
+    "biotite>=1.0,<2",
+    "biopython>=1.84,<2",
+    "rdkit>=2024.03",
+    "scipy>=1.13,<2",
+    "scikit-learn>=1.5,<2",
+    "pandas>=2.2,<3",
+    "networkx>=3.3,<4",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+    "mypy>=1.10",
 ]
 
 [build-system]
@@ -36,10 +58,20 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "integration: tests that require a real database connection",
+]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true
 warn_return_any = true
 
-# Note: This is an initial skeleton. Exact dependencies and workspace layout
-# will be refined during Phase 1 (Science Core Extraction).
+# Dependency strategy:
+# - pyproject.toml defines version ranges (source of truth for what we need)
+# - requirements-agent.txt / requirements-science.txt are pinned lockfiles for Docker builds
+# - To regenerate lockfiles: uv pip compile pyproject.toml --extra agent -o requirements-agent.txt
+#                            uv pip compile pyproject.toml --extra science -o requirements-science.txt

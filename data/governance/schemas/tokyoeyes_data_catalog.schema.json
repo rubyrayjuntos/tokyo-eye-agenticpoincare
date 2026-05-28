@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tokyoeyes/contracts/tokyoeyes_v3/schemas/tokyoeyes_data_catalog.schema.json",
+  "title": "Tokyo Eyes Data Catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "catalog_id",
+    "generated_at_utc",
+    "assets"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "tokyoeyes.data_catalog"
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "catalog_id": {
+      "type": "string"
+    },
+    "generated_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "assets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "fair_data_asset.schema.json"
+      }
+    }
+  }
+}

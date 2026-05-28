@@ -1,0 +1,41 @@
+# Science compute container — pinned heavy dependencies
+# Used for: GNN inference, phase execution, training
+#
+# Build: docker build -f Dockerfile.science -t tokyoeye-science .
+# Run:   docker run --gpus all -v ./checkpoints:/app/checkpoints tokyoeye-science
+
+FROM pytorch/pytorch:2.3.1-cuda12.1-cudnn8-runtime
+
+WORKDIR /app
+
+# System deps for rdkit, gudhi, biotite, and AutoDock Vina (Phase 6b)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libboost-all-dev \
+    libcgal-dev \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install AutoDock Vina binary (Phase 6b: binding affinity docking)
+RUN wget -q https://github.com/ccsb-scripps/AutoDock-Vina/releases/download/v1.2.5/vina_1.2.5_linux_x86_64 \
+    -O /usr/local/bin/vina \
+    && chmod +x /usr/local/bin/vina
+
+# Pin all heavy dependencies
+COPY requirements-science.txt .
+RUN pip install --no-cache-dir -r requirements-science.txt
+
+# Copy the science code + data layer + shared utilities (needed for Normalizer, adapters)
+COPY science/ /app/science/
+COPY data/ /app/data/
+COPY shared/ /app/shared/
+COPY experiments/ /app/experiments/
+
+# Make the package importable
+ENV PYTHONPATH=/app
+
+# Run as non-root user
+RUN useradd -m -r appuser
+USER appuser
+
+# Default: run the pipeline on a structure
+ENTRYPOINT ["python", "-m", "science.dtie.v5.orchestrator.pipeline"]

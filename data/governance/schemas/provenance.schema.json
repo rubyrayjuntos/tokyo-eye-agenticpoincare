@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tokyoeyes.dev/schemas/v3/provenance.schema.json",
+  "title": "Tokyo Eyes v3 Provenance",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "generated_at_utc",
+    "model",
+    "pipeline",
+    "input"
+  ],
+  "properties": {
+    "schema": {
+      "const": "tokyoeyes.provenance"
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "generated_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "model": {
+      "type": "object",
+      "required": ["name", "version", "checkpoint_sha256"],
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" },
+        "vertex_model_registry_id": { "type": "string" },
+        "checkpoint_uri": { "type": "string" },
+        "checkpoint_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "pipeline": {
+      "type": "object",
+      "required": ["run_id", "orchestrator", "code_version"],
+      "properties": {
+        "run_id": { "type": "string" },
+        "orchestrator": {
+          "type": "string",
+          "enum": ["vertex-pipelines", "vertex-custom-job", "local"]
+        },
+        "pipeline_name": { "type": "string" },
+        "code_version": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "input": {
+      "type": "object",
+      "required": ["pdb_id", "structure_sha256"],
+      "properties": {
+        "pdb_id": { "type": "string" },
+        "structure_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "structure_source_uri": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

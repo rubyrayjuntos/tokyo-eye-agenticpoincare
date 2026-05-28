@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tokyoeyes.dev/schemas/v3/manifest.schema.json",
+  "title": "Tokyo Eyes v3 Package Manifest",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "package_id",
+    "pdb_id",
+    "model_version",
+    "created_at_utc",
+    "hash_algorithm",
+    "files",
+    "pointers"
+  ],
+  "properties": {
+    "schema": {
+      "const": "tokyoeyes.package_manifest"
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "package_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pdb_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "hash_algorithm": {
+      "const": "sha256"
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["role", "path", "sha256", "bytes"],
+        "properties": {
+          "role": { "type": "string" },
+          "path": { "type": "string", "minLength": 1 },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "required": {
+            "type": "boolean",
+            "default": true
+          },
+          "media_type": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "pointers": {
+      "type": "object",
+      "required": [
+        "structure",
+        "annotations",
+        "model_output",
+        "provenance"
+      ],
+      "properties": {
+        "structure": { "type": "string" },
+        "annotations": { "type": "string" },
+        "model_output": { "type": "string" },
+        "provenance": { "type": "string" },
+        "graph": { "type": "string" },
+        "augmented_structure": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "lineage": {
+      "type": "object",
+      "properties": {
+        "pipeline_run_id": { "type": "string" },
+        "code_version": { "type": "string" },
+        "input_structure_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
