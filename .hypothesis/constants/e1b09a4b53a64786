@@ -1,0 +1,4 @@
+# file: /home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/agent/tools/hypothesis/contradiction.py
+# hypothesis_version: 6.151.9
+
+[0.7, 'confidence', 'count', 'data', 'db', 'description', 'evidence_id', 'hypothesis_engine_v1', 'hypothesis_id', 'metric', 'new_confidence', 'new_status', 'passed', 'prediction_id', 'prediction_statement', 'result', 'score', 'statement', 'status', 'strength', 'structure_id', 'supports', 'test_params', 'test_tool', 'tested_at', 'threshold', 'updated_at', 'value']

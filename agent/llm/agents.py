@@ -261,6 +261,169 @@ VISUALIZATION_TOOLS = [
     ),
 ]
 
+GRAPH_TOOLS = [
+    ToolDefinition(
+        name="get_graph_metrics",
+        description="Retrieve per-residue graph metrics (degree, betweenness, clustering coefficient, closeness, eigenvector centrality, bridge status, conductance) for a structure. Useful for identifying high-centrality or bridge residues.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "structure_id": {"type": "string", "description": "Structure to query metrics for"},
+                "run_id": {"type": "string", "description": "Specific run_id (latest if omitted)"},
+                "residue_ids": {"type": "array", "items": {"type": "string"}, "description": "Optional filter to specific residues"},
+                "metric_type": {"type": "string", "enum": ["degree", "betweenness", "clustering_coefficient", "closeness", "eigenvector_centrality", "is_bridge", "conductance"], "description": "Optional filter to a single metric"},
+            },
+            "required": ["structure_id"],
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="compare_graphs",
+        description="Compare graph topology between two structures (e.g., WT vs mutant). Returns edge diff (gained/lost/changed) and per-residue metric deltas using canonical residue_id alignment.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "structure_id_a": {"type": "string", "description": "First structure (e.g., wild-type)"},
+                "structure_id_b": {"type": "string", "description": "Second structure (e.g., mutant)"},
+                "run_id_a": {"type": "string", "description": "Specific run for structure A (latest if omitted)"},
+                "run_id_b": {"type": "string", "description": "Specific run for structure B (latest if omitted)"},
+            },
+            "required": ["structure_id_a", "structure_id_b"],
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="get_hbond_network",
+        description="Extract the H-bond subgraph for a structure or region. Returns all edges of type 'h_bond', optionally filtered to edges involving specific residues.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "structure_id": {"type": "string", "description": "Structure to query"},
+                "run_id": {"type": "string", "description": "Specific run_id (latest if omitted)"},
+                "residue_ids": {"type": "array", "items": {"type": "string"}, "description": "Optional filter — edges must involve at least one of these residues"},
+            },
+            "required": ["structure_id"],
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="find_graph_bridges",
+        description="Identify bridge residues (articulation points) in the contact graph. These are residues whose removal disconnects the graph — potential allosteric communication bottlenecks.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "structure_id": {"type": "string", "description": "Structure to query"},
+                "run_id": {"type": "string", "description": "Specific run_id (latest if omitted)"},
+            },
+            "required": ["structure_id"],
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="get_shortest_paths",
+        description="Find the shortest path between two residues in the contact graph. Returns the ordered list of residue_ids along the path and total distance in Angstroms.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "structure_id": {"type": "string", "description": "Structure to query"},
+                "source_residue_id": {"type": "string", "description": "Starting residue"},
+                "target_residue_id": {"type": "string", "description": "Ending residue"},
+                "run_id": {"type": "string", "description": "Specific run_id (latest if omitted)"},
+            },
+            "required": ["structure_id", "source_residue_id", "target_residue_id"],
+        },
+        handler=None,
+    ),
+]
+
+HYPOTHESIS_TOOLS = [
+    ToolDefinition(
+        name="propose_hypothesis",
+        description="Propose a new scientific hypothesis about a protein structure. Requires at least one testable prediction (falsifiability guardrail). The hypothesis is persisted through the Normalizer with status 'proposed' and confidence 0.5.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "structure_id": {"type": "string", "description": "Structure this hypothesis is about"},
+                "statement": {"type": "string", "description": "The scientific claim"},
+                "predictions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "statement": {"type": "string", "description": "What this prediction claims"},
+                            "test_tool": {"type": "string", "description": "Tool to call for testing"},
+                            "test_params": {"type": "object", "description": "Parameters for the test tool"},
+                            "threshold": {"type": "string", "description": "Threshold expression (e.g., 'value > 0.15')"},
+                        },
+                        "required": ["statement"],
+                    },
+                    "description": "Testable predictions that could contradict the hypothesis",
+                },
+                "mechanism": {"type": "string", "description": "Optional proposed mechanism"},
+            },
+            "required": ["structure_id", "statement", "predictions"],
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="test_hypothesis",
+        description="Test a hypothesis by executing its predictions using the referenced tools. Transitions status to 'gathering', evaluates each prediction against its threshold, creates evidence from results, and recalculates confidence.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "hypothesis_id": {"type": "string", "description": "The hypothesis to test"},
+            },
+            "required": ["hypothesis_id"],
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="get_hypotheses",
+        description="List and filter hypotheses by structure or status. Returns hypotheses with current status, confidence, evidence counts, and prediction pass/fail summary.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "structure_id": {"type": "string", "description": "Filter by structure ID"},
+                "status": {
+                    "type": "string",
+                    "enum": ["proposed", "gathering", "supported", "contradicted", "inconclusive"],
+                    "description": "Filter by hypothesis status",
+                },
+            },
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="add_evidence",
+        description="Add evidence to an existing hypothesis and recalculate confidence. Evidence can support or contradict the hypothesis with a strength weight.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "hypothesis_id": {"type": "string", "description": "Hypothesis to add evidence to"},
+                "source_tool": {"type": "string", "description": "Tool or source that produced this evidence"},
+                "supports": {"type": "boolean", "description": "True if evidence supports the hypothesis"},
+                "description": {"type": "string", "description": "Human-readable description of the evidence"},
+                "strength": {"type": "number", "default": 0.5, "description": "Evidence strength weight (0.0 to 1.0)"},
+                "source_run_id": {"type": "string", "description": "Optional run that produced this evidence"},
+            },
+            "required": ["hypothesis_id", "source_tool", "supports", "description"],
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="evaluate_confidence",
+        description="Recalculate confidence for a hypothesis. Reloads all evidence, recalculates the confidence score, applies time-based decay if stale (>7 days without new evidence in gathering status), and updates status.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "hypothesis_id": {"type": "string", "description": "Hypothesis to evaluate"},
+            },
+            "required": ["hypothesis_id"],
+        },
+        handler=None,
+    ),
+]
+
 PLOTTING_TOOLS = [
     ToolDefinition(
         name="generate_plot",
@@ -428,6 +591,32 @@ def create_coordinator(llm: LLMProvider, db: Any = None) -> Agent:
                 handler=lambda db=db, **kwargs: generate_plot(db=db, **kwargs),
             ))
 
+    # Wire graph tools
+    from agent.tools.graph_tools import (
+        get_graph_metrics,
+        compare_graphs,
+        get_hbond_network,
+        find_graph_bridges,
+        get_shortest_paths,
+    )
+
+    graph_handler_map = {
+        "get_graph_metrics": lambda db=db, **kwargs: get_graph_metrics(db=db, **kwargs),
+        "compare_graphs": lambda db=db, **kwargs: compare_graphs(db=db, **kwargs),
+        "get_hbond_network": lambda db=db, **kwargs: get_hbond_network(db=db, **kwargs),
+        "find_graph_bridges": lambda db=db, **kwargs: find_graph_bridges(db=db, **kwargs),
+        "get_shortest_paths": lambda db=db, **kwargs: get_shortest_paths(db=db, **kwargs),
+    }
+    for tool_def in GRAPH_TOOLS:
+        handler = graph_handler_map.get(tool_def.name)
+        if handler:
+            tools.append(ToolDefinition(
+                name=tool_def.name,
+                description=tool_def.description,
+                parameters=tool_def.parameters,
+                handler=handler,
+            ))
+
     # Wire data tools
     from agent.tools.data_tools import (
         export_structure_data,
@@ -452,6 +641,32 @@ def create_coordinator(llm: LLMProvider, db: Any = None) -> Agent:
     }
     for tool_def in DATA_TOOLS:
         handler = data_handler_map.get(tool_def.name)
+        if handler:
+            tools.append(ToolDefinition(
+                name=tool_def.name,
+                description=tool_def.description,
+                parameters=tool_def.parameters,
+                handler=handler,
+            ))
+
+    # Wire hypothesis tools
+    from agent.tools.hypothesis.tools import (
+        propose_hypothesis,
+        test_hypothesis,
+        get_hypotheses,
+        add_evidence,
+        evaluate_confidence,
+    )
+
+    hypothesis_handler_map = {
+        "propose_hypothesis": lambda db=db, **kwargs: propose_hypothesis(db=db, **kwargs),
+        "test_hypothesis": lambda db=db, **kwargs: test_hypothesis(db=db, **kwargs),
+        "get_hypotheses": lambda db=db, **kwargs: get_hypotheses(db=db, **kwargs),
+        "add_evidence": lambda db=db, **kwargs: add_evidence(db=db, **kwargs),
+        "evaluate_confidence": lambda db=db, **kwargs: evaluate_confidence(db=db, **kwargs),
+    }
+    for tool_def in HYPOTHESIS_TOOLS:
+        handler = hypothesis_handler_map.get(tool_def.name)
         if handler:
             tools.append(ToolDefinition(
                 name=tool_def.name,

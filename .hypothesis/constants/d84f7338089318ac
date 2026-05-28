@@ -1,0 +1,4 @@
+# file: /home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/agent/coordinator/viewport.py
+# hypothesis_version: 6.151.9
+
+['REQUIRE_AUTH', 'capabilities', 'current_metric', 'error', 'event_type', 'false', 'hover', 'hovered_residue', 'initial_state', 'message', 'metric', 'metric_change', 'payload', 'ping', 'poincare_disc', 'pong', 'register_ack', 'registered_at', 'residue_id', 'residue_ids', 'selected_residues', 'selection', 'session_id', 'state', 'token', 'true', 'type', 'viewer_type', 'viewport_event', 'viewport_id', 'viewport_register']

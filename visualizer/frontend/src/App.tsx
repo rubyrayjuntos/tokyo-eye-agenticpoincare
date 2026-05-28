@@ -41,7 +41,7 @@ export default function App() {
   const [showLabels, setShowLabels] = useState(false);
   const [highlightOutliers, setHighlightOutliers] = useState(true);
   const [viewMode, setViewMode] = useState<'dual' | '3d' | '2d'>('dual');
-  const [showChat, setShowChat] = useState(true);
+  const [showChat, setShowChat] = useState(false);
 
   // ------------------------------------------------------------------
   // Agent connection + WebSocket
@@ -263,10 +263,18 @@ export default function App() {
             </div>
           )}
         </div>
+      </div>
 
-        {/* Right sidebar: Chat panel */}
-        {showChat && (
-          <div className="w-72 shrink-0">
+      {/* Chat Modal */}
+      {showChat && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto"
+            onClick={() => setShowChat(false)}
+          />
+          {/* Modal */}
+          <div className="relative w-[420px] h-[600px] max-h-[80vh] pointer-events-auto rounded-xl overflow-hidden shadow-2xl shadow-black/50 border border-slate-700/50">
             <ChatPanel
               sessionId={sessionIdRef.current}
               structureId={activePdb}
@@ -276,8 +284,8 @@ export default function App() {
               agentConnected={agentAvailable}
             />
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Directive status bar */}
       {lastMessage && (
@@ -315,6 +323,9 @@ export default function App() {
         proteins={proteins}
         activePdb={activePdb}
         onLoadProtein={loadProtein}
+        showChat={showChat}
+        onToggleChat={() => setShowChat(prev => !prev)}
+        agentConnected={agentAvailable}
       />
     </div>
   );

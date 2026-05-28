@@ -1,0 +1,4 @@
+# file: /home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/data/normalizer/__init__.py
+# hypothesis_version: 6.151.9
+
+['ASSET_TYPE_REGISTRY', 'AssetCategory', 'Normalizer', 'NormalizerError', 'get_asset_type', 'is_registered', 'list_asset_types', 'register_asset_type']

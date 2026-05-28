@@ -47,9 +47,12 @@ services:
       context: .
       dockerfile: Dockerfile.agent
     container_name: tokyoeye_agent
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql://tokyoeye:tokyoeye_dev_local@db:5432/tokyoeye_dev
       JWT_SECRET: dev-secret-change-in-production
+      REQUIRE_AUTH: "false"
       PORT: "8000"
     ports:
       - "8000:8000"

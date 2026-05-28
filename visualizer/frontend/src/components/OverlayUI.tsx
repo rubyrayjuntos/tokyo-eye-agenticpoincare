@@ -1,6 +1,6 @@
 import React from 'react';
 import * as THREE from 'three';
-import { Download, Maximize2, Columns2, Square, Circle } from 'lucide-react';
+import { Download, Maximize2, Columns2, Square, Circle, MessageCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface OverlayUIProps {
@@ -24,6 +24,9 @@ interface OverlayUIProps {
   proteins: Array<{ pdb_id: string; gene: string; desc: string }>;
   activePdb: string;
   onLoadProtein: (pdbId: string) => void;
+  showChat: boolean;
+  onToggleChat: () => void;
+  agentConnected: boolean;
   stats: {
     totalNodes: number;
     outliers: number;
@@ -42,6 +45,7 @@ export default function OverlayUI({
   onExport,
   hoveredNode, selectedNodes,
   dataSource, serverAvailable, proteins, activePdb, onLoadProtein,
+  showChat, onToggleChat, agentConnected,
   stats
 }: OverlayUIProps) {
   return (
@@ -89,6 +93,21 @@ export default function OverlayUI({
             <span className="text-[9px] text-slate-500 uppercase font-bold">Nodes</span>
             <span className="text-xs font-mono text-emerald-400">{stats.totalNodes}</span>
           </div>
+          <button 
+            onClick={onToggleChat} 
+            className={cn(
+              "px-3 py-1.5 border rounded text-[10px] font-bold uppercase transition-colors flex items-center gap-1.5 relative",
+              showChat 
+                ? "bg-cyan-900/50 border-cyan-700 text-cyan-300 hover:bg-cyan-900/70" 
+                : "bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300"
+            )}
+          >
+            <MessageCircle size={12} /> Chat
+            <div className={cn(
+              "absolute -top-1 -right-1 w-2 h-2 rounded-full",
+              agentConnected ? "bg-emerald-400" : "bg-red-400"
+            )} />
+          </button>
           <button onClick={onExport} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-[10px] font-bold uppercase transition-colors flex items-center gap-1.5">
             <Download size={12} /> Export
           </button>

@@ -22,6 +22,11 @@ RUN wget -q https://github.com/ccsb-scripps/AutoDock-Vina/releases/download/v1.2
 
 # Pin all heavy dependencies
 COPY requirements-science.txt .
+
+# torch-scatter and torch-sparse need prebuilt wheels matching PyTorch+CUDA version
+RUN pip install --no-cache-dir torch-scatter torch-sparse \
+    -f https://data.pyg.org/whl/torch-2.3.1+cu121.html
+
 RUN pip install --no-cache-dir -r requirements-science.txt
 
 # Copy the science code + data layer + shared utilities (needed for Normalizer, adapters)

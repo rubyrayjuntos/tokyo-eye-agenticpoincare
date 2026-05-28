@@ -1,0 +1,4 @@
+# file: /home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/agent/coordinator/auth.py
+# hypothesis_version: 6.151.9
+
+[401, 86400, '10000', '86400', 'ENVIRONMENT', 'HS256', 'Invalid token', 'JWT_SECRET', 'Not authenticated', 'REQUIRE_AUTH', 'SESSION_MAX_SIZE', 'SESSION_TTL_SECONDS', 'anonymous', 'dev', 'exp', 'false', 'iat', 'prod', 'session_id', 'sub', 'true']

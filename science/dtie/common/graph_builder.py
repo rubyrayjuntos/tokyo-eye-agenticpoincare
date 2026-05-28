@@ -21,10 +21,16 @@ from typing import Any, Protocol
 
 import numpy as np
 
+from science.dtie.common.normalizer_payloads import GraphEdge
+
 logger = logging.getLogger(__name__)
 
 # Contact distance threshold for Cα graph (Ångströms)
 DEFAULT_CONTACT_CUTOFF = 8.0
+
+# H-bond distance heuristic: Cα–Cα distance below this threshold between
+# sequential residues (|i-j| <= 5) suggests a backbone hydrogen bond.
+HBOND_CA_DISTANCE_CUTOFF = 5.5
 
 # Secondary structure encoding
 SSE_ENCODING = {"H": 0.0, "E": 1.0, "C": 2.0, "": 2.0, None: 2.0}
@@ -144,6 +150,68 @@ class GraphBuilder:
         data.residue_ids = graph.residue_ids
 
         return data
+
+    def extract_edges_for_persistence(
+        self,
+        graph: ProteinGraph,
+        hbond_cutoff: float = HBOND_CA_DISTANCE_CUTOFF,
+    ) -> list[GraphEdge]:
+        """Convert a ProteinGraph into a list of GraphEdge objects for persistence.
+
+        Deduplicates bidirectional edges (keeps source_index < target_index)
+        and classifies edges as 'h_bond' or 'contact' based on a Cα distance
+        heuristic: sequential residues (sequence separation <= 5) with Cα
+        distance below *hbond_cutoff* are classified as h_bond; all others
+        are classified as contact.
+
+        Args:
+            graph: A ProteinGraph produced by build_graph.
+            hbond_cutoff: Cα distance threshold for H-bond classification.
+
+        Returns:
+            List of GraphEdge objects ready for GraphTopologyPayload.
+        """
+        edge_index = graph.edge_index  # [2, E]
+        edge_attr = graph.edge_attr  # [E, 4] (rel_x, rel_y, rel_z, distance)
+        residue_ids = graph.residue_ids
+        residue_indices = graph.residue_indices
+
+        num_edges = edge_index.shape[1]
+        seen: set[tuple[int, int]] = set()
+        edges: list[GraphEdge] = []
+
+        for e in range(num_edges):
+            src_idx = int(edge_index[0, e])
+            tgt_idx = int(edge_index[1, e])
+
+            # Deduplicate: only keep the canonical direction (lower index first)
+            key = (min(src_idx, tgt_idx), max(src_idx, tgt_idx))
+            if key in seen:
+                continue
+            seen.add(key)
+
+            distance = float(edge_attr[e, 3])
+            src_residue_id = residue_ids[src_idx]
+            tgt_residue_id = residue_ids[tgt_idx]
+
+            # Classify edge type using distance + sequence separation heuristic
+            seq_sep = abs(residue_indices[src_idx] - residue_indices[tgt_idx])
+            if distance < hbond_cutoff and seq_sep <= 5:
+                edge_type = "h_bond"
+            else:
+                edge_type = "contact"
+
+            edges.append(
+                GraphEdge(
+                    source_residue_id=src_residue_id,
+                    target_residue_id=tgt_residue_id,
+                    edge_type=edge_type,
+                    distance_angstrom=distance,
+                    weight=1.0,
+                )
+            )
+
+        return edges
 
     async def _fetch_residues(
         self, structure_id: str, chain_filter: str | None

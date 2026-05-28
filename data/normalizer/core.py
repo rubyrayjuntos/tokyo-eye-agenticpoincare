@@ -21,16 +21,99 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Protocol
 
+import asyncio
+
 from science.dtie.common.keys import make_residue_id, validate_residue_id
 from science.dtie.common.normalizer_payloads import (
+    EvidencePayload,
     GNNNodeResult,
     GNNOutputPayload,
+    GraphEdge,
+    GraphTopologyPayload,
+    HypothesisPayload,
     NormalizerResult,
     Phase3PersistencePayload,
     ProvenanceContext,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _compute_graph_metrics(edges: list[Any]) -> dict[str, dict[str, Any]]:
+    """Compute per-node graph metrics using networkx.
+
+    This runs in a background thread via asyncio.to_thread to avoid
+    blocking the event loop.
+
+    Args:
+        edges: List of GraphEdge objects.
+
+    Returns:
+        Dict mapping residue_id → metric dict with keys:
+        degree, betweenness, clustering_coefficient, closeness,
+        eigenvector_centrality, is_bridge, conductance.
+    """
+    import networkx as nx
+
+    G = nx.Graph()
+    for edge in edges:
+        weight = edge.distance_angstrom if edge.distance_angstrom is not None else edge.weight
+        G.add_edge(
+            edge.source_residue_id,
+            edge.target_residue_id,
+            weight=weight,
+            edge_type=edge.edge_type,
+        )
+
+    if G.number_of_nodes() == 0:
+        return {}
+
+    # Compute centrality metrics
+    degree_dict = dict(G.degree())
+    betweenness = nx.betweenness_centrality(G)
+    clustering = nx.clustering(G)
+    closeness = nx.closeness_centrality(G)
+
+    # Eigenvector centrality can fail on disconnected graphs
+    try:
+        eigenvector = nx.eigenvector_centrality(G, max_iter=1000)
+    except nx.PowerIterationFailedConvergence:
+        eigenvector = {n: 0.0 for n in G.nodes()}
+
+    # Bridge detection (articulation points in undirected graph)
+    bridges_set = set(nx.articulation_points(G))
+
+    # Conductance approximation via algebraic connectivity (Fiedler value)
+    # For disconnected graphs, compute per-component
+    conductance_dict: dict[str, float] = {}
+    for component in nx.connected_components(G):
+        subgraph = G.subgraph(component)
+        if len(component) <= 2:
+            for node in component:
+                conductance_dict[node] = 0.0
+        else:
+            try:
+                fiedler = nx.algebraic_connectivity(subgraph)
+                for node in component:
+                    conductance_dict[node] = fiedler
+            except Exception:
+                for node in component:
+                    conductance_dict[node] = 0.0
+
+    # Assemble per-node metrics
+    metrics: dict[str, dict[str, Any]] = {}
+    for node in G.nodes():
+        metrics[node] = {
+            "degree": degree_dict[node],
+            "betweenness": betweenness[node],
+            "clustering_coefficient": clustering[node],
+            "closeness": closeness[node],
+            "eigenvector_centrality": eigenvector.get(node, 0.0),
+            "is_bridge": node in bridges_set,
+            "conductance": conductance_dict.get(node, 0.0),
+        }
+
+    return metrics
 
 
 class DatabaseConnection(Protocol):
@@ -358,6 +441,499 @@ class Normalizer:
         )
 
     # ------------------------------------------------------------------
+    # Path 3: Graph Topology
+    # ------------------------------------------------------------------
+
+    async def normalize_graph_topology(
+        self, payload: GraphTopologyPayload
+    ) -> NormalizerResult:
+        """Validate and write graph topology (edges + computed metrics).
+
+        Flow: provenance → validate residue_ids → transaction →
+              upsert edges → compute metrics (asyncio.to_thread) →
+              upsert metrics → register assets → commit → audit.
+
+        Args:
+            payload: Validated GraphTopologyPayload.
+
+        Returns:
+            NormalizerResult with created asset IDs.
+
+        Raises:
+            NormalizerError: If validation or write fails.
+        """
+        start_time = time.monotonic()
+        warnings: list[str] = []
+        prov = payload.provenance
+
+        # 1. Ensure provenance run exists
+        await self._ensure_provenance_run(prov)
+
+        # 2. Validate all residue_ids in edges
+        for edge in payload.edges:
+            for rid in (edge.source_residue_id, edge.target_residue_id):
+                if not validate_residue_id(rid):
+                    await self._log_audit(
+                        run_id=prov.run_id,
+                        structure_id=payload.structure_id,
+                        payload_type="graph_topology",
+                        status="validation_error",
+                        error_message=f"Invalid residue_id format: '{rid}'",
+                        duration_ms=self._elapsed_ms(start_time),
+                        payload_summary={"edge_count": len(payload.edges)},
+                    )
+                    raise NormalizerError(
+                        f"Invalid residue_id format: '{rid}'",
+                        run_id=prov.run_id,
+                    )
+
+        # 3. Atomic transaction: edges + metrics
+        asset_ids: list[str] = []
+        try:
+            await self._db.begin()
+
+            # 4. Upsert edges
+            edge_params_list: list[dict[str, Any]] = []
+            for edge in payload.edges:
+                edge_id = str(uuid.uuid4())
+                edge_params_list.append({
+                    "edge_id": edge_id,
+                    "run_id": prov.run_id,
+                    "structure_id": payload.structure_id,
+                    "source_residue_id": edge.source_residue_id,
+                    "target_residue_id": edge.target_residue_id,
+                    "edge_type": edge.edge_type,
+                    "distance_angstrom": edge.distance_angstrom,
+                    "hyperbolic_distance": edge.hyperbolic_distance,
+                    "weight": edge.weight,
+                    "metadata": edge.metadata,
+                    "computed_at": payload.computed_at.isoformat(),
+                })
+                asset_ids.append(edge_id)
+
+            await self._db.execute_many(
+                """
+                INSERT INTO fact_graph_edge (
+                    edge_id, run_id, structure_id, source_residue_id,
+                    target_residue_id, edge_type, distance_angstrom,
+                    hyperbolic_distance, weight, metadata, computed_at
+                ) VALUES (
+                    :edge_id, :run_id, :structure_id, :source_residue_id,
+                    :target_residue_id, :edge_type, :distance_angstrom,
+                    :hyperbolic_distance, :weight, :metadata, :computed_at
+                )
+                ON CONFLICT (run_id, source_residue_id, target_residue_id, edge_type)
+                DO UPDATE SET
+                    distance_angstrom = EXCLUDED.distance_angstrom,
+                    hyperbolic_distance = EXCLUDED.hyperbolic_distance,
+                    weight = EXCLUDED.weight,
+                    metadata = EXCLUDED.metadata,
+                    computed_at = EXCLUDED.computed_at
+                """,
+                edge_params_list,
+            )
+
+            # 5. Compute metrics via asyncio.to_thread (non-blocking)
+            metrics = await asyncio.to_thread(
+                _compute_graph_metrics, payload.edges
+            )
+
+            # 6. Upsert metrics
+            metric_params_list: list[dict[str, Any]] = []
+            for residue_id, m in metrics.items():
+                metric_id = str(uuid.uuid4())
+                metric_params_list.append({
+                    "metric_id": metric_id,
+                    "run_id": prov.run_id,
+                    "structure_id": payload.structure_id,
+                    "residue_id": residue_id,
+                    "degree": m["degree"],
+                    "betweenness": m["betweenness"],
+                    "clustering_coefficient": m["clustering_coefficient"],
+                    "closeness": m["closeness"],
+                    "eigenvector_centrality": m["eigenvector_centrality"],
+                    "is_bridge": m["is_bridge"],
+                    "conductance": m["conductance"],
+                    "computed_at": payload.computed_at.isoformat(),
+                })
+                asset_ids.append(metric_id)
+
+            if metric_params_list:
+                await self._db.execute_many(
+                    """
+                    INSERT INTO fact_graph_node_metrics (
+                        metric_id, run_id, structure_id, residue_id,
+                        degree, betweenness, clustering_coefficient,
+                        closeness, eigenvector_centrality, is_bridge,
+                        conductance, computed_at
+                    ) VALUES (
+                        :metric_id, :run_id, :structure_id, :residue_id,
+                        :degree, :betweenness, :clustering_coefficient,
+                        :closeness, :eigenvector_centrality, :is_bridge,
+                        :conductance, :computed_at
+                    )
+                    ON CONFLICT (run_id, residue_id) DO UPDATE SET
+                        degree = EXCLUDED.degree,
+                        betweenness = EXCLUDED.betweenness,
+                        clustering_coefficient = EXCLUDED.clustering_coefficient,
+                        closeness = EXCLUDED.closeness,
+                        eigenvector_centrality = EXCLUDED.eigenvector_centrality,
+                        is_bridge = EXCLUDED.is_bridge,
+                        conductance = EXCLUDED.conductance,
+                        computed_at = EXCLUDED.computed_at
+                    """,
+                    metric_params_list,
+                )
+
+            # 7. Register governed assets
+            await self._register_governed_assets(
+                asset_ids=asset_ids,
+                asset_type="graph_topology",
+                prov=prov,
+            )
+
+            await self._db.commit()
+
+        except NormalizerError:
+            await self._db.rollback()
+            raise
+        except Exception as e:
+            await self._db.rollback()
+            await self._log_audit(
+                run_id=prov.run_id,
+                structure_id=payload.structure_id,
+                payload_type="graph_topology",
+                status="write_error",
+                error_message=str(e),
+                duration_ms=self._elapsed_ms(start_time),
+                payload_summary={"edge_count": len(payload.edges)},
+            )
+            raise NormalizerError(
+                f"Failed to write graph topology: {e}",
+                run_id=prov.run_id,
+                details=str(e),
+            ) from e
+
+        duration_ms = self._elapsed_ms(start_time)
+
+        # 8. Log successful audit
+        await self._log_audit(
+            run_id=prov.run_id,
+            structure_id=payload.structure_id,
+            payload_type="graph_topology",
+            status="success",
+            assets_created=len(asset_ids),
+            duration_ms=duration_ms,
+            payload_summary={
+                "edge_count": len(payload.edges),
+                "node_count": len(metrics),
+                "structure_id": payload.structure_id,
+            },
+        )
+
+        logger.info(
+            "Normalized graph topology: run_id=%s, structure=%s, edges=%d, nodes=%d, duration=%dms",
+            prov.run_id,
+            payload.structure_id,
+            len(payload.edges),
+            len(metrics),
+            duration_ms,
+        )
+
+        return NormalizerResult(
+            success=True,
+            run_id=prov.run_id,
+            assets_created=len(asset_ids),
+            asset_ids=asset_ids,
+            warnings=warnings,
+        )
+
+    # ------------------------------------------------------------------
+    # Path 4: Hypothesis Engine
+    # ------------------------------------------------------------------
+
+    async def normalize_hypothesis(
+        self, payload: HypothesisPayload
+    ) -> NormalizerResult:
+        """Validate and write a hypothesis with its predictions.
+
+        Flow: provenance → validate → transaction → upsert hypothesis →
+              upsert predictions → register assets → commit → audit.
+
+        Args:
+            payload: Validated HypothesisPayload.
+
+        Returns:
+            NormalizerResult with created asset IDs.
+
+        Raises:
+            NormalizerError: If validation or write fails.
+        """
+        start_time = time.monotonic()
+        warnings: list[str] = []
+        prov = payload.provenance
+
+        # 1. Ensure provenance run exists
+        await self._ensure_provenance_run(prov)
+
+        # 2. Atomic transaction: hypothesis + predictions
+        asset_ids: list[str] = []
+        try:
+            await self._db.begin()
+
+            # 3. Upsert hypothesis
+            await self._db.execute(
+                """
+                INSERT INTO hypothesis (
+                    hypothesis_id, structure_id, statement, mechanism,
+                    status, confidence, created_by, created_at, updated_at
+                ) VALUES (
+                    :hypothesis_id, :structure_id, :statement, :mechanism,
+                    :status, :confidence, :created_by, :created_at, :updated_at
+                )
+                ON CONFLICT (hypothesis_id) DO UPDATE SET
+                    statement = EXCLUDED.statement,
+                    mechanism = EXCLUDED.mechanism,
+                    status = EXCLUDED.status,
+                    confidence = EXCLUDED.confidence,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                {
+                    "hypothesis_id": payload.hypothesis_id,
+                    "structure_id": payload.structure_id,
+                    "statement": payload.statement,
+                    "mechanism": payload.mechanism,
+                    "status": payload.status,
+                    "confidence": payload.confidence,
+                    "created_by": payload.created_by,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            asset_ids.append(payload.hypothesis_id)
+
+            # 4. Upsert predictions
+            pred_params_list: list[dict[str, Any]] = []
+            for pred in payload.predictions:
+                pred_params_list.append({
+                    "prediction_id": pred.prediction_id,
+                    "hypothesis_id": payload.hypothesis_id,
+                    "statement": pred.statement,
+                    "test_tool": pred.test_tool,
+                    "test_params": pred.test_params,
+                    "threshold": pred.threshold,
+                })
+                asset_ids.append(pred.prediction_id)
+
+            await self._db.execute_many(
+                """
+                INSERT INTO hypothesis_prediction (
+                    prediction_id, hypothesis_id, statement,
+                    test_tool, test_params, threshold
+                ) VALUES (
+                    :prediction_id, :hypothesis_id, :statement,
+                    :test_tool, :test_params, :threshold
+                )
+                ON CONFLICT (prediction_id) DO UPDATE SET
+                    statement = EXCLUDED.statement,
+                    test_tool = EXCLUDED.test_tool,
+                    test_params = EXCLUDED.test_params,
+                    threshold = EXCLUDED.threshold
+                """,
+                pred_params_list,
+            )
+
+            # 5. Register governed assets
+            await self._register_governed_assets(
+                asset_ids=asset_ids,
+                asset_type="hypothesis",
+                prov=prov,
+            )
+
+            await self._db.commit()
+
+        except NormalizerError:
+            await self._db.rollback()
+            raise
+        except Exception as e:
+            await self._db.rollback()
+            await self._log_audit(
+                run_id=prov.run_id,
+                structure_id=payload.structure_id,
+                payload_type="hypothesis",
+                status="write_error",
+                error_message=str(e),
+                duration_ms=self._elapsed_ms(start_time),
+                payload_summary={
+                    "hypothesis_id": payload.hypothesis_id,
+                    "prediction_count": len(payload.predictions),
+                },
+            )
+            raise NormalizerError(
+                f"Failed to write hypothesis: {e}",
+                run_id=prov.run_id,
+                details=str(e),
+            ) from e
+
+        duration_ms = self._elapsed_ms(start_time)
+
+        # 6. Log successful audit
+        await self._log_audit(
+            run_id=prov.run_id,
+            structure_id=payload.structure_id,
+            payload_type="hypothesis",
+            status="success",
+            assets_created=len(asset_ids),
+            duration_ms=duration_ms,
+            payload_summary={
+                "hypothesis_id": payload.hypothesis_id,
+                "prediction_count": len(payload.predictions),
+                "structure_id": payload.structure_id,
+            },
+        )
+
+        logger.info(
+            "Normalized hypothesis: run_id=%s, structure=%s, hypothesis=%s, predictions=%d, duration=%dms",
+            prov.run_id,
+            payload.structure_id,
+            payload.hypothesis_id,
+            len(payload.predictions),
+            duration_ms,
+        )
+
+        return NormalizerResult(
+            success=True,
+            run_id=prov.run_id,
+            assets_created=len(asset_ids),
+            asset_ids=asset_ids,
+            warnings=warnings,
+        )
+
+    async def normalize_evidence(
+        self, payload: EvidencePayload
+    ) -> NormalizerResult:
+        """Validate and write evidence for an existing hypothesis.
+
+        Flow: provenance → transaction → insert evidence →
+              register asset → commit → audit.
+
+        Args:
+            payload: Validated EvidencePayload.
+
+        Returns:
+            NormalizerResult with created asset IDs.
+
+        Raises:
+            NormalizerError: If validation or write fails.
+        """
+        start_time = time.monotonic()
+        warnings: list[str] = []
+        prov = payload.provenance
+
+        # 1. Ensure provenance run exists
+        await self._ensure_provenance_run(prov)
+
+        # 2. Atomic transaction: insert evidence
+        asset_ids: list[str] = []
+        try:
+            await self._db.begin()
+
+            # 3. Insert evidence record
+            await self._db.execute(
+                """
+                INSERT INTO hypothesis_evidence (
+                    evidence_id, hypothesis_id, source_tool, source_run_id,
+                    supports, strength, description, gathered_at
+                ) VALUES (
+                    :evidence_id, :hypothesis_id, :source_tool, :source_run_id,
+                    :supports, :strength, :description, :gathered_at
+                )
+                ON CONFLICT (evidence_id) DO UPDATE SET
+                    supports = EXCLUDED.supports,
+                    strength = EXCLUDED.strength,
+                    description = EXCLUDED.description
+                """,
+                {
+                    "evidence_id": payload.evidence_id,
+                    "hypothesis_id": payload.hypothesis_id,
+                    "source_tool": payload.source_tool,
+                    "source_run_id": payload.source_run_id,
+                    "supports": payload.supports,
+                    "strength": payload.strength,
+                    "description": payload.description,
+                    "gathered_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            asset_ids.append(payload.evidence_id)
+
+            # 4. Register governed asset
+            await self._register_governed_assets(
+                asset_ids=asset_ids,
+                asset_type="hypothesis_evidence",
+                prov=prov,
+            )
+
+            await self._db.commit()
+
+        except NormalizerError:
+            await self._db.rollback()
+            raise
+        except Exception as e:
+            await self._db.rollback()
+            await self._log_audit(
+                run_id=prov.run_id,
+                structure_id=prov.structure_id,
+                payload_type="hypothesis_evidence",
+                status="write_error",
+                error_message=str(e),
+                duration_ms=self._elapsed_ms(start_time),
+                payload_summary={
+                    "evidence_id": payload.evidence_id,
+                    "hypothesis_id": payload.hypothesis_id,
+                },
+            )
+            raise NormalizerError(
+                f"Failed to write evidence: {e}",
+                run_id=prov.run_id,
+                details=str(e),
+            ) from e
+
+        duration_ms = self._elapsed_ms(start_time)
+
+        # 5. Log successful audit
+        await self._log_audit(
+            run_id=prov.run_id,
+            structure_id=prov.structure_id,
+            payload_type="hypothesis_evidence",
+            status="success",
+            assets_created=len(asset_ids),
+            duration_ms=duration_ms,
+            payload_summary={
+                "evidence_id": payload.evidence_id,
+                "hypothesis_id": payload.hypothesis_id,
+                "supports": payload.supports,
+                "strength": payload.strength,
+            },
+        )
+
+        logger.info(
+            "Normalized evidence: run_id=%s, hypothesis=%s, evidence=%s, supports=%s, duration=%dms",
+            prov.run_id,
+            payload.hypothesis_id,
+            payload.evidence_id,
+            payload.supports,
+            duration_ms,
+        )
+
+        return NormalizerResult(
+            success=True,
+            run_id=prov.run_id,
+            assets_created=len(asset_ids),
+            asset_ids=asset_ids,
+            warnings=warnings,
+        )
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
@@ -579,6 +1155,40 @@ class Normalizer:
         except Exception as e:
             # Audit logging must never break the primary path
             logger.warning("Failed to write audit log: %s", e)
+
+    async def run_contradiction_check(
+        self,
+        structure_id: str,
+        tool_dispatcher: Any = None,
+    ) -> list[dict[str, Any]]:
+        """Run contradiction detection for active hypotheses after pipeline writes.
+
+        This should be called after any pipeline write (GNN output, Phase 3,
+        graph topology) that produces new results for a structure. It checks
+        active hypotheses and adds contradicting evidence if predictions flip.
+
+        Args:
+            structure_id: The structure that received new pipeline results.
+            tool_dispatcher: Callable(tool_name, params) -> result for executing tools.
+
+        Returns:
+            List of contradiction records (empty if none found or on error).
+        """
+        try:
+            from agent.tools.hypothesis.contradiction import check_contradictions
+
+            return await check_contradictions(
+                structure_id=structure_id,
+                tool_dispatcher=tool_dispatcher,
+                db=self._db,
+            )
+        except Exception as e:
+            # Contradiction check must never break the primary pipeline
+            logger.warning(
+                "Contradiction check failed for structure %s: %s",
+                structure_id, e,
+            )
+            return []
 
     @staticmethod
     def _elapsed_ms(start_time: float) -> int:

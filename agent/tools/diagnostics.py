@@ -106,6 +106,8 @@ def _check_tool_imports(report: DiagnosticReport) -> None:
         ("agent.tools.dtie.tools", "DTIE tools"),
         ("agent.tools.data_tools", "Data tools"),
         ("agent.tools.plotting.tools", "Plotting tools"),
+        ("agent.tools.graph_tools", "Graph tools"),
+        ("agent.tools.hypothesis.tools", "Hypothesis tools"),
         ("agent.llm.agents", "Agent definitions"),
         ("agent.llm.providers", "LLM providers"),
         ("agent.models.viewport", "Viewport models"),
@@ -265,6 +267,8 @@ def _check_tool_handlers(report: DiagnosticReport) -> None:
     from agent.llm.agents import (
         DATA_TOOLS,
         DTIE_TOOLS,
+        GRAPH_TOOLS,
+        HYPOTHESIS_TOOLS,
         PLOTTING_TOOLS,
         VISUALIZATION_TOOLS,
     )
@@ -274,6 +278,8 @@ def _check_tool_handlers(report: DiagnosticReport) -> None:
         ("Visualization", VISUALIZATION_TOOLS),
         ("Plotting", PLOTTING_TOOLS),
         ("Data", DATA_TOOLS),
+        ("Graph", GRAPH_TOOLS),
+        ("Hypothesis", HYPOTHESIS_TOOLS),
     ]
 
     total_tools = 0
@@ -283,7 +289,7 @@ def _check_tool_handlers(report: DiagnosticReport) -> None:
     report.add(DiagnosticResult(
         name="tools:registered",
         passed=True,
-        message=f"{total_tools} tool definitions across 4 groups",
+        message=f"{total_tools} tool definitions across {len(all_tool_defs)} groups",
     ))
 
     # Verify tool parameter schemas have required fields

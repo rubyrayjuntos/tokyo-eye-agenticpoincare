@@ -1,0 +1,4 @@
+# file: /home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/agent/llm/base.py
+# hypothesis_version: 6.151.9
+
+[100000, 'Tool %s failed', '__dict__', 'error', 'model_dump', 'python', 'tool_result', 'user', 'value', 'viewport_directives']

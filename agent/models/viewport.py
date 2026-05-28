@@ -95,7 +95,7 @@ class ViewportRegistration(BaseModel):
 class ViewportState(BaseModel):
     """Current state of the visualizer viewport."""
 
-    viewport_id: str
+    viewport_id: str | None = None
     structure_id: str | None = None
     visible_residues: list[str] | None = None
     selected_residues: list[str] | None = None

@@ -1,0 +1,4 @@
+# file: /home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/common/normalizer_payloads.py
+# hypothesis_version: 6.151.9
+
+[1.0, 'Canonical residue_id', 'Chain identifier', 'Dehydron density', 'Edge weight', 'Extensible metadata', 'Git commit hash', 'Per-residue results', 'Poincaré distance', 'Tau torsion flag', 'analysis', 'contact', 'covalent', 'curvature', 'derived', 'deterministic', 'disulfide', 'edge_type', 'embedding', 'euclidean', 'external', 'h_bond', 'historical_backfill', 'hyperbolic', 'inference', 'probabilistic', 'salt_bridge', 'source_residue_id', 'space_type', 'target_residue_id', 'training']

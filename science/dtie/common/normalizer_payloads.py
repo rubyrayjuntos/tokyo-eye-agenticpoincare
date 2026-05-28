@@ -222,6 +222,111 @@ class Phase3PersistencePayload(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Path 3: Graph Topology Payload
+# ---------------------------------------------------------------------------
+
+VALID_EDGE_TYPES = frozenset({"h_bond", "contact", "covalent", "disulfide", "salt_bridge"})
+
+
+class GraphEdge(BaseModel):
+    """A single edge in the molecular contact graph."""
+
+    source_residue_id: str = Field(..., description="Canonical residue_id of source node")
+    target_residue_id: str = Field(..., description="Canonical residue_id of target node")
+    edge_type: str = Field(..., description="One of: h_bond, contact, covalent, disulfide, salt_bridge")
+    distance_angstrom: float | None = Field(default=None, description="Euclidean Cα distance")
+    hyperbolic_distance: float | None = Field(default=None, description="Poincaré distance")
+    weight: float = Field(default=1.0, description="Edge weight")
+    metadata: dict[str, Any] | None = Field(default=None, description="Extensible metadata")
+
+    @field_validator("edge_type")
+    @classmethod
+    def edge_type_in_allowlist(cls, v: str) -> str:
+        if v not in VALID_EDGE_TYPES:
+            raise ValueError(
+                f"edge_type must be one of {sorted(VALID_EDGE_TYPES)}, got '{v}'"
+            )
+        return v
+
+    @field_validator("source_residue_id", "target_residue_id")
+    @classmethod
+    def residue_id_format(cls, v: str) -> str:
+        from science.dtie.common.keys import validate_residue_id
+
+        if not validate_residue_id(v):
+            raise ValueError(
+                f"residue_id '{v}' does not match canonical format "
+                "(expected: <structure>:<chain>:<index>[:<insertion>])"
+            )
+        return v
+
+
+class GraphTopologyPayload(BaseModel):
+    """Complete graph topology payload for one structure.
+
+    This is what the science code passes to the Normalizer after building
+    the contact graph for a structure.
+    """
+
+    provenance: ProvenanceContext
+    structure_id: str = Field(..., description="Canonical structure_id")
+    edges: list[GraphEdge] = Field(
+        ..., description="All edges in the contact graph", min_length=1
+    )
+    computed_at: datetime = Field(default_factory=_utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Path 4: Hypothesis Engine Payloads
+# ---------------------------------------------------------------------------
+
+
+class HypothesisPredictionPayload(BaseModel):
+    """A single testable prediction within a hypothesis."""
+
+    prediction_id: str = Field(..., description="Unique prediction identifier")
+    statement: str = Field(..., description="What this prediction claims")
+    test_tool: str | None = Field(default=None, description="Tool to call for testing")
+    test_params: dict[str, Any] | None = Field(default=None, description="Parameters for the test tool")
+    threshold: str | None = Field(default=None, description="Threshold expression (e.g., 'value > 0.15')")
+
+
+class HypothesisPayload(BaseModel):
+    """Payload for creating or updating a hypothesis via the Normalizer.
+
+    Requirements: 1.3, 3.1
+    """
+
+    provenance: ProvenanceContext
+    hypothesis_id: str = Field(..., description="Unique hypothesis identifier")
+    structure_id: str = Field(..., description="Structure this hypothesis is about")
+    statement: str = Field(..., description="The scientific claim")
+    mechanism: str | None = Field(default=None, description="Proposed mechanism")
+    predictions: list[HypothesisPredictionPayload] = Field(
+        ..., description="Testable predictions (at least one required)", min_length=1
+    )
+    status: str = Field(default="proposed", description="Hypothesis lifecycle status")
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    created_by: str = Field(default="agent")
+
+
+class EvidencePayload(BaseModel):
+    """Payload for adding evidence to an existing hypothesis.
+
+    Requirements: 1.3, 3.1
+    """
+
+    provenance: ProvenanceContext
+    hypothesis_id: str = Field(..., description="Hypothesis this evidence applies to")
+    evidence_id: str = Field(..., description="Unique evidence identifier")
+    source_tool: str = Field(..., description="Tool that produced this evidence")
+    source_run_id: str | None = Field(default=None, description="Run that produced this evidence")
+    supports: bool = Field(..., description="True if evidence supports the hypothesis")
+    strength: float = Field(default=0.5, ge=0.0, le=1.0, description="Evidence strength weight")
+    description: str = Field(..., description="Human-readable description of the evidence")
+
+
+# ---------------------------------------------------------------------------
 # Normalizer Response
 # ---------------------------------------------------------------------------
 
