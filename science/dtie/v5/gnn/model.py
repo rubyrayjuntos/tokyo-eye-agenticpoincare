@@ -762,18 +762,27 @@ def domain_separation_loss_3d(
 def cone_loss_v5(
     radial_depth: torch.Tensor,
     target_rho: torch.Tensor,
+    target_sasa: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """
     v5 cone loss: direct regression on radial depth.
 
-    Target: high ρ (buried) → high depth, low ρ (exposed) → low depth.
-    Uses min-max normalization to avoid sigmoid saturation.
-    Includes variance penalty to prevent constant-prediction collapse.
+    Target: high SASA (surface-exposed) → high depth → disc periphery.
+            low SASA (buried) → low depth → disc centre.
+
+    If target_sasa is provided it is used directly (already in [0,1]).
+    Falls back to normalised ρ for backwards compatibility, but the
+    ρ-based target inverts the intended shell-first geometry because high ρ
+    correlates with burial, so SASA should always be preferred.
 
     CRITICAL: This loss should ONLY backprop through radial_depth,
     which comes from RadialHead. The angular pathway is detached.
     """
-    target_depth = (target_rho / 30.0).clamp(0.0, 1.0)
+    if target_sasa is not None:
+        target_depth = target_sasa.clamp(0.0, 1.0)
+    else:
+        # Legacy fallback — inverts shell geometry, avoid in new training
+        target_depth = (target_rho / 30.0).clamp(0.0, 1.0)
 
     # Normalize predicted depth to [0, 1]
     depth_min = radial_depth.min()
@@ -823,6 +832,7 @@ def gosp_loss_v5(
     target_dehydron: torch.Tensor,
     ca_coords: torch.Tensor,
     domain_labels: Optional[torch.Tensor] = None,
+    target_sasa: Optional[torch.Tensor] = None,
     evidential_coeff: float = 0.005,
     balance_coeff: float = 0.01,
     cone_coeff: float = 0.15,
@@ -850,7 +860,8 @@ def gosp_loss_v5(
     bal_loss = output["balance_loss"]
 
     # RADIAL LOSS — flows through RadialHead only
-    cone_loss = cone_loss_v5(output["radial_features"], target_rho)
+    # Supervised on SASA so surface-exposed residues map to disc periphery
+    cone_loss = cone_loss_v5(output["radial_features"], target_rho, target_sasa=target_sasa)
 
     # ANGULAR LOSSES — flow through AngularHead / projection heads only
     ang_loss = angular_diversity_loss(output["x_routed_hyp"])

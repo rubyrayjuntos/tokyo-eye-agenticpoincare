@@ -230,6 +230,7 @@ def train_epoch(
 
         target_rho = prot["target_rho"].to(device)
         target_dehydron = prot["target_dehydron"].to(device)
+        target_sasa = prot["target_sasa"].to(device)
         ca_coords = prot["ca_coords"].to(device)
         domain_labels = prot.get("domain_labels")
         if domain_labels is not None:
@@ -247,6 +248,7 @@ def train_epoch(
             target_dehydron=target_dehydron,
             ca_coords=ca_coords,
             domain_labels=domain_labels,
+            target_sasa=target_sasa,
             **loss_coeffs,
         )
 

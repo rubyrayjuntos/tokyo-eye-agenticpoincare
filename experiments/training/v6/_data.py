@@ -18,17 +18,35 @@ from torch_geometric.data import Data
 logger = logging.getLogger(__name__)
 
 TRAINING_TARGETS = {
-    "4OBE": {"gene": "KRAS", "desc": "WT GDP",            "chain": "A", "stage0": True},
-    "4DSO": {"gene": "KRAS", "desc": "G12D GDP",          "chain": "A", "stage0": False},
-    "3CON": {"gene": "NRAS", "desc": "Q61R GDP",          "chain": "A", "stage0": False},
-    "4MNE": {"gene": "BRAF", "desc": "V600E",             "chain": "A", "stage0": False},
-    "1BG1": {"gene": "STAT3", "desc": "SH2 domain",       "chain": "A", "stage0": False},
-    "2Z6H": {"gene": "CTNNB1", "desc": "ARM repeats",     "chain": "A", "stage0": False},
-    "1IVO": {"gene": "EGFR", "desc": "WT kinase",         "chain": "A", "stage0": False},
-    "2ITV": {"gene": "EGFR", "desc": "L858R",             "chain": "A", "stage0": False},
-    "2SHP": {"gene": "SHP2", "desc": "WT phosphatase",    "chain": "A", "stage0": False},
+    # ── KRAS / RAS family ────────────────────────────────────────────────────
+    "4OBE": {"gene": "KRAS",  "desc": "WT GDP",           "chain": "A", "stage0": True},
+    "4DSO": {"gene": "KRAS",  "desc": "G12D GDP",         "chain": "A", "stage0": False},
+    "6OIM": {"gene": "KRAS",  "desc": "G12C GDP",         "chain": "A", "stage0": False},
+    "5VQ2": {"gene": "KRAS",  "desc": "G12V GppNHp",      "chain": "A", "stage0": False},
+    "3CON": {"gene": "NRAS",  "desc": "Q61R GDP",         "chain": "A", "stage0": False},
+    "4G0N": {"gene": "HRAS",  "desc": "WT GppNHp",        "chain": "A", "stage0": False},
+
+    # ── Kinases ──────────────────────────────────────────────────────────────
+    "4MNE": {"gene": "BRAF",  "desc": "V600E",            "chain": "A", "stage0": False},
+    "1IVO": {"gene": "EGFR",  "desc": "WT kinase",        "chain": "A", "stage0": False},
+    "2ITV": {"gene": "EGFR",  "desc": "L858R",            "chain": "A", "stage0": False},
     "4NST": {"gene": "CDK12", "desc": "cyclin binding",   "chain": "A", "stage0": False},
+    "3PP0": {"gene": "SRC",   "desc": "active kinase",    "chain": "A", "stage0": False},
+    "2OIQ": {"gene": "ABL1",  "desc": "imatinib-bound",   "chain": "A", "stage0": False},
+
+    # ── Phosphatases / adaptors ──────────────────────────────────────────────
+    "2SHP": {"gene": "SHP2",  "desc": "WT phosphatase",   "chain": "A", "stage0": False},
+
+    # ── Transcription factors / scaffolds ────────────────────────────────────
+    "1BG1": {"gene": "STAT3", "desc": "SH2 domain",       "chain": "A", "stage0": False},
+    "2Z6H": {"gene": "CTNNB1","desc": "ARM repeats",      "chain": "A", "stage0": False},
+
+    # ── Methyltransferase ────────────────────────────────────────────────────
     "4GQB": {"gene": "PRMT5", "desc": "methyltransferase","chain": "A", "stage0": False},
+
+    # ── Allosteric / shell-biology exemplars ─────────────────────────────────
+    "2HHB": {"gene": "HBB",   "desc": "deoxy haemoglobin","chain": "B", "stage0": False},  # classic allostery
+    "1L2Y": {"gene": "TC5b",  "desc": "Trp-cage miniprotein","chain": "A","stage0": False}, # small, all-surface
 }
 
 TAU = 13.0
@@ -177,22 +195,27 @@ def load_protein_graph(pdb_id: str, chain: str, pdb_dir: Path) -> Optional[Dict]
     target_dehydron = torch.tensor(tau_flag, dtype=torch.float32).unsqueeze(1)
     ca_tensor = torch.tensor(ca_coords, dtype=torch.float32)
 
+    # SASA as direct training target for cone_depth (surface = disc periphery)
+    target_sasa = torch.tensor(sasa, dtype=torch.float32).unsqueeze(1)
+
     domain_labels = torch.full((n,), -1, dtype=torch.long)
-    if pdb_id in ("4OBE", "4DSO", "3CON"):
+    # RAS-family domain annotations (P-loop, Switch-I/II, α3, α4, C-term)
+    if pdb_id in ("4OBE", "4DSO", "6OIM", "5VQ2", "3CON", "4G0N"):
         for i, rid in enumerate(res_ids):
             resnum = int(rid.split(":")[1])
-            if 10 <= resnum <= 17:    domain_labels[i] = 0
-            elif 25 <= resnum <= 40:  domain_labels[i] = 1
-            elif 57 <= resnum <= 75:  domain_labels[i] = 2
-            elif 87 <= resnum <= 104: domain_labels[i] = 3
-            elif 116 <= resnum <= 126: domain_labels[i] = 4
-            elif 145 <= resnum <= 170: domain_labels[i] = 5
+            if 10 <= resnum <= 17:    domain_labels[i] = 0  # P-loop
+            elif 25 <= resnum <= 40:  domain_labels[i] = 1  # Switch-I
+            elif 57 <= resnum <= 75:  domain_labels[i] = 2  # Switch-II
+            elif 87 <= resnum <= 104: domain_labels[i] = 3  # α3
+            elif 116 <= resnum <= 126: domain_labels[i] = 4 # α4
+            elif 145 <= resnum <= 170: domain_labels[i] = 5 # C-terminal
 
     return {
         "pdb_id": pdb_id,
         "data": data,
         "target_rho": target_rho,
         "target_dehydron": target_dehydron,
+        "target_sasa": target_sasa,
         "ca_coords": ca_tensor,
         "domain_labels": domain_labels if (domain_labels >= 0).any() else None,
         "residue_ids": res_ids,

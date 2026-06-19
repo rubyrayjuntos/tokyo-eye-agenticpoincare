@@ -62,7 +62,7 @@ checkpoints_v6/
 checkpoints_v6_gumbel/
 checkpoints_v6_hybrid/
 checkpoints_v6_topo/
-checkpoints_v6_retrained/
+# checkpoints_v6_retrained/ — tracked so checkpoint is accessible on branch
 cache/
 results/
 *.sdf
