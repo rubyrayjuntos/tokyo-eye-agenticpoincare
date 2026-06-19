@@ -1,5 +1,5 @@
 """
-shell_signal_diagnostics.py — Outer Shell Signal Diagnostics for GNNv6 / DTIE v5
+shell_signal_diagnostics.py — Outer Shell Signal Diagnostics for GNNv5 / DTIE v6
 ==================================================================================
 Eidetix Bio | 2026-06-19
 
@@ -34,31 +34,47 @@ Four diagnostic probes, each targeting a different failure mode:
     visible; r < 0.3 = gradient collapsed.
 
 Usage:
-    python shell_signal_diagnostics.py \\
-        --checkpoint checkpoints/v5/tokyo_eyes_v5.pt \\
+    # Inside the science container:
+    docker compose run science python -m experiments.diagnostics.shell_signal_diagnostics \\
+        --checkpoint /app/checkpoints/v5/tokyo_eyes_v5.pt \\
         --pdb_dir /tmp/dtie_pdb_cache \\
-        [--structure_id 9O0R] [--chain A] [--device cpu]
+        --structure_id 9O0R --chain A
 
-    The script will also accept a JSON file of pre-computed outputs:
-        --precomputed_json /path/to/gnn_result.json
-    in which case PDB loading and model inference are skipped.
+    # Or from repo root directly:
+    python -m experiments.diagnostics.shell_signal_diagnostics \\
+        --checkpoint checkpoints/v5/tokyo_eyes_v5.pt \\
+        --pdb_dir /tmp/dtie_pdb_cache
+
+    # Or with a pre-computed JSON export (skips inference):
+    python -m experiments.diagnostics.shell_signal_diagnostics \\
+        --precomputed_json /path/to/disc_data.json
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import sys
+import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
-# Shared constants
+# Shared constants — feature engineering (must match training)
 # ---------------------------------------------------------------------------
 
-# KRAS domain annotations — used for Probe 3 surface alignment check.
+TAU          = 13.0   # dehydron wrapping threshold
+EDGE_CUTOFF  = 8.0    # Å — Cα radius graph cutoff
+SASA_CUTOFF  = 10.0   # Å — neighbour shell for SASA proxy
+
+SASA_SURFACE_THRESHOLD = 0.20   # residues with SASA ≥ this are "surface-exposed"
+SASA_OUTER_THRESHOLD   = 0.25   # ablation: treat SASA ≥ this as "outer shell"
+DEPTH_OUTER_PERCENTILE = 75     # ablation: also treat cone_depth ≥ p75 as "outer shell"
+
+# KRAS domain annotations used for Probe 3 functional surface check.
 KRAS_DOMAINS = {
     "P-loop":    list(range(10, 18)),
     "Switch-I":  list(range(25, 41)),
@@ -66,113 +82,235 @@ KRAS_DOMAINS = {
 }
 KRAS_FUNCTIONAL_SURFACE = {r for rng in KRAS_DOMAINS.values() for r in rng}
 
-SASA_SURFACE_THRESHOLD = 0.20   # residues with SASA ≥ this are "surface-exposed"
-SASA_OUTER_THRESHOLD   = 0.25   # ablation: mask SASA ≥ this as "outer shell"
-DEPTH_OUTER_PERCENTILE = 75     # ablation: also mask cone_depth above this percentile
-
-PROBE_SEPARATOR = "=" * 72
+SEP = "=" * 72
 
 
 # ---------------------------------------------------------------------------
-# Data loading helpers
+# Protein graph builder — v5-compatible, no v4 model imports
 # ---------------------------------------------------------------------------
 
-def _load_via_model(
+def _download_pdb(pdb_id: str, pdb_dir: Path) -> Path:
+    import urllib.request
+    pdb_dir.mkdir(parents=True, exist_ok=True)
+    local = pdb_dir / f"{pdb_id}.pdb"
+    if local.exists():
+        return local
+    url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
+    logger.info("Downloading %s from RCSB...", pdb_id)
+    urllib.request.urlretrieve(url, local)
+    return local
+
+
+def _extract_chain(pdb_path: Path, chain_id: str) -> Path:
+    from Bio.PDB import PDBParser, PDBIO, Select
+
+    class _ChainSelect(Select):
+        def accept_chain(self, chain):
+            return chain.id == chain_id
+
+    out = pdb_path.parent / f"{pdb_path.stem}_{chain_id}.pdb"
+    if out.exists():
+        return out
+    parser = PDBParser(QUIET=True)
+    structure = parser.get_structure(pdb_path.stem, str(pdb_path))
+    io = PDBIO()
+    io.set_structure(structure)
+    io.save(str(out), _ChainSelect())
+    return out
+
+
+def _compute_rho(residue, all_atoms: list, radius: float = 6.5) -> float:
+    from Bio.PDB import NeighborSearch
+    try:
+        mid = (residue["N"].get_coord() + residue["O"].get_coord()) / 2.0
+    except KeyError:
+        return -1.0
+    POLAR = {"ARG","ASN","ASP","GLN","GLU","HIS","LYS","SER","THR","TYR","TRP"}
+    ns = NeighborSearch(all_atoms)
+    count = sum(
+        1 for a in ns.search(mid, radius, level="A")
+        if a.element == "C"
+        and a.get_parent().get_resname().strip() not in POLAR
+        and a.name != "C"
+    )
+    return float(count)
+
+
+def _compute_sasa_proxy(ca_coords: np.ndarray) -> np.ndarray:
+    from scipy.spatial.distance import cdist
+    dists = cdist(ca_coords, ca_coords)
+    nc = ((dists < SASA_CUTOFF) & (dists > 0.1)).sum(axis=1).astype(np.float64)
+    mx = nc.max()
+    return 1.0 - (nc / mx) if mx > 0 else np.full(len(ca_coords), 0.5)
+
+
+def _compute_ss_geometric(ca_coords: np.ndarray) -> np.ndarray:
+    n = len(ca_coords)
+    ss = np.ones(n, dtype=np.float64)
+    for i in range(2, n - 2):
+        v1 = ca_coords[i] - ca_coords[i - 2]
+        v2 = ca_coords[i + 2] - ca_coords[i]
+        d1, d2 = np.linalg.norm(v1), np.linalg.norm(v2)
+        if d1 < 1e-6 or d2 < 1e-6:
+            continue
+        cos_a = np.clip(np.dot(v1, v2) / (d1 * d2), -1.0, 1.0)
+        if cos_a < 0.5 and d1 < 7.0:
+            ss[i] = 0.0   # helix
+        elif cos_a > 0.8:
+            ss[i] = 0.5   # extended
+    return ss
+
+
+def build_protein_graph(pdb_id: str, chain: str, pdb_dir: Path) -> Optional[Dict]:
+    """
+    Build a PyG Data object with node features [rho, tau_flag, ss_type, sasa]
+    using the same feature engineering as v5 training — but importing only
+    from the v5 model package (GOSPConeMapper, precompute_clustering).
+    """
+    import torch
+    from torch_geometric.data import Data
+    from scipy.spatial.distance import cdist
+    from Bio.PDB import PDBParser
+
+    # Import ONLY from the v5 model package.
+    from science.dtie.v5.gnn.model import precompute_clustering
+
+    pdb_path = _download_pdb(pdb_id, pdb_dir)
+    chain_path = _extract_chain(pdb_path, chain)
+
+    parser = PDBParser(QUIET=True)
+    structure = parser.get_structure(pdb_id, str(chain_path))
+    residues = [r for r in structure.get_residues() if r.get_id()[0] == " "]
+
+    if len(residues) < 10:
+        logger.warning("%s chain %s: only %d residues", pdb_id, chain, len(residues))
+        return None
+
+    all_atoms = [a for r in residues for a in r.get_atoms()]
+
+    rho_list, ca_list, res_ids = [], [], []
+    for res in residues:
+        rho = _compute_rho(res, all_atoms)
+        if rho < 0 or "CA" not in res:
+            continue
+        rho_list.append(rho)
+        ca_list.append(res["CA"].get_coord())
+        res_ids.append(f"{chain}:{res.get_id()[1]}:")
+
+    if len(rho_list) < 10:
+        logger.warning("%s: fewer than 10 valid residues", pdb_id)
+        return None
+
+    rho_arr  = np.array(rho_list, dtype=np.float64)
+    ca_coords = np.array(ca_list,  dtype=np.float64)
+
+    tau_flag = (rho_arr < TAU).astype(np.float64)
+    ss_type  = _compute_ss_geometric(ca_coords)
+    sasa     = _compute_sasa_proxy(ca_coords)
+
+    x = np.stack([rho_arr, tau_flag, ss_type, sasa], axis=1).astype(np.float32)
+
+    dists = cdist(ca_coords, ca_coords)
+    src, dst = np.where((dists < EDGE_CUTOFF) & (dists > 0.1))
+    rel_pos  = ca_coords[dst] - ca_coords[src]
+    edge_attr = np.column_stack([rel_pos, dists[src, dst]]).astype(np.float32)
+
+    data = Data(
+        x=torch.tensor(x, dtype=torch.float32),
+        edge_index=torch.tensor(np.stack([src, dst]), dtype=torch.long),
+        edge_attr=torch.tensor(edge_attr, dtype=torch.float32),
+    )
+    data = precompute_clustering(data)
+
+    return {
+        "pdb_id":      pdb_id,
+        "data":        data,
+        "ca_coords":   torch.tensor(ca_coords, dtype=torch.float32),
+        "residue_ids": res_ids,
+        "n_residues":  len(rho_arr),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Inference runner — v5 only
+# ---------------------------------------------------------------------------
+
+def run_v5_inference(
     structure_id: str,
     chain: str,
     checkpoint_path: str,
     pdb_dir: Path,
     device: str,
 ) -> Tuple[dict, dict]:
-    """Run full inference with the v5 model and return (raw_output, prot_dict)."""
+    """Load the v5 checkpoint, run inference, return (probe_dict, prot_dict)."""
     import torch
+    from science.dtie.v5.gnn.model import GOSPConeMapper
 
-    # Add the v4 training directory to sys.path so load_protein_graph is importable.
-    _repo_root = Path(__file__).resolve().parents[2]
-    _v4_train = _repo_root / "experiments" / "training" / "v4"
-    _v5_model = _repo_root / "science" / "dtie" / "v5" / "gnn"
-    for p in [str(_v4_train), str(_v5_model)]:
-        if p not in sys.path:
-            sys.path.insert(0, p)
-
-    from train_v4 import load_protein_graph  # type: ignore
-    from model import GOSPConeMapper, precompute_clustering  # type: ignore
-
-    prot = load_protein_graph(structure_id, chain, pdb_dir)
-    if prot is None:
-        raise RuntimeError(f"Could not load structure {structure_id}:{chain}")
-
-    ckpt_path = Path(checkpoint_path)
-    if not ckpt_path.exists():
+    ckpt = Path(checkpoint_path)
+    if not ckpt.exists():
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
     model = GOSPConeMapper(node_dim=4, hidden=128, num_experts=4)
-    state = torch.load(ckpt_path, map_location=device, weights_only=True)
-    # Support both raw state_dict and wrapped {"model_state_dict": ...} formats.
+    state = torch.load(ckpt, map_location=device, weights_only=True)
     if "model_state_dict" in state:
         state = state["model_state_dict"]
     model.load_state_dict(state)
     model.eval()
     model.to(device)
 
-    data = precompute_clustering(prot["data"]).to(device)
+    prot = build_protein_graph(structure_id, chain, pdb_dir)
+    if prot is None:
+        raise RuntimeError(f"Could not build graph for {structure_id}:{chain}")
+
+    data = prot["data"].to(device)
     with torch.no_grad():
         raw = model(data)
 
-    # Convert tensors to numpy for downstream probes.
-    out: dict = {
-        "cone_depth":      raw["cone_depth"].squeeze().cpu().numpy(),
-        "cone_width":      raw["cone_width"].squeeze().cpu().numpy(),
-        "epistemic":       raw["uncertainty"]["epistemic"].cpu().numpy(),
-        "aleatoric":       raw["uncertainty"]["aleatoric"].cpu().numpy(),
-        "hyp_proj_2d":     raw["hyp_projections_2d"].cpu().numpy(),
-        "x_routed_hyp":    raw["x_routed_hyp"].cpu().numpy(),
-        # Node features: [rho, tau_flag, ss_type, sasa]
-        "sasa":            data.x[:, 3].cpu().numpy(),
-        "rho":             data.x[:, 0].cpu().numpy(),
-        "residue_ids":     prot.get("residue_ids", []),
+    out = {
+        "cone_depth":   raw["cone_depth"].squeeze().cpu().numpy(),
+        "cone_width":   raw["cone_width"].squeeze().cpu().numpy(),
+        "epistemic":    raw["uncertainty"]["epistemic"].cpu().numpy(),
+        "aleatoric":    raw["uncertainty"]["aleatoric"].cpu().numpy(),
+        "hyp_proj_2d":  raw["hyp_projections_2d"].cpu().numpy(),
+        "x_routed_hyp": raw["x_routed_hyp"].cpu().numpy(),
+        "sasa":         data.x[:, 3].cpu().numpy(),
+        "rho":          data.x[:, 0].cpu().numpy(),
+        "residue_ids":  prot["residue_ids"],
     }
-
-    # Store expert weights if present.
     if "expert_weights" in raw:
         out["expert_weights"] = raw["expert_weights"].cpu().numpy()
 
     return out, prot
 
 
-def _load_from_json(json_path: str) -> dict:
-    """Load pre-computed GNN outputs from a JSON export (export_for_viewer format)."""
+def load_from_json(json_path: str) -> dict:
+    """Load pre-computed outputs from a JSON export (export_for_viewer format)."""
     with open(json_path) as f:
         data = json.load(f)
-
     nodes = data.get("nodes", data)
-    n = len(nodes)
-
-    out = {
-        "cone_depth":  np.array([nd.get("cone_depth", 0.0)        for nd in nodes]),
-        "cone_width":  np.array([nd.get("cone_width", 0.0)         for nd in nodes]),
+    return {
+        "cone_depth":  np.array([nd.get("cone_depth", 0.0)           for nd in nodes]),
+        "cone_width":  np.array([nd.get("cone_width", 0.0)            for nd in nodes]),
         "epistemic":   np.array([nd.get("epistemic_uncertainty", 0.0) for nd in nodes]),
         "aleatoric":   np.array([nd.get("aleatoric_uncertainty", 0.0) for nd in nodes]),
-        "hyp_proj_2d": np.array([nd.get("disc_pos", [0.0, 0.0])    for nd in nodes]),
-        "sasa":        np.array([nd.get("sasa", 0.0)               for nd in nodes]),
-        "rho":         np.array([nd.get("rho",  0.0)               for nd in nodes]),
+        "hyp_proj_2d": np.array([nd.get("disc_pos", [0.0, 0.0])       for nd in nodes]),
+        "sasa":        np.array([nd.get("sasa", 0.0)                  for nd in nodes]),
+        "rho":         np.array([nd.get("rho", 0.0)                   for nd in nodes]),
         "residue_ids": [nd.get("residue_id", f"?:{i}:") for i, nd in enumerate(nodes)],
     }
-    return out
 
 
 # ---------------------------------------------------------------------------
 # PROBE 1 — Uncertainty vs. Solvent Accessibility Correlation
 # ---------------------------------------------------------------------------
 
-def probe1_uncertainty_sasa_correlation(out: dict) -> None:
-    print(f"\n{PROBE_SEPARATOR}")
+def probe1_uncertainty_sasa_correlation(out: dict) -> bool:
+    print(f"\n{SEP}")
     print("PROBE 1: Epistemic Uncertainty & cone_depth vs. SASA")
-    print(PROBE_SEPARATOR)
+    print(SEP)
     print(
-        "Hypothesis: if the outer shell is still alive in the model,\n"
-        "high epistemic uncertainty and high cone_depth should co-occur\n"
-        "with high SASA (node feature 3 — solvent accessibility).\n"
+        "Hypothesis: if the outer shell is alive, high epistemic uncertainty\n"
+        "and high cone_depth should co-occur with high SASA (node feature 3).\n"
     )
 
     sasa      = out["sasa"]
@@ -180,47 +318,31 @@ def probe1_uncertainty_sasa_correlation(out: dict) -> None:
     epistemic = out["epistemic"]
     aleatoric = out["aleatoric"]
 
-    n = len(sasa)
-    if n == 0:
-        print("  ERROR: empty output")
-        return
+    r_epi_sasa   = _pearson(epistemic, sasa)
+    r_depth_sasa = _pearson(depth, sasa)
+    r_ale_sasa   = _pearson(aleatoric, sasa)
+    r_epi_depth  = _pearson(epistemic, depth)
 
-    # Pearson r for each pair.
-    def pearson(a: np.ndarray, b: np.ndarray) -> float:
-        mask = np.isfinite(a) & np.isfinite(b)
-        a, b = a[mask], b[mask]
-        if len(a) < 3:
-            return float("nan")
-        return float(np.corrcoef(a, b)[0, 1])
+    print(f"  {'Pair':<36} {'Pearson r':>10}  Interpretation")
+    print(f"  {'-'*72}")
+    _prow("epistemic_uncertainty × SASA",  r_epi_sasa,
+          "> 0.40 = shell alive;  < 0.20 = signal diluted")
+    _prow("cone_depth × SASA",             r_depth_sasa,
+          "> 0.40 = radial gradient intact; < 0.20 = collapsed")
+    _prow("aleatoric_uncertainty × SASA",  r_ale_sasa,
+          "> 0.30 = model sees surface noise")
+    _prow("epistemic × cone_depth",        r_epi_depth,
+          "> 0.50 = uncertainty tracks depth (well calibrated)")
 
-    r_epi_sasa   = pearson(epistemic, sasa)
-    r_depth_sasa = pearson(depth, sasa)
-    r_ale_sasa   = pearson(aleatoric, sasa)
-    r_epi_depth  = pearson(epistemic, depth)
-
-    print(f"  {'Pair':<34} {'Pearson r':>10}  Interpretation")
-    print(f"  {'-'*70}")
-    _row("epistemic_uncertainty × SASA",  r_epi_sasa,
-         "> 0.5 = shell alive; < 0.2 = signal diluted")
-    _row("cone_depth × SASA",             r_depth_sasa,
-         "> 0.5 = radial gradient intact; < 0.2 = collapsed")
-    _row("aleatoric_uncertainty × SASA",  r_ale_sasa,
-         "> 0.4 = model sees surface noise; < 0.1 = not surface-aware")
-    _row("epistemic × cone_depth",        r_epi_depth,
-         "> 0.5 = uncertainty tracks depth (good joint calibration)")
-    print()
-
-    # Stratified statistics: core vs. shell vs. surface.
+    # Stratum stats: core / intermediate / shell
     labels = _shell_labels(sasa, depth)
-    _print_stratum_stats(out, labels,
-                         strata=["core", "intermediate", "shell"],
-                         fields=["epistemic", "aleatoric", "cone_depth"])
+    _print_stratum_stats(out, labels, ["epistemic", "aleatoric", "cone_depth"])
 
-    # Verdict.
-    shell_alive = (r_epi_sasa > 0.40) and (r_depth_sasa > 0.40)
+    verdict = (r_epi_sasa > 0.40) and (r_depth_sasa > 0.40)
     print(f"\n  VERDICT: outer shell signal is "
-          f"{'ALIVE ✓' if shell_alive else 'WEAK or ABSENT ✗'} "
+          f"{'ALIVE ✓' if verdict else 'WEAK or ABSENT ✗'} "
           f"(r_epi_sasa={r_epi_sasa:.3f}, r_depth_sasa={r_depth_sasa:.3f})")
+    return verdict
 
 
 # ---------------------------------------------------------------------------
@@ -232,64 +354,47 @@ def probe2_core_ablation(
     checkpoint_path: Optional[str],
     prot: Optional[dict],
     device: str,
-) -> None:
-    print(f"\n{PROBE_SEPARATOR}")
+) -> bool:
+    print(f"\n{SEP}")
     print("PROBE 2: Core-Only Ablation (mask outer shell residues)")
-    print(PROBE_SEPARATOR)
+    print(SEP)
     print(
-        "Strips residues with SASA > {:.2f} OR cone_depth > {}th percentile,\n"
-        "then re-runs inference and compares uncertainty calibration metrics.\n"
-        "A drop confirms the model was relying on shell information.\n".format(
-            SASA_OUTER_THRESHOLD, DEPTH_OUTER_PERCENTILE
-        )
+        f"Outer shell = SASA ≥ {SASA_OUTER_THRESHOLD} OR "
+        f"cone_depth ≥ p{DEPTH_OUTER_PERCENTILE}.\n"
+        "A ≥10% drop in epistemic spread when the shell is excluded\n"
+        "confirms the model was relying on shell information.\n"
     )
 
     sasa  = out["sasa"]
     depth = out["cone_depth"]
-    n = len(sasa)
+    n     = len(sasa)
 
     depth_cutoff = float(np.percentile(depth, DEPTH_OUTER_PERCENTILE))
-    shell_mask = (sasa >= SASA_OUTER_THRESHOLD) | (depth >= depth_cutoff)
-    core_mask  = ~shell_mask
-
-    n_shell = int(shell_mask.sum())
-    n_core  = int(core_mask.sum())
+    shell_mask   = (sasa >= SASA_OUTER_THRESHOLD) | (depth >= depth_cutoff)
+    core_mask    = ~shell_mask
 
     print(f"  Total residues : {n}")
-    print(f"  Outer shell    : {n_shell} ({100*n_shell/n:.1f}%)"
-          f"  [SASA≥{SASA_OUTER_THRESHOLD} or depth≥p{DEPTH_OUTER_PERCENTILE}={depth_cutoff:.3f}]")
-    print(f"  Core           : {n_core} ({100*n_core/n:.1f}%)")
+    print(f"  Outer shell    : {shell_mask.sum()} ({100*shell_mask.mean():.1f}%)  "
+          f"[depth cutoff = {depth_cutoff:.3f}]")
+    print(f"  Core           : {core_mask.sum()} ({100*core_mask.mean():.1f}%)")
 
-    # --- Metrics on full inference output (already computed) ---
     full_epi_spread  = float(out["epistemic"].std())
-    full_depth_var   = float(out["cone_depth"].std())
-    full_epi_mean    = float(out["epistemic"].mean())
+    full_depth_std   = float(depth.std())
+    core_epi_spread  = float(out["epistemic"][core_mask].std())
+    core_depth_std   = float(depth[core_mask].std())
 
-    print(f"\n  Full-graph metrics:")
-    print(f"    epistemic spread (σ) : {full_epi_spread:.4f}")
-    print(f"    epistemic mean       : {full_epi_mean:.4f}")
-    print(f"    cone_depth spread (σ): {full_depth_var:.4f}")
+    print(f"\n  {'Metric':<28} {'Full':>8}  {'Core-only':>10}  {'Δ':>8}")
+    print(f"  {'-'*60}")
+    epi_drop   = (full_epi_spread - core_epi_spread)  / (full_epi_spread  + 1e-9)
+    depth_drop = (full_depth_std  - core_depth_std)   / (full_depth_std   + 1e-9)
+    print(f"  {'epistemic spread (σ)':<28} {full_epi_spread:>8.4f}  "
+          f"{core_epi_spread:>10.4f}  {epi_drop:>+7.1%}")
+    print(f"  {'cone_depth spread (σ)':<28} {full_depth_std:>8.4f}  "
+          f"{core_depth_std:>10.4f}  {depth_drop:>+7.1%}")
+    print(f"  {'epistemic mean':<28} {out['epistemic'].mean():>8.4f}  "
+          f"{out['epistemic'][core_mask].mean():>10.4f}")
 
-    # --- Core-only metrics (from the existing output, restricted to core nodes) ---
-    # Without re-running inference (which requires a live model), we can still
-    # assess how the model's outputs *on the core* compare with the full outputs.
-    # If the shell was informative, we'd expect the core-only signal to be weaker.
-    core_epi_mean   = float(out["epistemic"][core_mask].mean())
-    core_epi_spread = float(out["epistemic"][core_mask].std())
-    core_depth_std  = float(out["cone_depth"][core_mask].std())
-
-    print(f"\n  Core-only node metrics (no re-inference, restricted view):")
-    print(f"    epistemic spread (σ) : {core_epi_spread:.4f}")
-    print(f"    epistemic mean       : {core_epi_mean:.4f}")
-    print(f"    cone_depth spread (σ): {core_depth_std:.4f}")
-
-    epi_drop   = (full_epi_spread - core_epi_spread) / (full_epi_spread + 1e-9)
-    depth_drop = (full_depth_var  - core_depth_std)  / (full_depth_var  + 1e-9)
-
-    print(f"\n  Δ epistemic spread (full→core): {epi_drop:+.1%}")
-    print(f"  Δ depth spread     (full→core): {depth_drop:+.1%}")
-
-    # --- Live re-inference (only if model is available) ---
+    # Live re-inference: zero shell nodes and rerun the full forward pass.
     if checkpoint_path and prot is not None:
         try:
             _probe2_live_ablation(out, prot, checkpoint_path, core_mask, device)
@@ -297,29 +402,21 @@ def probe2_core_ablation(
             print(f"\n  [live re-inference skipped: {exc}]")
     else:
         print(
-            "\n  NOTE: pass --checkpoint to enable live re-inference on a masked graph."
+            "\n  NOTE: pass --checkpoint + a live prot to enable causal re-inference."
         )
 
-    epi_drop_significant = abs(epi_drop) > 0.10
-    print(
-        f"\n  VERDICT: shell contribution is "
-        f"{'SIGNIFICANT ✓' if epi_drop_significant else 'MARGINAL ✗'} "
-        f"(epistemic spread drops {epi_drop:+.1%} when shell is excluded)"
-    )
+    verdict = abs(epi_drop) > 0.10
+    print(f"\n  VERDICT: shell contribution is "
+          f"{'SIGNIFICANT ✓' if verdict else 'MARGINAL ✗'} "
+          f"(epistemic spread Δ = {epi_drop:+.1%})")
+    return verdict
 
 
 def _probe2_live_ablation(
     out: dict, prot: dict, checkpoint_path: str, core_mask: np.ndarray, device: str
 ) -> None:
-    """Re-run inference with shell nodes zeroed to isolate the causal effect."""
     import torch
-
-    _repo_root = Path(__file__).resolve().parents[2]
-    _v5_model  = _repo_root / "science" / "dtie" / "v5" / "gnn"
-    if str(_v5_model) not in sys.path:
-        sys.path.insert(0, str(_v5_model))
-
-    from model import GOSPConeMapper, precompute_clustering  # type: ignore
+    from science.dtie.v5.gnn.model import GOSPConeMapper, precompute_clustering
 
     model = GOSPConeMapper(node_dim=4, hidden=128, num_experts=4)
     state = torch.load(checkpoint_path, map_location=device, weights_only=True)
@@ -330,83 +427,68 @@ def _probe2_live_ablation(
     model.to(device)
 
     data_core = precompute_clustering(prot["data"].clone()).to(device)
-    # Zero out all shell node features — simulates "core-only" graph.
     shell_t = torch.tensor(~core_mask, dtype=torch.bool, device=device)
-    data_core.x[shell_t] = 0.0
+    data_core.x[shell_t] = 0.0   # zero all shell node features
 
     with torch.no_grad():
         raw_core = model(data_core)
 
-    ablated_epi    = raw_core["uncertainty"]["epistemic"].cpu().numpy()
-    ablated_spread = float(ablated_epi.std())
-    ablated_mean   = float(ablated_epi.mean())
-    ablated_depth  = float(raw_core["cone_depth"].squeeze().cpu().numpy().std())
-
-    print(f"\n  Live-ablated metrics (shell nodes zeroed):")
-    print(f"    epistemic spread (σ) : {ablated_spread:.4f}")
-    print(f"    epistemic mean       : {ablated_mean:.4f}")
-    print(f"    cone_depth spread (σ): {ablated_depth:.4f}")
+    abl_epi   = raw_core["uncertainty"]["epistemic"].cpu().numpy()
+    abl_depth = raw_core["cone_depth"].squeeze().cpu().numpy()
 
     full_epi_spread = float(out["epistemic"].std())
-    full_depth_var  = float(out["cone_depth"].std())
-    live_epi_drop   = (full_epi_spread - ablated_spread) / (full_epi_spread + 1e-9)
-    live_depth_drop = (full_depth_var  - ablated_depth)  / (full_depth_var  + 1e-9)
+    full_depth_std  = float(out["cone_depth"].std())
+    live_epi_drop   = (full_epi_spread - abl_epi.std())   / (full_epi_spread + 1e-9)
+    live_depth_drop = (full_depth_std  - abl_depth.std()) / (full_depth_std  + 1e-9)
 
-    print(f"  Δ epistemic spread (causal, shell→0): {live_epi_drop:+.1%}")
-    print(f"  Δ depth spread     (causal, shell→0): {live_depth_drop:+.1%}")
+    print(f"\n  Live-ablated (shell nodes zeroed — causal effect):")
+    print(f"  {'epistemic spread (σ)':<28} {full_epi_spread:>8.4f}  "
+          f"{abl_epi.std():>10.4f}  {live_epi_drop:>+7.1%}")
+    print(f"  {'cone_depth spread (σ)':<28} {full_depth_std:>8.4f}  "
+          f"{abl_depth.std():>10.4f}  {live_depth_drop:>+7.1%}")
 
 
 # ---------------------------------------------------------------------------
 # PROBE 3 — Surface Hotspot Alignment
 # ---------------------------------------------------------------------------
 
-def probe3_surface_hotspot_alignment(out: dict, top_n: int = 30) -> None:
-    print(f"\n{PROBE_SEPARATOR}")
+def probe3_surface_hotspot_alignment(out: dict, top_n: int = 30) -> bool:
+    print(f"\n{SEP}")
     print(f"PROBE 3: Surface Hotspot Alignment (top-{top_n} peripheral residues)")
-    print(PROBE_SEPARATOR)
+    print(SEP)
     print(
-        "Composites the 'persistent-leak' proxy score:\n"
-        "    score = epistemic_uncertainty × cone_depth\n"
-        "then checks whether the top residues are actually surface-exposed\n"
-        "and whether they overlap known functional surface regions.\n"
+        "Composite score = epistemic_uncertainty × cone_depth.\n"
+        "Checks whether the top residues are surface-exposed and overlap\n"
+        "known KRAS functional surface regions (Switch-I/II, P-loop).\n"
     )
 
     sasa      = out["sasa"]
     depth     = out["cone_depth"]
     epistemic = out["epistemic"]
     res_ids   = out.get("residue_ids", [])
-    n         = len(sasa)
 
-    # Composite peripheral score: high-uncertainty, high-depth = outer shell leaker.
-    score = epistemic * depth
-    ranked = np.argsort(score)[::-1]
+    score   = epistemic * depth
+    ranked  = np.argsort(score)[::-1]
     top_idx = ranked[:top_n]
 
-    n_surface  = int((sasa[top_idx] >= SASA_SURFACE_THRESHOLD).sum())
-    n_total    = len(top_idx)
-    bg_surface = int((sasa >= SASA_SURFACE_THRESHOLD).sum())
+    n_surface      = int((sasa[top_idx] >= SASA_SURFACE_THRESHOLD).sum())
+    bg_surface_rate = float((sasa >= SASA_SURFACE_THRESHOLD).mean())
+    top_surface_rate = n_surface / len(top_idx)
+    enrichment = top_surface_rate / (bg_surface_rate + 1e-9)
 
-    surface_rate_top = n_surface / n_total
-    surface_rate_bg  = bg_surface / n
-
-    print(f"  Top-{top_n} by (epistemic × depth):")
-    print(f"    surface-exposed (SASA≥{SASA_SURFACE_THRESHOLD}): "
-          f"{n_surface}/{n_total} = {surface_rate_top:.1%}  "
-          f"(background: {surface_rate_bg:.1%})")
-
-    enrichment = surface_rate_top / (surface_rate_bg + 1e-9)
-    print(f"    surface enrichment: {enrichment:.2f}×  "
+    print(f"  Top-{top_n} surface-exposed (SASA≥{SASA_SURFACE_THRESHOLD}): "
+          f"{n_surface}/{top_n} = {top_surface_rate:.1%}  "
+          f"(background: {bg_surface_rate:.1%})")
+    print(f"  Surface enrichment: {enrichment:.2f}×  "
           f"({'ENRICHED ✓' if enrichment > 1.5 else 'not enriched ✗'})")
 
-    # Functional surface overlap (KRAS-specific).
     functional_hits = 0
     if res_ids:
-        print(f"\n  Top-{top_n} residue details:")
-        print(f"  {'Rank':<5} {'ResID':<14} {'Score':>8} {'SASA':>6} "
+        print(f"\n  {'Rank':<5} {'ResID':<14} {'Score':>8} {'SASA':>6} "
               f"{'Depth':>7} {'Epi':>7} {'KRAS func?':>11}")
-        print(f"  {'-'*64}")
+        print(f"  {'-'*66}")
         for rank, i in enumerate(top_idx, 1):
-            rid   = res_ids[i] if i < len(res_ids) else f"?:{i}:"
+            rid    = res_ids[i] if i < len(res_ids) else f"?:{i}:"
             resnum = _parse_resnum(rid)
             is_func = resnum in KRAS_FUNCTIONAL_SURFACE if resnum else False
             if is_func:
@@ -415,109 +497,104 @@ def probe3_surface_hotspot_alignment(out: dict, top_n: int = 30) -> None:
             print(f"  {rank:<5} {rid:<14} {score[i]:>8.4f} {sasa[i]:>6.3f} "
                   f"{depth[i]:>7.3f} {epistemic[i]:>7.4f} {marker:>11}")
 
-        func_rate = functional_hits / n_total
+        func_rate = functional_hits / top_n
         print(f"\n  Overlap with KRAS functional surface "
-              f"(Switch-I/II, P-loop): {functional_hits}/{n_total} = {func_rate:.1%}")
+              f"(Switch-I/II, P-loop): {functional_hits}/{top_n} = {func_rate:.1%}")
 
-    verdict = surface_rate_top > (surface_rate_bg * 1.4)
-    print(
-        f"\n  VERDICT: top peripheral cluster "
-        f"{'ALIGNS WITH SURFACE ✓' if verdict else 'DOES NOT preferentially surface-align ✗'} "
-        f"(enrichment={enrichment:.2f}×)"
-    )
+    verdict = enrichment > 1.4
+    print(f"\n  VERDICT: top peripheral cluster "
+          f"{'SURFACE-ENRICHED ✓' if verdict else 'NOT surface-enriched ✗'} "
+          f"(enrichment = {enrichment:.2f}×)")
+    return verdict
 
 
 # ---------------------------------------------------------------------------
 # PROBE 4 — Radial Gradient Strength
 # ---------------------------------------------------------------------------
 
-def probe4_radial_gradient(out: dict) -> None:
-    print(f"\n{PROBE_SEPARATOR}")
+def probe4_radial_gradient(out: dict) -> bool:
+    print(f"\n{SEP}")
     print("PROBE 4: Radial Gradient in the 2D Poincaré Disc")
-    print(PROBE_SEPARATOR)
+    print(SEP)
     print(
-        "Measures whether cone_depth tracks disc radius (|hyp_proj_2d|).\n"
-        "A shell-alive model shows a clear radial gradient:\n"
-        "  low cone_depth  → disc centre  (core)\n"
-        "  high cone_depth → disc edge    (outer shell)\n"
-        "Quantified by Pearson r between |proj| and cone_depth.\n"
+        "Shell-alive: low cone_depth → disc centre (core),\n"
+        "             high cone_depth → disc periphery (outer shell).\n"
+        "Pearson r between |hyp_proj_2d| and cone_depth:\n"
         "  r > 0.60 = gradient intact\n"
         "  r < 0.30 = gradient collapsed\n"
     )
 
-    hyp = out["hyp_proj_2d"]
+    hyp   = out["hyp_proj_2d"]
     depth = out["cone_depth"]
     sasa  = out["sasa"]
 
-    disc_radius = np.linalg.norm(hyp, axis=1) if hyp.ndim == 2 else np.abs(hyp)
+    disc_r = np.linalg.norm(hyp, axis=1) if hyp.ndim == 2 else np.abs(hyp)
 
-    r_radius_depth = _pearson(disc_radius, depth)
-    r_radius_epi   = _pearson(disc_radius, out["epistemic"])
-    r_radius_sasa  = _pearson(disc_radius, sasa)
+    r_r_depth = _pearson(disc_r, depth)
+    r_r_epi   = _pearson(disc_r, out["epistemic"])
+    r_r_sasa  = _pearson(disc_r, sasa)
 
-    print(f"  {'Pair':<34} {'Pearson r':>10}  Strength")
+    print(f"  {'Pair':<36} {'Pearson r':>10}  Strength")
+    print(f"  {'-'*68}")
+    _prow("|proj| × cone_depth",   r_r_depth,
+          "> 0.60 strong; 0.30–0.60 moderate; < 0.30 collapsed")
+    _prow("|proj| × epistemic",    r_r_epi,
+          "high = uncertainty lives at disc periphery")
+    _prow("|proj| × SASA",         r_r_sasa,
+          "high = Poincaré periphery maps to molecular surface")
+
+    # Bin by radius percentile and report mean depth, SASA, epistemic per bin.
+    pctiles    = [0, 20, 40, 60, 80, 100]
+    thresholds = np.percentile(disc_r, pctiles)
+    print(f"\n  Radial bins (disc radius percentile → mean values per bin):")
+    print(f"  {'Bin':<20} {'N':>5} {'mean depth':>11} "
+          f"{'mean SASA':>10} {'mean epi':>9}")
     print(f"  {'-'*60}")
-    _row("|proj| × cone_depth",   r_radius_depth,
-         "> 0.60 strong; 0.30-0.60 moderate; < 0.30 collapsed")
-    _row("|proj| × epistemic",    r_radius_epi,
-         "high = uncertainty lives at disc periphery")
-    _row("|proj| × SASA",         r_radius_sasa,
-         "high = Poincaré periphery maps to molecular surface")
-
-    # Bin disc by radius percentiles and show mean cone_depth per bin.
-    pctiles = [0, 20, 40, 60, 80, 100]
-    thresholds = np.percentile(disc_radius, pctiles)
-    print(f"\n  Radial bins (disc radius percentile → mean cone_depth, mean SASA):")
-    print(f"  {'Bin':<18} {'N':>5} {'mean depth':>11} {'mean SASA':>10} {'mean epi':>9}")
-    print(f"  {'-'*58}")
-    for lo, hi, plo, phi in zip(
-        thresholds[:-1], thresholds[1:], pctiles[:-1], pctiles[1:]
+    for plo, phi, lo, hi in zip(
+        pctiles[:-1], pctiles[1:], thresholds[:-1], thresholds[1:]
     ):
-        mask = (disc_radius >= lo) & (disc_radius < hi)
-        if phi == 100:
-            mask = disc_radius >= lo
-        cnt = int(mask.sum())
+        mask = (disc_r >= lo) & (disc_r < hi if phi < 100 else disc_r <= hi)
+        cnt  = int(mask.sum())
         if cnt == 0:
             continue
-        md = float(depth[mask].mean())
-        ms = float(sasa[mask].mean())
-        me = float(out["epistemic"][mask].mean())
-        print(f"  p{plo:>2}-p{phi:<2} (r={lo:.3f}-{hi:.3f})"
-              f"  {cnt:>5}  {md:>11.4f}  {ms:>10.4f}  {me:>9.4f}")
+        print(f"  p{plo:>2}–p{phi:<2} (r={lo:.3f}–{hi:.3f})"
+              f"  {cnt:>5}  {depth[mask].mean():>11.4f}"
+              f"  {sasa[mask].mean():>10.4f}  {out['epistemic'][mask].mean():>9.4f}")
 
-    gradient_strength = r_radius_depth
-    verdict = gradient_strength > 0.50
-    print(
-        f"\n  VERDICT: radial gradient is "
-        f"{'INTACT ✓' if verdict else 'WEAK or ABSENT ✗'} "
-        f"(r_radius_depth={gradient_strength:.3f})"
-    )
+    verdict = r_r_depth > 0.50
+    print(f"\n  VERDICT: radial gradient is "
+          f"{'INTACT ✓' if verdict else 'WEAK or ABSENT ✗'} "
+          f"(r = {r_r_depth:.3f})")
+    return verdict
 
 
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 
-def print_summary(scores: List[Tuple[str, bool]]) -> None:
-    print(f"\n{PROBE_SEPARATOR}")
+def print_summary(verdicts: List[Tuple[str, bool]]) -> None:
+    print(f"\n{SEP}")
     print("SUMMARY — Outer Shell Signal Health in GNNv5 / DTIE v6")
-    print(PROBE_SEPARATOR)
-    passed = sum(1 for _, v in scores if v)
-    for label, ok in scores:
+    print(SEP)
+    passed = sum(v for _, v in verdicts)
+    for label, ok in verdicts:
         print(f"  {'✓' if ok else '✗'}  {label}")
-    print(f"\n  Score: {passed}/{len(scores)} probes passed")
-    if passed == len(scores):
-        print("  The outer shell is still a first-class citizen. ✓")
-    elif passed >= len(scores) // 2:
+    print(f"\n  Score: {passed}/{len(verdicts)} probes passed")
+    if passed == len(verdicts):
+        print("\n  The outer shell is a first-class citizen in the current model. ✓")
+    elif passed >= 2:
         print(
-            "  Partial shell signal — consider adding explicit shell supervision\n"
-            "  (RSA + dehydron wrapper features, auxiliary shell-membership loss)."
+            "\n  Partial shell signal — the model is using the shell implicitly\n"
+            "  but not as an explicit communicative layer. Consider adding:\n"
+            "    • Explicit RSA / dehydron wrapper node features\n"
+            "    • Auxiliary shell-membership loss\n"
+            "    • Dual-manifold message passing (separate shell attention head)"
         )
     else:
         print(
-            "  Shell signal is significantly degraded. GNNv6 is inferring\n"
-            "  primarily on the inner core. Restore outer-shell features and\n"
-            "  add a dedicated shell-depth auxiliary loss to recover v2 insight."
+            "\n  Shell signal is significantly degraded. GNNv5 is primarily\n"
+            "  inferring on the inner core. The outer shell needs to be restored\n"
+            "  as a first-class structural compartment to recover the v2 insight."
         )
 
 
@@ -533,47 +610,40 @@ def _pearson(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.corrcoef(a, b)[0, 1])
 
 
-def _row(label: str, r: float, note: str) -> None:
+def _prow(label: str, r: float, note: str) -> None:
     r_str = f"{r:>10.3f}" if np.isfinite(r) else f"{'NaN':>10}"
-    print(f"  {label:<34} {r_str}  {note}")
+    print(f"  {label:<36} {r_str}  {note}")
 
 
 def _shell_labels(sasa: np.ndarray, depth: np.ndarray) -> np.ndarray:
-    """Assign each residue to core / intermediate / shell based on SASA + depth."""
-    depth_75 = np.percentile(depth, 75)
-    depth_25 = np.percentile(depth, 25)
+    d75, d25 = np.percentile(depth, 75), np.percentile(depth, 25)
     labels = np.full(len(sasa), "intermediate", dtype=object)
-    labels[(sasa < SASA_SURFACE_THRESHOLD) & (depth < depth_25)] = "core"
-    labels[(sasa >= SASA_SURFACE_THRESHOLD) & (depth >= depth_75)] = "shell"
+    labels[(sasa < SASA_SURFACE_THRESHOLD) & (depth < d25)] = "core"
+    labels[(sasa >= SASA_SURFACE_THRESHOLD) & (depth >= d75)] = "shell"
     return labels
 
 
 def _print_stratum_stats(
-    out: dict,
-    labels: np.ndarray,
-    strata: List[str],
-    fields: List[str],
+    out: dict, labels: np.ndarray, fields: List[str]
 ) -> None:
-    header = f"  {'Stratum':<14} {'N':>5}"
+    header = f"\n  {'Stratum':<14} {'N':>5}"
     for f in fields:
-        header += f"  {f[:10]:>10}"
-    print(f"\n{header}")
-    print(f"  {'-' * (20 + 12 * len(fields))}")
-    for s in strata:
+        header += f"  {f[:12]:>12}"
+    print(header)
+    print(f"  {'-' * (22 + 14 * len(fields))}")
+    for s in ["core", "intermediate", "shell"]:
         mask = labels == s
-        cnt = int(mask.sum())
-        if cnt == 0:
+        if not mask.any():
             continue
-        row = f"  {s:<14} {cnt:>5}"
+        row = f"  {s:<14} {int(mask.sum()):>5}"
         for f in fields:
-            arr = out.get(f, out.get("epistemic"))
-            if arr is not None and len(arr) > 0:
-                row += f"  {float(arr[mask].mean()):>10.4f}"
+            arr = out.get(f)
+            if arr is not None:
+                row += f"  {float(arr[mask].mean()):>12.4f}"
         print(row)
 
 
 def _parse_resnum(res_id: str) -> Optional[int]:
-    """Extract residue number from 'A:123:' or '123' format."""
     try:
         parts = res_id.split(":")
         return int(parts[1]) if len(parts) >= 2 else int(parts[0])
@@ -586,17 +656,23 @@ def _parse_resnum(res_id: str) -> Optional[int]:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
     parser = argparse.ArgumentParser(
         description="GNNv5 Outer Shell Signal Diagnostics"
     )
     parser.add_argument(
         "--checkpoint", type=str,
         default="checkpoints/v5/tokyo_eyes_v5.pt",
-        help="Path to v5 checkpoint (.pt)",
+        help="Path to v5 checkpoint (.pt file)",
     )
     parser.add_argument(
         "--pdb_dir", type=str, default="/tmp/dtie_pdb_cache",
-        help="PDB cache directory for structure download",
+        help="PDB cache directory (structures downloaded here if missing)",
     )
     parser.add_argument(
         "--structure_id", type=str, default="4OBE",
@@ -608,11 +684,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--device", type=str, default="cpu",
-        help="torch device (cpu or cuda:N)",
+        help="Torch device: cpu or cuda:0",
     )
     parser.add_argument(
         "--precomputed_json", type=str, default=None,
-        help="Skip inference: load pre-computed GNN outputs from JSON export",
+        help="Skip inference: load pre-computed GNN outputs from a JSON export",
     )
     parser.add_argument(
         "--top_n", type=int, default=30,
@@ -622,71 +698,37 @@ def main() -> None:
 
     print(f"\n{'#' * 72}")
     print("  GNNv5 / DTIE v6 — Outer Shell Signal Diagnostics")
-    print(f"  Structure: {args.structure_id}:{args.chain}")
+    print(f"  Structure : {args.structure_id}:{args.chain}")
+    print(f"  Checkpoint: {args.checkpoint}")
     print(f"{'#' * 72}")
 
-    # ---- Data loading ----
     prot: Optional[dict] = None
     ckpt: Optional[str]  = None
 
     if args.precomputed_json:
         print(f"\nLoading pre-computed outputs from {args.precomputed_json}")
-        out = _load_from_json(args.precomputed_json)
+        out = load_from_json(args.precomputed_json)
     else:
-        print(f"\nRunning inference: {args.structure_id} via {args.checkpoint}")
-        out, prot = _load_via_model(
-            args.structure_id,
-            args.chain,
-            args.checkpoint,
-            Path(args.pdb_dir),
-            args.device,
+        print(f"\nRunning v5 inference on {args.structure_id}:{args.chain} ...")
+        out, prot = run_v5_inference(
+            args.structure_id, args.chain,
+            args.checkpoint, Path(args.pdb_dir), args.device,
         )
         ckpt = args.checkpoint
-        print(f"  Loaded {len(out['sasa'])} residues from {args.structure_id}:{args.chain}")
+        print(f"  {len(out['sasa'])} residues loaded and embedded.")
 
-    # ---- Run probes ----
-    probe1_uncertainty_sasa_correlation(out)
+    # Run all four probes and collect pass/fail.
+    v1 = probe1_uncertainty_sasa_correlation(out)
+    v2 = probe2_core_ablation(out, ckpt, prot, args.device)
+    v3 = probe3_surface_hotspot_alignment(out, top_n=args.top_n)
+    v4 = probe4_radial_gradient(out)
 
-    probe2_core_ablation(out, ckpt, prot, args.device)
-
-    probe3_surface_hotspot_alignment(out, top_n=args.top_n)
-
-    probe4_radial_gradient(out)
-
-    # ---- Summary ----
-    # Re-derive pass/fail verdicts for the summary table.
-    sasa      = out["sasa"]
-    depth     = out["cone_depth"]
-    epistemic = out["epistemic"]
-    hyp       = out["hyp_proj_2d"]
-    disc_radius = np.linalg.norm(hyp, axis=1) if hyp.ndim == 2 else np.abs(hyp)
-    score       = epistemic * depth
-    top_idx     = np.argsort(score)[::-1][:args.top_n]
-
-    r_epi_sasa     = _pearson(epistemic, sasa)
-    r_depth_sasa   = _pearson(depth, sasa)
-    r_radius_depth = _pearson(disc_radius, depth)
-    bg_surface     = float((sasa >= SASA_SURFACE_THRESHOLD).mean())
-    top_surface    = float((sasa[top_idx] >= SASA_SURFACE_THRESHOLD).mean())
-    enrichment     = top_surface / (bg_surface + 1e-9)
-    depth_cutoff   = float(np.percentile(depth, DEPTH_OUTER_PERCENTILE))
-    shell_mask     = (sasa >= SASA_OUTER_THRESHOLD) | (depth >= depth_cutoff)
-    full_epi_spread = float(epistemic.std())
-    core_epi_spread = float(epistemic[~shell_mask].std())
-    epi_drop        = (full_epi_spread - core_epi_spread) / (full_epi_spread + 1e-9)
-
-    verdicts = [
-        ("Probe 1 — epistemic+depth correlate with SASA",
-         (r_epi_sasa > 0.40) and (r_depth_sasa > 0.40)),
-        ("Probe 2 — shell contributes to uncertainty spread",
-         abs(epi_drop) > 0.10),
-        ("Probe 3 — top peripheral residues surface-enriched",
-         enrichment > 1.4),
-        ("Probe 4 — radial gradient intact in Poincaré disc",
-         r_radius_depth > 0.50),
-    ]
-
-    print_summary(verdicts)
+    print_summary([
+        ("Probe 1 — epistemic+depth correlate with SASA",      v1),
+        ("Probe 2 — shell contributes to uncertainty spread",   v2),
+        ("Probe 3 — top peripheral residues surface-enriched",  v3),
+        ("Probe 4 — radial gradient intact in Poincaré disc",   v4),
+    ])
     print()
 
 
