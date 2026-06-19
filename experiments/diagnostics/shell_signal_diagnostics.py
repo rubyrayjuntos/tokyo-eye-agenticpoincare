@@ -292,6 +292,112 @@ def _patch_radial_head_if_needed(state: dict, hidden: int = 128) -> None:
         logger.info("RadialHead patched to 2-layer variant.")
 
 
+def _patch_gate_if_needed(state: dict, hidden: int = 128, num_experts: int = 4) -> bool:
+    """
+    Detect gate architecture from checkpoint and patch TopologicalMoEGate if needed.
+
+    The v6 checkpoint was trained with a stats-based gate that takes
+    (x_tangent[128] + data.x[4] + clustering[1] + depth[1] + degree[1]) = 135-dim
+    input and uses running buffers for degree/rho normalisation.
+
+    Current model.py's TopologicalMoEGate takes (x_tangent[128] + clustering[1]
+    + depth[1]) = 130-dim input with topology_compressor.
+
+    Returns True if patched, False if no patch needed.
+    """
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    import science.dtie.v5.gnn.model as _model_mod
+
+    # Detect v6 gate by presence of gate_net keys instead of topology_compressor
+    has_v6_gate = any("gate.gate_net" in k for k in state)
+    if not has_v6_gate:
+        return False
+
+    # Infer gate_net input dim from checkpoint weight shape
+    gate0_key = next((k for k in state if k == "gate.gate_net.0.weight"), None)
+    if gate0_key is None:
+        return False
+    gate_input_dim = state[gate0_key].shape[1]  # e.g. 135
+
+    logger.info(
+        "Checkpoint has v6 stats-based gate (gate_net, input_dim=%d). "
+        "Patching TopologicalMoEGate to match.", gate_input_dim
+    )
+
+    class _V6MoEGate(nn.Module):
+        """Stats-normalised MoE gate matching the v6 checkpoint."""
+        def __init__(self, input_dim: int, num_experts: int):
+            super().__init__()
+            self.num_experts = num_experts
+            self.gate_net = nn.Sequential(
+                nn.Linear(input_dim, 64),
+                nn.SiLU(),
+                nn.Linear(64, 32),
+                nn.SiLU(),
+                nn.Linear(32, num_experts),
+            )
+            # Running normalisation buffers for degree and rho
+            self.register_buffer("degree_mean", torch.zeros(1))
+            self.register_buffer("degree_var",  torch.ones(1))
+            self.register_buffer("rho_mean",    torch.zeros(1))
+            self.register_buffer("rho_var",     torch.ones(1))
+            self.register_buffer("num_updates", torch.zeros(1))
+            self._input_dim = input_dim
+
+        def forward(self, x_tangent, clustering, cone_depth, data=None):
+            """
+            Build gate input matching the v6 training composition:
+              x_tangent(128) + data.x(4) + clustering(1) + depth(1) + degree(1)
+            Falls back to zero-padding if data is not provided.
+            """
+            import torch_geometric.utils as pyg_utils
+            N = x_tangent.size(0)
+            parts = [x_tangent]
+
+            if data is not None and hasattr(data, "x"):
+                parts.append(data.x)  # raw node features [N, 4]
+            else:
+                parts.append(torch.zeros(N, 4, device=x_tangent.device))
+
+            parts.append(clustering.unsqueeze(-1) if clustering.dim() == 1 else clustering)
+            parts.append(cone_depth.detach())
+
+            if data is not None and hasattr(data, "edge_index"):
+                deg = pyg_utils.degree(
+                    data.edge_index[0], num_nodes=N, dtype=x_tangent.dtype
+                ).unsqueeze(-1)
+                deg_norm = (deg - self.degree_mean) / (self.degree_var.sqrt() + 1e-6)
+            else:
+                deg_norm = torch.zeros(N, 1, device=x_tangent.device)
+            parts.append(deg_norm)
+
+            gate_input = torch.cat(parts, dim=-1)  # [N, input_dim]
+
+            # Pad or truncate to exactly _input_dim if composition doesn't match
+            actual = gate_input.size(-1)
+            if actual < self._input_dim:
+                gate_input = F.pad(gate_input, (0, self._input_dim - actual))
+            elif actual > self._input_dim:
+                gate_input = gate_input[:, :self._input_dim]
+
+            logits = self.gate_net(gate_input)
+            scores = F.softmax(logits, dim=-1)
+
+            top_expert = scores.argmax(dim=-1)
+            f = torch.zeros(self.num_experts, device=scores.device)
+            for i in range(self.num_experts):
+                f[i] = (top_expert == i).float().mean()
+            p = scores.mean(dim=0)
+            balance_loss = self.num_experts * (f * p).sum()
+            return scores, balance_loss
+
+    _model_mod.TopologicalMoEGate = _V6MoEGate
+    logger.info("TopologicalMoEGate patched to v6 stats-based variant (input_dim=%d).", gate_input_dim)
+    return True
+
+
 def run_v5_inference(
     structure_id: str,
     chain: str,
@@ -307,17 +413,25 @@ def run_v5_inference(
     if not ckpt.exists():
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
-    state = torch.load(ckpt, map_location=device, weights_only=True)
+    state = torch.load(ckpt, map_location=device, weights_only=False)
     if "model_state_dict" in state:
         state = state["model_state_dict"]
 
-    # Patch RadialHead in the model module BEFORE instantiating GOSPConeMapper.
-    # GOSPConeMapper.__init__ calls RadialHead(hidden) via its module namespace,
-    # so replacing the name there is sufficient — no reload needed.
+    # Patch RadialHead and Gate in model module BEFORE instantiating GOSPConeMapper.
     _patch_radial_head_if_needed(state)
+    gate_patched = _patch_gate_if_needed(state)
 
     model = GOSPConeMapper(node_dim=4, hidden=128, num_experts=4)
-    model.load_state_dict(state)
+    if gate_patched:
+        # strict=False: gate keys load correctly (architecture matches after patch),
+        # but belt-and-suspenders in case input_dim guess differs by 1.
+        missing, unexpected = model.load_state_dict(state, strict=False)
+        if missing:
+            logger.warning("load_state_dict missing keys: %s", missing)
+        if unexpected:
+            logger.warning("load_state_dict unexpected keys: %s", unexpected)
+    else:
+        model.load_state_dict(state)
     model.eval()
     model.to(device)
 
@@ -326,6 +440,14 @@ def run_v5_inference(
         raise RuntimeError(f"Could not build graph for {structure_id}:{chain}")
 
     data = prot["data"].to(device)
+
+    if gate_patched:
+        # The v6 gate's forward(x_tangent, clustering, depth, data=...) needs the
+        # graph data object, but model.py calls self.gate(x_tangent, clustering, depth).
+        # Inject data via a closure so the gate can compute degree and access data.x.
+        _orig_gate_fwd = model.gate.forward
+        model.gate.forward = lambda xt, cl, cd: _orig_gate_fwd(xt, cl, cd, data=data)
+
     with torch.no_grad():
         raw = model(data)
 
@@ -485,7 +607,7 @@ def _probe2_live_ablation(
     from science.dtie.v5.gnn.model import GOSPConeMapper, precompute_clustering
 
     model = GOSPConeMapper(node_dim=4, hidden=128, num_experts=4)
-    state = torch.load(checkpoint_path, map_location=device, weights_only=True)
+    state = torch.load(checkpoint_path, map_location=device, weights_only=False)
     if "model_state_dict" in state:
         state = state["model_state_dict"]
     model.load_state_dict(state)
