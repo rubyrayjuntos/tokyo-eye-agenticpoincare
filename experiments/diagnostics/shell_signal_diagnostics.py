@@ -329,15 +329,18 @@ def run_v5_inference(
     with torch.no_grad():
         raw = model(data)
 
+    def _flat(t):
+        return t.cpu().numpy().flatten()
+
     out = {
-        "cone_depth":   raw["cone_depth"].squeeze().cpu().numpy(),
-        "cone_width":   raw["cone_width"].squeeze().cpu().numpy(),
-        "epistemic":    raw["uncertainty"]["epistemic"].cpu().numpy(),
-        "aleatoric":    raw["uncertainty"]["aleatoric"].cpu().numpy(),
-        "hyp_proj_2d":  raw["hyp_projections_2d"].cpu().numpy(),
+        "cone_depth":   _flat(raw["cone_depth"]),
+        "cone_width":   _flat(raw["cone_width"]),
+        "epistemic":    _flat(raw["uncertainty"]["epistemic"]),
+        "aleatoric":    _flat(raw["uncertainty"]["aleatoric"]),
+        "hyp_proj_2d":  raw["hyp_projections_2d"].cpu().numpy(),   # keep [N, 2]
         "x_routed_hyp": raw["x_routed_hyp"].cpu().numpy(),
-        "sasa":         data.x[:, 3].cpu().numpy(),
-        "rho":          data.x[:, 0].cpu().numpy(),
+        "sasa":         _flat(data.x[:, 3]),
+        "rho":          _flat(data.x[:, 0]),
         "residue_ids":  prot["residue_ids"],
     }
     if "expert_weights" in raw:
