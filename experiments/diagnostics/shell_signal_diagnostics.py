@@ -89,30 +89,55 @@ SEP = "=" * 72
 # Protein graph builder — v5-compatible, no v4 model imports
 # ---------------------------------------------------------------------------
 
-def _download_pdb(pdb_id: str, pdb_dir: Path) -> Path:
+def _download_structure(pdb_id: str, pdb_dir: Path) -> tuple[Path, str]:
+    """
+    Download a structure from RCSB. Tries .pdb first; falls back to .cif
+    for newer entries that are only available in mmCIF format.
+    Returns (local_path, format) where format is 'pdb' or 'cif'.
+    """
     import urllib.request
     pdb_dir.mkdir(parents=True, exist_ok=True)
-    local = pdb_dir / f"{pdb_id}.pdb"
-    if local.exists():
-        return local
-    url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
-    logger.info("Downloading %s from RCSB...", pdb_id)
-    urllib.request.urlretrieve(url, local)
-    return local
+
+    for fmt, url in [
+        ("pdb", f"https://files.rcsb.org/download/{pdb_id}.pdb"),
+        ("cif", f"https://files.rcsb.org/download/{pdb_id}.cif"),
+    ]:
+        local = pdb_dir / f"{pdb_id}.{fmt}"
+        if local.exists():
+            return local, fmt
+        try:
+            logger.info("Downloading %s from RCSB (%s)...", pdb_id, fmt)
+            urllib.request.urlretrieve(url, local)
+            return local, fmt
+        except Exception as e:
+            if local.exists():
+                local.unlink()
+            logger.debug("Failed to download %s as %s: %s", pdb_id, fmt, e)
+
+    raise RuntimeError(f"Could not download {pdb_id} from RCSB as .pdb or .cif")
 
 
-def _extract_chain(pdb_path: Path, chain_id: str) -> Path:
-    from Bio.PDB import PDBParser, PDBIO, Select
+def _parse_structure(struct_path: Path, fmt: str, pdb_id: str):
+    """Parse a structure file using the appropriate BioPython parser."""
+    if fmt == "pdb":
+        from Bio.PDB import PDBParser
+        return PDBParser(QUIET=True).get_structure(pdb_id, str(struct_path))
+    else:
+        from Bio.PDB import MMCIFParser
+        return MMCIFParser(QUIET=True).get_structure(pdb_id, str(struct_path))
+
+
+def _extract_chain(struct_path: Path, chain_id: str, fmt: str, pdb_id: str) -> Path:
+    from Bio.PDB import PDBIO, Select
 
     class _ChainSelect(Select):
         def accept_chain(self, chain):
             return chain.id == chain_id
 
-    out = pdb_path.parent / f"{pdb_path.stem}_{chain_id}.pdb"
+    out = struct_path.parent / f"{pdb_id}_{chain_id}.pdb"
     if out.exists():
         return out
-    parser = PDBParser(QUIET=True)
-    structure = parser.get_structure(pdb_path.stem, str(pdb_path))
+    structure = _parse_structure(struct_path, fmt, pdb_id)
     io = PDBIO()
     io.set_structure(structure)
     io.save(str(out), _ChainSelect())
@@ -170,16 +195,13 @@ def build_protein_graph(pdb_id: str, chain: str, pdb_dir: Path) -> Optional[Dict
     import torch
     from torch_geometric.data import Data
     from scipy.spatial.distance import cdist
-    from Bio.PDB import PDBParser
 
     # Import ONLY from the v5 model package.
     from science.dtie.v5.gnn.model import precompute_clustering
 
-    pdb_path = _download_pdb(pdb_id, pdb_dir)
-    chain_path = _extract_chain(pdb_path, chain)
-
-    parser = PDBParser(QUIET=True)
-    structure = parser.get_structure(pdb_id, str(chain_path))
+    struct_path, fmt = _download_structure(pdb_id, pdb_dir)
+    chain_path = _extract_chain(struct_path, chain, fmt, pdb_id)
+    structure = _parse_structure(chain_path, "pdb", pdb_id)
     residues = [r for r in structure.get_residues() if r.get_id()[0] == " "]
 
     if len(residues) < 10:
