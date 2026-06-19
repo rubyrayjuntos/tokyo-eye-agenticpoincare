@@ -28,6 +28,7 @@ services:
       - ./checkpoints:/app/checkpoints
       - ./science:/app/science
       - ./data:/app/data
+      - ./experiments:/app/experiments
     depends_on:
       db:
         condition: service_healthy
