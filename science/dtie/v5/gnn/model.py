@@ -519,6 +519,14 @@ class GOSPConeMapper(nn.Module):
         # Recombine into tangent vector
         tangent_vector = radial_depth * angular_direction  # [N, hidden]
 
+        # Clamp tangent vector norm to stay inside the Poincaré ball.
+        # Without this, radial_depth > 1/√c causes expmap0 to saturate and
+        # project() clips every node to the same boundary → cone_depth flatline.
+        ball_radius = 1.0 / torch.sqrt(c)
+        tv_norm = tangent_vector.norm(dim=-1, keepdim=True).clamp(min=1e-8)
+        scale = (torch.tanh(tv_norm / ball_radius) * ball_radius * 0.95) / tv_norm
+        tangent_vector = tangent_vector * scale
+
         # Lift to Poincaré ball
         x_hyp = pmath.expmap0(tangent_vector, k=k)
         x_hyp, proj_count_s1, proj_frac_s1 = self._project_with_audit(x_hyp, k=k)
