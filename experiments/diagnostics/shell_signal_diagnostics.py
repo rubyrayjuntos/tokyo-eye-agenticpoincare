@@ -488,6 +488,30 @@ def run_v5_inference(
     with torch.no_grad():
         raw = model(data)
 
+    # Log audit trail immediately — projection_applied_fraction is the key number
+    # confirming boundary-saturation hypothesis (expect ~0.97 if hypothesis is correct).
+    if "audit_trail" in raw:
+        at = raw["audit_trail"]
+        pf = at.get("projection_applied_fraction")
+        cv = at.get("curvature_value")
+        rs = at.get("radial_head_scale")
+        pf_val = float(pf) if pf is not None else float("nan")
+        cv_val = float(cv) if cv is not None else float("nan")
+        import math
+        ball_r = 1.0 / math.sqrt(cv_val) if cv_val > 0 else float("nan")
+        logger.info(
+            "AUDIT TRAIL | curvature=%.6f  ball_radius=1/√c=%.6f  "
+            "radial_head_scale=%.4f  projection_applied_fraction=%.4f",
+            cv_val, ball_r, rs if rs is not None else float("nan"), pf_val,
+        )
+        if pf_val > 0.90:
+            logger.warning(
+                "BOUNDARY SATURATION CONFIRMED: %.1f%% of nodes were clipped "
+                "back inside the Poincaré ball — cone_depth flatline is caused "
+                "by all clipped nodes converging to the same boundary distance.",
+                pf_val * 100,
+            )
+
     def _flat(t):
         return t.cpu().numpy().flatten()
 
