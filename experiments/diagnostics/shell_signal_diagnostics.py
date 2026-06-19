@@ -291,6 +291,16 @@ def _patch_radial_head_if_needed(state: dict, hidden: int = 128) -> None:
         _model_mod.RadialHead = _RadialHead2Layer
         logger.info("RadialHead patched to 2-layer variant.")
 
+    # Always log radial_scale from checkpoint so saturation is visible
+    rs_key = "radial_head.radial_scale"
+    if rs_key in state:
+        import torch, math
+        rs = state[rs_key].item()
+        logger.info(
+            "radial_head.radial_scale = %.4f  →  softplus(scale) = %.4f  "
+            "(if cone_depth is flat, this is why)", rs, math.log(1 + math.exp(rs))
+        )
+
 
 def _patch_gate_if_needed(state: dict, hidden: int = 128, num_experts: int = 4) -> bool:
     """
@@ -363,21 +373,24 @@ def _patch_gate_if_needed(state: dict, hidden: int = 128, num_experts: int = 4) 
 
         def forward(self, x_tangent, clustering, cone_depth, data=None):
             """
-            Build gate input matching the v6 training composition:
-              x_tangent(128) + data.x(4) + clustering(1) + depth(1) + degree(1)
-            Falls back to zero-padding if data is not provided.
+            Build gate input to match checkpoint input_dim exactly.
+
+            Strategy:
+            - If input_dim >= hidden_dim (e.g. 135): learned gate using
+              x_tangent(128) + data.x(4) + clustering(1) + depth(1) + degree(1).
+            - If input_dim < hidden_dim (e.g. 7): feature-only gate using
+              [data.x(4) + clustering(1) + depth(1) + degree(1)] — no x_tangent.
+              This matches the v6_topo design which routes on raw structural
+              features only.
+            Falls back gracefully with zeros if data is unavailable.
             """
             import torch_geometric.utils as pyg_utils
             N = x_tangent.size(0)
-            parts = [x_tangent]
+            hidden_dim = x_tangent.size(1)
 
-            if data is not None and hasattr(data, "x"):
-                parts.append(data.x)  # raw node features [N, 4]
-            else:
-                parts.append(torch.zeros(N, 4, device=x_tangent.device))
-
-            parts.append(clustering.unsqueeze(-1) if clustering.dim() == 1 else clustering)
-            parts.append(cone_depth.detach())
+            # Structural scalar features always available
+            clust = clustering.unsqueeze(-1) if clustering.dim() == 1 else clustering  # [N,1]
+            depth = cone_depth.detach()                                                  # [N,1]
 
             if data is not None and hasattr(data, "edge_index"):
                 deg = pyg_utils.degree(
@@ -386,11 +399,20 @@ def _patch_gate_if_needed(state: dict, hidden: int = 128, num_experts: int = 4) 
                 deg_norm = (deg - self.degree_mean) / (self.degree_var.sqrt() + 1e-6)
             else:
                 deg_norm = torch.zeros(N, 1, device=x_tangent.device)
-            parts.append(deg_norm)
 
-            gate_input = torch.cat(parts, dim=-1)  # [N, input_dim]
+            node_feats = data.x if (data is not None and hasattr(data, "x")) \
+                         else torch.zeros(N, 4, device=x_tangent.device)  # [N,4]
 
-            # Pad or truncate to exactly _input_dim if composition doesn't match
+            if self._input_dim >= hidden_dim:
+                # Learned gate: x_tangent + node_feats + clustering + depth + degree
+                parts = [x_tangent, node_feats, clust, depth, deg_norm]
+            else:
+                # Feature-only gate: node_feats + clustering + depth + degree
+                parts = [node_feats, clust, depth, deg_norm]
+
+            gate_input = torch.cat(parts, dim=-1)
+
+            # Pad or truncate to exactly _input_dim (safety net)
             actual = gate_input.size(-1)
             if actual < self._input_dim:
                 gate_input = F.pad(gate_input, (0, self._input_dim - actual))
