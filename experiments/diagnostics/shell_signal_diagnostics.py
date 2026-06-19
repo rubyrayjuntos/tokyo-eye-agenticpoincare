@@ -235,6 +235,48 @@ def build_protein_graph(pdb_id: str, chain: str, pdb_dir: Path) -> Optional[Dict
 # Inference runner — v5 only
 # ---------------------------------------------------------------------------
 
+def _patch_radial_head_if_needed(state: dict, hidden: int = 128) -> None:
+    """
+    Detect the RadialHead architecture from the checkpoint state dict and
+    monkey-patch science.dtie.v5.gnn.model.RadialHead to match if it differs
+    from the current code.
+
+    The checkpoint was trained with a 2-layer RadialHead (hidden → hidden//2 → 1).
+    The current model.py defines a 3-layer RadialHead (hidden → hidden//2 → hidden//4 → 1).
+    If the checkpoint is missing 'radial_head.net.4.weight', apply the 2-layer patch.
+    """
+    import torch.nn as nn
+    import torch.nn.functional as F
+    import science.dtie.v5.gnn.model as _model_mod
+
+    has_3layer = any("radial_head.net.4" in k for k in state)
+
+    if not has_3layer:
+        logger.info(
+            "Checkpoint has 2-layer RadialHead (hidden→hidden//2→1). "
+            "Patching model module to match checkpoint architecture."
+        )
+
+        class _RadialHead2Layer(nn.Module):
+            def __init__(self, hidden_dim: int):
+                super().__init__()
+                self.net = nn.Sequential(
+                    nn.Linear(hidden_dim, hidden_dim // 2),
+                    nn.SiLU(),
+                    nn.Linear(hidden_dim // 2, 1),
+                )
+                self.radial_scale = nn.Parameter(
+                    __import__("torch").tensor(0.5)
+                )
+
+            def forward(self, x):
+                raw = self.net(x)
+                return F.softplus(raw) * F.softplus(self.radial_scale)
+
+        _model_mod.RadialHead = _RadialHead2Layer
+        logger.info("RadialHead patched to 2-layer variant.")
+
+
 def run_v5_inference(
     structure_id: str,
     chain: str,
@@ -250,10 +292,16 @@ def run_v5_inference(
     if not ckpt.exists():
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
-    model = GOSPConeMapper(node_dim=4, hidden=128, num_experts=4)
     state = torch.load(ckpt, map_location=device, weights_only=True)
     if "model_state_dict" in state:
         state = state["model_state_dict"]
+
+    # Patch RadialHead in the model module BEFORE instantiating GOSPConeMapper.
+    # GOSPConeMapper.__init__ calls RadialHead(hidden) via its module namespace,
+    # so replacing the name there is sufficient — no reload needed.
+    _patch_radial_head_if_needed(state)
+
+    model = GOSPConeMapper(node_dim=4, hidden=128, num_experts=4)
     model.load_state_dict(state)
     model.eval()
     model.to(device)
