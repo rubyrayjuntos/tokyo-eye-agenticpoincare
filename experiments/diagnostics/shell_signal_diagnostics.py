@@ -117,31 +117,26 @@ def _download_structure(pdb_id: str, pdb_dir: Path) -> tuple[Path, str]:
     raise RuntimeError(f"Could not download {pdb_id} from RCSB as .pdb or .cif")
 
 
-def _parse_structure(struct_path: Path, fmt: str, pdb_id: str):
-    """Parse a structure file using the appropriate BioPython parser."""
+def _load_structure_residues(struct_path: Path, fmt: str, pdb_id: str, chain_id: str):
+    """
+    Parse a structure file and return only the standard residues for chain_id.
+    Works entirely in memory — avoids CIF→PDB round-trip which breaks insertion codes.
+    """
     if fmt == "pdb":
         from Bio.PDB import PDBParser
-        return PDBParser(QUIET=True).get_structure(pdb_id, str(struct_path))
+        structure = PDBParser(QUIET=True).get_structure(pdb_id, str(struct_path))
     else:
         from Bio.PDB import MMCIFParser
-        return MMCIFParser(QUIET=True).get_structure(pdb_id, str(struct_path))
+        structure = MMCIFParser(QUIET=True).get_structure(pdb_id, str(struct_path))
 
-
-def _extract_chain(struct_path: Path, chain_id: str, fmt: str, pdb_id: str) -> Path:
-    from Bio.PDB import PDBIO, Select
-
-    class _ChainSelect(Select):
-        def accept_chain(self, chain):
-            return chain.id == chain_id
-
-    out = struct_path.parent / f"{pdb_id}_{chain_id}.pdb"
-    if out.exists():
-        return out
-    structure = _parse_structure(struct_path, fmt, pdb_id)
-    io = PDBIO()
-    io.set_structure(structure)
-    io.save(str(out), _ChainSelect())
-    return out
+    residues = [
+        r for model in structure
+        for chain in model
+        if chain.id == chain_id
+        for r in chain.get_residues()
+        if r.get_id()[0] == " "   # HETATM flag " " = standard amino acid
+    ]
+    return residues
 
 
 def _compute_rho(residue, all_atoms: list, radius: float = 6.5) -> float:
@@ -200,9 +195,7 @@ def build_protein_graph(pdb_id: str, chain: str, pdb_dir: Path) -> Optional[Dict
     from science.dtie.v5.gnn.model import precompute_clustering
 
     struct_path, fmt = _download_structure(pdb_id, pdb_dir)
-    chain_path = _extract_chain(struct_path, chain, fmt, pdb_id)
-    structure = _parse_structure(chain_path, "pdb", pdb_id)
-    residues = [r for r in structure.get_residues() if r.get_id()[0] == " "]
+    residues = _load_structure_residues(struct_path, fmt, pdb_id, chain)
 
     if len(residues) < 10:
         logger.warning("%s chain %s: only %d residues", pdb_id, chain, len(residues))
