@@ -186,6 +186,16 @@ def load_checkpoint(checkpoint_path: Path, device: str):
     model = GOSPConeMapper(node_dim=4, hidden=128, num_experts=4)
     model.load_state_dict(weights)
 
+    # Re-initialise the RadialHead so it forgets the ρ-trained mapping and
+    # learns SASA from scratch, while the backbone/gate/angular stay intact.
+    for m in model.radial_head.modules():
+        if isinstance(m, nn.Linear):
+            nn.init.kaiming_uniform_(m.weight, a=0.01)
+            if m.bias is not None:
+                nn.init.zeros_(m.bias)
+    nn.init.zeros_(model.radial_head.radial_scale)
+    logger.info("RadialHead weights re-initialised (backbone/gate/angular preserved)")
+
     rs = float(model.radial_head.radial_scale.item())
     import torch.nn.functional as F
     logger.info("Loaded checkpoint | radial_scale=%.4f → softplus=%.4f | gate_patched=%s",
@@ -369,14 +379,16 @@ def main():
     stages = [
         {
             "name": "Stage 1: Radial recalibration",
-            "epochs": 30,
-            "lr": args.lr,
+            # More epochs + higher LR: radial head re-initialised from scratch,
+            # needs enough gradient steps to learn SASA ordering from baseline.
+            "epochs": 50,
+            "lr": args.lr * 2.0,
             "freeze_radial": False,
             "freeze_angular": True,
             "coeffs": {
                 "evidential_coeff": 0.005,
                 "balance_coeff": 0.01,
-                "cone_coeff": 0.40,
+                "cone_coeff": 0.50,
                 "neighborhood_coeff": 0.05,
                 "angular_coeff": 0.0,
                 "domain_sep_2d_coeff": 0.0,
