@@ -51,7 +51,6 @@ override.tf.json
 *_override.tf.json
 
 # Large artifacts we don't want in git
-*.pt
 *.pth
 *.npz
 *.pickle
