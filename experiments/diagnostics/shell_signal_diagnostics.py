@@ -326,25 +326,31 @@ def _patch_gate_if_needed(state: dict, hidden: int = 128, num_experts: int = 4) 
         "Patching TopologicalMoEGate to match.", gate_input_dim
     )
 
+    # gate_input_dim is captured from the outer scope via closure.
+    # GOSPConeMapper calls TopologicalMoEGate(hidden, num_experts) = (128, 4),
+    # so __init__ receives hidden_dim=128, not 135. We ignore hidden_dim and
+    # use the closed-over gate_input_dim from the checkpoint instead.
+    _captured_input_dim = gate_input_dim
+
     class _V6MoEGate(nn.Module):
         """Stats-normalised MoE gate matching the v6 checkpoint."""
-        def __init__(self, input_dim: int, num_experts: int):
+        def __init__(self, hidden_dim: int, num_experts: int):
             super().__init__()
             self.num_experts = num_experts
+            self._input_dim = _captured_input_dim
             self.gate_net = nn.Sequential(
-                nn.Linear(input_dim, 64),
+                nn.Linear(_captured_input_dim, 64),
                 nn.SiLU(),
                 nn.Linear(64, 32),
                 nn.SiLU(),
                 nn.Linear(32, num_experts),
             )
-            # Running normalisation buffers for degree and rho
-            self.register_buffer("degree_mean", torch.zeros(1))
-            self.register_buffer("degree_var",  torch.ones(1))
-            self.register_buffer("rho_mean",    torch.zeros(1))
-            self.register_buffer("rho_var",     torch.ones(1))
-            self.register_buffer("num_updates", torch.zeros(1))
-            self._input_dim = input_dim
+            # Running normalisation buffers — scalar (shape=[]) matching checkpoint
+            self.register_buffer("degree_mean", torch.zeros(()))
+            self.register_buffer("degree_var",  torch.ones(()))
+            self.register_buffer("rho_mean",    torch.zeros(()))
+            self.register_buffer("rho_var",     torch.ones(()))
+            self.register_buffer("num_updates", torch.zeros(()))
 
         def forward(self, x_tangent, clustering, cone_depth, data=None):
             """
