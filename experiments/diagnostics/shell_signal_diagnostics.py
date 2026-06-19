@@ -326,25 +326,34 @@ def _patch_gate_if_needed(state: dict, hidden: int = 128, num_experts: int = 4) 
         "Patching TopologicalMoEGate to match.", gate_input_dim
     )
 
-    # gate_input_dim is captured from the outer scope via closure.
+    # Reconstruct gate_net topology entirely from checkpoint weight shapes.
+    # Different v6 variants have different hidden sizes and input dims —
+    # never hardcode; read from state dict.
+    # Layer indices 0, 2, 4 are Linear; 1, 3 are SiLU activations.
+    gate_layer_shapes = []  # list of (out, in) for each Linear layer
+    for idx in range(0, 10, 2):  # 0, 2, 4, 6, 8 — stop when key absent
+        w_key = f"gate.gate_net.{idx}.weight"
+        if w_key not in state:
+            break
+        gate_layer_shapes.append(tuple(state[w_key].shape))  # (out_features, in_features)
+
     # GOSPConeMapper calls TopologicalMoEGate(hidden, num_experts) = (128, 4),
-    # so __init__ receives hidden_dim=128, not 135. We ignore hidden_dim and
-    # use the closed-over gate_input_dim from the checkpoint instead.
-    _captured_input_dim = gate_input_dim
+    # so __init__ receives hidden_dim=128. We ignore it and use closed-over values.
+    _captured_input_dim  = gate_input_dim
+    _captured_layer_shapes = gate_layer_shapes
 
     class _V6MoEGate(nn.Module):
-        """Stats-normalised MoE gate matching the v6 checkpoint."""
+        """Stats-normalised MoE gate — architecture reconstructed from checkpoint."""
         def __init__(self, hidden_dim: int, num_experts: int):
             super().__init__()
             self.num_experts = num_experts
             self._input_dim = _captured_input_dim
-            self.gate_net = nn.Sequential(
-                nn.Linear(_captured_input_dim, 64),
-                nn.SiLU(),
-                nn.Linear(64, 32),
-                nn.SiLU(),
-                nn.Linear(32, num_experts),
-            )
+            layers: list[nn.Module] = []
+            for i, (out_f, in_f) in enumerate(_captured_layer_shapes):
+                layers.append(nn.Linear(in_f, out_f))
+                if i < len(_captured_layer_shapes) - 1:
+                    layers.append(nn.SiLU())
+            self.gate_net = nn.Sequential(*layers)
             # Running normalisation buffers — scalar (shape=[]) matching checkpoint
             self.register_buffer("degree_mean", torch.zeros(()))
             self.register_buffer("degree_var",  torch.ones(()))
