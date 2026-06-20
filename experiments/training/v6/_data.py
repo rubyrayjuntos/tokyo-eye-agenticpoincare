@@ -44,9 +44,8 @@ TRAINING_TARGETS = {
     # ── Methyltransferase ────────────────────────────────────────────────────
     "4GQB": {"gene": "PRMT5", "desc": "methyltransferase","chain": "A", "stage0": False},
 
-    # ── Allosteric / shell-biology exemplars ─────────────────────────────────
-    "2HHB": {"gene": "HBB",   "desc": "deoxy haemoglobin","chain": "B", "stage0": False},  # classic allostery
-    "1L2Y": {"gene": "TC5b",  "desc": "Trp-cage miniprotein","chain": "A","stage0": False}, # small, all-surface
+    # ── Allosteric exemplar ──────────────────────────────────────────────────
+    "2HHB": {"gene": "HBB",   "desc": "deoxy haemoglobin","chain": "B", "stage0": False},
 }
 
 TAU = 13.0
