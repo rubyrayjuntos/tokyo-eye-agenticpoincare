@@ -193,7 +193,11 @@ def load_checkpoint(checkpoint_path: Path, device: str):
             nn.init.kaiming_uniform_(m.weight, a=0.01)
             if m.bias is not None:
                 nn.init.zeros_(m.bias)
-    nn.init.zeros_(model.radial_head.radial_scale)
+    # radial_scale = -2 → softplus(-2) ≈ 0.127, so tv_norm ≈ 0.4 << ball_r ≈ 1.19.
+    # This keeps tanh(tv_norm/ball_r) far from saturation, preserving gradient flow
+    # through the expmap. With radial_scale=0 → softplus≈0.69, tv_norm≈2.2 and
+    # tanh gradient≈0.067 (15× smaller), causing rapid ∇rad collapse after ep 1.
+    nn.init.constant_(model.radial_head.radial_scale, -2.0)
     logger.info("RadialHead weights re-initialised (backbone/gate/angular preserved)")
 
     rs = float(model.radial_head.radial_scale.item())
