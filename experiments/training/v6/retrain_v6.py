@@ -214,6 +214,7 @@ def train_epoch(
     gate_patched: bool,
     freeze_radial: bool = False,
     freeze_angular: bool = False,
+    freeze_backbone: bool = False,
     device: str = "cpu",
 ) -> Dict[str, float]:
     from science.dtie.v5.gnn.model import gosp_loss_v5
@@ -223,6 +224,12 @@ def train_epoch(
         p.requires_grad = not freeze_radial
     for p in model.angular_head.parameters():
         p.requires_grad = not freeze_angular
+    # Freeze backbone + gate when requested so their gradients don't dominate
+    # clip_grad_norm_ and crush the trainable head's signal.
+    for p in model.convs.parameters():
+        p.requires_grad = not freeze_backbone
+    for p in model.gate.parameters():
+        p.requires_grad = not freeze_backbone
 
     epoch_losses = {k: [] for k in
                     ["total", "evidential", "balance", "cone_consistency",
@@ -263,7 +270,8 @@ def train_epoch(
         )
 
         losses["total"].backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        trainable = [p for p in model.parameters() if p.requires_grad]
+        torch.nn.utils.clip_grad_norm_(trainable, max_norm=1.0)
         optimizer.step()
 
         for p in model.radial_head.parameters():
@@ -381,10 +389,13 @@ def main():
             "name": "Stage 1: Radial recalibration",
             # More epochs + higher LR: radial head re-initialised from scratch,
             # needs enough gradient steps to learn SASA ordering from baseline.
+            # freeze_backbone=True so backbone grads don't crush radial gradient
+            # via clip_grad_norm_.
             "epochs": 50,
             "lr": args.lr * 2.0,
             "freeze_radial": False,
             "freeze_angular": True,
+            "freeze_backbone": True,
             "coeffs": {
                 "evidential_coeff": 0.005,
                 "balance_coeff": 0.01,
@@ -401,6 +412,7 @@ def main():
             "lr": args.lr,
             "freeze_radial": True,
             "freeze_angular": False,
+            "freeze_backbone": False,
             "coeffs": {
                 "evidential_coeff": 0.005,
                 "balance_coeff": 0.01,
@@ -417,6 +429,7 @@ def main():
             "lr": args.lr * 0.3,
             "freeze_radial": False,
             "freeze_angular": False,
+            "freeze_backbone": False,
             "coeffs": {
                 "evidential_coeff": 0.005,
                 "balance_coeff": 0.005,
@@ -455,6 +468,7 @@ def main():
                 gate_patched=gate_patched,
                 freeze_radial=stage["freeze_radial"],
                 freeze_angular=stage["freeze_angular"],
+                freeze_backbone=stage.get("freeze_backbone", False),
                 device=device,
             )
 
