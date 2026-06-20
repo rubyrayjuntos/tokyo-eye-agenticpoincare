@@ -784,35 +784,31 @@ def cone_loss_v5(
         # Legacy fallback — inverts shell geometry, avoid in new training
         target_depth = (target_rho / 30.0).clamp(0.0, 1.0)
 
-    # Rank correlation loss: directly penalise Spearman rank disagreement.
-    # This forces the radial head to produce diverse outputs ordered by SASA,
-    # and is immune to the constant-prediction collapse that MSE + weak variance
-    # penalty suffers from (the gradient vanishes when all outputs are equal).
-    N = radial_depth.shape[0]
+    # Pearson correlation loss: fully differentiable, gradient non-zero whenever
+    # pred does not perfectly correlate with tgt. Immune to constant-prediction
+    # collapse (unlike argsort-based rank loss which has zero gradient everywhere).
     pred = radial_depth.squeeze()
     tgt  = target_depth.squeeze()
 
-    # Differentiable rank approximation via soft-rank (temperature-scaled sort)
-    tau = 0.1
-    pred_rank = torch.argsort(torch.argsort(pred)).float()
-    tgt_rank  = torch.argsort(torch.argsort(tgt)).float()
-    pred_rank = pred_rank / (N - 1 + 1e-6)  # normalise to [0,1]
-    tgt_rank  = tgt_rank  / (N - 1 + 1e-6)
+    pred_c = pred - pred.mean()
+    tgt_c  = tgt  - tgt.mean()
+    pearson = (pred_c * tgt_c).sum() / (
+        pred_c.norm() * tgt_c.norm() + 1e-8
+    )
+    # 1 - r pushes toward perfect positive correlation (surface = periphery)
+    pearson_loss = 1.0 - pearson
 
-    rank_loss = F.mse_loss(pred_rank, tgt_rank)
-
-    # Keep a small MSE term so absolute scale isn't lost
+    # MSE in normalised space keeps absolute scale anchored
     depth_min = pred.min()
-    depth_max = pred.max()
-    depth_range = depth_max - depth_min + 1e-6
+    depth_range = pred.max() - depth_min + 1e-6
     predicted_depth_norm = (pred - depth_min) / depth_range
     mse_loss = F.mse_loss(predicted_depth_norm, tgt)
 
-    # Strong variance penalty — prevents constant-output collapse
+    # Variance penalty — prevents degenerate constant output
     depth_std = pred.std()
-    variance_penalty = torch.relu(0.25 - depth_std) * 5.0
+    variance_penalty = torch.relu(0.20 - depth_std) * 10.0
 
-    return rank_loss + 0.3 * mse_loss + variance_penalty
+    return pearson_loss + 0.3 * mse_loss + variance_penalty
 
 
 def mutation_differential_loss(
