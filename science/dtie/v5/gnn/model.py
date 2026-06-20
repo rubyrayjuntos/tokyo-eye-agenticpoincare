@@ -784,21 +784,35 @@ def cone_loss_v5(
         # Legacy fallback — inverts shell geometry, avoid in new training
         target_depth = (target_rho / 30.0).clamp(0.0, 1.0)
 
-    # Normalize predicted depth to [0, 1]
-    depth_min = radial_depth.min()
-    depth_max = radial_depth.max()
+    # Rank correlation loss: directly penalise Spearman rank disagreement.
+    # This forces the radial head to produce diverse outputs ordered by SASA,
+    # and is immune to the constant-prediction collapse that MSE + weak variance
+    # penalty suffers from (the gradient vanishes when all outputs are equal).
+    N = radial_depth.shape[0]
+    pred = radial_depth.squeeze()
+    tgt  = target_depth.squeeze()
+
+    # Differentiable rank approximation via soft-rank (temperature-scaled sort)
+    tau = 0.1
+    pred_rank = torch.argsort(torch.argsort(pred)).float()
+    tgt_rank  = torch.argsort(torch.argsort(tgt)).float()
+    pred_rank = pred_rank / (N - 1 + 1e-6)  # normalise to [0,1]
+    tgt_rank  = tgt_rank  / (N - 1 + 1e-6)
+
+    rank_loss = F.mse_loss(pred_rank, tgt_rank)
+
+    # Keep a small MSE term so absolute scale isn't lost
+    depth_min = pred.min()
+    depth_max = pred.max()
     depth_range = depth_max - depth_min + 1e-6
-    predicted_depth = (radial_depth - depth_min) / depth_range
+    predicted_depth_norm = (pred - depth_min) / depth_range
+    mse_loss = F.mse_loss(predicted_depth_norm, tgt)
 
-    # MSE on normalized depth
-    cone_loss = F.mse_loss(predicted_depth, target_depth)
+    # Strong variance penalty — prevents constant-output collapse
+    depth_std = pred.std()
+    variance_penalty = torch.relu(0.25 - depth_std) * 5.0
 
-    # Variance penalty
-    depth_std = predicted_depth.std()
-    variance_penalty = torch.relu(0.20 - depth_std)
-    cone_loss = cone_loss + 0.5 * variance_penalty
-
-    return cone_loss
+    return rank_loss + 0.3 * mse_loss + variance_penalty
 
 
 def mutation_differential_loss(
