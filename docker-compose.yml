@@ -34,6 +34,8 @@ services:
       - ./checkpoints_v6_topo:/app/checkpoints_v6_topo
       - ./science:/app/science
       - ./data:/app/data
+      - ./scripts:/app/scripts
+      - ./shared:/app/shared
       - ./experiments:/app/experiments
     depends_on:
       db:

@@ -8,12 +8,21 @@ FROM pytorch/pytorch:2.3.1-cuda12.1-cudnn8-runtime
 
 WORKDIR /app
 
-# System deps for rdkit, gudhi, biotite, and AutoDock Vina (Phase 6b)
+# System deps for rdkit, gudhi, biotite, AutoDock Vina (Phase 6b), and fpocket
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libboost-all-dev \
     libcgal-dev \
     wget \
+    git \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
+
+# Install fpocket from source (geometry-based pocket detection)
+RUN git clone --depth 1 https://github.com/Discngine/fpocket.git /tmp/fpocket \
+    && cd /tmp/fpocket \
+    && make \
+    && make install \
+    && rm -rf /tmp/fpocket
 
 # Install AutoDock Vina binary (Phase 6b: binding affinity docking)
 RUN wget -q https://github.com/ccsb-scripps/AutoDock-Vina/releases/download/v1.2.5/vina_1.2.5_linux_x86_64 \
@@ -28,6 +37,11 @@ RUN pip install --no-cache-dir torch-scatter torch-sparse \
     -f https://data.pyg.org/whl/torch-2.3.1+cu121.html
 
 RUN pip install --no-cache-dir -r requirements-science.txt
+
+# Install OpenMM via conda (requires CUDA-compatible build, pip version lacks GPU support)
+RUN conda install -y -c conda-forge openmm==8.1.1 \
+    && pip install --no-cache-dir pdbfixer \
+    && conda clean -afy
 
 # Copy the science code + data layer + shared utilities (needed for Normalizer, adapters)
 COPY science/ /app/science/

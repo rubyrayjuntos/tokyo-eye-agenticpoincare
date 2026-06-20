@@ -38,3 +38,6 @@ scipy==1.13.1
 scikit-learn==1.5.1
 pandas==2.2.2
 networkx==3.3
+
+# Steered Molecular Dynamics (cryptic site validation)
+# NOTE: OpenMM installed via conda in Dockerfile (not pip-installable with CUDA support)

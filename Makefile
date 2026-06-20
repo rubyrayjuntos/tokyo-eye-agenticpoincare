@@ -1,4 +1,4 @@
-.PHONY: up down kill build logs ps migrate test lint
+.PHONY: up down kill build logs ps migrate test lint calibrate-cryptic-real calibrate-heuristic
 
 # ---------------------------------------------------------------------------
 # Docker Compose shortcuts
@@ -85,6 +85,22 @@ format: ## Auto-format code
 
 typecheck: ## Run mypy
 	uv run mypy science/ data/normalizer/ agent/ --ignore-missing-imports
+
+# ---------------------------------------------------------------------------
+# Calibration
+# ---------------------------------------------------------------------------
+
+fetch-benchmark-structures: ## Download PDB structures needed for calibration
+	PYTHONPATH=. python scripts/fetch_benchmark_structures.py
+
+calibrate-cryptic-real: fetch-benchmark-structures ## Run real MD calibration against benchmark sites (GPU required)
+	docker compose run --rm --user $$(id -u):$$(id -g) --entrypoint python science -u -m scripts.calibrate_cryptic_real_md --benchmark data/calibration/benchmark_cryptic_sites.json --output data/calibration/calibrated_thresholds.json --fast --verbose
+
+calibrate-cryptic-real-full: fetch-benchmark-structures ## Run FULL MD calibration (production step counts, hours on CPU)
+	docker compose run --rm --user $$(id -u):$$(id -g) --entrypoint python science -u -m scripts.calibrate_cryptic_real_md --benchmark data/calibration/benchmark_cryptic_sites.json --output data/calibration/calibrated_thresholds.json --verbose
+
+calibrate-heuristic: ## Run heuristic v1 calibration against benchmark (no GPU needed)
+	PYTHONPATH=. python scripts/calibrate_cryptic.py --benchmark data/calibration/benchmark_cryptic_sites.json --output data/calibration/heuristic_calibration_report.json --verbose
 
 # ---------------------------------------------------------------------------
 # Help

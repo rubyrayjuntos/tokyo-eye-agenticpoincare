@@ -1,0 +1,17 @@
+{
+  "structure_id": "5P21",
+  "site_id": "5P21_A_benchmark",
+  "residue_ids": [
+    "A:60",
+    "A:61",
+    "A:62",
+    "A:63",
+    "A:64"
+  ],
+  "pdb_path": "data/structures/5P21.pdb",
+  "pulling_direction": [
+    0.0,
+    1.0,
+    0.0
+  ]
+}

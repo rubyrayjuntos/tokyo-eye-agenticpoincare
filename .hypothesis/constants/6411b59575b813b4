@@ -1,0 +1,4 @@
+# file: /home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/agent/tools/cryptic/tool.py
+# hypothesis_version: 6.151.9
+
+[0.0, 1.0, 1800, ' AND ', '#e056fd', ', ', 'Binding Sites', 'SMD_lid_restraint', 'SMD_strain_relief', 'SMD_three_phase', 'allosteric_clamp', 'count', 'cryptic_wedge', 'duration_ms', 'dynamic_lid', 'failed', 'filters_applied', 'heuristic_version', 'limit', 'md_status', 'md_validation_', 'md_validation_status', 'min_druggability', 'none', 'passed', 'pdb_path', 'pending', 'protocol', 'pulling_direction', 'residue_ids', 'results', 'running', 'site_id', 'site_rank', 'site_type', 'sites', 'status', 'strain_delta', 'strain_relief_insert', 'structural_stent', 'structure_id', 'success', 'surface_pocket', 'timed_out', 'timeout', 'validated', 'w', 'work_kcal_mol']

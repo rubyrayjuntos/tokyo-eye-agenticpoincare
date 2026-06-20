@@ -132,6 +132,7 @@ class PipelineConfig:
     run_phase6: bool = True  # Covers 6a-6d
     detect_source_leaks: bool = True
     identify_allosteric_sites: bool = True
+    run_binding_site_scan: bool = True  # Full-structure binding site scan
 
     # Shortcut: disable non-essential phases for quick analysis
     source_leak_only: bool = False
@@ -164,6 +165,7 @@ class PipelineConfig:
             self.run_phase4 = False
             self.run_phase5 = False
             self.run_phase6 = False
+            self.run_binding_site_scan = False
 
 
 # ---------------------------------------------------------------------------
@@ -301,6 +303,21 @@ class DTIEOrchestrator:
                 phase_results["allosteric_sites"] = site_result
             except Exception as e:
                 warnings.append(f"Allosteric site identification failed: {e}")
+
+        # ── Step 11: Full-Structure Binding Site Scan ─────────────────────
+        if config.run_binding_site_scan:
+            try:
+                scan_result = await self._run_binding_site_scan(config, run_id)
+                phase_results["binding_site_scan"] = scan_result
+            except Exception as e:
+                warnings.append(f"Binding site scan failed: {e}")
+                phase_results["binding_site_scan"] = PhaseResult(
+                    phase_name="binding_site_scan",
+                    structure_id=config.structure_id,
+                    model_version="DTIE-v5-scan",
+                    success=False,
+                    outputs={"error": str(e)},
+                )
 
         # Determine success: all required phases that were run must pass
         success = self._evaluate_success(phase_results, config)
@@ -579,4 +596,45 @@ class DTIEOrchestrator:
             model_version="DTIE-v5-allosteric",
             success=True,
             outputs={"status": "ready_for_spatial_clustering"},
+        )
+
+    async def _run_binding_site_scan(
+        self, config: PipelineConfig, run_id: str
+    ) -> PhaseResult:
+        """Run full-structure binding site scan after GNN + graph topology.
+
+        This is the 'Phase 3.5' scan that identifies, classifies, and ranks
+        all candidate binding sites (cryptic and surface) exhaustively.
+
+        The scan phase:
+        1. Fetches GNN embeddings and Cα coordinates from DB
+        2. Clusters high-signal residues via DBSCAN
+        3. Runs fpocket geometry detection
+        4. Merges and ranks all candidates
+        5. Persists results (deleting any previous scan data first)
+
+        Requirements: 4.1, 4.5
+        """
+        from agent.tools.cryptic.scan_phase import run_full_structure_scan
+
+        scan_result = await run_full_structure_scan(
+            structure_id=config.structure_id,
+            db=self._db,
+            uncertainty_threshold=config.uncertainty_threshold,
+            cone_depth_threshold=config.depth_threshold,
+            eps_angstrom=config.spatial_cutoff,
+        )
+
+        return PhaseResult(
+            phase_name="binding_site_scan",
+            structure_id=config.structure_id,
+            model_version=scan_result.model_version,
+            success=True,
+            outputs={
+                "scan_run_id": scan_result.run_id,
+                "sites_found": len(scan_result.candidates),
+                "duration_ms": scan_result.duration_ms,
+                "heuristic_version": scan_result.heuristic_version,
+                "warnings": scan_result.warnings,
+            },
         )

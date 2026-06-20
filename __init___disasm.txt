@@ -1,0 +1,26 @@
+  0           RESUME                   0
+
+  1           LOAD_CONST               0 ('V6 GNN — GOSPConeMapperV6 with topologically-routed MoE specialization.')
+              STORE_NAME               0 (__doc__)
+
+  3           LOAD_CONST               1 (0)
+              LOAD_CONST               2 (('GOSPConeMapperV6', 'TopologicalMoEGateV6'))
+              IMPORT_NAME              1 (science.dtie.v6.gnn.model)
+              IMPORT_FROM              2 (GOSPConeMapperV6)
+              STORE_NAME               2 (GOSPConeMapperV6)
+              IMPORT_FROM              3 (TopologicalMoEGateV6)
+              STORE_NAME               3 (TopologicalMoEGateV6)
+              POP_TOP
+
+  4           LOAD_CONST               1 (0)
+              LOAD_CONST               3 (('V6GNNRunner',))
+              IMPORT_NAME              4 (science.dtie.v6.gnn.runner)
+              IMPORT_FROM              5 (V6GNNRunner)
+              STORE_NAME               5 (V6GNNRunner)
+              POP_TOP
+
+  6           BUILD_LIST               0
+              LOAD_CONST               4 (('GOSPConeMapperV6', 'TopologicalMoEGateV6', 'V6GNNRunner'))
+              LIST_EXTEND              1
+              STORE_NAME               6 (__all__)
+              RETURN_CONST             5 (None)

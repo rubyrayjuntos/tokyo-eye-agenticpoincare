@@ -1,0 +1,17 @@
+{
+  "structure_id": "3GFT",
+  "site_id": "3GFT_A_benchmark",
+  "residue_ids": [
+    "A:32",
+    "A:33",
+    "A:34",
+    "A:35",
+    "A:36"
+  ],
+  "pdb_path": "data/structures/3GFT.pdb",
+  "pulling_direction": [
+    0.0,
+    0.0,
+    1.0
+  ]
+}

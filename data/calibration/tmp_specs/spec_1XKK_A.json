@@ -1,0 +1,17 @@
+{
+  "structure_id": "1XKK",
+  "site_id": "1XKK_A_benchmark",
+  "residue_ids": [
+    "A:100",
+    "A:101",
+    "A:102",
+    "A:103",
+    "A:104"
+  ],
+  "pdb_path": "data/structures/1XKK.pdb",
+  "pulling_direction": [
+    1.0,
+    0.0,
+    1.0
+  ]
+}
