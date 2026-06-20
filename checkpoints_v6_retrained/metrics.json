@@ -90,5 +90,325 @@
     "health": {},
     "score": 0.0,
     "elapsed": 21.616356134414673
+  },
+  {
+    "global_epoch": 5,
+    "stage": "Stage 1: Radial recalibration",
+    "losses": {
+      "total": 1.2516496286672705,
+      "evidential": 0.40895284427439466,
+      "balance": -1.0535457204369938,
+      "cone_consistency": 1.6778009358574362,
+      "neighborhood_consistency": 0.28663482517004013,
+      "angular_diversity": 0.8135116450926837,
+      "domain_separation_2d": 0.0,
+      "domain_separation_3d": 0.0,
+      "grad_radial": 0.00023814086866276042,
+      "grad_angular": 0.0,
+      "grad_backbone": 0.002800096645684976
+    },
+    "curvature": 0.7014895677566528,
+    "radial_scale": 0.6942588090896606,
+    "health": {},
+    "score": 0.0,
+    "elapsed": 24.802592515945435
+  },
+  {
+    "global_epoch": 6,
+    "stage": "Stage 1: Radial recalibration",
+    "losses": {
+      "total": 1.732417783316444,
+      "evidential": 0.8897845147944549,
+      "balance": -1.0528682224890764,
+      "cone_consistency": 1.6775436261120964,
+      "neighborhood_consistency": 0.2878026173395269,
+      "angular_diversity": 0.8182925687116736,
+      "domain_separation_2d": 0.0,
+      "domain_separation_3d": 0.0,
+      "grad_radial": 0.00041387949391612303,
+      "grad_angular": 0.0,
+      "grad_backbone": 0.0032245343275381436
+    },
+    "curvature": 0.7013553977012634,
+    "radial_scale": 0.6942477822303772,
+    "health": {
+      "radial_std_mean": 3.5955356149112476,
+      "proj_frac_mean": 0.09198049587361953,
+      "cone_range_mean": 0.0868763432783239
+    },
+    "score": 0.9948958474047044,
+    "elapsed": 22.766174793243408
+  },
+  {
+    "global_epoch": 7,
+    "stage": "Stage 1: Radial recalibration",
+    "losses": {
+      "total": 1.4049168579718645,
+      "evidential": 0.5625208046506432,
+      "balance": -1.053693126229679,
+      "cone_consistency": 1.6773046325234806,
+      "neighborhood_consistency": 0.2856135938097449,
+      "angular_diversity": 0.8184047306285185,
+      "domain_separation_2d": 0.0,
+      "domain_separation_3d": 0.0,
+      "grad_radial": 0.0003323204592829022,
+      "grad_angular": 0.0,
+      "grad_backbone": 0.003121715714350856
+    },
+    "curvature": 0.7014320492744446,
+    "radial_scale": 0.6942386627197266,
+    "health": {},
+    "score": 0.0,
+    "elapsed": 23.559122323989868
+  },
+  {
+    "global_epoch": 8,
+    "stage": "Stage 1: Radial recalibration",
+    "losses": {
+      "total": 1.5147816328441395,
+      "evidential": 0.6725628073601162,
+      "balance": -1.0538851443459005,
+      "cone_consistency": 1.6771402499255013,
+      "neighborhood_consistency": 0.2837510161540088,
+      "angular_diversity": 0.8183904185014612,
+      "domain_separation_2d": 0.0,
+      "domain_separation_3d": 0.0,
+      "grad_radial": 0.0002558732490529912,
+      "grad_angular": 0.0,
+      "grad_backbone": 0.0028259780670353784
+    },
+    "curvature": 0.701425313949585,
+    "radial_scale": 0.694230854511261,
+    "health": {},
+    "score": 0.0,
+    "elapsed": 23.688570499420166
+  },
+  {
+    "global_epoch": 9,
+    "stage": "Stage 1: Radial recalibration",
+    "losses": {
+      "total": 1.5988108971539665,
+      "evidential": 0.756709080956438,
+      "balance": -1.05229630540399,
+      "cone_consistency": 1.6769452726139742,
+      "neighborhood_consistency": 0.28304342837894664,
+      "angular_diversity": 0.8211839724989498,
+      "domain_separation_2d": 0.0,
+      "domain_separation_3d": 0.0,
+      "grad_radial": 0.00036326065678993213,
+      "grad_angular": 0.0,
+      "grad_backbone": 0.0029107364594997487
+    },
+    "curvature": 0.7013471722602844,
+    "radial_scale": 0.6942036747932434,
+    "health": {},
+    "score": 0.0,
+    "elapsed": 23.583096981048584
+  },
+  {
+    "global_epoch": 10,
+    "stage": "Stage 1: Radial recalibration",
+    "losses": {
+      "total": 1.0315049676334156,
+      "evidential": 0.1896341301719932,
+      "balance": -1.053173335159526,
+      "cone_consistency": 1.6765442595762365,
+      "neighborhood_consistency": 0.2826091980232912,
+      "angular_diversity": 0.8237874227411607,
+      "domain_separation_2d": 0.0,
+      "domain_separation_3d": 0.0,
+      "grad_radial": 0.00044973884219363003,
+      "grad_angular": 0.0,
+      "grad_backbone": 0.0034651490750007394
+    },
+    "curvature": 0.7012166976928711,
+    "radial_scale": 0.6942138671875,
+    "health": {},
+    "score": 0.0,
+    "elapsed": 23.458582401275635
+  },
+  {
+    "global_epoch": 11,
+    "stage": "Stage 1: Radial recalibration",
+    "losses": {
+      "total": 0.9545955430058872,
+      "evidential": 0.11290615139638677,
+      "balance": -1.0551713915432201,
+      "cone_consistency": 1.6761182266123154,
+      "neighborhood_consistency": 0.2836398640099694,
+      "angular_diversity": 0.8214515272308799,
+      "domain_separation_2d": 0.0,
+      "domain_separation_3d": 0.0,
+      "grad_radial": 0.0006211147987334484,
+      "grad_angular": 0.0,
+      "grad_backbone": 0.0029194435407771157
+    },
+    "curvature": 0.7010993957519531,
+    "radial_scale": 0.6941536068916321,
+    "health": {
+      "radial_std_mean": 3.6061047946705536,
+      "proj_frac_mean": 0.06441375218770083,
+      "cone_range_mean": 0.2092488723642686
+    },
+    "score": 1.1448351201765679,
+    "elapsed": 23.762173175811768
+  },
+  {
+    "global_epoch": 12,
+    "stage": "Stage 1: Radial recalibration",
+    "losses": {
+      "total": 1.2131183988907759,
+      "evidential": 0.3715779356220189,
+      "balance": -1.0546595699646895,
+      "cone_consistency": 1.6757305650150074,
+      "neighborhood_consistency": 0.28443578981301365,
+      "angular_diversity": 0.8176894924219917,
+      "domain_separation_2d": 0.0,
+      "domain_separation_3d": 0.0,
+      "grad_radial": 0.0007664802525248567,
+      "grad_angular": 0.0,
+      "grad_backbone": 0.0030293493820170393
+    },
+    "curvature": 0.7010073661804199,
+    "radial_scale": 0.6941541433334351,
+    "health": {},
+    "score": 0.0,
+    "elapsed": 23.14996361732483
+  },
+  {
+    "global_epoch": 13,
+    "stage": "Stage 1: Radial recalibration",
+    "losses": {
+      "total": 1.2309531674665564,
+      "evidential": 0.38966212377828713,
+      "balance": -1.0546246591736288,
+      "cone_consistency": 1.6754076200373031,
+      "neighborhood_consistency": 0.28266917782671314,
+      "angular_diversity": 0.8211052032078013,
+      "domain_separation_2d": 0.0,
+      "domain_separation_3d": 0.0,
+      "grad_radial": 0.0012520945469719556,
+      "grad_angular": 0.0,
+      "grad_backbone": 0.0031181941423067557
+    },
+    "curvature": 0.7010090351104736,
+    "radial_scale": 0.694093644618988,
+    "health": {},
+    "score": 0.0,
+    "elapsed": 24.08786129951477
+  },
+  {
+    "global_epoch": 14,
+    "stage": "Stage 1: Radial recalibration",
+    "losses": {
+      "total": 1.1536450561355143,
+      "evidential": 0.31265028790735144,
+      "balance": -1.054982742842506,
+      "cone_consistency": 1.675118221956141,
+      "neighborhood_consistency": 0.27970992554636565,
+      "angular_diversity": 0.8238470659536474,
+      "domain_separation_2d": 0.0,
+      "domain_separation_3d": 0.0,
+      "grad_radial": 0.0011357063349564937,
+      "grad_angular": 0.0,
+      "grad_backbone": 0.0029015216458312095
+    },
+    "curvature": 0.700960636138916,
+    "radial_scale": 0.69410240650177,
+    "health": {},
+    "score": 0.0,
+    "elapsed": 23.777540922164917
+  },
+  {
+    "global_epoch": 15,
+    "stage": "Stage 1: Radial recalibration",
+    "losses": {
+      "total": 1.2209184871000403,
+      "evidential": 0.38027042588766885,
+      "balance": -1.0554153217988855,
+      "cone_consistency": 1.6748058305067175,
+      "neighborhood_consistency": 0.2759858737973606,
+      "angular_diversity": 0.8266261290101444,
+      "domain_separation_2d": 0.0,
+      "domain_separation_3d": 0.0,
+      "grad_radial": 0.0007221779641066164,
+      "grad_angular": 0.0,
+      "grad_backbone": 0.002490630191585176
+    },
+    "curvature": 0.7010459899902344,
+    "radial_scale": 0.6941125392913818,
+    "health": {},
+    "score": 0.0,
+    "elapsed": 23.25153636932373
+  },
+  {
+    "global_epoch": 16,
+    "stage": "Stage 1: Radial recalibration",
+    "losses": {
+      "total": 1.6704855911871965,
+      "evidential": 0.830063646659255,
+      "balance": -1.0555400708142448,
+      "cone_consistency": 1.6744583634769215,
+      "neighborhood_consistency": 0.27496320096885457,
+      "angular_diversity": 0.8287624015527613,
+      "domain_separation_2d": 0.0,
+      "domain_separation_3d": 0.0,
+      "grad_radial": 0.0009140667775575232,
+      "grad_angular": 0.0,
+      "grad_backbone": 0.0025260875891358766
+    },
+    "curvature": 0.701106071472168,
+    "radial_scale": 0.6941444277763367,
+    "health": {
+      "radial_std_mean": 3.583807819029864,
+      "proj_frac_mean": 0.05185910522499505,
+      "cone_range_mean": 0.35000042354359345
+    },
+    "score": 1.2981413183185984,
+    "elapsed": 21.498186111450195
+  },
+  {
+    "global_epoch": 17,
+    "stage": "Stage 1: Radial recalibration",
+    "losses": {
+      "total": 1.8645793199539185,
+      "evidential": 1.0245130859753664,
+      "balance": -1.055142672622905,
+      "cone_consistency": 1.6741672543918384,
+      "neighborhood_consistency": 0.2706807514323908,
+      "angular_diversity": 0.8282503731110517,
+      "domain_separation_2d": 0.0,
+      "domain_separation_3d": 0.0,
+      "grad_radial": 0.0009346218539790511,
+      "grad_angular": 0.0,
+      "grad_backbone": 0.002516479323468966
+    },
+    "curvature": 0.7010482549667358,
+    "radial_scale": 0.6941671967506409,
+    "health": {},
+    "score": 0.0,
+    "elapsed": 21.798888444900513
+  },
+  {
+    "global_epoch": 18,
+    "stage": "Stage 1: Radial recalibration",
+    "losses": {
+      "total": 1.6440654046395247,
+      "evidential": 0.804450244149741,
+      "balance": -1.0566857176668503,
+      "cone_consistency": 1.6736772481132955,
+      "neighborhood_consistency": 0.26686861804303,
+      "angular_diversity": 0.8328977016841664,
+      "domain_separation_2d": 0.0,
+      "domain_separation_3d": 0.0,
+      "grad_radial": 0.0008836490727630649,
+      "grad_angular": 0.0,
+      "grad_backbone": 0.0023508803534992677
+    },
+    "curvature": 0.7010374665260315,
+    "radial_scale": 0.6941930055618286,
+    "health": {},
+    "score": 0.0,
+    "elapsed": 22.82223868370056
   }
 ]
