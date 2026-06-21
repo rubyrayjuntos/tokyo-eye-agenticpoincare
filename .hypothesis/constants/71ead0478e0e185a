@@ -1,4 +1,0 @@
-# file: /home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/agent/tools/cryptic/pocket_detector.py
-# hypothesis_version: 6.151.9
-
-[0.0, 3.0, 6.0, 120, 200, '-M', '-f', '-m', '.pdb', ':', 'A', 'ATOM', 'END\n', 'ENDMDL', 'HETATM', 'MODEL', 'Pocket\\s+(\\d+)\\s*:', 'UNK', 'atom_name', 'centroid_xyz', 'chain_label', 'druggability', 'error', 'fpocket', 'fpocket error: %s', 'fpocket_scan_', 'fpocket_unavailable', 'id', 'pdb_id', 'pocket(\\d+)_atm\\.pdb', 'pocket*_atm.pdb', 'pockets', 'residue_ids', 'residue_index', 'residue_name', 'score', 'status', 'structure_id', 'success', 'timeout', 'volume', 'w']

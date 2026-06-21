@@ -1,4 +1,0 @@
-# file: /home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/agent/models/viewport.py
-# hypothesis_version: 6.151.9
-
-[0.0, 0.8, 1.0, 5000, '#ff6b6b', 'annotate', 'clear', 'color', 'compare_runs', 'cone_depth', 'dehydron', 'filter_site', 'focus', 'glow', 'highlight', 'outline', 'pulse', 'set_curvature', 'set_metric', 'show_uncertainty', 'site_type', 'toggle_labels', 'uncertainty']

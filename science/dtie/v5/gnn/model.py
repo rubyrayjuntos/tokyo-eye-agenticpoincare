@@ -523,7 +523,8 @@ class GOSPConeMapper(nn.Module):
         # Without this, radial_depth > 1/√c causes expmap0 to saturate and
         # project() clips every node to the same boundary → cone_depth flatline.
         ball_radius = 1.0 / torch.sqrt(c)
-        tv_norm = tangent_vector.norm(dim=-1, keepdim=True).clamp(min=1e-8)
+        # Safe norm: add epsilon inside sqrt to avoid NaN gradients at zero.
+        tv_norm = torch.sqrt((tangent_vector ** 2).sum(dim=-1, keepdim=True) + 1e-12)
         scale = (torch.tanh(tv_norm / ball_radius) * ball_radius * 0.95) / tv_norm
         tangent_vector = tangent_vector * scale
 

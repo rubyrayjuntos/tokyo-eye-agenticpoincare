@@ -26,7 +26,6 @@ import logging
 import math
 import sys
 import time
-import types
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -46,7 +45,6 @@ logger = logging.getLogger("retrain_v6")
 
 def _patch_gate_if_needed(state: dict) -> bool:
     """Replace TopologicalMoEGate in the model module with a v6-compatible variant."""
-    import torch.nn.functional as F
     from science.dtie.v5 import gnn as _gnn_pkg
     import science.dtie.v5.gnn.model as _model_mod
 
@@ -109,16 +107,26 @@ def _patch_gate_if_needed(state: dict) -> bool:
             else:
                 node_feats = torch.zeros(x_tangent.shape[0], 4, device=x_tangent.device)
 
+            # Compute real per-node graph degree from edge_index when available.
+            if data is not None and hasattr(data, "edge_index"):
+                import torch_geometric.utils as pyg_utils
+                deg_t = pyg_utils.degree(
+                    data.edge_index[0],
+                    num_nodes=x_tangent.shape[0],
+                    dtype=x_tangent.dtype,
+                ).unsqueeze(-1)
+            else:
+                deg_t = torch.zeros((x_tangent.shape[0], 1), device=x_tangent.device)
+
             if hasattr(self, "degree_mean"):
                 rho_raw = node_feats[:, 0:1]
-                deg = node_feats.shape[1]
-                deg_t = torch.full((x_tangent.shape[0], 1), float(deg),
-                                   device=x_tangent.device)
                 dv = self.degree_var.clamp(min=1e-8)
                 rv = self.rho_var.clamp(min=1e-8)
                 deg_norm = (deg_t - self.degree_mean) / dv.sqrt()
                 rho_norm = (rho_raw - self.rho_mean) / rv.sqrt()
                 _ = rho_norm  # available but not always used below
+            else:
+                deg_norm = deg_t  # unnormalised degree as fallback
 
             if self._input_dim >= hidden_dim:
                 parts = [x_tangent, node_feats, clust, depth_f, deg_norm]
@@ -244,11 +252,6 @@ def train_epoch(
     for prot in proteins:
         data = prot["data"].to(device)
 
-        # Inject data into gate forward if gate was patched
-        if gate_patched:
-            _orig = model.gate.forward
-            model.gate.forward = lambda xt, cl, cd: _orig(xt, cl, cd, data=data)
-
         target_rho = prot["target_rho"].to(device)
         target_dehydron = prot["target_dehydron"].to(device)
         target_sasa = prot["target_sasa"].to(device)
@@ -258,10 +261,14 @@ def train_epoch(
             domain_labels = domain_labels.to(device)
 
         optimizer.zero_grad()
-        output = model(data)
-
         if gate_patched:
-            model.gate.forward = _orig
+            _orig = model.gate.forward
+            model.gate.forward = lambda xt, cl, cd: _orig(xt, cl, cd, data=data)
+        try:
+            output = model(data)
+        finally:
+            if gate_patched:
+                model.gate.forward = _orig
 
         losses = gosp_loss_v5(
             output=output,
@@ -309,13 +316,13 @@ def eval_radial_health(model, proteins: List[Dict], gate_patched: bool, device: 
         for prot in proteins:
             data = prot["data"].to(device)
             if gate_patched:
-                _orig = model.gate.forward
-                model.gate.forward = lambda xt, cl, cd: _orig(xt, cl, cd, data=data)
-
-            out = model(data)
-
-            if gate_patched:
-                model.gate.forward = _orig
+                _orig_eval = model.gate.forward
+                model.gate.forward = lambda xt, cl, cd: _orig_eval(xt, cl, cd, data=data)
+            try:
+                out = model(data)
+            finally:
+                if gate_patched:
+                    model.gate.forward = _orig_eval
 
             rd = out["radial_features"].squeeze().cpu()
             radial_stds.append(float(rd.std()))

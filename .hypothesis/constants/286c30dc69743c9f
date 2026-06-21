@@ -1,4 +1,0 @@
-# file: /home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/agent/tools/hypothesis/tools.py
-# hypothesis_version: 6.151.9
-
-[0.5, 100, 500, ' AND ', 'agent', 'cnt', 'confidence', 'count', 'data', 'days_stale', 'db', 'decay_applied', 'evidence_count', 'evidence_created', 'evidence_id', 'evidence_supporting', 'evidence_total', 'filters', 'gathered_at', 'h.status = :status', 'hypotheses', 'hypothesis_engine', 'hypothesis_engine_v1', 'hypothesis_id', 'hypothesis_tool', 'metric', 'new_confidence', 'new_status', 'passed', 'prediction_count', 'prediction_id', 'prediction_ids', 'predictions', 'predictions_failed', 'predictions_passed', 'predictions_tested', 'predictions_total', 'predictions_untested', 'proposed', 'reason', 'result', 'result_preview', 'results', 'score', 'statement', 'status', 'strength', 'structure_id', 'supports', 'test_params', 'test_tool', 'tested', 'tested_at', 'threshold', 'total_evidence', 'untestable', 'updated_at', 'value']

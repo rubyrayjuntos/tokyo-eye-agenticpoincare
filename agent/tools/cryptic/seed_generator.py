@@ -13,7 +13,14 @@ import logging
 from dataclasses import dataclass
 
 import numpy as np
-from sklearn.cluster import DBSCAN
+
+try:
+    from sklearn.cluster import DBSCAN
+except ImportError as _sklearn_err:
+    DBSCAN = None  # type: ignore[assignment,misc]
+    _SKLEARN_MISSING = _sklearn_err
+else:
+    _SKLEARN_MISSING = None
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +109,11 @@ def cluster_residues_dbscan(
     )
 
     # Run DBSCAN
+    if DBSCAN is None:
+        raise ImportError(
+            "scikit-learn is required for cluster_residues_dbscan. "
+            f"Install it with: pip install scikit-learn  (original error: {_SKLEARN_MISSING})"
+        )
     clustering = DBSCAN(eps=eps_angstrom, min_samples=min_cluster_size, metric="euclidean")
     labels = clustering.fit_predict(coord_matrix)
 

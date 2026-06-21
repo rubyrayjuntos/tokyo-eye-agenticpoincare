@@ -1,4 +1,0 @@
-# file: /home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/common/ingestion.py
-# hypothesis_version: 6.151.9
-
-[0.0, 1.0, '.cif', '.mmcif', '.pdb', '/tmp', 'A', 'ALA', 'ARG', 'ASN', 'ASP', 'Already ingested', 'C', 'CYS', 'D', 'E', 'F', 'G', 'GLN', 'GLU', 'GLY', 'H', 'HIS', 'I', 'ILE', 'K', 'L', 'LEU', 'LYS', 'M', 'MET', 'N', 'P', 'PHE', 'PRO', 'Q', 'R', 'S', 'SER', 'T', 'THR', 'TRP', 'TYR', 'UNK', 'V', 'VAL', 'W', 'X', 'Y', 'analysis', 'chain_id', 'chain_label', 'cif', 'code_version', 'entity_type', 'external', 'ingestion-v1', 'model_version', 'pdb_id', 'pipeline_name', 'protein', 'rcsb', 'res_id', 'res_name', 'residue_id', 'residue_index', 'residue_name', 'residue_name_3', 'run_id', 'run_type', 'sid', 'source', 'source_type', 'started_at', 'structure_id', 'structure_ingestion', 'user']

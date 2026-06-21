@@ -53,15 +53,14 @@ EDGE_CUTOFF = 8.0
 
 
 def _download_pdb(pdb_id: str, pdb_dir: Path) -> Path:
-    import httpx
+    import urllib.request
     local = pdb_dir / f"{pdb_id}.pdb"
     if local.exists():
         return local
     url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
     logger.info("Downloading %s from RCSB...", pdb_id)
-    resp = httpx.get(url, follow_redirects=True, timeout=60.0)
-    resp.raise_for_status()
-    local.write_bytes(resp.content)
+    with urllib.request.urlopen(url, timeout=60) as resp:
+        local.write_bytes(resp.read())
     return local
 
 

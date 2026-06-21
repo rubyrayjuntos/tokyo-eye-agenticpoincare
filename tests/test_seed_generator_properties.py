@@ -12,7 +12,6 @@ from hypothesis import given, settings, assume
 from hypothesis import strategies as st
 
 from agent.tools.cryptic.seed_generator import (
-    CandidateCluster,
     GNNNodeOutput,
     cluster_residues_dbscan,
     filter_qualifying_residues,
@@ -48,7 +47,6 @@ def gnn_node_list_strategy(draw, min_size=1, max_size=50):
     """Generate a list of GNNNodeOutput with unique residue_ids."""
     count = draw(st.integers(min_value=min_size, max_value=max_size))
     nodes = []
-    seen_ids = set()
     for i in range(count):
         rid = f"res_{i:04d}"
         node = GNNNodeOutput(

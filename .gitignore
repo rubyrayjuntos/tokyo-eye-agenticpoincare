@@ -32,6 +32,9 @@ env/
 *.swp
 *.swo
 
+# Hypothesis test database (auto-generated, contains local paths)
+.hypothesis/
+
 # Node / Frontend
 node_modules/
 dist/

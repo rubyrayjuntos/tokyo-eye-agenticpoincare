@@ -1,4 +1,0 @@
-# file: /home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/agent/models/__init__.py
-# hypothesis_version: 6.151.9
-
-['HighlightGroup', 'ViewportCapabilities', 'ViewportDirective', 'ViewportRegistration', 'ViewportState']
