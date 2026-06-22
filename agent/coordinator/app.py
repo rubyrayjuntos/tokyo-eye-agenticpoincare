@@ -24,7 +24,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from agent.coordinator.auth import get_current_user
-from agent.coordinator.routers import chat, poincare, tools
+from agent.coordinator.routers import chat, poincare, structures, tools
 from agent.coordinator.viewport import viewport_manager, websocket_viewport
 from shared.logging import get_logger, setup_logging
 from shared.middleware import RequestContextMiddleware
@@ -141,6 +141,7 @@ app.add_middleware(RequestContextMiddleware)
 app.include_router(chat.router)
 app.include_router(tools.router)
 app.include_router(poincare.router)
+app.include_router(structures.router)
 
 
 # ---------------------------------------------------------------------------
