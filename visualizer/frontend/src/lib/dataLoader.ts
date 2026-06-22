@@ -1,99 +1,158 @@
-import * as THREE from "three";
-import type { NodeData, EdgeData } from "./math";
-import { hyperbolicDistance, generateMockGNNData } from "./math";
+/**
+ * Data loader for Tokyo Eyes v5 viewer.
+ * Priority: live server → static JSON → mock data.
+ */
+import * as THREE from 'three';
+import { NodeData, EdgeData, generateMockGNNData } from './math';
 
-const API_BASE =
-  typeof window !== "undefined"
-    ? `${window.location.protocol}//${window.location.hostname}:8000`
-    : "http://localhost:8000";
+interface ExportedNode {
+  id: string;
+  position: [number, number, number];
+  position2D: [number, number];
+  color: string;
+  domain: string;
+  isOutlier: boolean;
+  value: number;
+  depth: number;
+  expertId: number;
+}
 
-export interface StructureMetadata {
-  pdb_id: string;
-  gene?: string;
-  description?: string;
-  curvature?: number;
-  model_version?: string;
-  residue_count?: number;
+interface ExportedEdge {
+  source: string;
+  target: string;
+  distance: number;
+}
+
+interface ExportedData {
+  metadata: {
+    pdb_id: string;
+    chain: string;
+    curvature: number;
+    version: string;
+    architecture: string;
+    n_residues: number;
+    radial_scale: number;
+    depth_range: [number, number];
+    depth_std: number;
+  };
+  nodes: ExportedNode[];
+  edges: ExportedEdge[];
 }
 
 export interface LoadedData {
   nodes: NodeData[];
   edges: EdgeData[];
-  metadata?: StructureMetadata;
+  metadata?: ExportedData['metadata'];
 }
 
-// Attempt to load from the agent REST endpoint, fall back to mock
-export async function loadGNNData(pdbId: string): Promise<LoadedData> {
+const LIVE_SERVER_URL = 'http://localhost:8765';
+
+/**
+ * Try to load from live inference server first, then static JSON, then mock.
+ */
+export async function loadGNNData(pdbId: string = '4OBE', chain: string = 'A'): Promise<LoadedData> {
+  // Try live server
   try {
-    const res = await fetch(
-      `${API_BASE}/api/structures/${pdbId}/embeddings`,
-      { signal: AbortSignal.timeout(5000) }
+    const response = await fetch(
+      `${LIVE_SERVER_URL}/api/embeddings?pdb_id=${pdbId}&chain=${chain}`,
+      { signal: AbortSignal.timeout(2000) }
     );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    return parseEmbeddingResponse(data, pdbId);
-  } catch {
-    return { ...generateMockGNNData(), metadata: undefined };
-  }
-}
-
-export async function loadGNNDataFromFile(file: File): Promise<LoadedData> {
-  const text = await file.text();
-  const json = JSON.parse(text);
-  if (json.residues) return parseEmbeddingResponse(json, json.pdb_id ?? file.name);
-  if (json.nodes && json.edges) return json as LoadedData;
-  throw new Error("Unrecognised file format");
-}
-
-function parseEmbeddingResponse(data: Record<string, unknown>, pdbId: string): LoadedData {
-  const rawResidues = (data.residues as Record<string, unknown>[]) ?? [];
-  const curvature = (data.curvature as number) ?? 1.0;
-
-  const nodes: NodeData[] = rawResidues.map((r, i) => {
-    const x = Number(r.x ?? 0);
-    const y = Number(r.y ?? 0);
-    const depth = Number(r.cone_depth ?? 0);
-    const pos3D = new THREE.Vector3(x, y, 0);
-    if (pos3D.length() > 0.95) pos3D.setLength(0.95);
-
-    return {
-      id: String(r.residue_id ?? `res_${i}`),
-      position: pos3D,
-      position2D: [x, y] as [number, number],
-      color: `hsl(${Math.round(200 + depth * 160)}, 70%, 50%)`,
-      domain: String(r.chain_label ?? ""),
-      isOutlier: depth > 0.8 && Number(r.epistemic_uncertainty ?? 0) > 0.6,
-      value: Number(r.epistemic_uncertainty ?? 0),
-      depth,
-      expertId: 0,
-    };
-  });
-
-  const edges = buildKnnEdges(nodes, 4);
-
-  return {
-    nodes,
-    edges,
-    metadata: {
-      pdb_id: pdbId,
-      curvature,
-      model_version: String(data.model_version ?? "v6"),
-      residue_count: nodes.length,
-    },
-  };
-}
-
-function buildKnnEdges(nodes: NodeData[], k: number): EdgeData[] {
-  const edges: EdgeData[] = [];
-  for (let i = 0; i < nodes.length; i++) {
-    const dists = nodes
-      .map((n, idx) => ({ idx, d: hyperbolicDistance(nodes[i].position, n.position) }))
-      .sort((a, b) => a.d - b.d);
-    for (let j = 1; j <= k; j++) {
-      if (dists[j] && dists[j].idx > i) {
-        edges.push({ source: nodes[i].id, target: nodes[dists[j].idx].id, distance: dists[j].d });
+    if (response.ok) {
+      const data: ExportedData = await response.json();
+      if (data.nodes && data.nodes.length > 0) {
+        console.log(`[Tokyo Eyes] Connected to live server — ${data.metadata.pdb_id} (${data.nodes.length} residues)`);
+        return parseExportedData(data);
       }
     }
+  } catch {
+    // Live server not available, fall through
   }
-  return edges;
+
+  // Try static JSON
+  try {
+    const response = await fetch('/viewer_data.json');
+    if (response.ok) {
+      const data: ExportedData = await response.json();
+      if (data.nodes && data.nodes.length > 0) {
+        console.log(`[Tokyo Eyes] Loaded static export — ${data.metadata.pdb_id} (${data.nodes.length} residues)`);
+        return parseExportedData(data);
+      }
+    }
+  } catch {
+    // No static file, fall through
+  }
+
+  // Fall back to mock
+  console.log('[Tokyo Eyes] Using mock data (no server or export found)');
+  return { ...generateMockGNNData(), metadata: undefined };
+}
+
+/**
+ * Check if live server is available.
+ */
+export async function checkLiveServer(): Promise<{ available: boolean; status?: any }> {
+  try {
+    const response = await fetch(`${LIVE_SERVER_URL}/api/status`, {
+      signal: AbortSignal.timeout(1500)
+    });
+    if (response.ok) {
+      const status = await response.json();
+      return { available: true, status };
+    }
+  } catch {
+    // not available
+  }
+  return { available: false };
+}
+
+/**
+ * Fetch available proteins from live server.
+ */
+export async function fetchProteinList(): Promise<Array<{ pdb_id: string; gene: string; desc: string }>> {
+  try {
+    const response = await fetch(`${LIVE_SERVER_URL}/api/proteins`, {
+      signal: AbortSignal.timeout(2000)
+    });
+    if (response.ok) {
+      const data = await response.json();
+      return data.proteins || [];
+    }
+  } catch {
+    // not available
+  }
+  return [];
+}
+
+/**
+ * Parse exported JSON into viewer-compatible format.
+ */
+function parseExportedData(data: ExportedData): LoadedData {
+  const nodes: NodeData[] = data.nodes.map(n => ({
+    id: n.id,
+    position: new THREE.Vector3(n.position[0], n.position[1], n.position[2]),
+    position2D: n.position2D,
+    color: n.color,
+    domain: n.domain,
+    isOutlier: n.isOutlier,
+    value: n.value,
+    depth: n.depth,
+    expertId: n.expertId,
+  }));
+
+  const edges: EdgeData[] = data.edges.map(e => ({
+    source: e.source,
+    target: e.target,
+    distance: e.distance,
+  }));
+
+  return { nodes, edges, metadata: data.metadata };
+}
+
+/**
+ * Load from a File object (drag-and-drop or file input).
+ */
+export async function loadGNNDataFromFile(file: File): Promise<LoadedData> {
+  const text = await file.text();
+  const data: ExportedData = JSON.parse(text);
+  return parseExportedData(data);
 }
