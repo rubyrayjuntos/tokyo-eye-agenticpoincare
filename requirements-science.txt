@@ -38,3 +38,14 @@ scipy==1.13.1
 scikit-learn==1.5.1
 pandas==2.2.2
 networkx==3.3
+
+# Transitive dependencies (pinned for reproducibility in GPU environment)
+# NumPy/SciPy ecosystem
+packaging==24.1
+typing-extensions==4.12.2
+
+# Data handling
+pytz==2024.1
+
+# Scientific computing
+joblib==1.4.2
