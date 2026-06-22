@@ -20,24 +20,22 @@ interface DockPanelProps {
   minimumSize?: number;
 }
 
-function DockPanel({ title, children, className = "", minimumSize = 20 }: DockPanelProps) {
+function DockPanel({ title, children, className = "" }: DockPanelProps) {
   return (
-    <Panel defaultSize={33} minSize={minimumSize} className={clsx(
-      "flex flex-col bg-gradient-to-br from-[#0a0e27] to-[#0f1335] border border-cyan-900/30 rounded-lg overflow-hidden",
+    <div className={clsx(
+      "flex flex-col h-full bg-gradient-to-br from-[#0a0e27] to-[#0f1335] border border-cyan-900/30 rounded-lg overflow-hidden",
       className
     )}>
-      {/* Panel Header */}
       <div className="flex items-center gap-2 px-4 py-3 bg-black/40 border-b border-cyan-900/20">
         <GripVertical size={14} className="text-cyan-500/40" />
         <h3 className="text-sm font-bold text-cyan-100 font-rajdhani uppercase tracking-wider">
           {title}
         </h3>
       </div>
-      {/* Panel Content */}
       <div className="flex-1 overflow-auto">
         {children}
       </div>
-    </Panel>
+    </div>
   );
 }
 
@@ -71,29 +69,31 @@ export function DockedLayout({
         )}
 
         {/* Center: Poincaré + Molecular Viewer (Vertical Split) */}
-        <PanelGroup direction="vertical" className="flex-1">
-          {/* Top: Poincaré */}
-          <Panel defaultSize={50} minSize={25}>
-            <DockPanel title="Poincaré Manifold" className="h-full">
-              {poincare}
-            </DockPanel>
-          </Panel>
+        <Panel defaultSize={65} minSize={30}>
+          <PanelGroup direction="vertical">
+            {/* Top: Poincaré */}
+            <Panel defaultSize={50} minSize={25}>
+              <DockPanel title="Poincaré Manifold">
+                {poincare}
+              </DockPanel>
+            </Panel>
 
-          <PanelResizeHandle className="h-1 bg-gradient-to-r from-transparent via-purple-500/20 to-transparent hover:via-purple-500/60 transition-colors" />
+            <PanelResizeHandle className="h-1 bg-gradient-to-r from-transparent via-purple-500/20 to-transparent hover:via-purple-500/60 transition-colors" />
 
-          {/* Bottom: Molecular Viewer */}
-          <Panel defaultSize={50} minSize={25}>
-            <DockPanel title="Molecular Structure" className="h-full">
-              {molecularViewer}
-            </DockPanel>
-          </Panel>
-        </PanelGroup>
+            {/* Bottom: Molecular Viewer */}
+            <Panel defaultSize={50} minSize={25}>
+              <DockPanel title="Molecular Structure">
+                {molecularViewer}
+              </DockPanel>
+            </Panel>
+          </PanelGroup>
+        </Panel>
 
         <PanelResizeHandle className="w-1 bg-gradient-to-b from-transparent via-blue-500/20 to-transparent hover:via-blue-500/60 transition-colors" />
 
         {/* Right: Agent Chat */}
-        <Panel defaultSize={20} minSize={15} maxSize={40} className="flex flex-col">
-          <DockPanel title="Agent Chat" className="h-full">
+        <Panel defaultSize={20} minSize={15} maxSize={40}>
+          <DockPanel title="Agent Chat">
             {agentChat}
           </DockPanel>
         </Panel>
