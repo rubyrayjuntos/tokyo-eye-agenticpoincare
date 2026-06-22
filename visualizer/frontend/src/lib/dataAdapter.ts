@@ -1,132 +1,107 @@
+/**
+ * Adapts backend Poincaré residue data into the NodeData/EdgeData format
+ * used by the 3D/2D visualizers.
+ */
+
 import * as THREE from "three";
 import type { NodeData, EdgeData } from "./math";
-import { depthToColor, uncertaintyToColor } from "./math";
-import type { PoincareDataResponse, PoincareResidue } from "./agentClient";
+import { hyperbolicDistance } from "./math";
+import type { PoincareResidue, PoincareDataResponse } from "./agentClient";
 
-export type ColorMetric = "cone_depth" | "epistemic" | "aleatoric" | "centrality";
-
-export interface AdaptedData {
-  nodes: NodeData[];
-  edges: EdgeData[];
-}
+export type MetricKey = "cone_depth" | "epistemic" | "aleatoric" | "uncertainty";
 
 /**
- * Convert a raw PoincareDataResponse (from /api/structures/:id/embeddings)
- * into NodeData/EdgeData ready for the visualizers.
- *
- * High SASA residues → high cone_depth → disc periphery (|pos| near 1).
- * This matches the corrected geometry (r=0.738 checkpoint).
+ * Convert agent PoincareDataResponse into visualizer-ready nodes and edges.
  */
 export function adaptPoincareData(
   response: PoincareDataResponse,
-  metric: ColorMetric = "cone_depth"
-): AdaptedData {
-  const nodes: NodeData[] = response.residues.map((r) => {
-    const depth = clamp(r.cone_depth, 0, 1);
-    const epistemic = clamp(r.epistemic_uncertainty, 0, 1);
-    const aleatoric = clamp(r.aleatoric_uncertainty, 0, 1);
+  colorMetric: MetricKey = "cone_depth"
+): { nodes: NodeData[]; edges: EdgeData[] } {
+  const nodes = response.residues.map((r) => toNodeData(r, colorMetric));
 
-    // Disc position (x, y) already normalised to [-1, 1] from backend
-    const x = clamp(r.x, -1, 1);
-    const y = clamp(r.y, -1, 1);
+  // Build edges from k-nearest using hyperbolic distance (consistent with math.ts)
+  const edges: EdgeData[] = [];
+  const k = 4;
+  for (let i = 0; i < nodes.length; i++) {
+    const dists = nodes.map((n, idx) => ({
+      idx,
+      d: hyperbolicDistance(nodes[i].position, n.position),
+    })).sort((a, b) => a.d - b.d);
 
-    // Lift into ball: z from residual radius so |pos|² = depth²
-    const rxy2 = x * x + y * y;
-    const zSq = Math.max(0, depth * depth - rxy2);
-    const z = Math.sqrt(zSq);
-
-    return {
-      id: r.residue_id,
-      position: new THREE.Vector3(x, y, z),
-      position2D: [x, y],
-      color: colorForMetric(r, metric),
-      depth,
-      value: metricValue(r, metric),
-      isOutlier: depth > 0.75 && epistemic > 0.5,
-      domain: r.chain_label ?? "",
-      label: r.residue_name ?? "",
-      epistemic,
-      aleatoric,
-    };
-  });
-
-  // Build proximity contact edges on the disc
-  const edges = buildEdges(nodes, response.residues);
+    for (let j = 1; j <= k; j++) {
+      if (dists[j] && dists[j].idx > i) {
+        edges.push({
+          source: nodes[i].id,
+          target: nodes[dists[j].idx].id,
+          distance: dists[j].d,
+        });
+      }
+    }
+  }
 
   return { nodes, edges };
 }
 
 /**
- * Re-color existing nodes when the user switches metric tabs.
- * Returns a new array (does not mutate).
+ * Re-color existing nodes based on a different metric from the residue data.
  */
 export function recolorNodes(
   nodes: NodeData[],
   residues: PoincareResidue[],
-  metric: ColorMetric
+  colorMetric: MetricKey = "cone_depth"
 ): NodeData[] {
-  const residueMap = new Map<string, PoincareResidue>(
-    residues.map((r) => [r.residue_id, r])
-  );
+  const residueMap = new Map(residues.map((r) => [r.residue_id, r]));
 
-  return nodes.map((node) => {
-    const r = residueMap.get(node.id);
-    if (!r) return node;
+  return nodes.map((n) => {
+    const r = residueMap.get(n.id);
+    if (!r) return n;
+    const metricValue = getMetricValue(r, colorMetric);
+    const hue = metricToHue(metricValue);
+    const isOutlier = r.cone_depth > 0.8 && r.epistemic_uncertainty > 0.6;
     return {
-      ...node,
-      color: colorForMetric(r, metric),
-      value: metricValue(r, metric),
+      ...n,
+      color: `hsl(${hue}, 70%, ${isOutlier ? 60 : 50}%)`,
+      isOutlier,
     };
   });
 }
 
-// ---------- Helpers ----------
+function toNodeData(r: PoincareResidue, colorMetric: MetricKey): NodeData {
+  const metricValue = getMetricValue(r, colorMetric);
+  const hue = metricToHue(metricValue);
+  const isOutlier = r.cone_depth > 0.8 && r.epistemic_uncertainty > 0.6;
 
-function colorForMetric(r: PoincareResidue, metric: ColorMetric): string {
+  // Backend provides 2D disc coordinates (x, y).
+  // Lift to 3D ball: use (x, y, 0) as the position in 3D Poincaré ball.
+  const pos3D = new THREE.Vector3(r.x, r.y, 0);
+  if (pos3D.length() > 0.95) pos3D.setLength(0.95);
+
+  const pos2D: [number, number] = [r.x, r.y];
+
+  return {
+    id: r.residue_id,
+    position: pos3D,
+    position2D: pos2D,
+    color: `hsl(${hue}, 70%, ${isOutlier ? 60 : 50}%)`,
+    domain: r.chain_label,
+    isOutlier,
+    value: r.epistemic_uncertainty,
+    depth: r.cone_depth,
+    expertId: 0,
+  };
+}
+
+function getMetricValue(r: PoincareResidue, metric: MetricKey): number {
   switch (metric) {
-    case "cone_depth":
-      return depthToColor(r.cone_depth);
-    case "epistemic":
-      return uncertaintyToColor(r.epistemic_uncertainty);
-    case "aleatoric":
-      return uncertaintyToColor(r.aleatoric_uncertainty);
-    default:
-      return depthToColor(r.cone_depth);
+    case "cone_depth": return r.cone_depth;
+    case "epistemic": return r.epistemic_uncertainty;
+    case "aleatoric": return r.aleatoric_uncertainty;
+    case "uncertainty": return (r.epistemic_uncertainty + r.aleatoric_uncertainty) / 2;
+    default: return r.cone_depth;
   }
 }
 
-function metricValue(r: PoincareResidue, metric: ColorMetric): number {
-  switch (metric) {
-    case "cone_depth":      return r.cone_depth;
-    case "epistemic":       return r.epistemic_uncertainty;
-    case "aleatoric":       return r.aleatoric_uncertainty;
-    default:                return r.cone_depth;
-  }
-}
-
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, v ?? 0));
-}
-
-function buildEdges(nodes: NodeData[], residues: PoincareResidue[]): EdgeData[] {
-  // Sequential residue connectivity (backbone) + short-range disc proximity
-  const edges: EdgeData[] = [];
-  const threshold = 0.2;
-
-  for (let i = 0; i + 1 < residues.length; i++) {
-    edges.push({ source: nodes[i].id, target: nodes[i + 1].id, weight: 1.0 });
-  }
-
-  // Spatial edges (contact-map approximation on disc)
-  for (let i = 0; i < nodes.length; i++) {
-    for (let j = i + 2; j < nodes.length; j++) {
-      const dx = nodes[i].position2D[0] - nodes[j].position2D[0];
-      const dy = nodes[i].position2D[1] - nodes[j].position2D[1];
-      if (dx * dx + dy * dy < threshold * threshold) {
-        edges.push({ source: nodes[i].id, target: nodes[j].id, weight: 0.5 });
-      }
-    }
-  }
-
-  return edges;
+function metricToHue(value: number): number {
+  // Map 0..1 → blue (200) → magenta (360)
+  return Math.round(200 + Math.min(value, 1) * 160);
 }

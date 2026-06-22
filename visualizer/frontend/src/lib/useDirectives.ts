@@ -1,103 +1,140 @@
-import { useCallback, useReducer } from "react";
+/**
+ * Hook for managing viewport directive state — highlights, focus, annotations
+ * pushed by the agent via WebSocket.
+ */
+
+import { useState, useCallback } from "react";
 import type { ViewportDirective } from "./types";
 
-export type ColorMetric = "cone_depth" | "epistemic" | "aleatoric" | "centrality";
-
-interface DirectiveState {
-  highlights: Set<string>;
-  focusTargets: string[];
-  activeMetric: ColorMetric;
-  annotations: Map<string, string>;
-  lastMessage: string | null;
+export interface HighlightEntry {
+  residueIds: string[];
+  color: string;
+  style: "glow" | "pulse" | "outline" | "color";
+  label?: string;
 }
 
-type DirectiveAction =
-  | { type: "highlight"; ids: string[] }
-  | { type: "focus"; ids: string[] }
-  | { type: "set_metric"; metric: ColorMetric }
-  | { type: "annotate"; residue: string; text: string }
-  | { type: "clear" }
-  | { type: "set_message"; msg: string | null };
-
-function reducer(state: DirectiveState, action: DirectiveAction): DirectiveState {
-  switch (action.type) {
-    case "highlight":
-      return { ...state, highlights: new Set(action.ids) };
-    case "focus":
-      return { ...state, focusTargets: action.ids };
-    case "set_metric":
-      return { ...state, activeMetric: action.metric };
-    case "annotate": {
-      const next = new Map(state.annotations);
-      next.set(action.residue, action.text);
-      return { ...state, annotations: next };
-    }
-    case "clear":
-      return { ...state, highlights: new Set(), focusTargets: [], annotations: new Map(), lastMessage: null };
-    case "set_message":
-      return { ...state, lastMessage: action.msg };
-    default:
-      return state;
-  }
+export interface AnnotationEntry {
+  residueId: string;
+  text: string;
 }
 
-export function useDirectives(initialMetric: ColorMetric = "cone_depth") {
-  const [state, dispatch] = useReducer(reducer, {
-    highlights: new Set<string>(),
-    focusTargets: [],
-    activeMetric: initialMetric,
-    annotations: new Map<string, string>(),
-    lastMessage: null,
-  });
+export interface FocusRecenterRequest {
+  residueIds: string[];
+}
+
+export function useDirectives(initialMetric = "cone_depth") {
+  const [highlights, setHighlights] = useState<HighlightEntry[]>([]);
+  const [focusTargets, setFocusTargets] = useState<string[]>([]);
+  const [focusRecenter, setFocusRecenter] = useState<FocusRecenterRequest | null>(null);
+  const [activeMetric, setActiveMetric] = useState(initialMetric);
+  const [annotations, setAnnotations] = useState<AnnotationEntry[]>([]);
+  const [lastMessage, setLastMessage] = useState<string | null>(null);
 
   const applyDirective = useCallback((directive: ViewportDirective) => {
     switch (directive.action) {
       case "highlight":
-        dispatch({ type: "highlight", ids: directive.residue_ids ?? [] });
-        if (directive.message) dispatch({ type: "set_message", msg: directive.message });
-        break;
-      case "focus":
-        dispatch({ type: "focus", ids: directive.residue_ids ?? [] });
-        if (directive.focus_residue) dispatch({ type: "focus", ids: [directive.focus_residue] });
-        break;
-      case "set_metric":
-      case "set_color_mode":
-        if (directive.metric) dispatch({ type: "set_metric", metric: directive.metric as ColorMetric });
-        if (directive.color_mode) dispatch({ type: "set_metric", metric: directive.color_mode as ColorMetric });
-        break;
-      case "annotate":
-        if (directive.residue_ids?.length && directive.annotation) {
-          directive.residue_ids.forEach(id =>
-            dispatch({ type: "annotate", residue: id, text: directive.annotation! })
+        if (directive.highlight_groups) {
+          setHighlights(
+            directive.highlight_groups.map((g) => ({
+              residueIds: g.residue_ids,
+              color: g.color,
+              style: g.style,
+              label: g.label,
+            }))
           );
         }
         break;
+
+      case "set_metric":
+        if (directive.metric) {
+          setActiveMetric(directive.metric);
+        }
+        break;
+
+      case "focus":
+        if (directive.focus_residues) {
+          setFocusTargets(directive.focus_residues);
+          // Signal that we need to recenter the disc on these residues
+          setFocusRecenter({ residueIds: directive.focus_residues });
+        }
+        break;
+
       case "clear":
-        dispatch({ type: "clear" });
+        setHighlights([]);
+        setFocusTargets([]);
+        setFocusRecenter(null);
+        setAnnotations([]);
+        break;
+
+      case "annotate":
+        if (directive.message && directive.focus_residues?.length) {
+          const newAnnotations = directive.focus_residues.map((rid) => ({
+            residueId: rid,
+            text: directive.message!,
+          }));
+          setAnnotations((prev) => [...prev, ...newAnnotations]);
+        }
         break;
     }
-    if (directive.message) dispatch({ type: "set_message", msg: directive.message });
+
+    if (directive.message) {
+      setLastMessage(directive.message);
+      setTimeout(() => setLastMessage(null), 5000);
+    }
   }, []);
 
-  const clearHighlights = useCallback(() => dispatch({ type: "clear" }), []);
+  const clearHighlights = useCallback(() => {
+    setHighlights([]);
+    setFocusTargets([]);
+    setFocusRecenter(null);
+    setAnnotations([]);
+    setLastMessage(null);
+  }, []);
+
+  /** Consume and clear the pending focus-recenter request */
+  const consumeFocusRecenter = useCallback(() => {
+    setFocusRecenter(null);
+  }, []);
 
   return {
-    highlights: state.highlights,
-    focusTargets: state.focusTargets,
-    activeMetric: state.activeMetric,
-    annotations: state.annotations,
-    lastMessage: state.lastMessage,
+    highlights,
+    focusTargets,
+    focusRecenter,
+    activeMetric,
+    annotations,
+    lastMessage,
     applyDirective,
     clearHighlights,
+    consumeFocusRecenter,
   };
 }
 
-// Utility helpers consumed by visualizer components
-
-export function getHighlightColor(nodeId: string, highlights: Set<string>): string | null {
-  return highlights.has(nodeId) ? "#fbbf24" : null;
+/**
+ * Get the highlight color for a node, if it's in any highlight group.
+ */
+export function getHighlightColor(
+  nodeId: string,
+  highlights: HighlightEntry[]
+): string | null {
+  for (const group of highlights) {
+    if (group.residueIds.includes(nodeId)) {
+      return group.color;
+    }
+  }
+  return null;
 }
 
-export function shouldPulse(nodeId: string, focusTargets: string[]): boolean {
-  return focusTargets.includes(nodeId);
+/**
+ * Check if a node should pulse (based on highlight style).
+ */
+export function shouldPulse(
+  nodeId: string,
+  highlights: HighlightEntry[]
+): boolean {
+  for (const group of highlights) {
+    if (group.style === "pulse" && group.residueIds.includes(nodeId)) {
+      return true;
+    }
+  }
+  return false;
 }

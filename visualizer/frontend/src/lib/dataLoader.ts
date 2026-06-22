@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { NodeData, EdgeData } from "./math";
-import { depthToColor, generateMockGNNData } from "./math";
+import { hyperbolicDistance, generateMockGNNData } from "./math";
 
 const API_BASE =
   typeof window !== "undefined"
@@ -49,32 +49,27 @@ function parseEmbeddingResponse(data: Record<string, unknown>, pdbId: string): L
   const rawResidues = (data.residues as Record<string, unknown>[]) ?? [];
   const curvature = (data.curvature as number) ?? 1.0;
 
-  const nodes: NodeData[] = rawResidues.map((r) => {
+  const nodes: NodeData[] = rawResidues.map((r, i) => {
     const x = Number(r.x ?? 0);
     const y = Number(r.y ?? 0);
     const depth = Number(r.cone_depth ?? 0);
-    const epistemic = Number(r.epistemic_uncertainty ?? 0);
-    const aleatoric = Number(r.aleatoric_uncertainty ?? 0);
-    // Reconstruct z from depth and (x, y) — approximate equatorial lift
-    const r2 = Math.sqrt(Math.max(0, depth * depth - x * x - y * y));
+    const pos3D = new THREE.Vector3(x, y, 0);
+    if (pos3D.length() > 0.95) pos3D.setLength(0.95);
 
     return {
-      id: String(r.residue_id ?? ""),
-      position: new THREE.Vector3(x, y, r2),
+      id: String(r.residue_id ?? `res_${i}`),
+      position: pos3D,
       position2D: [x, y] as [number, number],
-      color: depthToColor(depth),
+      color: `hsl(${Math.round(200 + depth * 160)}, 70%, 50%)`,
+      domain: String(r.chain_label ?? ""),
+      isOutlier: depth > 0.8 && Number(r.epistemic_uncertainty ?? 0) > 0.6,
+      value: Number(r.epistemic_uncertainty ?? 0),
       depth,
-      value: depth,
-      isOutlier: depth > 0.75 && epistemic > 0.5,
-      domain: String(r.domain ?? r.chain_label ?? ""),
-      label: String(r.residue_name ?? ""),
-      epistemic,
-      aleatoric,
+      expertId: 0,
     };
   });
 
-  // Build sparse contact edges from spatial proximity (no edge data from API yet)
-  const edges: EdgeData[] = buildProximityEdges(nodes, 0.25);
+  const edges = buildKnnEdges(nodes, 4);
 
   return {
     nodes,
@@ -88,14 +83,15 @@ function parseEmbeddingResponse(data: Record<string, unknown>, pdbId: string): L
   };
 }
 
-function buildProximityEdges(nodes: NodeData[], threshold: number): EdgeData[] {
+function buildKnnEdges(nodes: NodeData[], k: number): EdgeData[] {
   const edges: EdgeData[] = [];
   for (let i = 0; i < nodes.length; i++) {
-    for (let j = i + 1; j < nodes.length; j++) {
-      const dx = nodes[i].position2D[0] - nodes[j].position2D[0];
-      const dy = nodes[i].position2D[1] - nodes[j].position2D[1];
-      if (dx * dx + dy * dy < threshold * threshold) {
-        edges.push({ source: nodes[i].id, target: nodes[j].id });
+    const dists = nodes
+      .map((n, idx) => ({ idx, d: hyperbolicDistance(nodes[i].position, n.position) }))
+      .sort((a, b) => a.d - b.d);
+    for (let j = 1; j <= k; j++) {
+      if (dists[j] && dists[j].idx > i) {
+        edges.push({ source: nodes[i].id, target: nodes[dists[j].idx].id, distance: dists[j].d });
       }
     }
   }
