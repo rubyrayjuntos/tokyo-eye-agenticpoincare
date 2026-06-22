@@ -76,9 +76,17 @@ services:
     volumes:
       - ./checkpoints:/app/checkpoints
       - ./checkpoints_v5:/app/checkpoints_v5
+      - ./checkpoints_v5_retrained:/app/checkpoints_v5_retrained
+      - ./checkpoints_v6:/app/checkpoints_v6
+      - ./checkpoints_v6_gumbel:/app/checkpoints_v6_gumbel
+      - ./checkpoints_v6_hybrid:/app/checkpoints_v6_hybrid
+      - ./checkpoints_v6_topo:/app/checkpoints_v6_topo
+      - ./checkpoints_v6_retrained:/app/checkpoints_v6_retrained
       - ./science:/app/science
       - ./data:/app/data
       - ./shared:/app/shared
+      - ./scripts:/app/scripts
+      - ./experiments:/app/experiments
     depends_on:
       db:
         condition: service_healthy
