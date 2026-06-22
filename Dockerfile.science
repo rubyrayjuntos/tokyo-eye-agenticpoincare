@@ -1,46 +1,69 @@
-# Science compute container — pinned heavy dependencies
+# Science compute container — pinned heavy dependencies, optimized for build cache and size
 # Used for: GNN inference, phase execution, training
 #
 # Build: docker build -f Dockerfile.science -t tokyoeye-science .
 # Run:   docker run --gpus all -v ./checkpoints:/app/checkpoints tokyoeye-science
 
-FROM pytorch/pytorch:2.3.1-cuda12.1-cudnn8-runtime
+FROM pytorch/pytorch:2.3.1-cuda12.1-cudnn8-runtime AS base
 
 WORKDIR /app
 
-# System deps for rdkit, gudhi, biotite, and AutoDock Vina (Phase 6b)
+# Install system deps for rdkit, gudhi, biotite, and AutoDock Vina (Phase 6b)
+# Group apt commands to minimize layers and reduce image size
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libboost-all-dev \
     libcgal-dev \
     wget \
-    && rm -rf /var/lib/apt/lists/*
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Install AutoDock Vina binary (Phase 6b: binding affinity docking)
+# Install AutoDock Vina binary (Phase 6b: binding affinity docking) in a separate layer
+# to allow caching of system deps
 RUN wget -q https://github.com/ccsb-scripps/AutoDock-Vina/releases/download/v1.2.5/vina_1.2.5_linux_x86_64 \
     -O /usr/local/bin/vina \
-    && chmod +x /usr/local/bin/vina
+    && chmod +x /usr/local/bin/vina \
+    && vina --version
 
 # Pin all heavy dependencies
 COPY requirements-science.txt .
 
+# Install PyG dependencies with correct CUDA wheels (separate step for caching)
 # torch-scatter and torch-sparse need prebuilt wheels matching PyTorch+CUDA version
-RUN pip install --no-cache-dir torch-scatter torch-sparse \
+RUN pip install --no-cache-dir --no-deps torch-scatter torch-sparse \
     -f https://data.pyg.org/whl/torch-2.3.1+cu121.html
 
+# Install remaining science dependencies
 RUN pip install --no-cache-dir -r requirements-science.txt
 
 # Copy the science code + data layer + shared utilities (needed for Normalizer, adapters)
-COPY science/ /app/science/
-COPY data/ /app/data/
+# Order from least to most frequently changed for better caching
 COPY shared/ /app/shared/
+COPY data/ /app/data/
 COPY experiments/ /app/experiments/
+COPY science/ /app/science/
 
-# Make the package importable
-ENV PYTHONPATH=/app
+# Set Python environment variables to reduce overhead
+ENV PYTHONPATH=/app \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONHASHSEED=random \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    # Reduce overhead from PyTorch
+    OMP_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    VECLIB_MAXIMUM_THREADS=1 \
+    NUMEXPR_NUM_THREADS=1 \
+    TORCH_NUM_THREADS=1
 
-# Run as non-root user
-RUN useradd -m -r appuser
+# Run as non-root user for security
+RUN useradd -m -r -s /sbin/nologin appuser
 USER appuser
+
+# Health check for orchestration (optional; remove if not needed in production)
+# HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+#   CMD python -c "import torch; print('OK')" || exit 1
 
 # Default: run the pipeline on a structure
 ENTRYPOINT ["python", "-m", "science.dtie.v5.orchestrator.pipeline"]
