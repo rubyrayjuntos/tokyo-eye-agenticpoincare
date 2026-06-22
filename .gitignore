@@ -12,6 +12,8 @@ eggs/
 .eggs/
 lib/
 lib64/
+# Frontend src/lib is TypeScript source, not a Python lib — don't ignore it
+!visualizer/frontend/src/lib/
 parts/
 sdist/
 var/
