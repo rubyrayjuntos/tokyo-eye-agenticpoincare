@@ -12,6 +12,9 @@ import { HydrationProvider } from "./context/HydrationProvider";
 import { DashboardContext } from "./lib/context";
 import { api } from "./lib/api";
 import { useViewportSocket } from "./lib/useViewportSocket";
+import { useActor } from "@xstate/react";
+import { viewportMachine } from "./lib/viewportMachine";
+import { useOrchestratorPolicy } from "./lib/useOrchestratorPolicy";
 import type {
   Structure,
   ViewportDirective,
@@ -60,6 +63,10 @@ export default function App() {
   });
   const [latestAgentTelemetry, setLatestAgentTelemetry] = useState<AgentChatResponse["telemetry"] | null>(null);
   const [agentSessionId, setAgentSessionId] = useState<string | null>(null);
+
+  // XState machines
+  const [viewportState, sendViewport] = useActor(viewportMachine);
+  const orchestrator = useOrchestratorPolicy(viewportState.context);
 
   const enterCompareMode = useCallback(
     (secondary: Structure) => {
@@ -184,6 +191,22 @@ export default function App() {
         setLatestAgentTelemetry,
         agentSessionId,
         setAgentSessionId,
+        discoveryContext: orchestrator.discoveryContext,
+        sendDiscovery: orchestrator.sendDiscovery,
+        hypothesisContext: orchestrator.hypothesisContext,
+        sendHypothesis: orchestrator.sendHypothesis,
+        plannerPolicy: orchestrator.plannerPolicy,
+        sessionMode: orchestrator.sessionMode,
+        setSessionMode: orchestrator.setSessionMode,
+        structureScope: orchestrator.structureScope,
+        setStructureScope: orchestrator.setStructureScope,
+        poincareColorMode,
+        viewerColorMode,
+        riskThreshold,
+        activePanel,
+        layoutModelJSON: null,
+        userSelectedResidue: null,
+        sendViewport,
       }}
     >
       <HydrationProvider>

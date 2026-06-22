@@ -1,8 +1,8 @@
 import React, { useState, ReactNode } from "react";
 import {
-  Group as PanelGroup,
+  PanelGroup,
   Panel,
-  Separator as PanelResizeHandle,
+  PanelResizeHandle,
 } from "react-resizable-panels";
 import { GripVertical } from "lucide-react";
 import clsx from "clsx";

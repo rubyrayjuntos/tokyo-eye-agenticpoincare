@@ -4,11 +4,7 @@
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
     "module": "ESNext",
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["vite/client"],
     "skipLibCheck": true,
     "moduleResolution": "bundler",
@@ -16,12 +12,16 @@
     "moduleDetection": "force",
     "allowJs": true,
     "jsx": "react-jsx",
-    "paths": {
-      "@/*": [
-        "./*"
-      ]
-    },
+    "paths": { "@/*": ["./*"] },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "include": ["src"],
+  "exclude": [
+    "src/lib/__tests__",
+    "src/components/Visualizer3D.tsx",
+    "src/components/Visualizer2D.tsx",
+    "src/components/ChatPanel.tsx",
+    "src/components/OverlayUI.tsx"
+  ]
 }
