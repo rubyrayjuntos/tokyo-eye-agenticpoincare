@@ -85,4 +85,4 @@ secrets/
 # Misc
 *.log
 *.tmp
-tmp/
+tmp/visualizer/frontend (Copy)/
