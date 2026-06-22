@@ -23,7 +23,7 @@ anthropic>=0.25.0
 # Transitive dependencies (pinned for reproducibility)
 # FastAPI ecosystem
 starlette==0.39.0
-pydantic-core==2.18.4
+pydantic-core==2.20.1
 typing-extensions==4.12.2
 
 # Uvicorn ecosystem
