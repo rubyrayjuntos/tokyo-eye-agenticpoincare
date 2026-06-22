@@ -1,6 +1,16 @@
+## Tokyo Eye — Full Stack
+## Usage: docker compose up        (or: make up)
+## Opens: http://localhost:3000    (React dashboard)
+##        http://localhost:8000    (Agent API — used by frontend)
+##
+## The science container stays idle until the agent dispatches work to it.
+
 services:
+  # ─── Database ───────────────────────────────────────────────────────────────
   db:
-    image: pgvector/pgvector:pg16
+    build:
+      context: .
+      dockerfile: Dockerfile.db
     container_name: tokyoeye_db
     environment:
       POSTGRES_DB: tokyoeye_dev
@@ -12,45 +22,13 @@ services:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U tokyoeye -d tokyoeye_dev"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
+      interval: 3s
+      timeout: 2s
+      retries: 10
 
-  science:
-    build:
-      context: .
-      dockerfile: Dockerfile.science
-    container_name: tokyoeye_science
-    environment:
-      DATABASE_URL: postgresql://tokyoeye:tokyoeye_dev_local@db:5432/tokyoeye_dev
-      CHECKPOINT_DIR: /app/checkpoints
-    volumes:
-      - ./checkpoints:/app/checkpoints
-      - ./checkpoints_v5:/app/checkpoints_v5
-      - ./checkpoints_v5_retrained:/app/checkpoints_v5_retrained
-      - ./checkpoints_v6:/app/checkpoints_v6
-      - ./checkpoints_v6_gumbel:/app/checkpoints_v6_gumbel
-      - ./checkpoints_v6_hybrid:/app/checkpoints_v6_hybrid
-      - ./checkpoints_v6_topo:/app/checkpoints_v6_topo
-      - ./science:/app/science
-      - ./data:/app/data
-      - ./scripts:/app/scripts
-      - ./shared:/app/shared
-      - ./experiments:/app/experiments
-    depends_on:
-      db:
-        condition: service_healthy
-    # No default command — used via docker compose run
-    entrypoint: ["python"]
-    command: ["-c", "print('Science container ready. Use: docker compose run science python -m ...')"]
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-
+  # ─── Agent API (FastAPI on port 8000) ───────────────────────────────────────
+  # Serves all REST endpoints + WebSocket viewport protocol.
+  # The frontend talks exclusively to this service.
   agent:
     build:
       context: .
@@ -63,6 +41,7 @@ services:
       JWT_SECRET: dev-secret-change-in-production
       REQUIRE_AUTH: "false"
       PORT: "8000"
+      ENVIRONMENT: dev
     ports:
       - "8000:8000"
     depends_on:
@@ -73,6 +52,64 @@ services:
       - ./data:/app/data
       - ./shared:/app/shared
       - ./science:/app/science
+      - ./docker-compose.yml:/app/docker-compose.yml:ro
+      - ./.env:/app/.env:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # ─── Science Container (GPU, idle until dispatched) ─────────────────────────
+  # The agent shells out to this via `docker compose run science python -m ...`
+  # It writes computed results directly to the shared database.
+  science:
+    build:
+      context: .
+      dockerfile: Dockerfile.science
+    container_name: tokyoeye_science
+    environment:
+      DATABASE_URL: postgresql://tokyoeye:tokyoeye_dev_local@db:5432/tokyoeye_dev
+      CHECKPOINT_DIR: /app/checkpoints
+    volumes:
+      - ./checkpoints:/app/checkpoints
+      - ./checkpoints_v5:/app/checkpoints_v5
+      - ./science:/app/science
+      - ./data:/app/data
+      - ./shared:/app/shared
+    depends_on:
+      db:
+        condition: service_healthy
+    # Stays idle — agent dispatches work via `docker compose run --rm science ...`
+    entrypoint: ["python"]
+    command: ["-c", "import time; print('Science container ready.'); time.sleep(999999)"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ─── Frontend (React dashboard on port 3000) ────────────────────────────────
+  # NOTE: For local dev, run `make dev-frontend` directly (Vite native, faster).
+  # This container is for production-like builds or CI only.
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: tokyoeye_frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./visualizer/frontend/src:/app/src
+    depends_on:
+      agent:
+        condition: service_healthy
+    profiles:
+      - full  # Only starts with: docker compose --profile full up
 
 volumes:
   pgdata:

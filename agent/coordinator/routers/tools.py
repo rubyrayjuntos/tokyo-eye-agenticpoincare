@@ -41,7 +41,6 @@ class PhaseRequest(BaseModel):
 
 class PipelineRequest(BaseModel):
     structure_id: str
-    source_leak_only: bool = False
     checkpoint_path: str | None = None
 
 
@@ -84,7 +83,6 @@ async def api_run_pipeline(req: PipelineRequest, user: dict = Depends(get_curren
         orchestrator = DTIEOrchestrator(db=db)
         config = PipelineConfig(
             structure_id=req.structure_id,
-            source_leak_only=req.source_leak_only,
             checkpoint_path=req.checkpoint_path,
         )
         result = await orchestrator.run(config)

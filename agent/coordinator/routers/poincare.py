@@ -54,6 +54,9 @@ async def get_poincare_data(
             x, y = 0.0, 0.0
             if r.get("hyp_projection_2d"):
                 coords = r["hyp_projection_2d"]
+                # pgvector returns a string like "[0.1,-0.2]" — parse it
+                if isinstance(coords, str):
+                    coords = [float(v) for v in coords.strip("[]").split(",")]
                 x, y = float(coords[0]), float(coords[1])
             elif r.get("hyp_projections"):
                 proj = r["hyp_projections"]

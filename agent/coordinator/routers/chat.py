@@ -95,8 +95,10 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
     # Push directives to connected viewers
     if directives and session_id:
         for d in directives:
+            directive_payload = d.model_dump(mode="json")
             await viewport_manager.send_to_session(
-                session_id, {"type": "semantic_command", "directive": d.model_dump(mode="json")}
+                session_id,
+                {"type": "semantic_command", **directive_payload},
             )
 
     return ChatResponse(
