@@ -500,45 +500,20 @@ async def get_kpis():
 
 
 async def _run_pipeline_background(job_id: str, structure_id: str) -> None:
-    """Background task: GNN first, then parallel post-GNN stages.
+    """Background task: delegate the full DTIE pipeline to the science API.
 
-    Execution order:
-    1. GNN inference (required first — produces embeddings)
-    2. In parallel: source-leak pipeline, cryptic scan, motif analysis
-    3. Mark complete
-
-    Progress is not simulated — status reflects actual compute state.
+    The science container owns orchestration of GNN inference and downstream
+    phases. The agent router tracks job lifecycle only, instead of re-running
+    sub-stage orchestration itself.
     """
     from agent.tools.science_client import ScienceClient, ScienceComputeError, ScienceTimeoutError
 
-    _update_job(job_id, status="running", current_step="gnn_inference", progress=0)
-    await _update_job_db(job_id, status="running", current_step="gnn_inference", progress=0)
+    _update_job(job_id, status="running", current_step="pipeline", progress=0)
+    await _update_job_db(job_id, status="running", current_step="pipeline", progress=0)
 
     try:
         client = ScienceClient()
-
-        # Phase 1: GNN inference (must complete before downstream)
-        await client.run_gnn(structure_id=structure_id)
-
-        _update_job(job_id, current_step="post_gnn_parallel", progress=40)
-        await _update_job_db(job_id, current_step="post_gnn_parallel", progress=40)
-
-        # Phase 2: Parallel post-GNN stages (all depend on embeddings, not each other)
-        results = await asyncio.gather(
-            client.run_pipeline(structure_id=structure_id, source_leak_only=True),
-            client.run_graph_topology(structure_id=structure_id),
-            client.run_cryptic_scan(structure_id=structure_id),
-            client.run_motif_analysis(structure_id=structure_id),
-            return_exceptions=True,
-        )
-
-        # Log any partial failures (non-fatal — structure is still usable)
-        warnings = []
-        stage_names = ["source_leak_pipeline", "graph_topology", "cryptic_scan", "motif_analysis"]
-        for name, result in zip(stage_names, results):
-            if isinstance(result, Exception):
-                warnings.append(f"{name}: {result}")
-                logger.warning("Post-GNN stage %s failed for %s: %s", name, structure_id, result)
+        await client.run_pipeline(structure_id=structure_id)
 
         _update_job(
             job_id,
@@ -1303,7 +1278,7 @@ async def _fetch_buffering_atlas(structure_id: str, db) -> dict[str, Any] | None
         {"sid": structure_id},
     )
 
-    if phase_row and phase_row.get("output_data"):
+    if isinstance(phase_row, dict) and phase_row.get("output_data"):
         outs = phase_row["output_data"]
         if isinstance(outs, str):
             import json

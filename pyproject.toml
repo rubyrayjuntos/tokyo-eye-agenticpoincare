@@ -34,6 +34,9 @@ science = [
     "rdkit>=2024.03",
     "scipy>=1.13,<2",
     "scikit-learn>=1.5,<2",
+    "scikit-learn-extra>=0.3,<1",
+    "hdbscan>=0.8,<0.8.41",
+    "openmm>=8.5,<9",
     "pandas>=2.2,<3",
     "networkx>=3.3,<4",
 ]

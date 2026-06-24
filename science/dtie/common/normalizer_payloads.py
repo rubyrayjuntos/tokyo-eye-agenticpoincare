@@ -27,6 +27,7 @@ def _utcnow() -> datetime:
 class SourceType(str, Enum):
     """Classification of how a data point was produced."""
 
+    EMPIRICAL = "empirical"
     DETERMINISTIC = "deterministic"
     PROBABILISTIC = "probabilistic"
     EXTERNAL = "external"

@@ -29,6 +29,10 @@ class AuditTrackingDB:
     async def execute(self, query: str, params: dict[str, Any]) -> None:
         table = self._extract_table(query)
         if table == "normalization_audit":
+            payload_summary = params.get("payload_summary")
+            if hasattr(payload_summary, "obj"):
+                params = dict(params)
+                params["payload_summary"] = payload_summary.obj
             self.audit_logs.append(params)
         elif table:
             self.tables.setdefault(table, []).append(params)

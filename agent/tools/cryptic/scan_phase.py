@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from psycopg.types.json import Json
+
 from agent.tools.cryptic.pocket_detector import detect_surface_pockets
 from agent.tools.cryptic.seed_generator import (
     CandidateCluster,
@@ -259,7 +261,7 @@ async def _persist_scan_candidates(
             "site_id": c.site_id,
             "structure_id": structure_id,
             "run_id": run_id,
-            "residue_ids": c.residue_ids,
+            "residue_ids": Json(c.residue_ids),
             "centroid_x": c.centroid_xyz[0],
             "centroid_y": c.centroid_xyz[1],
             "centroid_z": c.centroid_xyz[2],
@@ -346,7 +348,7 @@ async def _persist_scan_metadata(
             "run_id": run_id,
             "heuristic_version": heuristic_version,
             "model_version": model_version,
-            "scan_parameters": scan_parameters,
+            "scan_parameters": Json(scan_parameters),
             "sites_found": sites_found,
             "duration_ms": duration_ms,
             "status": status,

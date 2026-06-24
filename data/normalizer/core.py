@@ -25,6 +25,7 @@ import asyncio
 
 from psycopg.types.json import Json
 
+from science.dtie.common.ingest_payloads import AlignmentPayload, IngestDimensionPayload
 from science.dtie.common.keys import make_residue_id, validate_residue_id
 from science.dtie.common.normalizer_payloads import (
     AllostericSitePayload,
@@ -276,6 +277,457 @@ class Normalizer:
             prov.structure_id,
             len(payload.nodes),
             duration_ms,
+        )
+
+        return NormalizerResult(
+            success=True,
+            run_id=prov.run_id,
+            assets_created=len(asset_ids),
+            asset_ids=asset_ids,
+            warnings=warnings,
+        )
+
+    # ------------------------------------------------------------------
+    # Path 1b: Structure Ingestion + Alignment
+    # ------------------------------------------------------------------
+
+    async def normalize_ingest_dimensions(
+        self, payload: IngestDimensionPayload
+    ) -> NormalizerResult:
+        """Persist structure dimensions from the BinaryCIF ingest pipeline.
+
+        The core dimensions (structure, chains, residues) are required and fail
+        the normalization if they cannot be written. Later high-volume stages
+        (atoms, covalent bonds) degrade to warnings so recovered ingest runs do
+        not discard already-persisted dimensions.
+        """
+        start_time = time.monotonic()
+        warnings: list[str] = []
+        prov = payload.provenance
+        asset_ids: list[str] = []
+
+        try:
+            await self._db.begin()
+
+            await self._db.execute(
+                """
+                INSERT INTO dim_structure (
+                    structure_id, pdb_id, method, resolution, source,
+                    deposited_date, title, organism, release_date,
+                    polymer_composition, r_factor, r_free, model_count,
+                    assembly_id, updated_at
+                ) VALUES (
+                    :structure_id, :pdb_id, :method, :resolution, :source,
+                    :deposited_date, :title, :organism, :release_date,
+                    :polymer_composition, :r_factor, :r_free, :model_count,
+                    :assembly_id, :updated_at
+                )
+                ON CONFLICT (structure_id) DO UPDATE SET
+                    pdb_id = EXCLUDED.pdb_id,
+                    method = EXCLUDED.method,
+                    resolution = EXCLUDED.resolution,
+                    source = EXCLUDED.source,
+                    deposited_date = EXCLUDED.deposited_date,
+                    title = EXCLUDED.title,
+                    organism = EXCLUDED.organism,
+                    release_date = EXCLUDED.release_date,
+                    polymer_composition = EXCLUDED.polymer_composition,
+                    r_factor = EXCLUDED.r_factor,
+                    r_free = EXCLUDED.r_free,
+                    model_count = EXCLUDED.model_count,
+                    assembly_id = EXCLUDED.assembly_id,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                {
+                    "structure_id": payload.structure.structure_id,
+                    "pdb_id": payload.structure.pdb_id,
+                    "method": payload.structure.method,
+                    "resolution": payload.structure.resolution,
+                    "source": payload.structure.source,
+                    "deposited_date": payload.structure.release_date,
+                    "title": payload.structure.title,
+                    "organism": payload.structure.organism,
+                    "release_date": payload.structure.release_date,
+                    "polymer_composition": payload.structure.polymer_composition,
+                    "r_factor": payload.structure.r_factor,
+                    "r_free": payload.structure.r_free,
+                    "model_count": payload.structure.model_count,
+                    "assembly_id": payload.structure.assembly_id,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            asset_ids.append(payload.structure.structure_id)
+
+            if payload.chains:
+                await self._db.execute_many(
+                    """
+                    INSERT INTO dim_chain (
+                        chain_id, structure_id, chain_label, label_asym_id,
+                        entity_id, entity_type, sequence_length,
+                        uniprot_accession, uniprot_start, uniprot_end,
+                        is_entity_duplicate, is_representative
+                    ) VALUES (
+                        :chain_id, :structure_id, :chain_label, :label_asym_id,
+                        :entity_id, :entity_type, :sequence_length,
+                        :uniprot_accession, :uniprot_start, :uniprot_end,
+                        :is_entity_duplicate, :is_representative
+                    )
+                    ON CONFLICT (chain_id) DO UPDATE SET
+                        structure_id = EXCLUDED.structure_id,
+                        chain_label = EXCLUDED.chain_label,
+                        label_asym_id = EXCLUDED.label_asym_id,
+                        entity_id = EXCLUDED.entity_id,
+                        entity_type = EXCLUDED.entity_type,
+                        sequence_length = EXCLUDED.sequence_length,
+                        uniprot_accession = EXCLUDED.uniprot_accession,
+                        uniprot_start = EXCLUDED.uniprot_start,
+                        uniprot_end = EXCLUDED.uniprot_end,
+                        is_entity_duplicate = EXCLUDED.is_entity_duplicate,
+                        is_representative = EXCLUDED.is_representative
+                    """,
+                    [
+                        {
+                            "chain_id": chain.chain_id,
+                            "structure_id": chain.structure_id,
+                            "chain_label": chain.auth_asym_id,
+                            "label_asym_id": chain.label_asym_id,
+                            "entity_id": chain.entity_id,
+                            "entity_type": chain.entity_type,
+                            "sequence_length": chain.sequence_length,
+                            "uniprot_accession": chain.uniprot_accession,
+                            "uniprot_start": chain.uniprot_start,
+                            "uniprot_end": chain.uniprot_end,
+                            "is_entity_duplicate": chain.is_entity_duplicate,
+                            "is_representative": chain.is_representative,
+                        }
+                        for chain in payload.chains
+                    ],
+                )
+                asset_ids.extend(chain.chain_id for chain in payload.chains)
+
+            if payload.residues:
+                await self._db.execute_many(
+                    """
+                    INSERT INTO dim_residue (
+                        residue_id, chain_id, residue_index, label_seq_id,
+                        insertion_code, residue_name, residue_name_3, comp_id,
+                        parent_comp_id, sse_code, is_resolved, is_modified,
+                        max_b_factor, low_confidence_coords, partial_backbone,
+                        updated_at
+                    ) VALUES (
+                        :residue_id, :chain_id, :residue_index, :label_seq_id,
+                        :insertion_code, :residue_name, :residue_name_3, :comp_id,
+                        :parent_comp_id, :sse_code, :is_resolved, :is_modified,
+                        :max_b_factor, :low_confidence_coords, :partial_backbone,
+                        :updated_at
+                    )
+                    ON CONFLICT (residue_id) DO UPDATE SET
+                        chain_id = EXCLUDED.chain_id,
+                        residue_index = EXCLUDED.residue_index,
+                        label_seq_id = EXCLUDED.label_seq_id,
+                        insertion_code = EXCLUDED.insertion_code,
+                        residue_name = EXCLUDED.residue_name,
+                        residue_name_3 = EXCLUDED.residue_name_3,
+                        comp_id = EXCLUDED.comp_id,
+                        parent_comp_id = EXCLUDED.parent_comp_id,
+                        sse_code = EXCLUDED.sse_code,
+                        is_resolved = EXCLUDED.is_resolved,
+                        is_modified = EXCLUDED.is_modified,
+                        max_b_factor = EXCLUDED.max_b_factor,
+                        low_confidence_coords = EXCLUDED.low_confidence_coords,
+                        partial_backbone = EXCLUDED.partial_backbone,
+                        updated_at = EXCLUDED.updated_at
+                    """,
+                    [
+                        {
+                            "residue_id": residue.residue_id,
+                            "chain_id": residue.chain_id,
+                            "residue_index": residue.residue_index,
+                            "label_seq_id": residue.label_seq_id,
+                            "insertion_code": residue.insertion_code,
+                            "residue_name": residue.residue_name,
+                            "residue_name_3": residue.residue_name_3,
+                            "comp_id": residue.comp_id,
+                            "parent_comp_id": residue.parent_comp_id,
+                            "sse_code": residue.sse_code,
+                            "is_resolved": residue.is_resolved,
+                            "is_modified": residue.is_modified,
+                            "max_b_factor": residue.max_b_factor,
+                            "low_confidence_coords": residue.low_confidence_coords,
+                            "partial_backbone": residue.partial_backbone,
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                        for residue in payload.residues
+                    ],
+                )
+                asset_ids.extend(residue.residue_id for residue in payload.residues)
+
+            await self._db.commit()
+            await self._ensure_provenance_run(prov)
+
+        except Exception as e:
+            await self._db.rollback()
+            await self._log_audit(
+                run_id=prov.run_id,
+                structure_id=prov.structure_id,
+                payload_type="ingest_dimensions",
+                status="write_error",
+                error_message=str(e),
+                duration_ms=self._elapsed_ms(start_time),
+                payload_summary={
+                    "chain_count": len(payload.chains),
+                    "residue_count": len(payload.residues),
+                    "atom_count": len(payload.atoms),
+                    "bond_count": len(payload.covalent_bonds),
+                },
+            )
+            raise NormalizerError(
+                f"Failed to write ingest dimensions: {e}",
+                run_id=prov.run_id,
+                details=str(e),
+            ) from e
+
+        if payload.atoms:
+            try:
+                await self._db.begin()
+                await self._db.execute_many(
+                    """
+                    INSERT INTO dim_atom (
+                        atom_id, residue_id, atom_name, element, x, y, z,
+                        occupancy, b_factor, altloc, is_hetero, model_id
+                    ) VALUES (
+                        :atom_id, :residue_id, :atom_name, :element, :x, :y, :z,
+                        :occupancy, :b_factor, :altloc, :is_hetero, :model_id
+                    )
+                    ON CONFLICT (atom_id) DO UPDATE SET
+                        residue_id = EXCLUDED.residue_id,
+                        atom_name = EXCLUDED.atom_name,
+                        element = EXCLUDED.element,
+                        x = EXCLUDED.x,
+                        y = EXCLUDED.y,
+                        z = EXCLUDED.z,
+                        occupancy = EXCLUDED.occupancy,
+                        b_factor = EXCLUDED.b_factor,
+                        altloc = EXCLUDED.altloc,
+                        is_hetero = EXCLUDED.is_hetero,
+                        model_id = EXCLUDED.model_id
+                    """,
+                    [
+                        {
+                            "atom_id": atom.atom_id,
+                            "residue_id": atom.residue_id,
+                            "atom_name": atom.atom_name,
+                            "element": atom.element,
+                            "x": atom.x,
+                            "y": atom.y,
+                            "z": atom.z,
+                            "occupancy": atom.occupancy,
+                            "b_factor": atom.b_factor,
+                            "altloc": atom.altloc,
+                            "is_hetero": atom.is_hetero,
+                            "model_id": atom.model_id,
+                        }
+                        for atom in payload.atoms
+                    ],
+                )
+                await self._db.commit()
+                asset_ids.extend(atom.atom_id for atom in payload.atoms)
+            except Exception as e:
+                await self._db.rollback()
+                warnings.append(f"dim_atom write skipped after failure: {e}")
+
+        if payload.covalent_bonds:
+            try:
+                await self._db.begin()
+                await self._db.execute_many(
+                    """
+                    INSERT INTO fact_covalent_bond (
+                        structure_id, residue_id_1, residue_id_2,
+                        atom_name_1, atom_name_2, bond_type, run_id
+                    ) VALUES (
+                        :structure_id, :residue_id_1, :residue_id_2,
+                        :atom_name_1, :atom_name_2, :bond_type, :run_id
+                    )
+                    ON CONFLICT (structure_id, residue_id_1, residue_id_2, bond_type) DO UPDATE SET
+                        atom_name_1 = EXCLUDED.atom_name_1,
+                        atom_name_2 = EXCLUDED.atom_name_2,
+                        run_id = EXCLUDED.run_id
+                    """,
+                    [
+                        {
+                            "structure_id": prov.structure_id,
+                            "residue_id_1": bond.residue_id_1,
+                            "residue_id_2": bond.residue_id_2,
+                            "atom_name_1": bond.atom_name_1,
+                            "atom_name_2": bond.atom_name_2,
+                            "bond_type": bond.bond_type,
+                            "run_id": prov.run_id,
+                        }
+                        for bond in payload.covalent_bonds
+                    ],
+                )
+                await self._db.commit()
+                asset_ids.extend(
+                    f"bond:{prov.structure_id}:{bond.residue_id_1}:{bond.residue_id_2}:{bond.bond_type}"
+                    for bond in payload.covalent_bonds
+                )
+            except Exception as e:
+                await self._db.rollback()
+                warnings.append(f"fact_covalent_bond write skipped after failure: {e}")
+
+        duration_ms = self._elapsed_ms(start_time)
+        await self._log_audit(
+            run_id=prov.run_id,
+            structure_id=prov.structure_id,
+            payload_type="ingest_dimensions",
+            status="success",
+            assets_created=len(asset_ids),
+            duration_ms=duration_ms,
+            payload_summary={
+                "chain_count": len(payload.chains),
+                "residue_count": len(payload.residues),
+                "atom_count": len(payload.atoms),
+                "bond_count": len(payload.covalent_bonds),
+                "file_hash": payload.file_hash,
+            },
+        )
+
+        return NormalizerResult(
+            success=True,
+            run_id=prov.run_id,
+            assets_created=len(asset_ids),
+            asset_ids=asset_ids,
+            warnings=warnings,
+        )
+
+    async def normalize_alignment(self, payload: AlignmentPayload) -> NormalizerResult:
+        """Persist residue-level and structure-level alignment outputs."""
+        start_time = time.monotonic()
+        warnings: list[str] = []
+        prov = payload.provenance
+        asset_ids: list[str] = []
+
+        await self._ensure_provenance_run(prov)
+
+        try:
+            await self._db.begin()
+            if payload.residue_alignments:
+                await self._db.execute_many(
+                    """
+                    INSERT INTO fact_residue_alignment (
+                        residue_id, uniprot_accession, uniprot_position,
+                        isoform_id, mapping_source, mapping_confidence,
+                        reason_code, run_id
+                    ) VALUES (
+                        :residue_id, :uniprot_accession, :uniprot_position,
+                        :isoform_id, :mapping_source, :mapping_confidence,
+                        :reason_code, :run_id
+                    )
+                    ON CONFLICT (residue_id, uniprot_accession, run_id) DO UPDATE SET
+                        uniprot_position = EXCLUDED.uniprot_position,
+                        isoform_id = EXCLUDED.isoform_id,
+                        mapping_source = EXCLUDED.mapping_source,
+                        mapping_confidence = EXCLUDED.mapping_confidence,
+                        reason_code = EXCLUDED.reason_code
+                    """,
+                    [
+                        {
+                            "residue_id": record.residue_id,
+                            "uniprot_accession": record.uniprot_accession,
+                            "uniprot_position": record.uniprot_position,
+                            "isoform_id": record.isoform_id,
+                            "mapping_source": record.mapping_source,
+                            "mapping_confidence": record.mapping_confidence,
+                            "reason_code": record.reason_code,
+                            "run_id": prov.run_id,
+                        }
+                        for record in payload.residue_alignments
+                    ],
+                )
+                asset_ids.extend(
+                    f"alignment:{prov.run_id}:{record.residue_id}:{record.uniprot_accession}"
+                    for record in payload.residue_alignments
+                )
+            await self._db.commit()
+        except Exception as e:
+            await self._db.rollback()
+            await self._log_audit(
+                run_id=prov.run_id,
+                structure_id=prov.structure_id,
+                payload_type="alignment",
+                status="write_error",
+                error_message=str(e),
+                duration_ms=self._elapsed_ms(start_time),
+                payload_summary={"residue_alignment_count": len(payload.residue_alignments)},
+            )
+            raise NormalizerError(
+                f"Failed to write residue alignments: {e}",
+                run_id=prov.run_id,
+                details=str(e),
+            ) from e
+
+        if payload.structural_alignments:
+            try:
+                await self._db.begin()
+                await self._db.execute_many(
+                    """
+                    INSERT INTO fact_structural_alignment (
+                        query_structure_id, reference_structure_id,
+                        uniprot_accession, rotation_matrix, translation,
+                        rmsd, aligned_residue_count, comparable_core,
+                        protocol_version, run_id
+                    ) VALUES (
+                        :query_structure_id, :reference_structure_id,
+                        :uniprot_accession, :rotation_matrix, :translation,
+                        :rmsd, :aligned_residue_count, :comparable_core,
+                        :protocol_version, :run_id
+                    )
+                    ON CONFLICT (query_structure_id, reference_structure_id, uniprot_accession, run_id)
+                    DO UPDATE SET
+                        rotation_matrix = EXCLUDED.rotation_matrix,
+                        translation = EXCLUDED.translation,
+                        rmsd = EXCLUDED.rmsd,
+                        aligned_residue_count = EXCLUDED.aligned_residue_count,
+                        comparable_core = EXCLUDED.comparable_core,
+                        protocol_version = EXCLUDED.protocol_version
+                    """,
+                    [
+                        {
+                            "query_structure_id": record.query_structure_id,
+                            "reference_structure_id": record.reference_structure_id,
+                            "uniprot_accession": record.uniprot_accession,
+                            "rotation_matrix": [value for row in record.rotation_matrix for value in row],
+                            "translation": record.translation,
+                            "rmsd": record.rmsd,
+                            "aligned_residue_count": record.aligned_residue_count,
+                            "comparable_core": Json(record.comparable_core),
+                            "protocol_version": record.protocol_version,
+                            "run_id": prov.run_id,
+                        }
+                        for record in payload.structural_alignments
+                    ],
+                )
+                await self._db.commit()
+                asset_ids.extend(
+                    f"structural_alignment:{prov.run_id}:{record.query_structure_id}:{record.reference_structure_id}:{record.uniprot_accession}"
+                    for record in payload.structural_alignments
+                )
+            except Exception as e:
+                await self._db.rollback()
+                warnings.append(f"fact_structural_alignment write skipped after failure: {e}")
+
+        duration_ms = self._elapsed_ms(start_time)
+        await self._log_audit(
+            run_id=prov.run_id,
+            structure_id=prov.structure_id,
+            payload_type="alignment",
+            status="success",
+            assets_created=len(asset_ids),
+            duration_ms=duration_ms,
+            payload_summary={
+                "residue_alignment_count": len(payload.residue_alignments),
+                "structural_alignment_count": len(payload.structural_alignments or []),
+            },
         )
 
         return NormalizerResult(
@@ -2074,7 +2526,7 @@ class Normalizer:
                 "pipeline_name": prov.pipeline_name,
                 "run_type": prov.run_type.value,
                 "source_type": prov.source_type.value,
-                "parameters": prov.parameters,
+                "parameters": Json(prov.parameters) if prov.parameters is not None else None,
                 "parent_run_id": prov.parent_run_id,
                 "started_at": datetime.now(timezone.utc).isoformat(),
             },
@@ -2244,11 +2696,6 @@ class Normalizer:
         This is fire-and-forget — audit failures should not block the
         primary write path.
         """
-        import json as _json
-
-        # psycopg3 does not auto-serialize dicts to JSONB — must be explicit
-        summary_json = _json.dumps(payload_summary) if payload_summary is not None else None
-
         try:
             await self._db.execute(
                 """
@@ -2269,7 +2716,7 @@ class Normalizer:
                     "status": status,
                     "assets_created": assets_created,
                     "error_message": error_message,
-                    "payload_summary": summary_json,
+                    "payload_summary": Json(payload_summary) if payload_summary is not None else None,
                     "duration_ms": duration_ms,
                     "caller_identity": self._caller_identity,
                 },

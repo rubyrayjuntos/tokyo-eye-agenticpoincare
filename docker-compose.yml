@@ -52,6 +52,7 @@ services:
       - ./checkpoints_v6_topo:/app/checkpoints_v6_topo
       - ./checkpoints_v6_retrained:/app/checkpoints_v6_retrained
       - ./science:/app/science
+      - ./agent:/app/agent
       - ./data:/app/data
       - ./shared:/app/shared
       - ./scripts:/app/scripts
