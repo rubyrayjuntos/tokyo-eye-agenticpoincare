@@ -55,9 +55,11 @@ async def _get_cached_science_status() -> bool:
     now = time.time()
     if _science_status_cache["available"] is None or (now - _science_status_cache["checked_at"]) > _SCIENCE_CHECK_INTERVAL:
         try:
-            from agent.tools.science_dispatch import check_science_container
-            check = await asyncio.wait_for(check_science_container(), timeout=10.0)
-            _science_status_cache["available"] = check.get("success", False)
+            from agent.tools.science_client import ScienceClient
+
+            client = ScienceClient()
+            health = await asyncio.wait_for(client.health(), timeout=10.0)
+            _science_status_cache["available"] = health.get("status") == "ok"
         except Exception:
             _science_status_cache["available"] = False
         _science_status_cache["checked_at"] = now
@@ -498,57 +500,88 @@ async def get_kpis():
 
 
 async def _run_pipeline_background(job_id: str, structure_id: str) -> None:
-    """Background task that runs the science container pipeline."""
-    from agent.tools.science_dispatch import run_full_pipeline_via_container
+    """Background task: GNN first, then parallel post-GNN stages.
 
-    _update_job(job_id, status="running", current_step="ingestion", progress=10)
-    await _update_job_db(job_id, status="running", current_step="ingestion", progress=10)
+    Execution order:
+    1. GNN inference (required first — produces embeddings)
+    2. In parallel: source-leak pipeline, cryptic scan, motif analysis
+    3. Mark complete
+
+    Progress is not simulated — status reflects actual compute state.
+    """
+    from agent.tools.science_client import ScienceClient, ScienceComputeError, ScienceTimeoutError
+
+    _update_job(job_id, status="running", current_step="gnn_inference", progress=0)
+    await _update_job_db(job_id, status="running", current_step="gnn_inference", progress=0)
 
     try:
-        # Step through pipeline stages
-        for i, step in enumerate(PIPELINE_STEPS[:-1]):  # exclude "complete"
-            _update_job(
-                job_id,
-                current_step=step,
-                progress=int((i + 1) / len(PIPELINE_STEPS) * 100),
-            )
-            await _update_job_db(
-                job_id,
-                current_step=step,
-                progress=int((i + 1) / len(PIPELINE_STEPS) * 100),
-            )
+        client = ScienceClient()
 
-        # Actually run the pipeline
-        result = await run_full_pipeline_via_container(structure_id=structure_id)
+        # Phase 1: GNN inference (must complete before downstream)
+        await client.run_gnn(structure_id=structure_id)
 
-        if result.get("success"):
-            _update_job(
-                job_id,
-                status="complete",
-                current_step="complete",
-                progress=100,
-                completed_at=datetime.now(timezone.utc).isoformat(),
-            )
-            await _update_job_db(
-                job_id,
-                status="complete",
-                current_step="complete",
-                progress=100,
-                completed_at=datetime.now(timezone.utc).isoformat(),
-            )
-        else:
-            _update_job(
-                job_id,
-                status="failed",
-                error=result.get("error", "Unknown pipeline error"),
-                completed_at=datetime.now(timezone.utc).isoformat(),
-            )
-            await _update_job_db(
-                job_id,
-                status="failed",
-                error=result.get("error", "Unknown pipeline error"),
-                completed_at=datetime.now(timezone.utc).isoformat(),
-            )
+        _update_job(job_id, current_step="post_gnn_parallel", progress=40)
+        await _update_job_db(job_id, current_step="post_gnn_parallel", progress=40)
+
+        # Phase 2: Parallel post-GNN stages (all depend on embeddings, not each other)
+        results = await asyncio.gather(
+            client.run_pipeline(structure_id=structure_id, source_leak_only=True),
+            client.run_graph_topology(structure_id=structure_id),
+            client.run_cryptic_scan(structure_id=structure_id),
+            client.run_motif_analysis(structure_id=structure_id),
+            return_exceptions=True,
+        )
+
+        # Log any partial failures (non-fatal — structure is still usable)
+        warnings = []
+        stage_names = ["source_leak_pipeline", "graph_topology", "cryptic_scan", "motif_analysis"]
+        for name, result in zip(stage_names, results):
+            if isinstance(result, Exception):
+                warnings.append(f"{name}: {result}")
+                logger.warning("Post-GNN stage %s failed for %s: %s", name, structure_id, result)
+
+        _update_job(
+            job_id,
+            status="complete",
+            current_step="complete",
+            progress=100,
+            completed_at=datetime.now(timezone.utc).isoformat(),
+        )
+        await _update_job_db(
+            job_id,
+            status="complete",
+            current_step="complete",
+            progress=100,
+            completed_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    except ScienceTimeoutError as e:
+        _update_job(
+            job_id,
+            status="timed_out",
+            error=str(e),
+            completed_at=datetime.now(timezone.utc).isoformat(),
+        )
+        await _update_job_db(
+            job_id,
+            status="timed_out",
+            error=str(e),
+            completed_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    except ScienceComputeError as e:
+        _update_job(
+            job_id,
+            status="failed",
+            error=e.detail,
+            completed_at=datetime.now(timezone.utc).isoformat(),
+        )
+        await _update_job_db(
+            job_id,
+            status="failed",
+            error=e.detail,
+            completed_at=datetime.now(timezone.utc).isoformat(),
+        )
 
     except Exception as e:
         _update_job(

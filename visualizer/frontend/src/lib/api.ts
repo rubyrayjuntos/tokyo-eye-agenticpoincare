@@ -37,10 +37,14 @@ import type {
   CompareGraphDiffResult,
 } from "./types";
 
+// In development, use relative paths so requests go through Vite's proxy.
+// In production (or when VITE_API_URL is set), use the explicit URL.
 const DEFAULT_API_BASE =
-  typeof window !== "undefined"
-    ? `${window.location.protocol}//${window.location.hostname}:8000`
-    : "http://localhost:8000";
+  typeof window !== "undefined" && import.meta.env.DEV
+    ? ""  // relative — Vite proxy handles /api → http://localhost:8000
+    : typeof window !== "undefined"
+      ? `${window.location.protocol}//${window.location.hostname}:8000`
+      : "http://localhost:8000";
 
 const BASE_URL = import.meta.env.VITE_API_URL || DEFAULT_API_BASE;
 

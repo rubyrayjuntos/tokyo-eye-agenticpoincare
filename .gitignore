@@ -96,3 +96,22 @@ data_backup_*/
 science_backup_*/
 visualizer/frontend/*.webm
 visualizer/frontend-refactor/
+
+# Keep only the canonical ingest/normalize/alignment package roots
+science/dtie/alignment/alignment/
+science/dtie/ingest/ingest/
+science/dtie/normalize/normalize/
+
+# Vendored rcsbapi runtime subset only; exclude docs, samples, and auxiliary apps
+rcsbapi_local/backend/
+rcsbapi_local/data/
+rcsbapi_local/docs/
+rcsbapi_local/frontend/
+rcsbapi_local/gcp/
+rcsbapi_local/notebooks/
+rcsbapi_local/pylintrc
+rcsbapi_local/tox.ini
+rcsbapi_local/tests/
+rcsbapi_local/viewer/
+rcsbapi_local/.gitignore
+rcsbapi_local/RESIDUE_ID_KEY_STRATEGY.md

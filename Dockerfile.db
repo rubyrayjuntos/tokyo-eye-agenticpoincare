@@ -1,7 +1,23 @@
 FROM pgvector/pgvector:pg16
 
+# Install plpython3u (for native hyperbolic geometry UDFs),
+# numpy (for numerical stability in Lorentz math),
+# pg_cron (for scheduled materialized view refresh),
+# and pg_trgm is built-in but we ensure it's available.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         postgresql-plpython3-16 \
+        postgresql-16-cron \
         python3-numpy \
     && rm -rf /var/lib/apt/lists/*
+
+# WAL archive directory for point-in-time recovery
+RUN mkdir -p /var/lib/postgresql/wal_archive \
+    && chown postgres:postgres /var/lib/postgresql/wal_archive
+
+# Custom PostgreSQL configuration for WAL archiving and performance
+COPY docker/postgres/postgresql.conf /etc/postgresql/conf.d/tokyo-eye.conf
+COPY docker/postgres/init-extensions.sql /docker-entrypoint-initdb.d/00-extensions.sql
+
+# Override the default CMD to include our config
+CMD ["postgres", "-c", "config_file=/etc/postgresql/conf.d/tokyo-eye.conf"]

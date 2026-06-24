@@ -14,7 +14,6 @@ and the Normalizer for writes. They never access fact tables directly.
 
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -56,73 +55,35 @@ async def run_gnn_inference(
     checkpoint_path: str | None = None,
     db: Any = None,
 ) -> ToolResult:
-    """Run GNN inference on a structure and write results to governed layer.
+    """Run GNN inference on a structure via the Science Container API.
 
-    Uses the V5 GNN (decoupled radial-angular) by default.
-    V3/V4 are available only for reproducing historical results.
-
-    Full pipeline:
-    1. Build graph from governed dimensional data
-    2. Run GNN (v5 default)
-    3. Write results through Normalizer via adapters
-    4. Refresh materialized views
-    5. Return summary + viewport directive
+    Dispatches to the science container's POST /compute/gnn endpoint.
+    The science container handles graph building, GNN execution,
+    Normalizer persistence, and view refresh internally.
     """
     if db is None:
         return ToolResult(success=False, message="No database connection provided")
 
-    from data.normalizer.core import Normalizer
-    from data.views.refresh import ViewRefresher
-    from science.dtie.common.adapters import GNNOutputAdapter
-    from science.dtie.common.graph_builder import GraphBuilder
+    from agent.tools.science_client import ScienceClient, ScienceComputeError, ScienceTimeoutError
 
-    # 1. Build graph
-    builder = GraphBuilder(db=ToolDB(db))
-    try:
-        graph = await builder.build_graph(structure_id)
-    except ValueError as e:
-        return ToolResult(success=False, message=str(e))
-
-    pyg_data = builder.to_pyg(graph)
-
-    # 2. Run GNN (v5 is the production default)
-    run_id = f"run_{uuid.uuid4().hex[:12]}"
-    if model_version == "v5":
-        from science.dtie.v5.gnn.runner import V5GNNRunner
-        runner = V5GNNRunner(checkpoint_path=checkpoint_path)
-    elif model_version == "v4":
-        # Legacy — for reproducing historical results only
-        from science.dtie.v4.gnn.runner import V4GNNRunner
-        runner = V4GNNRunner(checkpoint_path=checkpoint_path)
-    elif model_version == "v3":
-        # Legacy — for reproducing historical results only
-        from science.dtie.v3.gnn.runner import V3GNNRunner
-        runner = V3GNNRunner(checkpoint_path=checkpoint_path)
-    else:
-        return ToolResult(success=False, message=f"Unknown model version: {model_version}")
+    client = ScienceClient()
+    kwargs: dict[str, Any] = {"model_version": model_version}
+    if checkpoint_path:
+        kwargs["checkpoint_path"] = checkpoint_path
 
     try:
-        result = await runner.run_inference(structure_id, pyg_data)
-    except (FileNotFoundError, NotImplementedError) as e:
-        return ToolResult(success=False, message=f"GNN inference failed: {e}")
+        result = await client.run_gnn(structure_id=structure_id, **kwargs)
+    except ScienceTimeoutError as e:
+        return ToolResult(success=False, message=f"GNN inference timed out: {e}")
+    except ScienceComputeError as e:
+        return ToolResult(success=False, message=f"GNN inference failed: {e.detail}")
 
-    # 3. Normalize and write
-    normalizer = Normalizer(db=db, caller_identity="agent_tool")
-    adapter = GNNOutputAdapter(normalizer=normalizer)
-    norm_results = await adapter.normalize(result, run_id=run_id)
-
-    total_assets = sum(r.assets_created for r in norm_results)
-
-    # 4. Refresh views
-    refresher = ViewRefresher(db=db)
-    await refresher.refresh_after_write("fact_gnn_node_embedding")
-
-    # 5. Generate viewport directive
+    # Generate viewport directive
     directive = ViewportDirective(
         action=DirectiveAction.SET_METRIC,
         structure_id=structure_id,
         metric="cone_depth",
-        message=f"GNN {model_version} inference complete — {total_assets} embeddings written",
+        message=f"GNN {model_version} inference complete — {result.get('node_count', 0)} embeddings written",
     )
 
     return ToolResult(
@@ -130,9 +91,10 @@ async def run_gnn_inference(
         data={
             "structure_id": structure_id,
             "model_version": model_version,
-            "run_id": run_id,
-            "assets_created": total_assets,
-            "residue_count": len(graph.residues),
+            "run_id": result.get("run_id"),
+            "node_count": result.get("node_count", 0),
+            "checkpoint_version_hash": result.get("checkpoint_version_hash"),
+            "duration_ms": result.get("duration_ms"),
         },
         message=f"GNN {model_version} inference complete for {structure_id}",
         viewport_directives=[directive],

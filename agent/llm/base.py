@@ -40,6 +40,7 @@ class Message:
     content: str
     tool_calls: list[ToolCall] | None = None
     tool_results: list[ToolResult] | None = None
+    image: str | None = None  # Optional base64 PNG for multimodal (vision) messages
 
 
 @dataclass
@@ -103,6 +104,11 @@ class LLMResponse:
 class LLMProvider(ABC):
     """Abstract base for LLM providers."""
 
+    @property
+    def supports_vision(self) -> bool:
+        """Whether this provider supports multimodal (image) input."""
+        return False
+
     @abstractmethod
     async def chat(
         self,
@@ -139,6 +145,7 @@ class Agent:
         llm: LLMProvider,
         max_iterations: int = 10,
         max_tokens: int = 100_000,
+        orchestrator: Any | None = None,
     ):
         self.name = name
         self.system_prompt = system_prompt
@@ -146,21 +153,37 @@ class Agent:
         self.llm = llm
         self.max_iterations = max_iterations
         self.max_tokens = max_tokens
+        self.orchestrator = orchestrator
         self._tool_map = {t.name: t for t in tools}
 
-    async def run(self, user_message: str, context: dict[str, Any] | None = None) -> AgentResponse:
+    async def run(
+        self,
+        user_message: str,
+        context: dict[str, Any] | None = None,
+        poincare_snapshot: str | None = None,
+        telemetry: Any | None = None,
+    ) -> AgentResponse:
         """Run the agent on a user message.
 
         Args:
             user_message: The user's input.
             context: Additional context (viewport state, session data, etc.)
                      Injected into the system prompt, not repeated per turn.
+            poincare_snapshot: Optional base64 PNG image of the Poincaré disc
+                              for multimodal LLM input. Included only if the
+                              provider supports vision.
+            telemetry: Optional AgentTelemetry instance for recording tool calls
+                       and LLM usage outside the agent's control.
 
         Returns:
             AgentResponse with the final text, tool calls made, and usage stats.
         """
         messages: list[Message] = []
-        messages.append(Message(role="user", content=user_message))
+        messages.append(Message(
+            role="user",
+            content=user_message,
+            image=poincare_snapshot if self._provider_supports_vision() else None,
+        ))
 
         # Build system prompt with context (injected once, not per-turn)
         system_prompt = self.system_prompt
@@ -194,10 +217,24 @@ class Agent:
                 output_tokens=llm_response.output_tokens,
             )
 
+            # Record LLM call in telemetry
+            if telemetry:
+                telemetry.record_usage(llm_response.input_tokens, llm_response.output_tokens)
+                telemetry.record_llm_call(
+                    messages=messages,
+                    system_prompt=system_prompt,
+                    tools=self.tools,
+                    response=llm_response.message,
+                    input_tokens=llm_response.input_tokens,
+                    output_tokens=llm_response.output_tokens,
+                )
+
             response = llm_response.message
 
             # If no tool calls, we're done
             if not response.tool_calls:
+                if telemetry:
+                    telemetry.record_response(response.content)
                 return AgentResponse(
                     text=response.content,
                     tool_calls_made=tool_calls_made,
@@ -211,7 +248,14 @@ class Agent:
             tool_results: list[ToolResult] = []
             for call in response.tool_calls:
                 tool_calls_made.append(call.name)
+                if telemetry:
+                    telemetry.record_tool_call(call.id, call.name, call.arguments)
                 result = await self._execute_tool(call)
+                if telemetry:
+                    telemetry.record_tool_result(
+                        call.id, call.name, result.structured_data or result.content,
+                        is_error=result.is_error,
+                    )
                 tool_results.append(result)
 
                 # Extract viewport directives from structured data (no re-parsing)
@@ -237,12 +281,34 @@ class Agent:
             usage=usage,
         )
 
+    def _provider_supports_vision(self) -> bool:
+        """Check if the attached LLM provider supports vision/multimodal input."""
+        return getattr(self.llm, "supports_vision", False)
+
     async def _execute_tool(self, call: ToolCall) -> ToolResult:
         """Execute a single tool call.
+
+        If an orchestrator is attached, routes through gated_tool_invoke()
+        which checks phase-based policy before executing. Otherwise falls
+        through to direct execution.
 
         Keeps structured data alongside the serialized content string
         to avoid double-serialization when extracting viewport directives.
         """
+        # Route through tool gate if orchestrator is present
+        if self.orchestrator is not None:
+            from agent.orchestration.gates import gated_tool_invoke
+
+            tool = self._tool_map.get(call.name)
+            if not tool:
+                return ToolResult(
+                    tool_call_id=call.id,
+                    content=json.dumps({"error": f"Unknown tool: {call.name}"}),
+                    is_error=True,
+                )
+            return await gated_tool_invoke(self.orchestrator, call, tool.handler)
+
+        # Direct execution (no orchestrator)
         tool = self._tool_map.get(call.name)
         if not tool:
             return ToolResult(

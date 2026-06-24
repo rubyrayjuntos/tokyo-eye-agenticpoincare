@@ -74,26 +74,27 @@ class CompareRequest(BaseModel):
 
 @router.post("/run-pipeline")
 async def api_run_pipeline(req: PipelineRequest, user: dict = Depends(get_current_user)):
-    """Run the full DTIE v5 pipeline on a structure."""
-    from data.db import DBAdapter, get_connection
-    from science.dtie import DTIEOrchestrator, PipelineConfig
+    """Run the full DTIE v5 pipeline on a structure via Science Container API."""
+    from agent.tools.science_client import ScienceClient, ScienceComputeError, ScienceTimeoutError
 
-    async with get_connection() as conn:
-        db = DBAdapter(conn)
-        orchestrator = DTIEOrchestrator(db=db)
-        config = PipelineConfig(
+    client = ScienceClient()
+    try:
+        result = await client.run_pipeline(
             structure_id=req.structure_id,
             checkpoint_path=req.checkpoint_path,
         )
-        result = await orchestrator.run(config)
-
-    return {
-        "success": result.success,
-        "run_id": result.run_id,
-        "model_version": result.model_version,
-        "phases_run": list(result.phase_results.keys()),
-        "warnings": result.warnings,
-    }
+        return {
+            "success": True,
+            "run_id": result.get("run_id"),
+            "phases_run": result.get("phases_run", []),
+            "assets_created": result.get("assets_created", 0),
+            "duration_ms": result.get("duration_ms"),
+            "warnings": result.get("warnings", []),
+        }
+    except ScienceTimeoutError as e:
+        return {"success": False, "error": str(e)}
+    except ScienceComputeError as e:
+        return {"success": False, "error": e.detail, "status": e.status}
 
 
 @router.post("/gnn-inference")

@@ -42,6 +42,10 @@ COPY data/ /app/data/
 COPY experiments/ /app/experiments/
 COPY science/ /app/science/
 
+# Install local rcsbapi package (PyPI versions require Python >=3.11, Docker base is 3.10)
+COPY rcsbapi_local/ /app/rcsbapi_local/
+RUN pip install --no-cache-dir /app/rcsbapi_local/
+
 # Set Python environment variables to reduce overhead
 ENV PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
@@ -57,13 +61,12 @@ ENV PYTHONPATH=/app \
     NUMEXPR_NUM_THREADS=1 \
     TORCH_NUM_THREADS=1
 
+# Install FastAPI + uvicorn for the Science API HTTP service
+RUN pip install --no-cache-dir fastapi==0.115.6 uvicorn[standard]==0.32.1
+
 # Run as non-root user for security
 RUN useradd -m -r -s /sbin/nologin appuser
 USER appuser
 
-# Health check for orchestration (optional; remove if not needed in production)
-# HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-#   CMD python -c "import torch; print('OK')" || exit 1
-
-# Default: run the pipeline on a structure
-ENTRYPOINT ["python", "-m", "science.dtie.v5.orchestrator.pipeline"]
+# Default: run the Science API on port 8001
+CMD ["uvicorn", "science.api.app:app", "--host", "0.0.0.0", "--port", "8001"]
