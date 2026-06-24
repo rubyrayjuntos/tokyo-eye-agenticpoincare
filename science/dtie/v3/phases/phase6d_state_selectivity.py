@@ -29,7 +29,10 @@ from __future__ import annotations
 import logging
 from typing import Dict, Optional
 
-from phase6b_binding_affinity import run_vina_docking
+try:
+    from .phase6b_binding_affinity import run_vina_docking
+except ImportError:
+    from science.dtie.v3.phases.phase6b_binding_affinity import run_vina_docking
 
 logger_p6d = logging.getLogger("DTIE_Phase6d")
 

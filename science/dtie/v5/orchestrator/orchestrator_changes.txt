@@ -1,0 +1,86 @@
+Yes, you definitely need to modify the orchestrator.
+
+Since you have successfully transitioned to a decoupled hyperbolic architecture and dropped the witness complex, your `pipeline.py` currently contains obsolete code that actively attempts to run those deprecated phases. Leaving it as-is introduces significant technical debt and forces the orchestrator to mock data just to satisfy legacy v3/v4 function signatures.
+
+Here is the exact surgery required to bring `pipeline.py` up to your high-assurance standards.
+
+---
+
+### 1. Clean Up the Configuration
+
+In your `PipelineConfig` dataclass, remove the toggles for the deprecated phases entirely so they cannot be accidentally triggered.
+
+* **Remove:** `run_phase1: bool = True`
+* **Remove:** `run_phase3: bool = True`
+* **Update `__post_init__`:** Remove `self.run_phase1 = False` from the `source_leak_only` shortcut logic.
+
+### 2. Gut the Legacy Execution Blocks
+
+In `DTIEOrchestrator.run()`, completely delete "Step 3: Phase 3 — Witness Persistence". Your v5 architecture natively handles this spatial analysis in Phase 3.5 now.
+
+```python
+        # ── REMOVE THIS ENTIRE BLOCK ──────────────────────────────────────
+        # ── Step 3: Phase 3 — Witness Persistence ────────────────────────
+        if config.run_phase3:
+            phase_results["phase3"] = await self._run_phase3(config, run_id, gnn_result)
+            if phase_results["phase3"].success:
+                await self._persist_phase_result(
+                    phase_results["phase3"], run_id, gnn_run_id, config
+                )
+
+```
+
+### 3. Delete the `_run_phase3` Method
+
+You can safely delete the entire `async def _run_phase3(...)` method. It is currently acting as a massive shim, mocking `Phase1Output` objects and falling back to `execute_phase_3_witness_persistence_v4` and `v3`. Removing this instantly strips out hundreds of lines of legacy dependencies.
+
+### 4. Remove Phase 1 from the Dispatcher
+
+In `_dispatch_phase()`, delete the special handling block for Phase 1.
+
+```python
+        # ── REMOVE THIS BLOCK ─────────────────────────────────────────────
+        # Phase 1 has a special signature (needs ingestion_data)
+        if phase_name == "phase1_witness_embedding":
+            ingestion_data = {
+                "no_midpoints": gnn_output["gdp_no_midpoints"],
+                "residue_ids": gnn_output["gdp_residue_ids"],
+            }
+            result = await asyncio.to_thread(
+                phase_func, ingestion_data, gnn_output, n_landmarks=config.n_landmarks
+            )
+            return {"phase1_output": str(result), "n_landmarks": config.n_landmarks}
+
+```
+
+### 5. Update Phase 3.5 Invocation
+
+Since `phase_results.get("phase3")` will now always be `None`, you can simplify the Phase 3.5 call in the `run()` method to reflect that it now operates entirely on its own spatial fallback logic.
+
+Change it from this:
+
+```python
+                phase_results["phase35"] = await run_phase35_topological_lift(
+                    db=self._db,
+                    gnn_result=gnn_result,
+                    structure_id=config.structure_id,
+                    phase3_result=phase_results.get("phase3"),
+                )
+
+```
+
+To this:
+
+```python
+                phase_results["phase35"] = await run_phase35_topological_lift(
+                    db=self._db,
+                    gnn_result=gnn_result,
+                    structure_id=config.structure_id,
+                    phase3_result=None, # Explicitly bypass legacy topological edges
+                )
+
+```
+
+---
+
+With these modifications, your orchestrator will be a pristine, v5-native pipeline. Are you ready to move on to fixing the matrix math in Phase 4, or is there another component of the pipeline you want to review first?

@@ -128,12 +128,17 @@ class GraphBuilder:
             x: [N, 4] node features (rho, tau_flag, ss_type, sasa)
             edge_index: [2, E] graph connectivity
             edge_attr: [E, 4] edge features (rel_x, rel_y, rel_z, dist)
+            degree: [N] node degree from contact graph
+            ss_onehot: [N, 3] one-hot secondary structure [helix, sheet, coil]
+            rho: [N] raw dehydron density for gate shortcut
             chain_ids: list[str] metadata
             residue_indices: list[int] metadata
             residue_ids: list[str] metadata
         """
         import torch
         from torch_geometric.data import Data
+
+        num_nodes = len(graph.residues)
 
         # Node features: [rho, tau_flag, ss_type, sasa]
         x = torch.tensor(
@@ -145,6 +150,34 @@ class GraphBuilder:
         edge_attr = torch.tensor(graph.edge_attr, dtype=torch.float32)
 
         data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
+
+        # --- V6 topological features ---
+
+        # 1. Node degree: count edges per node from edge_index
+        degree = torch.zeros(num_nodes, dtype=torch.long)
+        if edge_index.numel() > 0:
+            # Count outgoing edges per source node (graph is bidirectional,
+            # so counting sources gives total degree)
+            src_nodes = edge_index[0]
+            degree.scatter_add_(0, src_nodes, torch.ones_like(src_nodes, dtype=torch.long))
+        data.degree = degree
+
+        # 2. SS one-hot: convert scalar ss_type (H=0, E=1, C=2) to one-hot [3]
+        ss_onehot = torch.zeros(num_nodes, 3, dtype=torch.float32)
+        for i, r in enumerate(graph.residues):
+            ss_idx = int(r.ss_type)  # 0=H, 1=E, 2=C
+            if 0 <= ss_idx <= 2:
+                ss_onehot[i, ss_idx] = 1.0
+            else:
+                ss_onehot[i, 2] = 1.0  # Default to coil
+        data.ss_onehot = ss_onehot
+
+        # 3. Raw rho values for gate shortcut
+        data.rho = torch.tensor(
+            [r.rho for r in graph.residues], dtype=torch.float32
+        )
+
+        # --- Metadata ---
         data.chain_ids = graph.chain_ids
         data.residue_indices = graph.residue_indices
         data.residue_ids = graph.residue_ids
@@ -216,7 +249,13 @@ class GraphBuilder:
     async def _fetch_residues(
         self, structure_id: str, chain_filter: str | None
     ) -> list[ResidueFeatures]:
-        """Fetch residue features from the governed layer."""
+        """Fetch residue features from the governed layer.
+
+        Computes per-residue burial depth (rho) and approximate SASA from
+        Cα neighbor counts when the governed tables don't have precomputed
+        values. This ensures the GNN always receives meaningful input features
+        regardless of whether the dehydron/SASA computation pipeline has run.
+        """
         chain_clause = ""
         params: dict[str, Any] = {"structure_id": structure_id}
 
@@ -245,11 +284,34 @@ class GraphBuilder:
             params,
         )
 
+        if not rows:
+            return []
+
+        # Extract Cα coordinates for burial computation
+        ca_coords = np.array([[row["ca_x"], row["ca_y"], row["ca_z"]] for row in rows])
+
+        # Compute burial depth (rho) from Cα neighbor counts
+        # Burial = number of Cα atoms within 10Å sphere, normalized to [0, 1]
+        # This is a standard proxy for solvent burial: deeply buried residues
+        # have many neighbors, surface residues have few.
+        burial_counts = self._compute_burial_depth(ca_coords)
+
+        # Compute approximate SASA (inverse of burial): exposed = high SASA
+        # Normalized so max-burial residues get SASA ≈ 0, surface gets ≈ 1
+        max_burial = burial_counts.max() if burial_counts.max() > 0 else 1.0
+        approx_sasa = 1.0 - (burial_counts / max_burial)
+
         residues = []
-        for row in rows:
-            # Compute dehydron density (rho) from fact_dehydron if available
-            # For now, use a placeholder — will be populated from dehydron facts
-            rho = await self._get_dehydron_density(row["residue_id"])
+        for i, row in enumerate(rows):
+            # Use computed burial as rho (matches original training semantics:
+            # high rho = deeply buried = high cone depth in Poincaré ball)
+            rho = float(burial_counts[i])
+
+            # Use DB SASA if available, otherwise use computed approximation
+            sasa = row["sasa"] if row["sasa"] and row["sasa"] > 0 else float(approx_sasa[i])
+
+            # Tau flag: 1 if burial > median (deeply buried), 0 otherwise
+            tau_flag = 1.0 if burial_counts[i] > np.median(burial_counts) else 0.0
 
             residues.append(
                 ResidueFeatures(
@@ -257,9 +319,9 @@ class GraphBuilder:
                     residue_index=row["residue_index"],
                     chain_label=row["chain_label"],
                     rho=rho,
-                    tau_flag=0.0,  # Computed from backbone torsion angles
+                    tau_flag=tau_flag,
                     ss_type=SSE_ENCODING.get(row["sse_code"], 2.0),
-                    sasa=row["sasa"],
+                    sasa=sasa,
                     ca_x=row["ca_x"],
                     ca_y=row["ca_y"],
                     ca_z=row["ca_z"],
@@ -267,6 +329,35 @@ class GraphBuilder:
             )
 
         return residues
+
+    def _compute_burial_depth(
+        self, ca_coords: np.ndarray, radius: float = 10.0
+    ) -> np.ndarray:
+        """Compute per-residue burial depth from Cα neighbor counts.
+
+        Burial depth = number of other Cα atoms within a sphere of given radius.
+        This is a well-established proxy for solvent accessibility:
+        - Core residues: high count (many neighbors, deeply buried)
+        - Surface residues: low count (few neighbors, solvent-exposed)
+
+        Args:
+            ca_coords: [N, 3] array of Cα coordinates.
+            radius: Distance threshold in Ångströms (default 10Å).
+
+        Returns:
+            [N] array of neighbor counts (unnormalized burial depth).
+        """
+        n = len(ca_coords)
+        counts = np.zeros(n, dtype=np.float32)
+
+        # Pairwise distance computation
+        for i in range(n):
+            diffs = ca_coords - ca_coords[i]
+            dists = np.linalg.norm(diffs, axis=1)
+            # Count neighbors within radius (excluding self)
+            counts[i] = float(np.sum((dists < radius) & (dists > 0.1)))
+
+        return counts
 
     async def _get_dehydron_density(self, residue_id: str) -> float:
         """Get dehydron density for a residue from governed facts."""

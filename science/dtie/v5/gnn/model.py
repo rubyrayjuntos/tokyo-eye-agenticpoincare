@@ -207,6 +207,11 @@ class RadialHead(nn.Module):
     Supervised by cone loss (burial correlation).
     Architecturally isolated — no shared parameters with AngularHead.
 
+    Architecture: 2-layer MLP (hidden → hidden//2 → 1) matching the
+    trained checkpoint. The intermediate hidden//4 layer was added in
+    a later code revision but never retrained — using the 2-layer
+    version ensures all weights load from the checkpoint correctly.
+
     Output: log-depth values that get exponentiated and used as the
     magnitude when constructing x_hyp = expmap0(depth * direction).
     """
@@ -215,9 +220,7 @@ class RadialHead(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.SiLU(),
-            nn.Linear(hidden_dim // 2, hidden_dim // 4),
-            nn.SiLU(),
-            nn.Linear(hidden_dim // 4, 1),
+            nn.Linear(hidden_dim // 2, 1),
         )
         # Learnable scale — controls overall radial distribution
         self.radial_scale = nn.Parameter(torch.tensor(0.5))
@@ -519,15 +522,6 @@ class GOSPConeMapper(nn.Module):
         # Recombine into tangent vector
         tangent_vector = radial_depth * angular_direction  # [N, hidden]
 
-        # Clamp tangent vector norm to stay inside the Poincaré ball.
-        # Without this, radial_depth > 1/√c causes expmap0 to saturate and
-        # project() clips every node to the same boundary → cone_depth flatline.
-        ball_radius = 1.0 / torch.sqrt(c)
-        # Safe norm: add epsilon inside sqrt to avoid NaN gradients at zero.
-        tv_norm = torch.sqrt((tangent_vector ** 2).sum(dim=-1, keepdim=True) + 1e-12)
-        scale = (torch.tanh(tv_norm / ball_radius) * ball_radius * 0.95) / tv_norm
-        tangent_vector = tangent_vector * scale
-
         # Lift to Poincaré ball
         x_hyp = pmath.expmap0(tangent_vector, k=k)
         x_hyp, proj_count_s1, proj_frac_s1 = self._project_with_audit(x_hyp, k=k)
@@ -763,53 +757,40 @@ def domain_separation_loss_3d(
 def cone_loss_v5(
     radial_depth: torch.Tensor,
     target_rho: torch.Tensor,
-    target_sasa: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """
-    v5 cone loss: direct regression on radial depth.
+    v5 cone loss: Pearson correlation + variance enforcement.
 
-    Target: high SASA (surface-exposed) → high depth → disc periphery.
-            low SASA (buried) → low depth → disc centre.
-
-    If target_sasa is provided it is used directly (already in [0,1]).
-    Falls back to normalised ρ for backwards compatibility, but the
-    ρ-based target inverts the intended shell-first geometry because high ρ
-    correlates with burial, so SASA should always be preferred.
+    Target: high ρ (buried) → high depth, low ρ (exposed) → low depth.
+    Uses negative Pearson correlation as primary loss — this is immune to
+    constant-prediction collapse because correlation is undefined (penalized)
+    when predictions have zero variance.
 
     CRITICAL: This loss should ONLY backprop through radial_depth,
     which comes from RadialHead. The angular pathway is detached.
     """
-    if target_sasa is not None:
-        target_depth = target_sasa.clamp(0.0, 1.0)
-    else:
-        # Legacy fallback — inverts shell geometry, avoid in new training
-        target_depth = (target_rho / 30.0).clamp(0.0, 1.0)
+    target_depth = (target_rho / 30.0).clamp(0.0, 1.0)
 
-    # Pearson correlation loss: fully differentiable, gradient non-zero whenever
-    # pred does not perfectly correlate with tgt. Immune to constant-prediction
-    # collapse (unlike argsort-based rank loss which has zero gradient everywhere).
-    pred = radial_depth.squeeze()
-    tgt  = target_depth.squeeze()
+    # Squeeze to [N] if RadialHead outputs [N, 1]
+    pred = radial_depth.squeeze(-1)
 
-    pred_c = pred - pred.mean()
-    tgt_c  = tgt  - tgt.mean()
-    pearson = (pred_c * tgt_c).sum() / (
-        pred_c.norm() * tgt_c.norm() + 1e-8
-    )
-    # 1 - r pushes toward perfect positive correlation (surface = periphery)
-    pearson_loss = 1.0 - pearson
+    # Pearson correlation loss (1 - r): cannot be minimized by constant prediction
+    pred_centered = pred - pred.mean()
+    tgt_centered = target_depth - target_depth.mean()
 
-    # MSE in normalised space keeps absolute scale anchored
-    depth_min = pred.min()
-    depth_range = pred.max() - depth_min + 1e-6
-    predicted_depth_norm = (pred - depth_min) / depth_range
-    mse_loss = F.mse_loss(predicted_depth_norm, tgt)
+    pred_std = pred_centered.norm() + 1e-8
+    tgt_std = tgt_centered.norm() + 1e-8
 
-    # Variance penalty — prevents degenerate constant output
+    correlation = (pred_centered * tgt_centered).sum() / (pred_std * tgt_std)
+
+    # Loss = 1 - correlation (minimized when correlation = 1.0)
+    corr_loss = 1.0 - correlation
+
+    # Strong variance penalty: penalize low spread in predictions
     depth_std = pred.std()
-    variance_penalty = torch.relu(0.20 - depth_std) * 10.0
+    variance_penalty = torch.relu(0.15 - depth_std) * 5.0
 
-    return pearson_loss + 0.3 * mse_loss + variance_penalty
+    return corr_loss + variance_penalty
 
 
 def mutation_differential_loss(
@@ -843,7 +824,6 @@ def gosp_loss_v5(
     target_dehydron: torch.Tensor,
     ca_coords: torch.Tensor,
     domain_labels: Optional[torch.Tensor] = None,
-    target_sasa: Optional[torch.Tensor] = None,
     evidential_coeff: float = 0.005,
     balance_coeff: float = 0.01,
     cone_coeff: float = 0.15,
@@ -871,8 +851,7 @@ def gosp_loss_v5(
     bal_loss = output["balance_loss"]
 
     # RADIAL LOSS — flows through RadialHead only
-    # Supervised on SASA so surface-exposed residues map to disc periphery
-    cone_loss = cone_loss_v5(output["radial_features"], target_rho, target_sasa=target_sasa)
+    cone_loss = cone_loss_v5(output["radial_features"], target_rho)
 
     # ANGULAR LOSSES — flow through AngularHead / projection heads only
     ang_loss = angular_diversity_loss(output["x_routed_hyp"])

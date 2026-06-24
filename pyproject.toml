@@ -40,6 +40,7 @@ science = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+    "pytest-cov>=4.1",
     "ruff>=0.4",
     "mypy>=1.10",
 ]
@@ -57,6 +58,7 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+ignore = ["E501"]  # Line length conflicts with formatter
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -64,14 +66,23 @@ asyncio_mode = "auto"
 markers = [
     "integration: tests that require a real database connection",
 ]
+addopts = "--strict-markers --tb=short"
 
 [tool.mypy]
 python_version = "3.11"
 strict = true
 warn_return_any = true
+warn_unused_configs = true
+disallow_incomplete_defs = true
 
 # Dependency strategy:
 # - pyproject.toml defines version ranges (source of truth for what we need)
 # - requirements-agent.txt / requirements-science.txt are pinned lockfiles for Docker builds
 # - To regenerate lockfiles: uv pip compile pyproject.toml --extra agent -o requirements-agent.txt
 #                            uv pip compile pyproject.toml --extra science -o requirements-science.txt
+#
+# Performance notes:
+# - Agent container uses lightweight dependencies only (no PyTorch, RDKit)
+# - Science container isolated in separate image with CUDA 12.1 and GPU support
+# - Database connection pooling configured via psycopg-pool
+# - Local development via 'uv run' for fast iteration and hot-reload

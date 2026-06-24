@@ -1,5 +1,6 @@
 # Agent coordinator container — lightweight, no heavy ML deps
 # Used for: API serving, WebSocket viewport protocol, tool dispatch
+# Optimized for fast builds and minimal size
 #
 # Build: docker build -f Dockerfile.agent -t tokyoeye-agent .
 # Run:   docker compose up agent
@@ -8,26 +9,42 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Install only essential system packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
 # Agent dependencies only (no torch, no rdkit)
 COPY requirements-agent.txt .
 RUN pip install --no-cache-dir -r requirements-agent.txt
 
 # Copy agent + data layer + shared utilities + science interfaces (not the heavy models)
-COPY agent/ /app/agent/
-COPY data/ /app/data/
+# Order from least to most frequently changed for better caching
 COPY shared/ /app/shared/
+COPY data/ /app/data/
 COPY science/dtie/__init__.py /app/science/dtie/__init__.py
 COPY science/dtie/v5/__init__.py /app/science/dtie/v5/__init__.py
 COPY science/dtie/v5/orchestrator/ /app/science/dtie/v5/orchestrator/
 COPY science/dtie/v5/phase_adapter.py /app/science/dtie/v5/phase_adapter.py
 COPY science/dtie/common/ /app/science/dtie/common/
 COPY science/__init__.py /app/science/__init__.py
+COPY agent/ /app/agent/
 
-ENV PYTHONPATH=/app
+# Set Python environment variables to reduce overhead and improve startup
+ENV PYTHONPATH=/app \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONHASHSEED=random \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Run as non-root user
-RUN useradd -m -r appuser
+# Run as non-root user for security
+RUN useradd -m -r -s /sbin/nologin appuser
 USER appuser
 
 EXPOSE 8000
+
+# Uvicorn with optimized worker settings
+# WEB_CONCURRENCY is set via docker-compose.yml environment
 CMD ["uvicorn", "agent.coordinator.app:app", "--host", "0.0.0.0", "--port", "8000"]

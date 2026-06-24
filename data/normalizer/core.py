@@ -23,8 +23,12 @@ from typing import Any, Protocol
 
 import asyncio
 
+from psycopg.types.json import Json
+
 from science.dtie.common.keys import make_residue_id, validate_residue_id
 from science.dtie.common.normalizer_payloads import (
+    AllostericSitePayload,
+    DrugCandidatePayload,
     EvidencePayload,
     GNNNodeResult,
     GNNOutputPayload,
@@ -32,8 +36,13 @@ from science.dtie.common.normalizer_payloads import (
     GraphTopologyPayload,
     HypothesisPayload,
     NormalizerResult,
+    Phase2VulnerabilityPayload,
     Phase3PersistencePayload,
+    PharmacophorePayload,
     ProvenanceContext,
+    ResistancePathwayPayload,
+    SourceLeakPayload,
+    TopologicalLiftPayload,
 )
 
 logger = logging.getLogger(__name__)
@@ -211,6 +220,8 @@ class Normalizer:
                     prov=prov,
                     space_id=space_id,
                     computed_at=payload.computed_at,
+                    expert_load_per_run=payload.expert_load,
+                    routing_entropy=payload.routing_entropy,
                 )
                 asset_ids.append(asset_id)
 
@@ -441,6 +452,1093 @@ class Normalizer:
         )
 
     # ------------------------------------------------------------------
+    # Path 2b: Source-Leak Detection
+    # ------------------------------------------------------------------
+
+    async def normalize_source_leaks(
+        self, payload: SourceLeakPayload
+    ) -> NormalizerResult:
+        """Validate and write source-leak detection results.
+
+        Flow: provenance → validate residue_ids → transaction →
+              upsert leak records → register assets → commit → audit.
+
+        Args:
+            payload: Validated SourceLeakPayload.
+
+        Returns:
+            NormalizerResult with created asset IDs.
+
+        Raises:
+            NormalizerError: If validation or write fails.
+        """
+        start_time = time.monotonic()
+        warnings: list[str] = []
+        prov = payload.provenance
+
+        # 1. Ensure provenance run exists
+        await self._ensure_provenance_run(prov)
+
+        # 2. Validate all residue_ids
+        for residue in payload.leak_residues:
+            if not validate_residue_id(residue.residue_id):
+                await self._log_audit(
+                    run_id=prov.run_id,
+                    structure_id=prov.structure_id,
+                    payload_type="source_leak",
+                    status="validation_error",
+                    error_message=f"Invalid residue_id format: '{residue.residue_id}'",
+                    duration_ms=self._elapsed_ms(start_time),
+                    payload_summary={"leak_count": len(payload.leak_residues)},
+                )
+                raise NormalizerError(
+                    f"Invalid residue_id format: '{residue.residue_id}'",
+                    run_id=prov.run_id,
+                )
+
+        # 3. Atomic transaction: upsert leak records
+        asset_ids: list[str] = []
+        try:
+            await self._db.begin()
+
+            leak_params_list: list[dict[str, Any]] = []
+            for residue in payload.leak_residues:
+                # Use deterministic ID based on natural key (run_id, residue_id)
+                # so re-runs produce the same asset_id for governed_asset tracking.
+                leak_id = f"leak_{prov.run_id}_{residue.residue_id}"
+                leak_params_list.append({
+                    "leak_id": leak_id,
+                    "run_id": prov.run_id,
+                    "structure_id": prov.structure_id,
+                    "residue_id": residue.residue_id,
+                    "epistemic_uncertainty": residue.epistemic_uncertainty,
+                    "cone_depth": residue.cone_depth,
+                    "leak_score": residue.leak_score,
+                    "is_confirmed": residue.is_confirmed,
+                    "computed_at": payload.computed_at.isoformat(),
+                })
+                asset_ids.append(leak_id)
+
+            if leak_params_list:
+                await self._db.execute_many(
+                    """
+                    INSERT INTO fact_source_leak (
+                        leak_id, run_id, structure_id, residue_id,
+                        epistemic_uncertainty, cone_depth, leak_score,
+                        is_confirmed, computed_at
+                    ) VALUES (
+                        :leak_id, :run_id, :structure_id, :residue_id,
+                        :epistemic_uncertainty, :cone_depth, :leak_score,
+                        :is_confirmed, :computed_at
+                    )
+                    ON CONFLICT (run_id, residue_id) DO UPDATE SET
+                        leak_id = EXCLUDED.leak_id,
+                        epistemic_uncertainty = EXCLUDED.epistemic_uncertainty,
+                        cone_depth = EXCLUDED.cone_depth,
+                        leak_score = EXCLUDED.leak_score,
+                        is_confirmed = EXCLUDED.is_confirmed,
+                        computed_at = EXCLUDED.computed_at
+                    """,
+                    leak_params_list,
+                )
+
+            # 4. Register governed assets
+            await self._register_governed_assets(
+                asset_ids=asset_ids,
+                asset_type="source_leak",
+                prov=prov,
+            )
+
+            await self._db.commit()
+
+        except NormalizerError:
+            await self._db.rollback()
+            raise
+        except Exception as e:
+            await self._db.rollback()
+            await self._log_audit(
+                run_id=prov.run_id,
+                structure_id=prov.structure_id,
+                payload_type="source_leak",
+                status="write_error",
+                error_message=str(e),
+                duration_ms=self._elapsed_ms(start_time),
+                payload_summary={"leak_count": len(payload.leak_residues)},
+            )
+            raise NormalizerError(
+                f"Failed to write source-leak results: {e}",
+                run_id=prov.run_id,
+                details=str(e),
+            ) from e
+
+        duration_ms = self._elapsed_ms(start_time)
+
+        # 5. Log successful audit
+        await self._log_audit(
+            run_id=prov.run_id,
+            structure_id=prov.structure_id,
+            payload_type="source_leak",
+            status="success",
+            assets_created=len(asset_ids),
+            duration_ms=duration_ms,
+            payload_summary={
+                "leak_count": len(payload.leak_residues),
+                "total_leaks": payload.total_leaks,
+                "threshold_used": payload.threshold_used,
+            },
+        )
+
+        logger.info(
+            "Normalized source-leak output: run_id=%s, structure=%s, leaks=%d, duration=%dms",
+            prov.run_id,
+            prov.structure_id,
+            len(payload.leak_residues),
+            duration_ms,
+        )
+
+        return NormalizerResult(
+            success=True,
+            run_id=prov.run_id,
+            assets_created=len(asset_ids),
+            asset_ids=asset_ids,
+            warnings=warnings,
+            asset_metadata={"source_leak_count": len(payload.leak_residues)},
+        )
+
+    # ------------------------------------------------------------------
+    # Path 2c: Allosteric Site Persistence
+    # ------------------------------------------------------------------
+
+    async def normalize_allosteric_sites(
+        self, payload: AllostericSitePayload
+    ) -> NormalizerResult:
+        """Validate and write allosteric site predictions.
+
+        Flow: provenance → validate residue_ids → transaction →
+              upsert site records → upsert site-residue junction →
+              register assets → commit → audit.
+
+        Args:
+            payload: Validated AllostericSitePayload.
+
+        Returns:
+            NormalizerResult with created asset IDs.
+
+        Raises:
+            NormalizerError: If validation or write fails.
+        """
+        start_time = time.monotonic()
+        warnings: list[str] = []
+        prov = payload.provenance
+
+        # 1. Ensure provenance run exists
+        await self._ensure_provenance_run(prov)
+
+        # 2. Validate all residue_ids in all sites
+        for site in payload.sites:
+            for rid in site.residue_ids:
+                if not validate_residue_id(rid):
+                    await self._log_audit(
+                        run_id=prov.run_id,
+                        structure_id=prov.structure_id,
+                        payload_type="allosteric_site",
+                        status="validation_error",
+                        error_message=f"Invalid residue_id format: '{rid}'",
+                        duration_ms=self._elapsed_ms(start_time),
+                        payload_summary={"site_count": len(payload.sites)},
+                    )
+                    raise NormalizerError(
+                        f"Invalid residue_id format: '{rid}'",
+                        run_id=prov.run_id,
+                    )
+
+        # 3. Atomic transaction: upsert sites + junction records
+        asset_ids: list[str] = []
+        try:
+            await self._db.begin()
+
+            # 3a. Upsert site records
+            site_params_list: list[dict[str, Any]] = []
+            for site in payload.sites:
+                site_params_list.append({
+                    "site_id": site.site_id,
+                    "run_id": prov.run_id,
+                    "structure_id": prov.structure_id,
+                    "centroid_x": site.centroid_x,
+                    "centroid_y": site.centroid_y,
+                    "centroid_z": site.centroid_z,
+                    "confidence_score": site.confidence_score,
+                    "cluster_method": site.cluster_method,
+                    "n_residues": site.n_residues,
+                    "computed_at": payload.computed_at.isoformat(),
+                })
+                asset_ids.append(site.site_id)
+
+            if site_params_list:
+                await self._db.execute_many(
+                    """
+                    INSERT INTO fact_allosteric_site (
+                        site_id, run_id, structure_id,
+                        centroid_x, centroid_y, centroid_z,
+                        confidence_score, cluster_method, n_residues,
+                        computed_at
+                    ) VALUES (
+                        :site_id, :run_id, :structure_id,
+                        :centroid_x, :centroid_y, :centroid_z,
+                        :confidence_score, :cluster_method, :n_residues,
+                        :computed_at
+                    )
+                    ON CONFLICT (run_id, site_id) DO UPDATE SET
+                        centroid_x = EXCLUDED.centroid_x,
+                        centroid_y = EXCLUDED.centroid_y,
+                        centroid_z = EXCLUDED.centroid_z,
+                        confidence_score = EXCLUDED.confidence_score,
+                        cluster_method = EXCLUDED.cluster_method,
+                        n_residues = EXCLUDED.n_residues,
+                        computed_at = EXCLUDED.computed_at
+                    """,
+                    site_params_list,
+                )
+
+            # 3b. Upsert site-residue junction records
+            junction_params_list: list[dict[str, Any]] = []
+            for site in payload.sites:
+                for rid in site.residue_ids:
+                    junction_id = str(uuid.uuid4())
+                    junction_params_list.append({
+                        "id": junction_id,
+                        "run_id": prov.run_id,
+                        "site_id": site.site_id,
+                        "residue_id": rid,
+                        "contribution_score": None,
+                    })
+
+            if junction_params_list:
+                await self._db.execute_many(
+                    """
+                    INSERT INTO fact_allosteric_site_residue (
+                        id, run_id, site_id, residue_id, contribution_score
+                    ) VALUES (
+                        :id, :run_id, :site_id, :residue_id, :contribution_score
+                    )
+                    ON CONFLICT (run_id, site_id, residue_id) DO NOTHING
+                    """,
+                    junction_params_list,
+                )
+
+            # 4. Register governed assets
+            await self._register_governed_assets(
+                asset_ids=asset_ids,
+                asset_type="allosteric_site",
+                prov=prov,
+            )
+
+            await self._db.commit()
+
+        except NormalizerError:
+            await self._db.rollback()
+            raise
+        except Exception as e:
+            await self._db.rollback()
+            await self._log_audit(
+                run_id=prov.run_id,
+                structure_id=prov.structure_id,
+                payload_type="allosteric_site",
+                status="write_error",
+                error_message=str(e),
+                duration_ms=self._elapsed_ms(start_time),
+                payload_summary={"site_count": len(payload.sites)},
+            )
+            raise NormalizerError(
+                f"Failed to write allosteric site results: {e}",
+                run_id=prov.run_id,
+                details=str(e),
+            ) from e
+
+        duration_ms = self._elapsed_ms(start_time)
+
+        # 5. Log successful audit
+        await self._log_audit(
+            run_id=prov.run_id,
+            structure_id=prov.structure_id,
+            payload_type="allosteric_site",
+            status="success",
+            assets_created=len(asset_ids),
+            duration_ms=duration_ms,
+            payload_summary={
+                "site_count": len(payload.sites),
+                "total_sites": payload.total_sites,
+                "total_residues": sum(s.n_residues for s in payload.sites),
+            },
+        )
+
+        logger.info(
+            "Normalized allosteric site output: run_id=%s, structure=%s, sites=%d, duration=%dms",
+            prov.run_id,
+            prov.structure_id,
+            len(payload.sites),
+            duration_ms,
+        )
+
+        return NormalizerResult(
+            success=True,
+            run_id=prov.run_id,
+            assets_created=len(asset_ids),
+            asset_ids=asset_ids,
+            warnings=warnings,
+            asset_metadata={"site_count": len(payload.sites)},
+        )
+
+    # ------------------------------------------------------------------
+    # Path 5: Phase 2 Vulnerability Persistence
+    # ------------------------------------------------------------------
+
+    async def normalize_phase2_vulnerability(
+        self, payload: Phase2VulnerabilityPayload
+    ) -> NormalizerResult:
+        """Validate and write Phase 2 vulnerability doorway results.
+
+        Flow: provenance → validate residue_ids → transaction →
+              upsert vulnerability records → register assets → commit → audit.
+
+        Args:
+            payload: Validated Phase2VulnerabilityPayload.
+
+        Returns:
+            NormalizerResult with created asset IDs.
+
+        Raises:
+            NormalizerError: If validation or write fails.
+        """
+        start_time = time.monotonic()
+        warnings: list[str] = []
+        prov = payload.provenance
+
+        # 1. Ensure provenance run exists
+        await self._ensure_provenance_run(prov)
+
+        # 2. Validate all residue_ids
+        for doorway in payload.doorways:
+            if not validate_residue_id(doorway.residue_id):
+                await self._log_audit(
+                    run_id=prov.run_id,
+                    structure_id=prov.structure_id,
+                    payload_type="phase2_vulnerability",
+                    status="validation_error",
+                    error_message=f"Invalid residue_id format: '{doorway.residue_id}'",
+                    duration_ms=self._elapsed_ms(start_time),
+                    payload_summary={"doorway_count": len(payload.doorways)},
+                )
+                raise NormalizerError(
+                    f"Invalid residue_id format: '{doorway.residue_id}'",
+                    run_id=prov.run_id,
+                )
+
+        # 3. Atomic transaction: upsert vulnerability records
+        asset_ids: list[str] = []
+        try:
+            await self._db.begin()
+
+            vuln_params_list: list[dict[str, Any]] = []
+            for doorway in payload.doorways:
+                vuln_id = f"vuln_{prov.run_id}_{doorway.residue_id}"
+                vuln_params_list.append({
+                    "vulnerability_id": vuln_id,
+                    "run_id": prov.run_id,
+                    "structure_id": prov.structure_id,
+                    "residue_id": doorway.residue_id,
+                    "cone_depth": doorway.cone_depth,
+                    "epistemic_uncertainty": doorway.epistemic_uncertainty,
+                    "aleatoric_uncertainty": doorway.aleatoric_uncertainty,
+                    "depth_threshold": payload.depth_threshold,
+                    "computed_at": payload.computed_at.isoformat(),
+                })
+                asset_ids.append(vuln_id)
+
+            if vuln_params_list:
+                await self._db.execute_many(
+                    """
+                    INSERT INTO fact_phase2_vulnerability (
+                        vulnerability_id, run_id, structure_id, residue_id,
+                        cone_depth, epistemic_uncertainty, aleatoric_uncertainty,
+                        depth_threshold, computed_at
+                    ) VALUES (
+                        :vulnerability_id, :run_id, :structure_id, :residue_id,
+                        :cone_depth, :epistemic_uncertainty, :aleatoric_uncertainty,
+                        :depth_threshold, :computed_at
+                    )
+                    ON CONFLICT (run_id, residue_id) DO UPDATE SET
+                        vulnerability_id = EXCLUDED.vulnerability_id,
+                        cone_depth = EXCLUDED.cone_depth,
+                        epistemic_uncertainty = EXCLUDED.epistemic_uncertainty,
+                        aleatoric_uncertainty = EXCLUDED.aleatoric_uncertainty,
+                        depth_threshold = EXCLUDED.depth_threshold,
+                        computed_at = EXCLUDED.computed_at
+                    """,
+                    vuln_params_list,
+                )
+
+            # 4. Register governed assets
+            await self._register_governed_assets(
+                asset_ids=asset_ids,
+                asset_type="phase2_vulnerability",
+                prov=prov,
+            )
+
+            await self._db.commit()
+
+        except NormalizerError:
+            await self._db.rollback()
+            raise
+        except Exception as e:
+            await self._db.rollback()
+            await self._log_audit(
+                run_id=prov.run_id,
+                structure_id=prov.structure_id,
+                payload_type="phase2_vulnerability",
+                status="write_error",
+                error_message=str(e),
+                duration_ms=self._elapsed_ms(start_time),
+                payload_summary={"doorway_count": len(payload.doorways)},
+            )
+            raise NormalizerError(
+                f"Failed to write Phase 2 vulnerability results: {e}",
+                run_id=prov.run_id,
+                details=str(e),
+            ) from e
+
+        duration_ms = self._elapsed_ms(start_time)
+
+        # 5. Log successful audit
+        await self._log_audit(
+            run_id=prov.run_id,
+            structure_id=prov.structure_id,
+            payload_type="phase2_vulnerability",
+            status="success",
+            assets_created=len(asset_ids),
+            duration_ms=duration_ms,
+            payload_summary={
+                "doorway_count": len(payload.doorways),
+                "epistemic_median": payload.epistemic_median,
+                "depth_threshold": payload.depth_threshold,
+                "total_residues": payload.total_residues,
+            },
+        )
+
+        logger.info(
+            "Normalized Phase 2 vulnerability: run_id=%s, structure=%s, doorways=%d, duration=%dms",
+            prov.run_id,
+            prov.structure_id,
+            len(payload.doorways),
+            duration_ms,
+        )
+
+        return NormalizerResult(
+            success=True,
+            run_id=prov.run_id,
+            assets_created=len(asset_ids),
+            asset_ids=asset_ids,
+            warnings=warnings,
+        )
+
+    # ------------------------------------------------------------------
+    # Path 6: Phase 3.5 Topological Lift Persistence
+    # ------------------------------------------------------------------
+
+    async def normalize_topological_lift(
+        self, payload: TopologicalLiftPayload
+    ) -> NormalizerResult:
+        """Validate and write Phase 3.5 topological lift results.
+
+        Flow: provenance → transaction → upsert lift records →
+              register assets → commit → audit.
+
+        Args:
+            payload: Validated TopologicalLiftPayload.
+
+        Returns:
+            NormalizerResult with created asset IDs.
+
+        Raises:
+            NormalizerError: If validation or write fails.
+        """
+        start_time = time.monotonic()
+        warnings: list[str] = []
+        prov = payload.provenance
+
+        # 1. Ensure provenance run exists
+        await self._ensure_provenance_run(prov)
+
+        # 2. Atomic transaction: upsert lift records
+        asset_ids: list[str] = []
+        try:
+            await self._db.begin()
+
+            lift_params_list: list[dict[str, Any]] = []
+            for site in payload.lifted_sites:
+                lift_id = f"lift_{prov.run_id}_{site.site_index}"
+                lift_params_list.append({
+                    "lift_id": lift_id,
+                    "run_id": prov.run_id,
+                    "structure_id": prov.structure_id,
+                    "site_index": site.site_index,
+                    "lifted_x": site.lifted_x,
+                    "lifted_y": site.lifted_y,
+                    "lifted_z": site.lifted_z,
+                    "vertex_count": site.vertex_count,
+                    "source_method": site.source_method,
+                    "computed_at": payload.computed_at.isoformat(),
+                })
+                asset_ids.append(lift_id)
+
+            if lift_params_list:
+                await self._db.execute_many(
+                    """
+                    INSERT INTO fact_topological_lift (
+                        lift_id, run_id, structure_id, site_index,
+                        lifted_x, lifted_y, lifted_z, vertex_count,
+                        source_method, computed_at
+                    ) VALUES (
+                        :lift_id, :run_id, :structure_id, :site_index,
+                        :lifted_x, :lifted_y, :lifted_z, :vertex_count,
+                        :source_method, :computed_at
+                    )
+                    ON CONFLICT (run_id, site_index) DO UPDATE SET
+                        lift_id = EXCLUDED.lift_id,
+                        lifted_x = EXCLUDED.lifted_x,
+                        lifted_y = EXCLUDED.lifted_y,
+                        lifted_z = EXCLUDED.lifted_z,
+                        vertex_count = EXCLUDED.vertex_count,
+                        source_method = EXCLUDED.source_method,
+                        computed_at = EXCLUDED.computed_at
+                    """,
+                    lift_params_list,
+                )
+
+            # 3. Register governed assets
+            await self._register_governed_assets(
+                asset_ids=asset_ids,
+                asset_type="topological_lift",
+                prov=prov,
+            )
+
+            await self._db.commit()
+
+        except NormalizerError:
+            await self._db.rollback()
+            raise
+        except Exception as e:
+            await self._db.rollback()
+            await self._log_audit(
+                run_id=prov.run_id,
+                structure_id=prov.structure_id,
+                payload_type="topological_lift",
+                status="write_error",
+                error_message=str(e),
+                duration_ms=self._elapsed_ms(start_time),
+                payload_summary={"site_count": len(payload.lifted_sites)},
+            )
+            raise NormalizerError(
+                f"Failed to write topological lift results: {e}",
+                run_id=prov.run_id,
+                details=str(e),
+            ) from e
+
+        duration_ms = self._elapsed_ms(start_time)
+
+        # 4. Log successful audit
+        await self._log_audit(
+            run_id=prov.run_id,
+            structure_id=prov.structure_id,
+            payload_type="topological_lift",
+            status="success",
+            assets_created=len(asset_ids),
+            duration_ms=duration_ms,
+            payload_summary={
+                "site_count": len(payload.lifted_sites),
+                "method": payload.method,
+            },
+        )
+
+        logger.info(
+            "Normalized topological lift: run_id=%s, structure=%s, sites=%d, duration=%dms",
+            prov.run_id,
+            prov.structure_id,
+            len(payload.lifted_sites),
+            duration_ms,
+        )
+
+        return NormalizerResult(
+            success=True,
+            run_id=prov.run_id,
+            assets_created=len(asset_ids),
+            asset_ids=asset_ids,
+            warnings=warnings,
+        )
+
+    # ------------------------------------------------------------------
+    # Path 7: Phase 4 Resistance Pathway Persistence
+    # ------------------------------------------------------------------
+
+    async def normalize_resistance_pathways(
+        self, payload: ResistancePathwayPayload
+    ) -> NormalizerResult:
+        """Validate and write Phase 4 resistance pathway results.
+
+        Flow: provenance → transaction → upsert pathway records →
+              upsert spectral summary → register assets → commit → audit.
+
+        Args:
+            payload: Validated ResistancePathwayPayload.
+
+        Returns:
+            NormalizerResult with created asset IDs.
+
+        Raises:
+            NormalizerError: If validation or write fails.
+        """
+        start_time = time.monotonic()
+        warnings: list[str] = []
+        prov = payload.provenance
+
+        # 1. Ensure provenance run exists
+        await self._ensure_provenance_run(prov)
+
+        # 2. Atomic transaction: upsert pathway + spectral records
+        asset_ids: list[str] = []
+        try:
+            await self._db.begin()
+
+            # 2a. Upsert pathway records
+            pathway_params_list: list[dict[str, Any]] = []
+            for pathway in payload.pathways:
+                pathway_id = f"pathway_{prov.run_id}_{pathway.source_node}_{pathway.target_node}"
+                pathway_params_list.append({
+                    "pathway_id": pathway_id,
+                    "run_id": prov.run_id,
+                    "structure_id": prov.structure_id,
+                    "source_node": pathway.source_node,
+                    "target_node": pathway.target_node,
+                    "source_residue": pathway.source_residue,
+                    "target_residue": pathway.target_residue,
+                    "effective_resistance": pathway.effective_resistance,
+                    "coupling_strength": pathway.coupling_strength,
+                    "computed_at": payload.computed_at.isoformat(),
+                })
+                asset_ids.append(pathway_id)
+
+            if pathway_params_list:
+                await self._db.execute_many(
+                    """
+                    INSERT INTO fact_resistance_pathway (
+                        pathway_id, run_id, structure_id, source_node,
+                        target_node, source_residue, target_residue,
+                        effective_resistance, coupling_strength, computed_at
+                    ) VALUES (
+                        :pathway_id, :run_id, :structure_id, :source_node,
+                        :target_node, :source_residue, :target_residue,
+                        :effective_resistance, :coupling_strength, :computed_at
+                    )
+                    ON CONFLICT (run_id, source_node, target_node) DO UPDATE SET
+                        pathway_id = EXCLUDED.pathway_id,
+                        source_residue = EXCLUDED.source_residue,
+                        target_residue = EXCLUDED.target_residue,
+                        effective_resistance = EXCLUDED.effective_resistance,
+                        coupling_strength = EXCLUDED.coupling_strength,
+                        computed_at = EXCLUDED.computed_at
+                    """,
+                    pathway_params_list,
+                )
+
+            # 2b. Upsert spectral summary (one row per run)
+            import json as _json
+
+            spectral_id = f"spectral_{prov.run_id}"
+            await self._db.execute(
+                """
+                INSERT INTO fact_resistance_spectral (
+                    spectral_id, run_id, structure_id, lambda_2,
+                    hinge_residues, graph_nodes, graph_edges, computed_at
+                ) VALUES (
+                    :spectral_id, :run_id, :structure_id, :lambda_2,
+                    :hinge_residues, :graph_nodes, :graph_edges, :computed_at
+                )
+                ON CONFLICT (run_id) DO UPDATE SET
+                    spectral_id = EXCLUDED.spectral_id,
+                    lambda_2 = EXCLUDED.lambda_2,
+                    hinge_residues = EXCLUDED.hinge_residues,
+                    graph_nodes = EXCLUDED.graph_nodes,
+                    graph_edges = EXCLUDED.graph_edges,
+                    computed_at = EXCLUDED.computed_at
+                """,
+                {
+                    "spectral_id": spectral_id,
+                    "run_id": prov.run_id,
+                    "structure_id": prov.structure_id,
+                    "lambda_2": payload.lambda_2,
+                    "hinge_residues": _json.dumps(payload.hinge_residues),
+                    "graph_nodes": payload.graph_nodes,
+                    "graph_edges": payload.graph_edges,
+                    "computed_at": payload.computed_at.isoformat(),
+                },
+            )
+            asset_ids.append(spectral_id)
+
+            # 3. Register governed assets
+            await self._register_governed_assets(
+                asset_ids=asset_ids,
+                asset_type="resistance_pathway",
+                prov=prov,
+            )
+
+            await self._db.commit()
+
+        except NormalizerError:
+            await self._db.rollback()
+            raise
+        except Exception as e:
+            await self._db.rollback()
+            await self._log_audit(
+                run_id=prov.run_id,
+                structure_id=prov.structure_id,
+                payload_type="resistance_pathway",
+                status="write_error",
+                error_message=str(e),
+                duration_ms=self._elapsed_ms(start_time),
+                payload_summary={"pathway_count": len(payload.pathways)},
+            )
+            raise NormalizerError(
+                f"Failed to write resistance pathway results: {e}",
+                run_id=prov.run_id,
+                details=str(e),
+            ) from e
+
+        duration_ms = self._elapsed_ms(start_time)
+
+        # 4. Log successful audit
+        await self._log_audit(
+            run_id=prov.run_id,
+            structure_id=prov.structure_id,
+            payload_type="resistance_pathway",
+            status="success",
+            assets_created=len(asset_ids),
+            duration_ms=duration_ms,
+            payload_summary={
+                "pathway_count": len(payload.pathways),
+                "lambda_2": payload.lambda_2,
+                "graph_nodes": payload.graph_nodes,
+                "graph_edges": payload.graph_edges,
+            },
+        )
+
+        logger.info(
+            "Normalized resistance pathways: run_id=%s, structure=%s, pathways=%d, duration=%dms",
+            prov.run_id,
+            prov.structure_id,
+            len(payload.pathways),
+            duration_ms,
+        )
+
+        return NormalizerResult(
+            success=True,
+            run_id=prov.run_id,
+            assets_created=len(asset_ids),
+            asset_ids=asset_ids,
+            warnings=warnings,
+        )
+
+    # ------------------------------------------------------------------
+    # Path 8: Phase 5 Pharmacophore Persistence
+    # ------------------------------------------------------------------
+
+    async def normalize_pharmacophores(
+        self, payload: PharmacophorePayload
+    ) -> NormalizerResult:
+        """Validate and write Phase 5 pharmacophore results.
+
+        Flow: provenance → transaction → upsert pharmacophore records →
+              register assets → commit → audit.
+
+        Args:
+            payload: Validated PharmacophorePayload.
+
+        Returns:
+            NormalizerResult with created asset IDs.
+
+        Raises:
+            NormalizerError: If validation or write fails.
+        """
+        start_time = time.monotonic()
+        warnings: list[str] = []
+        prov = payload.provenance
+
+        # 1. Ensure provenance run exists
+        await self._ensure_provenance_run(prov)
+
+        # 2. Atomic transaction: upsert pharmacophore records
+        asset_ids: list[str] = []
+        try:
+            await self._db.begin()
+
+            import json as _json
+
+            pharma_params_list: list[dict[str, Any]] = []
+            for pharma in payload.pharmacophores:
+                pharma_id = f"pharma_{prov.run_id}_{pharma.pocket_index}"
+                pharma_params_list.append({
+                    "pharmacophore_id": pharma_id,
+                    "run_id": prov.run_id,
+                    "structure_id": prov.structure_id,
+                    "pocket_index": pharma.pocket_index,
+                    "center_x": pharma.center_x,
+                    "center_y": pharma.center_y,
+                    "center_z": pharma.center_z,
+                    "druggability_score": pharma.druggability_score,
+                    "residue_count": pharma.residue_count,
+                    "residue_indices": _json.dumps(pharma.residue_indices),
+                    "allosteric_coupling": pharma.allosteric_coupling,
+                    "volume_estimate": pharma.volume_estimate,
+                    "computed_at": payload.computed_at.isoformat(),
+                })
+                asset_ids.append(pharma_id)
+
+            if pharma_params_list:
+                await self._db.execute_many(
+                    """
+                    INSERT INTO fact_pharmacophore (
+                        pharmacophore_id, run_id, structure_id, pocket_index,
+                        center_x, center_y, center_z, druggability_score,
+                        residue_count, residue_indices, allosteric_coupling,
+                        volume_estimate, computed_at
+                    ) VALUES (
+                        :pharmacophore_id, :run_id, :structure_id, :pocket_index,
+                        :center_x, :center_y, :center_z, :druggability_score,
+                        :residue_count, :residue_indices, :allosteric_coupling,
+                        :volume_estimate, :computed_at
+                    )
+                    ON CONFLICT (run_id, pocket_index) DO UPDATE SET
+                        pharmacophore_id = EXCLUDED.pharmacophore_id,
+                        center_x = EXCLUDED.center_x,
+                        center_y = EXCLUDED.center_y,
+                        center_z = EXCLUDED.center_z,
+                        druggability_score = EXCLUDED.druggability_score,
+                        residue_count = EXCLUDED.residue_count,
+                        residue_indices = EXCLUDED.residue_indices,
+                        allosteric_coupling = EXCLUDED.allosteric_coupling,
+                        volume_estimate = EXCLUDED.volume_estimate,
+                        computed_at = EXCLUDED.computed_at
+                    """,
+                    pharma_params_list,
+                )
+
+            # 3. Register governed assets
+            await self._register_governed_assets(
+                asset_ids=asset_ids,
+                asset_type="pharmacophore",
+                prov=prov,
+            )
+
+            await self._db.commit()
+
+        except NormalizerError:
+            await self._db.rollback()
+            raise
+        except Exception as e:
+            await self._db.rollback()
+            await self._log_audit(
+                run_id=prov.run_id,
+                structure_id=prov.structure_id,
+                payload_type="pharmacophore",
+                status="write_error",
+                error_message=str(e),
+                duration_ms=self._elapsed_ms(start_time),
+                payload_summary={"pharmacophore_count": len(payload.pharmacophores)},
+            )
+            raise NormalizerError(
+                f"Failed to write pharmacophore results: {e}",
+                run_id=prov.run_id,
+                details=str(e),
+            ) from e
+
+        duration_ms = self._elapsed_ms(start_time)
+
+        # 4. Log successful audit
+        await self._log_audit(
+            run_id=prov.run_id,
+            structure_id=prov.structure_id,
+            payload_type="pharmacophore",
+            status="success",
+            assets_created=len(asset_ids),
+            duration_ms=duration_ms,
+            payload_summary={
+                "pharmacophore_count": len(payload.pharmacophores),
+                "druggability_threshold": payload.druggability_threshold,
+            },
+        )
+
+        logger.info(
+            "Normalized pharmacophores: run_id=%s, structure=%s, pharmacophores=%d, duration=%dms",
+            prov.run_id,
+            prov.structure_id,
+            len(payload.pharmacophores),
+            duration_ms,
+        )
+
+        return NormalizerResult(
+            success=True,
+            run_id=prov.run_id,
+            assets_created=len(asset_ids),
+            asset_ids=asset_ids,
+            warnings=warnings,
+        )
+
+    # ------------------------------------------------------------------
+    # Path 9: Phase 6 Drug Candidate Persistence
+    # ------------------------------------------------------------------
+
+    async def normalize_drug_candidates(
+        self, payload: DrugCandidatePayload
+    ) -> NormalizerResult:
+        """Validate and write Phase 6 drug candidate results.
+
+        Flow: provenance → transaction → upsert candidate records →
+              register assets → commit → audit.
+
+        Args:
+            payload: Validated DrugCandidatePayload.
+
+        Returns:
+            NormalizerResult with created asset IDs.
+
+        Raises:
+            NormalizerError: If validation or write fails.
+        """
+        start_time = time.monotonic()
+        warnings: list[str] = []
+        prov = payload.provenance
+
+        # 1. Ensure provenance run exists
+        await self._ensure_provenance_run(prov)
+
+        # 2. Atomic transaction: upsert candidate records
+        asset_ids: list[str] = []
+        try:
+            await self._db.begin()
+
+            candidate_params_list: list[dict[str, Any]] = []
+            for candidate in payload.candidates:
+                candidate_id = f"candidate_{prov.run_id}_{candidate.pocket_index}"
+                candidate_params_list.append({
+                    "candidate_id": candidate_id,
+                    "run_id": prov.run_id,
+                    "structure_id": prov.structure_id,
+                    "pocket_index": candidate.pocket_index,
+                    "center_x": candidate.center_x,
+                    "center_y": candidate.center_y,
+                    "center_z": candidate.center_z,
+                    "accessibility_score": candidate.accessibility_score,
+                    "binding_potential": candidate.binding_potential,
+                    "admet_pass": candidate.admet_pass,
+                    "selectivity_ratio": candidate.selectivity_ratio,
+                    "is_state_selective": candidate.is_state_selective,
+                    "combined_druggability": candidate.combined_druggability,
+                    "computed_at": payload.computed_at.isoformat(),
+                })
+                asset_ids.append(candidate_id)
+
+            if candidate_params_list:
+                await self._db.execute_many(
+                    """
+                    INSERT INTO fact_drug_candidate (
+                        candidate_id, run_id, structure_id, pocket_index,
+                        center_x, center_y, center_z, accessibility_score,
+                        binding_potential, admet_pass, selectivity_ratio,
+                        is_state_selective, combined_druggability, computed_at
+                    ) VALUES (
+                        :candidate_id, :run_id, :structure_id, :pocket_index,
+                        :center_x, :center_y, :center_z, :accessibility_score,
+                        :binding_potential, :admet_pass, :selectivity_ratio,
+                        :is_state_selective, :combined_druggability, :computed_at
+                    )
+                    ON CONFLICT (run_id, pocket_index) DO UPDATE SET
+                        candidate_id = EXCLUDED.candidate_id,
+                        center_x = EXCLUDED.center_x,
+                        center_y = EXCLUDED.center_y,
+                        center_z = EXCLUDED.center_z,
+                        accessibility_score = EXCLUDED.accessibility_score,
+                        binding_potential = EXCLUDED.binding_potential,
+                        admet_pass = EXCLUDED.admet_pass,
+                        selectivity_ratio = EXCLUDED.selectivity_ratio,
+                        is_state_selective = EXCLUDED.is_state_selective,
+                        combined_druggability = EXCLUDED.combined_druggability,
+                        computed_at = EXCLUDED.computed_at
+                    """,
+                    candidate_params_list,
+                )
+
+            # 3. Register governed assets
+            await self._register_governed_assets(
+                asset_ids=asset_ids,
+                asset_type="drug_candidate",
+                prov=prov,
+            )
+
+            await self._db.commit()
+
+        except NormalizerError:
+            await self._db.rollback()
+            raise
+        except Exception as e:
+            await self._db.rollback()
+            await self._log_audit(
+                run_id=prov.run_id,
+                structure_id=prov.structure_id,
+                payload_type="drug_candidate",
+                status="write_error",
+                error_message=str(e),
+                duration_ms=self._elapsed_ms(start_time),
+                payload_summary={"candidate_count": len(payload.candidates)},
+            )
+            raise NormalizerError(
+                f"Failed to write drug candidate results: {e}",
+                run_id=prov.run_id,
+                details=str(e),
+            ) from e
+
+        duration_ms = self._elapsed_ms(start_time)
+
+        # 4. Log successful audit
+        await self._log_audit(
+            run_id=prov.run_id,
+            structure_id=prov.structure_id,
+            payload_type="drug_candidate",
+            status="success",
+            assets_created=len(asset_ids),
+            duration_ms=duration_ms,
+            payload_summary={
+                "candidate_count": len(payload.candidates),
+                "admet_passed_count": payload.admet_passed_count,
+                "state_selective_count": payload.state_selective_count,
+            },
+        )
+
+        logger.info(
+            "Normalized drug candidates: run_id=%s, structure=%s, candidates=%d, duration=%dms",
+            prov.run_id,
+            prov.structure_id,
+            len(payload.candidates),
+            duration_ms,
+        )
+
+        return NormalizerResult(
+            success=True,
+            run_id=prov.run_id,
+            assets_created=len(asset_ids),
+            asset_ids=asset_ids,
+            warnings=warnings,
+        )
+
+    # ------------------------------------------------------------------
     # Path 3: Graph Topology
     # ------------------------------------------------------------------
 
@@ -487,12 +1585,18 @@ class Normalizer:
                         run_id=prov.run_id,
                     )
 
-        # 3. Atomic transaction: edges + metrics
+        # 3. Compute graph metrics BEFORE the transaction to avoid holding
+        # a DB connection idle during CPU-bound networkx work.
+        metrics = await asyncio.to_thread(
+            _compute_graph_metrics, payload.edges
+        )
+
+        # 4. Atomic transaction: edges + metrics
         asset_ids: list[str] = []
         try:
             await self._db.begin()
 
-            # 4. Upsert edges
+            # 4a. Upsert edges
             edge_params_list: list[dict[str, Any]] = []
             for edge in payload.edges:
                 edge_id = str(uuid.uuid4())
@@ -533,12 +1637,7 @@ class Normalizer:
                 edge_params_list,
             )
 
-            # 5. Compute metrics via asyncio.to_thread (non-blocking)
-            metrics = await asyncio.to_thread(
-                _compute_graph_metrics, payload.edges
-            )
-
-            # 6. Upsert metrics
+            # 4b. Upsert metrics (pre-computed above)
             metric_params_list: list[dict[str, Any]] = []
             for residue_id, m in metrics.items():
                 metric_id = str(uuid.uuid4())
@@ -715,13 +1814,22 @@ class Normalizer:
             # 4. Upsert predictions
             pred_params_list: list[dict[str, Any]] = []
             for pred in payload.predictions:
+                # Stringify complex fields (test_params dicts etc.) for psycopg executemany compatibility
+                # (avoids "cannot adapt type 'dict'" on %s / jsonb columns in some pool/adapter configs).
+                import json as _json_local
+                tp = pred.test_params
+                if isinstance(tp, (dict, list)):
+                    tp = _json_local.dumps(tp)
+                th = pred.threshold
+                if isinstance(th, (dict, list)):
+                    th = _json_local.dumps(th)
                 pred_params_list.append({
                     "prediction_id": pred.prediction_id,
                     "hypothesis_id": payload.hypothesis_id,
                     "statement": pred.statement,
                     "test_tool": pred.test_tool,
-                    "test_params": pred.test_params,
-                    "threshold": pred.threshold,
+                    "test_params": tp,
+                    "threshold": th,
                 })
                 asset_ids.append(pred.prediction_id)
 
@@ -980,14 +2088,10 @@ class Normalizer:
         curvature: float | None,
         model_name: str,
     ) -> str:
-        """Ensure the embedding space is registered. Returns space_id."""
-        existing = await self._db.fetch_one(
-            "SELECT space_id FROM embedding_space WHERE name = :name",
-            {"name": space_name},
-        )
-        if existing:
-            return existing["space_id"]
+        """Ensure the embedding space is registered. Returns space_id.
 
+        Uses INSERT ... ON CONFLICT to handle concurrent registration safely.
+        """
         space_id = f"space_{space_name}"
         await self._db.execute(
             """
@@ -998,6 +2102,7 @@ class Normalizer:
                 :space_id, :name, :space_type, :dimensionality, :curvature,
                 :model_name, TRUE
             )
+            ON CONFLICT (name) DO NOTHING
             """,
             {
                 "space_id": space_id,
@@ -1016,6 +2121,8 @@ class Normalizer:
         prov: ProvenanceContext,
         space_id: str,
         computed_at: datetime,
+        expert_load_per_run: list[float] | None = None,
+        routing_entropy: float | None = None,
     ) -> str:
         """Write a single GNN node embedding. Returns the embedding_id.
 
@@ -1030,27 +2137,33 @@ class Normalizer:
             INSERT INTO fact_gnn_node_embedding (
                 embedding_id, run_id, structure_id, residue_id, space_id,
                 input_rho, input_tau_flag, input_ss_type, input_sasa,
-                embedding, hyp_projections, cone_depth, cone_width,
+                embedding, embedding_double, hyp_projections, hyp_projection_2d, cone_depth, cone_width,
                 epistemic_uncertainty, aleatoric_uncertainty, total_uncertainty,
-                expert_weights, source_type, model_version, computed_at
+                expert_weights, source_type, model_version, computed_at,
+                expert_load_per_run, routing_entropy
             ) VALUES (
                 :embedding_id, :run_id, :structure_id, :residue_id, :space_id,
                 :input_rho, :input_tau_flag, :input_ss_type, :input_sasa,
-                :embedding, :hyp_projections, :cone_depth, :cone_width,
+                :embedding, :embedding_double, :hyp_projections, :hyp_projection_2d, :cone_depth, :cone_width,
                 :epistemic_uncertainty, :aleatoric_uncertainty, :total_uncertainty,
-                :expert_weights, :source_type, :model_version, :computed_at
+                :expert_weights, :source_type, :model_version, :computed_at,
+                :expert_load_per_run, :routing_entropy
             )
             ON CONFLICT (run_id, residue_id, space_id) DO UPDATE SET
                 embedding_id = EXCLUDED.embedding_id,
                 embedding = EXCLUDED.embedding,
+                embedding_double = EXCLUDED.embedding_double,
                 hyp_projections = EXCLUDED.hyp_projections,
+                hyp_projection_2d = EXCLUDED.hyp_projection_2d,
                 cone_depth = EXCLUDED.cone_depth,
                 cone_width = EXCLUDED.cone_width,
                 epistemic_uncertainty = EXCLUDED.epistemic_uncertainty,
                 aleatoric_uncertainty = EXCLUDED.aleatoric_uncertainty,
                 total_uncertainty = EXCLUDED.total_uncertainty,
                 expert_weights = EXCLUDED.expert_weights,
-                computed_at = EXCLUDED.computed_at
+                computed_at = EXCLUDED.computed_at,
+                expert_load_per_run = EXCLUDED.expert_load_per_run,
+                routing_entropy = EXCLUDED.routing_entropy
             """,
             {
                 "embedding_id": embedding_id,
@@ -1063,16 +2176,20 @@ class Normalizer:
                 "input_ss_type": node.input_ss_type,
                 "input_sasa": node.input_sasa,
                 "embedding": node.embedding,
-                "hyp_projections": node.hyp_projections,
+                "embedding_double": node.embedding_double,
+                "hyp_projections": Json(node.hyp_projections) if node.hyp_projections else None,
+                "hyp_projection_2d": ("[" + ",".join(str(v) for v in node.hyp_projections) + "]") if (node.hyp_projections and len(node.hyp_projections) == 2) else None,
                 "cone_depth": node.cone_depth,
                 "cone_width": node.cone_width,
                 "epistemic_uncertainty": node.epistemic_uncertainty,
                 "aleatoric_uncertainty": node.aleatoric_uncertainty,
                 "total_uncertainty": node.total_uncertainty,
-                "expert_weights": node.expert_weights,
+                "expert_weights": Json(node.expert_weights) if node.expert_weights else None,
                 "source_type": prov.source_type.value,
                 "model_version": prov.model_version,
                 "computed_at": computed_at.isoformat(),
+                "expert_load_per_run": Json(expert_load_per_run) if expert_load_per_run else None,
+                "routing_entropy": routing_entropy,
             },
         )
         return embedding_id
@@ -1127,6 +2244,11 @@ class Normalizer:
         This is fire-and-forget — audit failures should not block the
         primary write path.
         """
+        import json as _json
+
+        # psycopg3 does not auto-serialize dicts to JSONB — must be explicit
+        summary_json = _json.dumps(payload_summary) if payload_summary is not None else None
+
         try:
             await self._db.execute(
                 """
@@ -1147,7 +2269,7 @@ class Normalizer:
                     "status": status,
                     "assets_created": assets_created,
                     "error_message": error_message,
-                    "payload_summary": payload_summary,
+                    "payload_summary": summary_json,
                     "duration_ms": duration_ms,
                     "caller_identity": self._caller_identity,
                 },

@@ -86,3 +86,13 @@ secrets/
 *.log
 *.tmp
 tmp/visualizer/frontend (Copy)/
+_Dockerfile.frontend_
+requirements-science (Copy).txt
+
+# Local generated science artifacts
+.vite/
+data/local_objects/
+data_backup_*/
+science_backup_*/
+visualizer/frontend/*.webm
+visualizer/frontend-refactor/
