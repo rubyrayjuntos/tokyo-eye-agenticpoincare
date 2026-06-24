@@ -422,43 +422,7 @@ class TestQueryBindingSitesReturnsPrecomputed:
 
 
 class TestPipelineIntegrationWithScanPhase:
-    """Verify the orchestrator correctly runs the scan phase."""
-
-    @pytest.mark.asyncio
-    async def test_orchestrator_runs_binding_site_scan(self):
-        """Pipeline orchestrator should include binding_site_scan in results."""
-        from science.dtie.v5.orchestrator.pipeline import (
-            DTIEOrchestrator,
-            PipelineConfig,
-        )
-
-        db = _build_mock_db_with_gnn_data()
-
-        orchestrator = DTIEOrchestrator(db=db)
-        config = PipelineConfig(
-            structure_id="4obe",
-            source_leak_only=False,
-            run_gnn=False,
-            run_phase1=False,
-            run_phase2=False,
-            run_phase3=False,
-            run_phase35=False,
-            run_phase4=False,
-            run_phase5=False,
-            run_phase6=False,
-            detect_source_leaks=False,
-            identify_allosteric_sites=False,
-            run_binding_site_scan=True,
-        )
-
-        result = await orchestrator.run(config)
-
-        assert "binding_site_scan" in result.phase_results
-        scan_phase = result.phase_results["binding_site_scan"]
-        assert scan_phase.success is True
-        assert scan_phase.outputs["sites_found"] == 2
-        assert scan_phase.outputs["scan_run_id"].startswith("scan_4obe_")
-        assert scan_phase.outputs["heuristic_version"] == "v1.0"
+    """Verify scan outputs round-trip independently of the orchestrator."""
 
     @pytest.mark.asyncio
     async def test_scan_then_query_round_trip(self):

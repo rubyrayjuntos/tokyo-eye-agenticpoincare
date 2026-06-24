@@ -12,10 +12,12 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
+from psycopg.types.json import Json
 
 from data.db import DBAdapter, get_connection
 from data.normalizer.core import Normalizer
@@ -33,6 +35,7 @@ router = APIRouter()
 class IngestRequest(BaseModel):
     pdb_id: str
     force_reingest: bool = False
+    requested_by: str | None = None
 
 
 class IngestResponse(BaseModel):
@@ -43,6 +46,8 @@ class IngestResponse(BaseModel):
     computation_scope: dict[str, Any]
     alignment_status: str  # "pending", "skipped", "completed"
     already_existed: bool
+    audit_only: bool = False
+    audit_run_id: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -81,46 +86,30 @@ async def ingest_full(
 
     pdb_id = request.pdb_id.strip()
     structure_id = make_structure_id(pdb_id=pdb_id, source="rcsb")
+    requester = (request.requested_by or "science_api").strip() or "science_api"
 
     # Step 1: Idempotency check
     async with get_connection() as conn:
         db = DBAdapter(conn)
 
-        if not request.force_reingest:
-            existing = await db.fetch_one(
-                "SELECT structure_id FROM dim_structure WHERE structure_id = :sid",
-                {"sid": structure_id},
+        existing = await db.fetch_one(
+            "SELECT structure_id FROM dim_structure WHERE structure_id = :sid",
+            {"sid": structure_id},
+        )
+        if existing:
+            audit_run_id = await _record_duplicate_ingest_audit(
+                db=db,
+                structure_id=structure_id,
+                pdb_id=pdb_id,
+                requester=requester,
+                force_reingest=request.force_reingest,
             )
-            if existing:
-                # Return existing metadata
-                scope_row = await db.fetch_one(
-                    "SELECT * FROM structure_computation_scope WHERE structure_id = :sid",
-                    {"sid": structure_id},
-                )
-                counts = await db.fetch_one(
-                    """
-                    SELECT
-                        (SELECT COUNT(*) FROM dim_chain WHERE structure_id = :sid) as chains,
-                        (SELECT COUNT(*) FROM dim_residue r
-                         JOIN dim_chain c ON r.chain_id = c.chain_id
-                         WHERE c.structure_id = :sid) as residues,
-                        (SELECT COUNT(*) FROM dim_atom a
-                         JOIN dim_residue r ON a.residue_id = r.residue_id
-                         JOIN dim_chain c ON r.chain_id = c.chain_id
-                         WHERE c.structure_id = :sid) as atoms
-                    """,
-                    {"sid": structure_id},
-                )
-                scope_dict = _scope_row_to_dict(scope_row) if scope_row else {}
-                return IngestResponse(
-                    structure_id=structure_id,
-                    chain_count=counts["chains"] if counts else 0,
-                    residue_count=counts["residues"] if counts else 0,
-                    atom_count=counts["atoms"] if counts else 0,
-                    computation_scope=scope_dict,
-                    alignment_status="completed",
-                    already_existed=True,
-                )
+            return await _build_existing_ingest_response(
+                db=db,
+                structure_id=structure_id,
+                audit_only=True,
+                audit_run_id=audit_run_id,
+            )
 
     # Step 2: Download BinaryCIF
     from science.dtie.ingest.downloader import DownloadError, download_bcif
@@ -309,6 +298,8 @@ async def ingest_full(
             "file_hash": download_result.file_hash,
             "biotite_version": biotite_version,
             "rcsbapi_version": rcsbapi_version,
+            "requested_by": requester,
+            "audit_only": False,
         },
     )
 
@@ -342,7 +333,10 @@ async def ingest_full(
 
     async with get_connection() as conn:
         db = DBAdapter(conn)
-        normalizer = Normalizer(db=db, caller_identity="science_api_ingest")
+        normalizer = Normalizer(
+            db=db,
+            caller_identity=f"science_api_ingest:{requester}",
+        )
 
         try:
             await normalizer.normalize_ingest_dimensions(payload)
@@ -399,6 +393,8 @@ async def ingest_full(
         computation_scope=scope_dict,
         alignment_status=alignment_status,
         already_existed=False,
+        audit_only=False,
+        audit_run_id=None,
     )
 
 
@@ -417,6 +413,105 @@ def _scope_row_to_dict(row: dict[str, Any]) -> dict[str, Any]:
         "selection_reason": row.get("selection_reason", ""),
         "normalization_protocol": row.get("normalization_protocol", "graph_default"),
     }
+
+
+async def _build_existing_ingest_response(
+    db: Any,
+    structure_id: str,
+    *,
+    audit_only: bool,
+    audit_run_id: str | None,
+) -> IngestResponse:
+    """Return the current structure summary without rerunning ingest writes."""
+    scope_row = await db.fetch_one(
+        "SELECT * FROM structure_computation_scope WHERE structure_id = :sid",
+        {"sid": structure_id},
+    )
+    counts = await db.fetch_one(
+        """
+        SELECT
+            (SELECT COUNT(*) FROM dim_chain WHERE structure_id = :sid) as chains,
+            (SELECT COUNT(*) FROM dim_residue r
+             JOIN dim_chain c ON r.chain_id = c.chain_id
+             WHERE c.structure_id = :sid) as residues,
+            (SELECT COUNT(*) FROM dim_atom a
+             JOIN dim_residue r ON a.residue_id = r.residue_id
+             JOIN dim_chain c ON r.chain_id = c.chain_id
+             WHERE c.structure_id = :sid) as atoms
+        """,
+        {"sid": structure_id},
+    )
+    scope_dict = _scope_row_to_dict(scope_row) if scope_row else {}
+    return IngestResponse(
+        structure_id=structure_id,
+        chain_count=counts["chains"] if counts else 0,
+        residue_count=counts["residues"] if counts else 0,
+        atom_count=counts["atoms"] if counts else 0,
+        computation_scope=scope_dict,
+        alignment_status="completed",
+        already_existed=True,
+        audit_only=audit_only,
+        audit_run_id=audit_run_id,
+    )
+
+
+async def _record_duplicate_ingest_audit(
+    db: Any,
+    structure_id: str,
+    pdb_id: str,
+    requester: str,
+    force_reingest: bool,
+) -> str:
+    """Record repeat-ingest attempts as audit-only provenance, not data rewrites."""
+    audit_run_id = f"ingest_audit_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc).isoformat()
+    event_type = "duplicate_ingest_forced_blocked" if force_reingest else "duplicate_ingest_skipped"
+    parameters = {
+        "pdb_id": pdb_id,
+        "requested_by": requester,
+        "audit_only": True,
+        "duplicate_existing_structure": True,
+        "force_reingest_requested": force_reingest,
+    }
+
+    await db.execute(
+        """
+        INSERT INTO provenance_run (
+            run_id, structure_id, model_version, pipeline_name,
+            run_type, source_type, parameters, started_at, completed_at
+        ) VALUES (
+            :run_id, :structure_id, :model_version, :pipeline_name,
+            :run_type, :source_type, :parameters, :started_at, :completed_at
+        )
+        """,
+        {
+            "run_id": audit_run_id,
+            "structure_id": structure_id,
+            "model_version": "bcif_ingest_audit_v1",
+            "pipeline_name": "structure_ingestion",
+            "run_type": "analysis",
+            "source_type": "derived",
+            "parameters": Json(parameters),
+            "started_at": now,
+            "completed_at": now,
+        },
+    )
+    await db.execute(
+        """
+        INSERT INTO provenance_event (
+            run_id, event_type, description, metadata
+        ) VALUES (
+            :run_id, :event_type, :description, :metadata
+        )
+        """,
+        {
+            "run_id": audit_run_id,
+            "event_type": event_type,
+            "description": "Repeat ingest recorded as audit-only event",
+            "metadata": Json(parameters),
+        },
+    )
+    return audit_run_id
 
 
 async def _upsert_computation_scope(

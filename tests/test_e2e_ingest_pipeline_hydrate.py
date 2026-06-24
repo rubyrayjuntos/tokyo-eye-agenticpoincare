@@ -91,7 +91,7 @@ class TestE2EIngestPipelineHydrate:
                 side_effect=_mock_get_connection,
             ),
             patch(
-                "agent.tools.rcsb.ingest_structure",
+                "agent.tools.science_client.ScienceClient.ingest_structure",
                 new_callable=AsyncMock,
                 return_value=MOCK_INGEST_RESULT,
             ),
@@ -329,7 +329,7 @@ class TestE2EIngestPipelineHydrate:
                 side_effect=_mock_get_connection,
             ),
             patch(
-                "agent.tools.rcsb.ingest_structure",
+                "agent.tools.science_client.ScienceClient.ingest_structure",
                 new_callable=AsyncMock,
                 return_value=MOCK_INGEST_RESULT,
             ),

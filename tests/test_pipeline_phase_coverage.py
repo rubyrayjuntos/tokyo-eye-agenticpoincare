@@ -49,7 +49,6 @@ ALL_PHASE_NAMES = [
     "phase6d_state_selectivity",
     "source_leak_detection",
     "allosteric_sites",
-    "binding_site_scan",
 ]
 
 
@@ -88,9 +87,6 @@ def successful_pipeline_result_strategy(draw):
         elif phase_name == "source_leak_detection":
             leak_count = draw(st.integers(min_value=0, max_value=20))
             outputs = {"source_leak_count": leak_count, "source_leak_residues": []}
-        elif phase_name == "binding_site_scan":
-            outputs = {"scan_run_id": "scan_123", "sites_found": 0, "duration_ms": 100.0}
-
         phase_results[phase_name] = PhaseResult(
             phase_name=phase_name,
             structure_id=structure_id,

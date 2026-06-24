@@ -18,7 +18,12 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from agent.coordinator.auth import get_current_user
 from agent.coordinator.deps import get_db
+from agent.coordinator.routers.ingest import (
+    _authorize_ingest_request,
+    _resolve_request_subject,
+)
 from shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -229,24 +234,48 @@ class AgentChatRequest(BaseModel):
 
 
 @router.post("/ingest")
-async def ingest(request: IngestRequest):
-    """Fetch structure from RCSB, parse CIF, populate dimensional tables."""
-    from agent.tools.rcsb import ingest_structure
-    from data.db import DBAdapter, get_connection
+async def ingest(
+    request: IngestRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    """Delegate structure ingest to the science API with caller audit metadata."""
+    from agent.tools.science_client import (
+        ScienceClient,
+        ScienceComputeError,
+        ScienceTimeoutError,
+    )
 
     try:
-        async with get_connection() as conn:
-            db = DBAdapter(conn)
-            result = await ingest_structure(pdb_id=request.pdb_id, db=db)
-
-        if "error" in result:
-            return JSONResponse(
-                status_code=502 if "unavailable" in result.get("error", "").lower() else 404,
-                content={"error": result["error"], "message": result["error"]},
-            )
-
-        return result
-
+        requester = _resolve_request_subject(current_user)
+        _authorize_ingest_request(requester)
+        client = ScienceClient()
+        ingest_result = await client.ingest_structure(
+            pdb_id=request.pdb_id,
+            requested_by=requester,
+        )
+        return {
+            "structure_id": ingest_result.get("structure_id"),
+            "pdb_id": ingest_result.get("pdb_id", request.pdb_id.upper()),
+            "chains": ingest_result.get("chains", ingest_result.get("chain_count", 0)),
+            "residues": ingest_result.get("residues", ingest_result.get("residue_count", 0)),
+            "atoms": ingest_result.get("atoms", ingest_result.get("atom_count", 0)),
+            "source": ingest_result.get("source", "rcsb"),
+            "already_existed": ingest_result.get("already_existed", False),
+            "audit_only": ingest_result.get("audit_only", False),
+            "audit_run_id": ingest_result.get("audit_run_id"),
+        }
+    except ScienceTimeoutError as e:
+        raise HTTPException(
+            status_code=504,
+            detail=f"Science container timed out during ingestion: {e}",
+        )
+    except ScienceComputeError as e:
+        raise HTTPException(
+            status_code=e.status,
+            detail=f"Ingestion failed: {e.detail}",
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Ingest failed for %s", request.pdb_id)
         return JSONResponse(

@@ -23,7 +23,6 @@ class TestPipelineConfig:
         assert config.run_phase4 is False
         assert config.run_phase5 is False
         assert config.run_phase6 is False
-        assert config.run_binding_site_scan is False
         # These should remain enabled
         assert config.run_gnn is True
         assert config.run_phase3 is True
@@ -153,52 +152,15 @@ class TestOrchestratorSourceLeakDetection:
 
 
 class TestOrchestratorBindingSiteScan:
-    def test_binding_site_scan_enabled_by_default(self):
-        """Full pipeline config should have binding site scan enabled."""
-        config = PipelineConfig(structure_id="4obe", source_leak_only=False)
-        assert config.run_binding_site_scan is True
-
-    def test_binding_site_scan_disabled_in_source_leak_only(self):
-        """Source-leak-only mode should disable the scan phase."""
-        config = PipelineConfig(structure_id="4obe", source_leak_only=True)
-        assert config.run_binding_site_scan is False
-
     @pytest.mark.asyncio
-    async def test_run_binding_site_scan_calls_scan_phase(self, validating_mock_db):
-        """The scan phase method should invoke run_full_structure_scan."""
-        # Register empty responses for DB queries the scan phase will make
-        validating_mock_db.register_response("fact_gnn_node_embedding", [])
-        validating_mock_db.register_response("provenance_run", [])
-        validating_mock_db.register_response("fact_binding_site_scan", [])
-
-        orchestrator = DTIEOrchestrator(db=validating_mock_db)
-        config = PipelineConfig(
-            structure_id="4obe",
-            uncertainty_threshold=0.3,
-            depth_threshold=1.5,
-        )
-
-        result = await orchestrator._run_binding_site_scan(config, "test_run")
-        assert result.success is True
-        assert result.phase_name == "binding_site_scan"
-        assert "scan_run_id" in result.outputs
-        assert "sites_found" in result.outputs
-        assert result.outputs["sites_found"] == 0  # No GNN data → no sites
-
-    @pytest.mark.asyncio
-    async def test_binding_site_scan_appears_in_pipeline_results(self, validating_mock_db):
-        """When the full pipeline runs, binding_site_scan should appear in phase_results."""
-        # Register empty responses so everything completes without error
-        validating_mock_db.register_response("fact_gnn_node_embedding", [])
-        validating_mock_db.register_response("provenance_run", [])
-        validating_mock_db.register_response("fact_binding_site_scan", [])
+    async def test_binding_site_scan_not_in_orchestrator_results(self, validating_mock_db):
+        """Binding-site scan should remain a separate compute call, not an orchestrator phase."""
         validating_mock_db.register_response("embedding_space", [])
 
         orchestrator = DTIEOrchestrator(db=validating_mock_db)
         config = PipelineConfig(
             structure_id="4obe",
-            source_leak_only=False,
-            run_gnn=False,  # Skip GNN to avoid needing full infra
+            run_gnn=False,
             run_phase1=False,
             run_phase2=False,
             run_phase3=False,
@@ -208,9 +170,7 @@ class TestOrchestratorBindingSiteScan:
             run_phase6=False,
             detect_source_leaks=False,
             identify_allosteric_sites=False,
-            run_binding_site_scan=True,
         )
 
         result = await orchestrator.run(config)
-        assert "binding_site_scan" in result.phase_results
-        assert result.phase_results["binding_site_scan"].success is True
+        assert "binding_site_scan" not in result.phase_results

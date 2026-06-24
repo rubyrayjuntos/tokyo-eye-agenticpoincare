@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
+from agent.coordinator.auth import get_current_user
 from agent.tools.science_client import (
     ScienceClient,
     ScienceComputeError,
@@ -58,6 +60,7 @@ class AgentIngestResponse(BaseModel):
 async def ingest_structure(
     request: AgentIngestRequest,
     background_tasks: BackgroundTasks,
+    current_user: dict[str, Any] = Depends(get_current_user),
 ) -> AgentIngestResponse:
     """Ingest a PDB structure and trigger computation pipeline in parallel.
 
@@ -72,6 +75,9 @@ async def ingest_structure(
     Returns:
         AgentIngestResponse with structure info and pipeline status.
     """
+    requester = _resolve_request_subject(current_user)
+    _authorize_ingest_request(requester)
+
     client = ScienceClient()
 
     # Call science container for full ingestion
@@ -79,6 +85,7 @@ async def ingest_structure(
         ingest_result = await client.ingest_structure(
             pdb_id=request.pdb_id,
             force_reingest=request.force_reingest,
+            requested_by=requester,
         )
     except ScienceTimeoutError as e:
         raise HTTPException(
@@ -122,6 +129,30 @@ async def ingest_structure(
         pipeline_status=pipeline_status,
         already_existed=already_existed,
     )
+
+
+def _resolve_request_subject(current_user: dict[str, Any]) -> str:
+    """Resolve the authenticated subject for ingest authorization/audit."""
+    for key in ("sub", "user_id", "username", "session_id"):
+        value = current_user.get(key)
+        if value:
+            return str(value)
+    return "anonymous"
+
+
+def _authorize_ingest_request(requester: str) -> None:
+    """Optionally restrict ingest to a configured subject allowlist."""
+    allowed_subjects_env = os.getenv("SCIENCE_INGEST_ALLOWED_SUBJECTS", "")
+    allowed_subjects = {
+        subject.strip()
+        for subject in allowed_subjects_env.split(",")
+        if subject.strip()
+    }
+    if allowed_subjects and requester not in allowed_subjects:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Ingest not permitted for subject '{requester}'",
+        )
 
 
 # ---------------------------------------------------------------------------

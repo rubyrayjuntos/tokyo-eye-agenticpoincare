@@ -40,6 +40,10 @@ _REQUIRED_PHASES = {"gnn_inference", "source_leak_detection"}
 # Compatibility registry used by tests and legacy callers that still reason
 # about the historical per-phase function layout.
 PHASE_REGISTRY: dict[str, tuple[str, str]] = {
+    "phase1_witness_embedding": (
+        "science.dtie.v4.phases.phase1_witness_embedding_v4",
+        "execute_phase_1_witness_embedding",
+    ),
     "phase2_vulnerability_scan": (
         "science.dtie.v5.phases.phase2_vulnerability",
         "run_phase2_vulnerability",
@@ -109,6 +113,20 @@ class PipelineConfig:
 
     structure_id: str
     checkpoint_path: str | None = None
+    source_leak_only: bool = False
+
+    # Legacy execution toggles retained for compatibility with tests, the API,
+    # and older callers that still construct partial pipelines explicitly.
+    run_gnn: bool = True
+    run_phase1: bool = True
+    run_phase2: bool = True
+    run_phase3: bool = True
+    run_phase35: bool = True
+    run_phase4: bool = True
+    run_phase5: bool = True
+    run_phase6: bool = True
+    detect_source_leaks: bool = True
+    identify_allosteric_sites: bool = True
 
     # Thresholds
     uncertainty_threshold: float = 0.3
@@ -136,6 +154,19 @@ class PipelineConfig:
     def __post_init__(self) -> None:
         # Canonical storage key used by ingestion is lowercase.
         self.structure_id = self.structure_id.strip().lower()
+
+        if self.source_leak_only:
+            self.run_phase1 = False
+            self.run_phase2 = False
+            self.run_phase35 = False
+            self.run_phase4 = False
+            self.run_phase5 = False
+            self.run_phase6 = False
+            self.identify_allosteric_sites = False
+
+    @property
+    def is_full_pipeline(self) -> bool:
+        return not self.source_leak_only
 
 
 # ---------------------------------------------------------------------------
@@ -200,30 +231,31 @@ class DTIEOrchestrator:
                 pass
 
         # ── Step 1: GNN Inference ─────────────────────────────────────────
-        try:
-            gnn_result = await self._run_gnn(config, run_id)
-            gnn_run_id = run_id
-            phase_results["gnn_inference"] = PhaseResult(
-                phase_name="gnn_inference",
-                structure_id=config.structure_id,
-                model_version=getattr(gnn_result, "model_version", "GOSPConeMapper-v6"),
-                success=True,
-                outputs={
-                    "node_count": len(gnn_result.nodes),
-                    "architecture": "decoupled_radial_angular",
-                    "gnn_model_version": getattr(gnn_result, "model_version", "GOSPConeMapper-v6"),
-                },
-            )
-        except Exception as e:
-            logger.error("GNN inference failed: %s", e)
-            return PipelineResult(
-                run_id=run_id,
-                structure_id=config.structure_id,
-                model_version=self.model_version,
-                success=False,
-                phase_results=phase_results,
-                warnings=[f"GNN inference failed: {e}"],
-            )
+        if config.run_gnn:
+            try:
+                gnn_result = await self._run_gnn(config, run_id)
+                gnn_run_id = run_id
+                phase_results["gnn_inference"] = PhaseResult(
+                    phase_name="gnn_inference",
+                    structure_id=config.structure_id,
+                    model_version=getattr(gnn_result, "model_version", "GOSPConeMapper-v6"),
+                    success=True,
+                    outputs={
+                        "node_count": len(gnn_result.nodes),
+                        "architecture": "decoupled_radial_angular",
+                        "gnn_model_version": getattr(gnn_result, "model_version", "GOSPConeMapper-v6"),
+                    },
+                )
+            except Exception as e:
+                logger.error("GNN inference failed: %s", e)
+                return PipelineResult(
+                    run_id=run_id,
+                    structure_id=config.structure_id,
+                    model_version=self.model_version,
+                    success=False,
+                    phase_results=phase_results,
+                    warnings=[f"GNN inference failed: {e}"],
+                )
 
         # ── Post-GNN: Hyperbolic Distance Materialization (new for Lorentz manifold support) ──
         if phase_results.get("gnn_inference") and phase_results["gnn_inference"].success:
@@ -283,167 +315,175 @@ class DTIEOrchestrator:
                     )
 
         # ── Step 2: Phase 2 — Vulnerability Scan ──────────────────────────
-        from science.dtie.v5.phases.phase2_vulnerability import run_phase2_vulnerability
-        try:
-            phase_results["phase2"] = await run_phase2_vulnerability(
-                db=self._db,
-                gnn_result=gnn_result,
-                structure_id=config.structure_id,
-                depth_threshold=config.depth_threshold,
-            )
-            if phase_results["phase2"].success:
-                await self._persist_phase_result(
-                    phase_results["phase2"], run_id, gnn_run_id, config
+        if config.run_phase2 and gnn_result is not None:
+            from science.dtie.v5.phases.phase2_vulnerability import run_phase2_vulnerability
+            try:
+                phase_results["phase2"] = await run_phase2_vulnerability(
+                    db=self._db,
+                    gnn_result=gnn_result,
+                    structure_id=config.structure_id,
+                    depth_threshold=config.depth_threshold,
                 )
-        except Exception as e:
-            logger.warning("Phase phase2 failed: %s", e)
-            warnings.append(f"Phase phase2 failed: {e}")
-            phase_results["phase2"] = PhaseResult(
-                phase_name="phase2",
-                structure_id=config.structure_id,
-                model_version="DTIE-v5-phase2",
-                success=False,
-                outputs={"error": str(e)},
-            )
+                if phase_results["phase2"].success:
+                    await self._persist_phase_result(
+                        phase_results["phase2"], run_id, gnn_run_id, config
+                    )
+            except Exception as e:
+                logger.warning("Phase phase2 failed: %s", e)
+                warnings.append(f"Phase phase2 failed: {e}")
+                phase_results["phase2"] = PhaseResult(
+                    phase_name="phase2",
+                    structure_id=config.structure_id,
+                    model_version="DTIE-v5-phase2",
+                    success=False,
+                    outputs={"error": str(e)},
+                )
 
         # ── Step 3: Phase 3.5 — Topological Lift ─────────────────────────
-        from science.dtie.v5.phases.phase35_topological_lift import (
-            run_phase35_topological_lift,
-        )
-        try:
-            phase_results["phase35"] = await run_phase35_topological_lift(
-                db=self._db,
-                gnn_result=gnn_result,
-                structure_id=config.structure_id,
-                phase3_result=None,
+        if config.run_phase35 and gnn_result is not None:
+            from science.dtie.v5.phases.phase35_topological_lift import (
+                run_phase35_topological_lift,
             )
-            if phase_results["phase35"].success:
-                await self._persist_phase_result(
-                    phase_results["phase35"], run_id, gnn_run_id, config
+            try:
+                phase_results["phase35"] = await run_phase35_topological_lift(
+                    db=self._db,
+                    gnn_result=gnn_result,
+                    structure_id=config.structure_id,
+                    phase3_result=None,
                 )
-        except Exception as e:
-            logger.warning("Phase phase35 failed: %s", e)
-            warnings.append(f"Phase phase35 failed: {e}")
-            phase_results["phase35"] = PhaseResult(
-                phase_name="phase35",
-                structure_id=config.structure_id,
-                model_version="DTIE-v5-phase35",
-                success=False,
-                outputs={"error": str(e)},
-            )
+                if phase_results["phase35"].success:
+                    await self._persist_phase_result(
+                        phase_results["phase35"], run_id, gnn_run_id, config
+                    )
+            except Exception as e:
+                logger.warning("Phase phase35 failed: %s", e)
+                warnings.append(f"Phase phase35 failed: {e}")
+                phase_results["phase35"] = PhaseResult(
+                    phase_name="phase35",
+                    structure_id=config.structure_id,
+                    model_version="DTIE-v5-phase35",
+                    success=False,
+                    outputs={"error": str(e)},
+                )
 
         # ── Step 4: Phase 4 — Resistance Mapping ─────────────────────────
-        from science.dtie.v5.phases.phase4_resistance import run_phase4_resistance
-        try:
-            phase_results["phase4"] = await run_phase4_resistance(
-                db=self._db,
-                gnn_result=gnn_result,
-                structure_id=config.structure_id,
-                phase35_result=phase_results.get("phase35"),
-                spatial_cutoff=config.spatial_cutoff,
-            )
-            if phase_results["phase4"].success:
-                await self._persist_phase_result(
-                    phase_results["phase4"], run_id, gnn_run_id, config
+        if config.run_phase4 and gnn_result is not None:
+            from science.dtie.v5.phases.phase4_resistance import run_phase4_resistance
+            try:
+                phase_results["phase4"] = await run_phase4_resistance(
+                    db=self._db,
+                    gnn_result=gnn_result,
+                    structure_id=config.structure_id,
+                    phase35_result=phase_results.get("phase35"),
+                    spatial_cutoff=config.spatial_cutoff,
                 )
-        except Exception as e:
-            logger.warning("Phase phase4 failed: %s", e)
-            warnings.append(f"Phase phase4 failed: {e}")
-            phase_results["phase4"] = PhaseResult(
-                phase_name="phase4",
-                structure_id=config.structure_id,
-                model_version="DTIE-v5-phase4",
-                success=False,
-                outputs={"error": str(e)},
-            )
+                if phase_results["phase4"].success:
+                    await self._persist_phase_result(
+                        phase_results["phase4"], run_id, gnn_run_id, config
+                    )
+            except Exception as e:
+                logger.warning("Phase phase4 failed: %s", e)
+                warnings.append(f"Phase phase4 failed: {e}")
+                phase_results["phase4"] = PhaseResult(
+                    phase_name="phase4",
+                    structure_id=config.structure_id,
+                    model_version="DTIE-v5-phase4",
+                    success=False,
+                    outputs={"error": str(e)},
+                )
 
         # ── Step 5: Phase 5 — Pharmacophore ──────────────────────────────
-        from science.dtie.v5.phases.phase5_pharmacophore import run_phase5_pharmacophore
-        try:
-            phase_results["phase5"] = await run_phase5_pharmacophore(
-                db=self._db,
-                gnn_result=gnn_result,
-                structure_id=config.structure_id,
-                phase4_result=phase_results.get("phase4"),
-                phase35_result=phase_results.get("phase35"),
-            )
-            if phase_results["phase5"].success:
-                await self._persist_phase_result(
-                    phase_results["phase5"], run_id, gnn_run_id, config
+        if config.run_phase5 and gnn_result is not None:
+            from science.dtie.v5.phases.phase5_pharmacophore import run_phase5_pharmacophore
+            try:
+                phase_results["phase5"] = await run_phase5_pharmacophore(
+                    db=self._db,
+                    gnn_result=gnn_result,
+                    structure_id=config.structure_id,
+                    phase4_result=phase_results.get("phase4"),
+                    phase35_result=phase_results.get("phase35"),
                 )
-        except Exception as e:
-            logger.warning("Phase phase5 failed: %s", e)
-            warnings.append(f"Phase phase5 failed: {e}")
-            phase_results["phase5"] = PhaseResult(
-                phase_name="phase5",
-                structure_id=config.structure_id,
-                model_version="DTIE-v5-phase5",
-                success=False,
-                outputs={"error": str(e)},
-            )
+                if phase_results["phase5"].success:
+                    await self._persist_phase_result(
+                        phase_results["phase5"], run_id, gnn_run_id, config
+                    )
+            except Exception as e:
+                logger.warning("Phase phase5 failed: %s", e)
+                warnings.append(f"Phase phase5 failed: {e}")
+                phase_results["phase5"] = PhaseResult(
+                    phase_name="phase5",
+                    structure_id=config.structure_id,
+                    model_version="DTIE-v5-phase5",
+                    success=False,
+                    outputs={"error": str(e)},
+                )
 
         # ── Step 6: Phase 6 — Drug Discovery ─────────────────────────────
-        from science.dtie.v5.phases.phase6_drug_discovery import (
-            run_phase6_drug_discovery,
-        )
-        try:
-            phase_results["phase6_drug_discovery"] = await run_phase6_drug_discovery(
-                db=self._db,
-                gnn_result=gnn_result,
-                structure_id=config.structure_id,
-                phase5_result=phase_results.get("phase5"),
+        if config.run_phase6 and gnn_result is not None:
+            from science.dtie.v5.phases.phase6_drug_discovery import (
+                run_phase6_drug_discovery,
             )
-            if phase_results["phase6_drug_discovery"].success:
-                await self._persist_phase_result(
-                    phase_results["phase6_drug_discovery"], run_id, gnn_run_id, config
+            try:
+                phase_results["phase6_drug_discovery"] = await run_phase6_drug_discovery(
+                    db=self._db,
+                    gnn_result=gnn_result,
+                    structure_id=config.structure_id,
+                    phase5_result=phase_results.get("phase5"),
                 )
-        except Exception as e:
-            logger.warning("Phase phase6_drug_discovery failed: %s", e)
-            warnings.append(f"Phase phase6_drug_discovery failed: {e}")
-            phase_results["phase6_drug_discovery"] = PhaseResult(
-                phase_name="phase6_drug_discovery",
-                structure_id=config.structure_id,
-                model_version="DTIE-v5-phase6",
-                success=False,
-                outputs={"error": str(e)},
-            )
+                if phase_results["phase6_drug_discovery"].success:
+                    await self._persist_phase_result(
+                        phase_results["phase6_drug_discovery"], run_id, gnn_run_id, config
+                    )
+            except Exception as e:
+                logger.warning("Phase phase6_drug_discovery failed: %s", e)
+                warnings.append(f"Phase phase6_drug_discovery failed: {e}")
+                phase_results["phase6_drug_discovery"] = PhaseResult(
+                    phase_name="phase6_drug_discovery",
+                    structure_id=config.structure_id,
+                    model_version="DTIE-v5-phase6",
+                    success=False,
+                    outputs={"error": str(e)},
+                )
 
         # ── Step 7: Source-Leak Detection ─────────────────────────────────
-        try:
-            leak_result = await self._detect_source_leaks(config, gnn_result)
-            phase_results["source_leak_detection"] = leak_result
-            if leak_result.success:
-                await self._persist_phase_result(
-                    leak_result, run_id, gnn_run_id, config
+        if config.detect_source_leaks:
+            try:
+                leak_input = gnn_result if gnn_result is not None else "legacy_db_query"
+                leak_result = await self._detect_source_leaks(config, leak_input)
+                phase_results["source_leak_detection"] = leak_result
+                if leak_result.success:
+                    await self._persist_phase_result(
+                        leak_result, run_id, gnn_run_id, config
+                    )
+            except Exception as e:
+                warnings.append(f"Source-leak detection failed: {e}")
+                phase_results["source_leak_detection"] = PhaseResult(
+                    phase_name="source_leak_detection",
+                    structure_id=config.structure_id,
+                    model_version="DTIE-v5-source-leak",
+                    success=False,
+                    outputs={"error": str(e)},
                 )
-        except Exception as e:
-            warnings.append(f"Source-leak detection failed: {e}")
-            phase_results["source_leak_detection"] = PhaseResult(
-                phase_name="source_leak_detection",
-                structure_id=config.structure_id,
-                model_version="DTIE-v5-source-leak",
-                success=False,
-                outputs={"error": str(e)},
-            )
 
         # ── Step 8: Allosteric Site Identification (derivative facade) ─────
         # Allostery is already captured by resistance pathways (energy channels),
         # topological lifts (bottlenecks/locks), and source leaks (hinges).
         # This phase now aggregates a simple view for compatibility.
-        try:
-            site_result = await self._identify_allosteric_sites(
-                config, run_id,
-                phase35_result=phase_results.get("phase35"),
-                phase4_result=phase_results.get("phase4"),
-                source_leak_result=phase_results.get("source_leak_detection"),
-            )
-            phase_results["allosteric_sites"] = site_result
-            if site_result.success:
-                await self._persist_phase_result(
-                    site_result, run_id, gnn_run_id, config
+        if config.identify_allosteric_sites:
+            try:
+                site_result = await self._identify_allosteric_sites(
+                    config, run_id,
+                    phase35_result=phase_results.get("phase35"),
+                    phase4_result=phase_results.get("phase4"),
+                    source_leak_result=phase_results.get("source_leak_detection"),
                 )
-        except Exception as e:
-            warnings.append(f"Allosteric site identification failed: {e}")
+                phase_results["allosteric_sites"] = site_result
+                if site_result.success:
+                    await self._persist_phase_result(
+                        site_result, run_id, gnn_run_id, config
+                    )
+            except Exception as e:
+                warnings.append(f"Allosteric site identification failed: {e}")
 
         # Strict persistence checks.
         persistence_warnings = await self._validate_persistence_requirements(
@@ -458,28 +498,29 @@ class DTIEOrchestrator:
         # topological lift + resistance mapping (Y=Relay Flux).
         # Produces structure-level (X, Y) governed coordinates for the
         # KRAS Buffering Atlas / ASAR model.
-        try:
-            buffering_result = await self._compute_buffering_atlas(
-                config,
-                gnn_result=gnn_result,
-                source_leak_result=phase_results.get("source_leak_detection"),
-                phase35_result=phase_results.get("phase35"),
-                phase4_result=phase_results.get("phase4"),
-            )
-            phase_results["buffering_atlas"] = buffering_result
-            if buffering_result.success:
-                await self._persist_phase_result(
-                    buffering_result, run_id, gnn_run_id, config
+        if gnn_result is not None:
+            try:
+                buffering_result = await self._compute_buffering_atlas(
+                    config,
+                    gnn_result=gnn_result,
+                    source_leak_result=phase_results.get("source_leak_detection"),
+                    phase35_result=phase_results.get("phase35"),
+                    phase4_result=phase_results.get("phase4"),
                 )
-        except Exception as e:
-            warnings.append(f"Buffering atlas computation failed: {e}")
-            phase_results["buffering_atlas"] = PhaseResult(
-                phase_name="buffering_atlas",
-                structure_id=config.structure_id,
-                model_version="DTIE-v5-buffering",
-                success=False,
-                outputs={"error": str(e)},
-            )
+                phase_results["buffering_atlas"] = buffering_result
+                if buffering_result.success:
+                    await self._persist_phase_result(
+                        buffering_result, run_id, gnn_run_id, config
+                    )
+            except Exception as e:
+                warnings.append(f"Buffering atlas computation failed: {e}")
+                phase_results["buffering_atlas"] = PhaseResult(
+                    phase_name="buffering_atlas",
+                    structure_id=config.structure_id,
+                    model_version="DTIE-v5-buffering",
+                    success=False,
+                    outputs={"error": str(e)},
+                )
 
         logger.info(
             "DTIE pipeline complete for %s: %d phases run, success=%s",
