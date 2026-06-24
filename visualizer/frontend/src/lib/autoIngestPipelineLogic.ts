@@ -19,11 +19,11 @@ export interface IngestAndRunResult {
 }
 
 /**
- * Executes the ingest step and immediately triggers pipeline run.
+ * Executes the ingest step and ensures a pipeline job exists.
  * Returns the created structure and initial pipeline job.
  *
  * Property 2: For any successful ingest response containing a valid structure_id,
- * this function SHALL call runPipeline with that structure_id without additional user interaction.
+ * this function SHALL ensure a pipeline job exists without additional user interaction.
  */
 export async function ingestAndTriggerPipeline(
   pdbId: string,
@@ -45,10 +45,23 @@ export async function ingestAndTriggerPipeline(
     ingested_at: new Date().toISOString(),
   };
 
-  // Auto-trigger pipeline with all default modules (no modules = all enabled)
-  const pipelineJob = await adapter.runPipeline({
-    structure_id: ingestResult.structure_id,
-  });
+  const pipelineJob = ingestResult.pipeline_job_id
+    ? {
+        job_id: ingestResult.pipeline_job_id,
+        structure_id: ingestResult.structure_id,
+        status:
+          ingestResult.pipeline_status && ingestResult.pipeline_status !== "skipped"
+            ? ingestResult.pipeline_status
+            : "queued",
+        current_step: "pipeline",
+        progress: 0,
+        started_at: new Date().toISOString(),
+        completed_at: null,
+        error: null,
+      }
+    : await adapter.runPipeline({
+        structure_id: ingestResult.structure_id,
+      });
 
   return { structure, pipelineJob };
 }

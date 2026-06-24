@@ -1,7 +1,7 @@
 /**
  * Property-based tests for autoIngestPipelineLogic.
  *
- * Feature: structure-onboarding-panel, Property 2: Auto-pipeline triggers after successful ingest
+ * Feature: structure-onboarding-panel, Property 2: Auto-pipeline job exists after successful ingest
  * Feature: structure-onboarding-panel, Property 3: Pipeline completion activates structure and refreshes dashboard
  */
 import { describe, it, expect } from "vitest";
@@ -58,14 +58,14 @@ const arbStructure: fc.Arbitrary<Structure> = fc.record({
   ingested_at: arbIsoDate,
 });
 
-// --- Property 2: Auto-pipeline triggers after successful ingest ---
+// --- Property 2: Auto-pipeline job exists after successful ingest ---
 
-describe("Feature: structure-onboarding-panel, Property 2: Auto-pipeline triggers after successful ingest", () => {
-  it("For any successful ingest response, runPipeline is called with that structure_id", async () => {
+describe("Feature: structure-onboarding-panel, Property 2: Auto-pipeline job exists after successful ingest", () => {
+  it("For any ingest response without a queued job, runPipeline is called with that structure_id", async () => {
     await fc.assert(
       fc.asyncProperty(
         arbPdbId,
-        arbIngestResponse,
+        arbIngestResponse.map((resp) => ({ ...resp, pipeline_job_id: undefined })),
         arbPipelineJob,
         async (pdbId, ingestResponse, pipelineJobTemplate) => {
           const runPipelineCalls: Array<{ structure_id: string }> = [];
@@ -87,6 +87,57 @@ describe("Feature: structure-onboarding-panel, Property 2: Auto-pipeline trigger
           expect(runPipelineCalls[0].structure_id).toBe(ingestResponse.structure_id);
           // The returned structure must have the same structure_id
           expect(result.structure.structure_id).toBe(ingestResponse.structure_id);
+        }
+      ),
+      { numRuns: 100 }
+    );
+  });
+
+  it("For any ingest response with a queued job, runPipeline is not called again", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        arbPdbId,
+        arbIngestResponse,
+        fc.uuid(),
+        async (pdbId, ingestResponse, queuedJobId) => {
+          const runPipelineCalls: Array<{ structure_id: string }> = [];
+
+          const adapter: PipelineApiAdapter = {
+            ingest: async () => ({
+              ...ingestResponse,
+              pipeline_job_id: queuedJobId,
+              pipeline_status: "queued",
+            }),
+            runPipeline: async (req) => {
+              runPipelineCalls.push(req);
+              return {
+                job_id: queuedJobId,
+                structure_id: req.structure_id,
+                status: "queued",
+                current_step: "pipeline",
+                progress: 0,
+                started_at: new Date().toISOString(),
+                completed_at: null,
+                error: null,
+              };
+            },
+            getPipelineStatus: async () => ({
+              job_id: queuedJobId,
+              structure_id: ingestResponse.structure_id,
+              status: "queued",
+              current_step: "pipeline",
+              progress: 0,
+              started_at: new Date().toISOString(),
+              completed_at: null,
+              error: null,
+            }),
+          };
+
+          const result = await ingestAndTriggerPipeline(pdbId, adapter);
+
+          expect(runPipelineCalls).toHaveLength(0);
+          expect(result.pipelineJob.job_id).toBe(queuedJobId);
+          expect(result.pipelineJob.structure_id).toBe(ingestResponse.structure_id);
         }
       ),
       { numRuns: 100 }

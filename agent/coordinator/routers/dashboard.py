@@ -215,6 +215,8 @@ def _get_job(job_id: str) -> dict[str, Any] | None:
 
 class IngestRequest(BaseModel):
     pdb_id: str = Field(..., min_length=4, max_length=4, description="4-character PDB ID")
+    force_reingest: bool = False
+    run_pipeline: bool = True
 
 
 class PipelineRunRequest(BaseModel):
@@ -236,6 +238,7 @@ class AgentChatRequest(BaseModel):
 @router.post("/ingest")
 async def ingest(
     request: IngestRequest,
+    background_tasks: BackgroundTasks,
     current_user: dict[str, Any] = Depends(get_current_user),
 ):
     """Delegate structure ingest to the science API with caller audit metadata."""
@@ -251,8 +254,23 @@ async def ingest(
         client = ScienceClient()
         ingest_result = await client.ingest_structure(
             pdb_id=request.pdb_id,
+            force_reingest=request.force_reingest,
             requested_by=requester,
         )
+
+        pipeline_status = "skipped"
+        pipeline_job_id: str | None = None
+        pipeline_status_url: str | None = None
+        if request.run_pipeline and not ingest_result.get("audit_only", False):
+            pipeline_job_id = await _create_job_db(ingest_result["structure_id"])
+            background_tasks.add_task(
+                _run_pipeline_background,
+                pipeline_job_id,
+                ingest_result["structure_id"],
+            )
+            pipeline_status = "queued"
+            pipeline_status_url = f"/api/pipeline/status/{pipeline_job_id}"
+
         return {
             "structure_id": ingest_result.get("structure_id"),
             "pdb_id": ingest_result.get("pdb_id", request.pdb_id.upper()),
@@ -263,6 +281,9 @@ async def ingest(
             "already_existed": ingest_result.get("already_existed", False),
             "audit_only": ingest_result.get("audit_only", False),
             "audit_run_id": ingest_result.get("audit_run_id"),
+            "pipeline_status": pipeline_status,
+            "pipeline_job_id": pipeline_job_id,
+            "pipeline_status_url": pipeline_status_url,
         }
     except ScienceTimeoutError as e:
         raise HTTPException(

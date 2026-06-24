@@ -753,7 +753,7 @@ export default function DataToolsPanel() {
                     const pdb = SAMPLE_PDBS[p]!;
                     try {
                       await fetch('/api/ingest', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({pdb_id: pdb}) });
-                      // after ingest (and user should run pipeline), refetch compiler with explicit structure
+                      // ingest queues the full compute path; refetch compiler with explicit structure
                       const newStructs = selectedPathways.map(pp => pp === p ? pdb : (SAMPLE_PDBS[pp] || '4ake')).join(',');
                       const res = await fetch(`/api/therapeutic-compiler/state?pathways=${selectedPathways.join(',')}&structures=${newStructs}`);
                       if (res.ok) {
@@ -765,7 +765,7 @@ export default function DataToolsPanel() {
                     } catch(e) { console.warn('Ingest sample failed, ensure backend running and run full pipeline on the PDB', e); }
                   }}
                   className="ml-0.5 text-[8px] px-1 border border-emerald-600 text-emerald-700 rounded hover:bg-emerald-100"
-                  title={`Ingest sample PDB ${SAMPLE_PDBS[p]} for ${p} then refetch (run DTIE pipeline on it for full data)`}
+                  title={`Ingest sample PDB ${SAMPLE_PDBS[p]} for ${p}; the full DTIE compute path is queued automatically`}
                 >ingest {SAMPLE_PDBS[p]}</button>
               )}
             </label>
@@ -776,13 +776,8 @@ export default function DataToolsPanel() {
               for (const p of selected) {
                 const pdb = SAMPLE_PDBS[p] || '4ake';
                 try {
-                  await fetch('/api/ingest', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({pdb_id: pdb}) });
-                  const jobResp = await fetch('/api/pipeline/run', {
-                    method: 'POST',
-                    headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({structure_id: pdb.toLowerCase(), modules: []})
-                  });
-                  console.log(`Batch DTIE pipeline queued for ${p} (${pdb})`, await jobResp.json().catch(() => ({})));
+                  const ingestResp = await fetch('/api/ingest', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({pdb_id: pdb}) });
+                  console.log(`Batch ingest queued compute for ${p} (${pdb})`, await ingestResp.json().catch(() => ({})));
                 } catch(e) { console.warn(`Batch for ${p} failed`, e); }
               }
               // Refetch compiler with current selection
@@ -796,7 +791,7 @@ export default function DataToolsPanel() {
               }
             }}
             className="mt-1 w-full text-xs py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded"
-            title="For each selected pathway: ingest its sample PDB (if needed), then launch full DTIE pipeline (GNNv6 + phases). Refreshes compiler state afterwards."
+            title="For each selected pathway: ingest its sample PDB and let ingest queue the full DTIE compute path. Refreshes compiler state afterwards."
           >
             ▶ Run full DTIE pipeline on all selected samples
           </button>

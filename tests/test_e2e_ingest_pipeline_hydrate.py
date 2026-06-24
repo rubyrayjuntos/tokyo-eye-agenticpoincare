@@ -95,6 +95,15 @@ class TestE2EIngestPipelineHydrate:
                 new_callable=AsyncMock,
                 return_value=MOCK_INGEST_RESULT,
             ),
+            patch(
+                "agent.coordinator.routers.dashboard._create_job_db",
+                new_callable=AsyncMock,
+                return_value="ingest-job-001",
+            ),
+            patch(
+                "agent.coordinator.routers.dashboard._run_pipeline_background",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_report = MagicMock()
             mock_report.all_passed = True
@@ -112,6 +121,8 @@ class TestE2EIngestPipelineHydrate:
             assert body["structure_id"] == STRUCTURE_ID
             assert body["pdb_id"] == PDB_ID
             assert body["residues"] == 5
+            assert body["pipeline_status"] == "queued"
+            assert body["pipeline_job_id"] == "ingest-job-001"
 
     @pytest.mark.asyncio
     async def test_pipeline_run_dispatches_job(self):
@@ -435,6 +446,8 @@ class TestE2EIngestPipelineHydrate:
                     ingest_body = ingest_resp.json()
                     structure_id = ingest_body["structure_id"]
                     assert structure_id == STRUCTURE_ID
+                    assert ingest_body["pipeline_status"] == "queued"
+                    assert ingest_body["pipeline_job_id"] == "full-flow-job-001"
 
                     # Step 2: Trigger pipeline
                     pipeline_resp = await client.post(

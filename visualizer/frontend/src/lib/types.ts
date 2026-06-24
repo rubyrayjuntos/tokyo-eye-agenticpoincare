@@ -73,6 +73,11 @@ export interface IngestResponse {
   title: string;
   residue_count: number;
   chains: string[];
+  audit_only?: boolean;
+  audit_run_id?: string | null;
+  pipeline_status?: "queued" | "running" | "complete" | "failed" | "skipped";
+  pipeline_job_id?: string | null;
+  pipeline_status_url?: string | null;
 }
 
 export interface PipelineRunRequest {
