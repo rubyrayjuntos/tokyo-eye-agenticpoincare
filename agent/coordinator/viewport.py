@@ -67,6 +67,13 @@ class ViewportConnectionManager:
             except Exception:
                 pass
 
+    def get_stats(self) -> dict:
+        """Return connection stats for telemetry."""
+        return {
+            "active_connections": len(self._connections),
+            "sessions": len(self._by_session),
+        }
+
 
 # Singleton manager
 viewport_manager = ViewportConnectionManager()

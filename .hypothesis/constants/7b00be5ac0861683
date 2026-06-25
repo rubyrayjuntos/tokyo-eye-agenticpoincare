@@ -1,4 +1,0 @@
-# file: /home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/data/provenance/lineage.py
-# hypothesis_version: 6.151.9
-
-['a_depth', 'asset', 'asset_id', 'asset_type', 'b_depth', 'completed_at', 'created_at', 'max_depth', 'model_version', 'parameters', 'parent_run_id', 'pipeline_name', 'residue', 'residue_id', 'run_a', 'run_b', 'run_id', 'run_type', 'shared_ancestors', 'source_type', 'started_at', 'structure_id', 'unique_to_a', 'unique_to_b']

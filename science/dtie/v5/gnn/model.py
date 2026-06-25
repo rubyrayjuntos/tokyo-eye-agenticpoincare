@@ -207,6 +207,11 @@ class RadialHead(nn.Module):
     Supervised by cone loss (burial correlation).
     Architecturally isolated — no shared parameters with AngularHead.
 
+    Architecture: 2-layer MLP (hidden → hidden//2 → 1) matching the
+    trained checkpoint. The intermediate hidden//4 layer was added in
+    a later code revision but never retrained — using the 2-layer
+    version ensures all weights load from the checkpoint correctly.
+
     Output: log-depth values that get exponentiated and used as the
     magnitude when constructing x_hyp = expmap0(depth * direction).
     """
@@ -215,9 +220,7 @@ class RadialHead(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.SiLU(),
-            nn.Linear(hidden_dim // 2, hidden_dim // 4),
-            nn.SiLU(),
-            nn.Linear(hidden_dim // 4, 1),
+            nn.Linear(hidden_dim // 2, 1),
         )
         # Learnable scale — controls overall radial distribution
         self.radial_scale = nn.Parameter(torch.tensor(0.5))
@@ -756,32 +759,38 @@ def cone_loss_v5(
     target_rho: torch.Tensor,
 ) -> torch.Tensor:
     """
-    v5 cone loss: direct regression on radial depth.
+    v5 cone loss: Pearson correlation + variance enforcement.
 
     Target: high ρ (buried) → high depth, low ρ (exposed) → low depth.
-    Uses min-max normalization to avoid sigmoid saturation.
-    Includes variance penalty to prevent constant-prediction collapse.
+    Uses negative Pearson correlation as primary loss — this is immune to
+    constant-prediction collapse because correlation is undefined (penalized)
+    when predictions have zero variance.
 
     CRITICAL: This loss should ONLY backprop through radial_depth,
     which comes from RadialHead. The angular pathway is detached.
     """
     target_depth = (target_rho / 30.0).clamp(0.0, 1.0)
 
-    # Normalize predicted depth to [0, 1]
-    depth_min = radial_depth.min()
-    depth_max = radial_depth.max()
-    depth_range = depth_max - depth_min + 1e-6
-    predicted_depth = (radial_depth - depth_min) / depth_range
+    # Squeeze to [N] if RadialHead outputs [N, 1]
+    pred = radial_depth.squeeze(-1)
 
-    # MSE on normalized depth
-    cone_loss = F.mse_loss(predicted_depth, target_depth)
+    # Pearson correlation loss (1 - r): cannot be minimized by constant prediction
+    pred_centered = pred - pred.mean()
+    tgt_centered = target_depth - target_depth.mean()
 
-    # Variance penalty
-    depth_std = predicted_depth.std()
-    variance_penalty = torch.relu(0.20 - depth_std)
-    cone_loss = cone_loss + 0.5 * variance_penalty
+    pred_std = pred_centered.norm() + 1e-8
+    tgt_std = tgt_centered.norm() + 1e-8
 
-    return cone_loss
+    correlation = (pred_centered * tgt_centered).sum() / (pred_std * tgt_std)
+
+    # Loss = 1 - correlation (minimized when correlation = 1.0)
+    corr_loss = 1.0 - correlation
+
+    # Strong variance penalty: penalize low spread in predictions
+    depth_std = pred.std()
+    variance_penalty = torch.relu(0.15 - depth_std) * 5.0
+
+    return corr_loss + variance_penalty
 
 
 def mutation_differential_loss(

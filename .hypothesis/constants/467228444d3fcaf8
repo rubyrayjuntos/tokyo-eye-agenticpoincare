@@ -1,4 +1,0 @@
-# file: /home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/data/normalizer/registry.py
-# hypothesis_version: 6.151.9
-
-['2026-05-27', 'TBD', 'annotation', 'computed_property', 'dehydron', 'dtie_phase', 'dtie_phase1_witness', 'fact_dehydron', 'gnn_embedding', 'gnn_node_embedding', 'rag', 'residue', 'site', 'structure']

@@ -1,0 +1,17 @@
+{
+  "structure_id": "3GFT",
+  "site_id": "3GFT_B_benchmark",
+  "residue_ids": [
+    "B:70",
+    "B:71",
+    "B:72",
+    "B:73",
+    "B:74"
+  ],
+  "pdb_path": "data/structures/3GFT.pdb",
+  "pulling_direction": [
+    0.0,
+    0.0,
+    1.0
+  ]
+}

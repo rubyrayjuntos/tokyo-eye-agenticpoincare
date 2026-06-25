@@ -149,3 +149,28 @@ class TestOrchestratorSourceLeakDetection:
         # Verify the query hit the right table with right filters
         validating_mock_db.assert_query_executed_containing("fact_gnn_node_embedding")
         validating_mock_db.assert_query_executed_containing("epistemic_uncertainty")
+
+
+class TestOrchestratorBindingSiteScan:
+    @pytest.mark.asyncio
+    async def test_binding_site_scan_not_in_orchestrator_results(self, validating_mock_db):
+        """Binding-site scan should remain a separate compute call, not an orchestrator phase."""
+        validating_mock_db.register_response("embedding_space", [])
+
+        orchestrator = DTIEOrchestrator(db=validating_mock_db)
+        config = PipelineConfig(
+            structure_id="4obe",
+            run_gnn=False,
+            run_phase1=False,
+            run_phase2=False,
+            run_phase3=False,
+            run_phase35=False,
+            run_phase4=False,
+            run_phase5=False,
+            run_phase6=False,
+            detect_source_leaks=False,
+            identify_allosteric_sites=False,
+        )
+
+        result = await orchestrator.run(config)
+        assert "binding_site_scan" not in result.phase_results

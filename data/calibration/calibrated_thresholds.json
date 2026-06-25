@@ -1,0 +1,58 @@
+{
+  "calibration_run_id": "54db0773-adcb-4235-b89a-f49772b22c05",
+  "calibration_date": "2026-06-20T15:31:40.278609+00:00",
+  "protocols": {
+    "SMD_three_phase": {
+      "metric": "work_kcal_mol",
+      "op": "<",
+      "threshold": 1.831,
+      "calibration_metadata": {
+        "source": "calibrated",
+        "date": "2026-06-20T15:31:40.278609+00:00",
+        "reference_sites": [
+          "4OBE:A",
+          "5P21:A",
+          "3GFT:A",
+          "2C5Y:A",
+          "1XKK:A",
+          "4OBE:B",
+          "5P21:A",
+          "3GFT:B",
+          "1AGW:B",
+          "2C5Y:A",
+          "1XKK:A"
+        ],
+        "pulling_rate_nm_per_ns": 0.5,
+        "force_constant_kJ_mol_nm2": 1000.0,
+        "notes": "Calibrated via Youden's J (J=0.467, sensitivity=0.800, specificity=0.667)"
+      },
+      "statistics": {
+        "youdens_j": 0.4667,
+        "sensitivity": 0.8,
+        "specificity": 0.6667,
+        "n_positive_sites": 5,
+        "n_negative_sites": 6,
+        "positive_work_mean": 1.792,
+        "positive_work_std": 0.098,
+        "negative_work_mean": 1.83,
+        "negative_work_std": 0.073
+      },
+      "failed_sites": [
+        "1AGW:A (positive): No CA atoms found for specified residue IDs"
+      ]
+    }
+  },
+  "summary": {
+    "total_protocols": 1,
+    "calibrated_protocols": 1,
+    "failed_protocols": 0
+  },
+  "provenance": {
+    "run_id": "54db0773-adcb-4235-b89a-f49772b22c05",
+    "timestamp": "2026-06-20T15:31:40.278609+00:00",
+    "script": "scripts/calibrate_cryptic_real_md.py",
+    "method": "Youden's J statistic",
+    "min_positive_sites": 5,
+    "min_negative_sites": 5
+  }
+}

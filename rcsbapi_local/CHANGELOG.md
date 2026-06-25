@@ -1,0 +1,200 @@
+# Changelog
+
+## v1.7.1 (2026-03-30)
+
+- Fix issue with `retry_backoff` usage in `rcsbapi.sequence` module
+- Move "Custom Configuration" readthedocs page to its own [section](https://rcsbapi.readthedocs.io/en/latest/config/custom_configuration.html)
+- Update search API schema fetching to include `timeout` (20 seconds) and more informative logging message (Issue [#90](https://github.com/rcsb/py-rcsb-api/issues/90))
+- Various other logging updates
+
+## v1.7.0 (2026-03-16)
+
+- When working in Jupyter environments *with* Python 3.14+, execution of Data API queries (`DataQuery`) must be explicitly `awaited` ([see details](https://rcsbapi.readthedocs.io/en/latest/data_api/quickstart.html#important-changes-to-jupyter-behavior-in-python-3-14))
+  - This addresses an issue with the async behavior of Jupyter environments due to the kernel already having an active asyncio event loop running, coupled with changes to `asyncio` in Python 3.14 (Issue [#98](https://github.com/rcsb/py-rcsb-api/issues/98))
+  - This change **does not** impact code run in standard Python scripts (of any Python version); it only affects code run in Jupyter that uses Python 3.14 or greater
+- Updates to documentation and notebooks
+- Add GitHub issue form templates
+- Update search schemas: 1.53.0 -> 1.55.0
+- Update data schemas: 
+  - entry schema 9.1.0 -> 9.1.1
+  - polymer_entity schema 10.1.0 -> 10.1.1
+  - polymer_entity_instance schema 10.1.0 -> 10.1.2
+  - nonpolymer_entity_instance schema 10.1.0 -> 10.1.2
+
+## v1.6.0 (2026-03-10)
+
+- Updated parameters for newly released embeddings-based structure similarity search ([`StructSimilarityQuery`](https://rcsbapi.readthedocs.io/en/latest/search_api/query_construction.html#structure-similarity-search))
+  - Added `number_of_candidates`, `ptmscore_cutoff`, and `similarity_type` parameters
+  - `operator` parameter is deprecated
+- Fixed `attrs.get_attribute_details()` helper method
+- Documentation fixes
+
+## v1.5.0 (2025-11-20)
+
+- Updates to `StructSimilarityQuery` in `rcsbapi.search`:
+  - Add support for specifying `assembly_id` or `asym_id` for input file/URL-based structure similarity searches
+  - Deprecate `structure_input_type` argument (to be removed in version 2.0.0)
+- Updates to `StructMotifQuery` in `rcsbapi.search`:
+  - Deprecate `url` argumemt in favor of `file_url` (to be removed in version 2.0.0)
+  - Deprecate `file_extension` argumemt in favor of `file_format` (to be removed in version 2.0.0)
+- Update Search API schema URL in `const.py` to use "https" (related to Issue [#90](https://github.com/rcsb/py-rcsb-api/issues/90))
+- Remove "fallback" mechanism to local schema files and replace with explicit error messages (i.e., likely network connection issues or API service unavailability)
+- Move package version and metadata from `__init__.py` to `pyproject.toml`
+- Adjust project build pipelines:
+  - Include wheels when publishing to PyPI
+  - Use `hatch` instead of `setuptools` for building
+
+## v1.4.2 (2025-10-10)
+
+- Fix issue with annotations evaluation during config setting override, arising in Python 3.14 (Issue [#86](https://github.com/rcsb/py-rcsb-api/issues/86))
+- Add testing support for Python 3.14
+- Update search schemas: 1.52.1 -> 1.53.0
+- Update data schemas: 
+  - entry schema 9.0.4 -> 9.1.0
+  - polymer_entity schema 10.0.5 -> 10.1.0
+  - branched_entity schema 10.0.0 -> 10.1.0
+  - nonpolymer_entity schema 10.0.0 -> 10.1.0
+  - polymer_entity_instance schema 10.0.4 -> 10.1.0
+  - branched_entity_instance schema 9.0.0 -> 9.1.0
+  - nonpolymer_entity_instance schema 10.0.1 -> 10.1.0
+  - assembly schema 9.0.0 -> 9.1.0
+  - chem_comp schema 7.1.4 -> 7.2.0
+  - drugbank schema 1.3.2 -> 1.4.0
+
+## v1.4.1 (2025-10-07)
+
+- Switch from using `setup.py` to `pyproject.toml` (Issue [#67](https://github.com/rcsb/py-rcsb-api/issues/67))
+- End support for Python 3.8 (due to [PEP 639](https://peps.python.org/pep-0639/#specification))
+- Fix and improve formatting of several warning messages
+
+## v1.4.0 (2025-08-19)
+
+- Switch from using `requests` to [`httpx`](https://www.python-httpx.org/) (Issue [#33](https://github.com/rcsb/py-rcsb-api/issues/33))
+- Add asynchronous request support for Data API (`rcsbapi.data`) to speed up requests ([see config settings](https://rcsbapi.readthedocs.io/en/latest/data_api/custom_configuration.html))
+- Add retry support for Search API (`rcsbapi.search`), Data API (`rcsbapi.data`), Model Server API (`rcsbapi.model`), and Sequence Coordinate API (`rcsbapi.sequence`) requests ([see config settings](https://rcsbapi.readthedocs.io/en/latest/data_api/custom_configuration.html))
+- Adjust and add default settings to `rcsbapi.config` configuration ([see config settings](https://rcsbapi.readthedocs.io/en/latest/data_api/custom_configuration.html))
+- Stop overriding logging configuration within package—this should be done by client applications (Issue [#52](https://github.com/rcsb/py-rcsb-api/issues/52))
+- Fixed bug associated with `typing` observed for Python 3.8
+
+## v1.3.0 (2025-07-23)
+
+- Add support for [Model Server API](https://models.rcsb.org/) via new module `rcsbapi.model`. Use this to fetch structure/coordinate data from PDB entries and ligands as well as mmCIF metadata. (PR [#73](https://github.com/rcsb/py-rcsb-api/pull/73))
+  - [Documentation](https://rcsbapi.readthedocs.io/en/latest/model_api/quickstart.html) and [Jupyter notebook](https://github.com/rcsb/py-rcsb-api/blob/master/notebooks/model_quickstart.ipynb) are provided
+- Fixed bug with `rcsbapi.data` Data API module, in which requesting multiple data items with redundant target field names was causing them to be overwritten in the final constructed query (PR [#74](https://github.com/rcsb/py-rcsb-api/pull/74))
+- Added Azure testing support for Windows (PR [#75](https://github.com/rcsb/py-rcsb-api/pull/75))
+- Add model server API schema: 0.9.12
+- Update search schemas: 1.50.1 -> 1.52.1
+- Update data schemas: 
+  - polymer_entity_instance schema 10.0.3 -> 10.0.4
+
+## v1.2.0 (2025-07-11)
+
+- Add support for [Sequence Coordinates API](https://sequence-coordinates.rcsb.org/) via new module `rcsbapi.sequence`. Use this to fetch alignments between sequences from different databases as well as sequence-level annotations integrated from external resources and RCSB PDB. (PRs [#46](https://github.com/rcsb/py-rcsb-api/pull/46), [#68](https://github.com/rcsb/py-rcsb-api/pull/68))
+  - [Documentation](https://rcsbapi.readthedocs.io/en/latest/seq_api/quickstart.html) and [Jupyter notebook](https://github.com/rcsb/py-rcsb-api/blob/master/notebooks/sequence_coord_quickstart.ipynb) provided
+  - Generalized pre-existing Data API module GraphQL schema and query generation code to be re-used by both `rcsbapi.data` and `rcsbapi.sequence` modules (no impact to user)
+- Add `NestedAttributeQuery` to Search API `rcsbapi.search` module to support restricted/pair-wise grouping of nested attributes and prevent them from being automatically flattened down to the same group level as adjacent terminal nodes. Warning messages have been added to notify users of the need to make use of this for any nested attributes being included in search queries. (PR [#66](https://github.com/rcsb/py-rcsb-api/pull/66); Issue [#49](https://github.com/rcsb/py-rcsb-api/issues/49))
+- Change `rcsbapi.search` Search API requests to use `POST` instead of `GET`, to handle very large query bodies that would otherwise generate massive URL lengths
+- Add custom User-Agent to API request headers (`"User-Agent": "py-rcsb-api/__version__ (+https://github.com/rcsb/py-rcsb-api)"`)
+- Add sequence-coordinates API schema (GraphQL; no version)
+- Update search schemas: 1.49.0 -> 1.50.1
+- Update data schemas: 
+  - entry schema 9.0.4 -> 9.0.4
+  - polymer_entity schema 10.0.5 -> 10.0.5
+
+## v1.1.4 (2025-07-09)
+
+- Fix: Patch schema parsing for search attributes - delete duplicate chemical attributes from structure attribute schema (following update to RCSB.org schemas in July 2025, in which chemical attributes are now merged into structure attribute schema). (Issue [#70](https://github.com/rcsb/py-rcsb-api/issues/70))
+
+## v1.1.3 (2025-05-05)
+
+- Fix: Update regex pattern for instances in `const.py` to support suffixes longer than one character (e.g., "1S5L.AA")
+
+## v1.1.2 (2025-03-20)
+
+- Update how `dataclass` attributes are created in `const.py`
+
+## v1.1.1 (2025-03-13)
+
+- Add missing dependency for building documentation
+- Add docstrings
+
+## v1.1.0 (2025-03-12)
+
+- Add `ALL_STRUCTURES` object, allowing Data API queries for all PDB structures and chemical components
+- Add `progress_bar` and `batch_size` parameters to Data API package's `.exec`
+- Add `group` function to Search API package to enforce nested grouping
+- Update README with new citation information
+- Update search schemas: 1.48.0 -> 1.49.0
+- Update data schemas: 
+  - entry schema 9.0.3 -> 9.0.4
+  - polymer_entity_instance schema 10.0.2 -> 10.0.3
+  - nonpolymer_entity_instance schema 10.0.0 -> 10.0.1
+
+## v1.0.1 (2025-01-17)
+
+- Add import to `const.py` for compatibility with Python 3.8
+- Update search schemas: 1.47.7 -> 1.48.0
+
+## v1.0.0 (2024-11-6)
+
+- Release version 1.0.0 of package
+- Update search schemas: 1.47.6 -> 1.47.7
+- Update data schemas: 
+  - entry schema 9.0.2 -> 9.0.3
+  - chem_comp schema 7.1.3 -> 7.1.4
+- Update documentation
+
+## v0.5.0 (2024-10-28)
+
+- Separate out package-wide settings into immutable constants (`const.py`) and configurable parameters (`config.py`)
+- Renamed `rcsb_attributes` -> `search_attributes`
+- Automatically capitalize input_ids
+- Added `dev_tools` directory and updated `update_schema.py`
+- Search API `chemical_schema` and `structure_schema` at v1.47.6
+- Update documentation
+
+## v0.4.0 (2024-10-15)
+
+- Merge [rcsbsearchapi package](https://github.com/rcsb/py-rcsbsearchapi/tree/2ba4d82ed1ff23c4ba5d07d4dec63f6f4030207d) into package as separate `rcsbapi.search` module
+  - Renamed several classes and methods in this process:
+    - `SequenceQuery` -> `SeqSimilarityQuery`
+    - `StructureMotifResidue` -> `StructMotifResidue`
+    - `Range` -> `FacetRange`
+    - `rcsb_query_editor_url` -> `get_editor_link`
+    - `rcsb_query_builder_url` -> `get_query_builder_link`
+- Renamed several files and classes to prevent overlap with future developments:
+  - `data/query.py` -> `data/data_query.py`
+  - `data/schema.py` -> `data/schema_query.py`
+  - `Query()` Data API class -> `DataQuery()`
+  - `Schema()` Data API class -> `DataSchema()`
+  - `search/search.py` -> `search/search_query.py`
+  - `search/schema.py` -> `search/search_schema.py`
+- Automatically change singular "input_type" to plural when possible
+- Add warning message if fully qualified field path not provided
+- Update documentation
+
+## v0.3.0 (2024-08-23)
+
+- Falls back to local schema file when fetch fails
+- Supports dot separated field names for requesting data
+- `get_unique_fields` deleted and replaced with `find_paths`
+- `find_field_names` changed to return only field names, no descriptions
+- Executing queries called with `.exec()`
+- Updates to documentation
+- See [PR #31](https://github.com/rcsb/py-rcsb-api/pull/31) for full details
+- Updated data_api_schema.json and added all schema files on https://data.rcsb.org/#data-schema
+
+## v0.2.0 (2024-07-25)
+
+- Updates to Query methods
+- Added GraphQL query validation
+- Updates to documentation
+
+## v0.1.0 (2024-07-22)
+
+- First release!
+- Provides Pythonic interface for interacting with RCSB.org Data API
+- Automated Data API schema parsing via Schema.py
+- Enables query building and execution via Query.py
+- Documentation and example notebooks
+- See [PR #23](https://github.com/rcsb/py-rcsb-api/pull/23) for full details

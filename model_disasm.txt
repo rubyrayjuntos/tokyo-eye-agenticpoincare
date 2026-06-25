@@ -1,0 +1,1912 @@
+  0           RESUME                   0
+
+  1           LOAD_CONST               0 ('\nTokyo Eyes v6: Topologically-Routed MoE Specialization\n=======================================================\nEidetix Bio | 2026-05\n\nMODEL HISTORY\n- version: v6\n  date: 2026-05\n  change: Achieve true expert specialization via expanded gate input,\n    asymmetric capacity regularization, and expert dropout.\n  before_state: v5 MoE gate trapped in high-entropy uniform state (~0.25 each)\n    due to insufficient gate input variance and overpowering balance loss.\n  changes:\n    1. Expand gate input: [x_tangent, clustering, cone_depth, log_degree_norm,\n       rho_norm, ss_onehot] (hidden + 7 dimensions)\n    2. Asymmetric capacity loss: penalizes starvation (<5%) but permits dominance\n    3. Expert dropout: randomly mask one expert during training (p=0.15)\n    4. Capacity-aware soft routing: two-pass logit adjustment for overloaded experts\n    5. Three-phase training schedule for reliable specialization convergence\n  reasoning: Experts need high-variance discriminative features and freedom to\n    specialize without being forced back to uniformity by the balance loss.\n\nDESIGN CONTRACT:\n  Inputs (unchanged from v5):\n    x: [N, 4]         node features (rho, tau_flag, ss_type, sasa)\n    edge_index: [2,E] graph connectivity\n    edge_attr: [E,4]  (rel_x, rel_y, rel_z, distance)\n    clustering: [N]   precomputed clustering coefficients\n\n  V6 additional inputs (attached to PyG Data):\n    degree: [N]       node degree from contact graph\n    ss_onehot: [N,3]  one-hot secondary structure [H, E, C]\n    rho: [N]          raw dehydron density for gate shortcut\n\n  Outputs (v5 superset + v6 additions):\n    All v5 outputs preserved, plus:\n    capacity_loss: scalar           Asymmetric capacity penalty\n    expert_load: Tensor[4]          Per-expert mean routing probability\n    routing_entropy: scalar         H(expert_weights) for monitoring\n    gate_features_used: list[str]   Audit: which features fed the gate\n')
+              STORE_NAME               0 (__doc__)
+
+ 43           LOAD_CONST               1 (0)
+              LOAD_CONST               2 (None)
+              IMPORT_NAME              1 (torch)
+              STORE_NAME               1 (torch)
+
+ 44           LOAD_CONST               1 (0)
+              LOAD_CONST               2 (None)
+              IMPORT_NAME              2 (torch.nn)
+              IMPORT_FROM              3 (nn)
+              STORE_NAME               3 (nn)
+              POP_TOP
+
+ 45           LOAD_CONST               1 (0)
+              LOAD_CONST               2 (None)
+              IMPORT_NAME              4 (torch.nn.functional)
+              IMPORT_FROM              3 (nn)
+              SWAP                     2
+              POP_TOP
+              IMPORT_FROM              5 (functional)
+              STORE_NAME               6 (F)
+              POP_TOP
+
+ 46           LOAD_CONST               1 (0)
+              LOAD_CONST               3 (('Data',))
+              IMPORT_NAME              7 (torch_geometric.data)
+              IMPORT_FROM              8 (Data)
+              STORE_NAME               8 (Data)
+              POP_TOP
+
+ 47           LOAD_CONST               1 (0)
+              LOAD_CONST               2 (None)
+              IMPORT_NAME              9 (geoopt)
+              STORE_NAME               9 (geoopt)
+
+ 48           LOAD_CONST               1 (0)
+              LOAD_CONST               4 (('Any', 'Dict', 'List', 'Tuple', 'Optional'))
+              IMPORT_NAME             10 (typing)
+              IMPORT_FROM             11 (Any)
+              STORE_NAME              11 (Any)
+              IMPORT_FROM             12 (Dict)
+              STORE_NAME              12 (Dict)
+              IMPORT_FROM             13 (List)
+              STORE_NAME              13 (List)
+              IMPORT_FROM             14 (Tuple)
+              STORE_NAME              14 (Tuple)
+              IMPORT_FROM             15 (Optional)
+              STORE_NAME              15 (Optional)
+              POP_TOP
+
+ 50           LOAD_CONST               1 (0)
+              LOAD_CONST               5 (('EquivariantConv', 'MobiusLinear', 'RadialHead', 'AngularHead', 'EvidentialHead', 'precompute_clustering', 'scan_tensors_for_invalid'))
+              IMPORT_NAME             16 (science.dtie.v5.gnn.model)
+              IMPORT_FROM             17 (EquivariantConv)
+              STORE_NAME              17 (EquivariantConv)
+              IMPORT_FROM             18 (MobiusLinear)
+              STORE_NAME              18 (MobiusLinear)
+              IMPORT_FROM             19 (RadialHead)
+              STORE_NAME              19 (RadialHead)
+              IMPORT_FROM             20 (AngularHead)
+              STORE_NAME              20 (AngularHead)
+              IMPORT_FROM             21 (EvidentialHead)
+              STORE_NAME              21 (EvidentialHead)
+              IMPORT_FROM             22 (precompute_clustering)
+              STORE_NAME              22 (precompute_clustering)
+              IMPORT_FROM             23 (scan_tensors_for_invalid)
+              STORE_NAME              23 (scan_tensors_for_invalid)
+              POP_TOP
+
+ 63           LOAD_BUILD_CLASS
+              PUSH_NULL
+              LOAD_CONST               6 (<code object TopologicalMoEGateV6 at 0x654cdf124480, file "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/v6/gnn/model.py", line 63>)
+              MAKE_FUNCTION
+              LOAD_CONST               7 ('TopologicalMoEGateV6')
+              LOAD_NAME                3 (nn)
+              LOAD_ATTR               48 (Module)
+              CALL                     3
+              STORE_NAME              25 (TopologicalMoEGateV6)
+
+237           LOAD_BUILD_CLASS
+              PUSH_NULL
+              LOAD_CONST               8 (<code object GOSPConeMapperV6 at 0x654cdf1b09b0, file "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/v6/gnn/model.py", line 237>)
+              MAKE_FUNCTION
+              LOAD_CONST               9 ('GOSPConeMapperV6')
+              LOAD_NAME                3 (nn)
+              LOAD_ATTR               48 (Module)
+              CALL                     3
+              STORE_NAME              26 (GOSPConeMapperV6)
+              RETURN_CONST             2 (None)
+
+Disassembly of <code object TopologicalMoEGateV6 at 0x654cdf124480, file "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/v6/gnn/model.py", line 63>:
+  --           MAKE_CELL                0 (__class__)
+
+  63           RESUME                   0
+               LOAD_NAME                0 (__name__)
+               STORE_NAME               1 (__module__)
+               LOAD_CONST               0 ('TopologicalMoEGateV6')
+               STORE_NAME               2 (__qualname__)
+               LOAD_CONST               1 (63)
+               STORE_NAME               3 (__firstlineno__)
+
+  64           LOAD_CONST               2 ('\nV6 MoE gate with enriched topological features and capacity-aware routing.\n\nGate input: [x_tangent, clustering, cone_depth, log_degree_norm, rho_norm, ss_onehot]\nTotal dimensions: hidden + 7\n\nFeatures:\n- Running statistics for degree/rho normalization (zero-mean, unit-variance)\n- Two-pass capacity-aware logit adjustment\n- Expert dropout during training (p=0.15)\n- Asymmetric capacity loss (penalizes starvation only)\n')
+               STORE_NAME               4 (__doc__)
+
+  80           NOP
+
+  81           NOP
+
+  82           NOP
+
+  83           NOP
+
+  84           NOP
+
+  77           LOAD_CONST              22 ((4, 0.4, 0.15, 0.05, False))
+               LOAD_CONST               3 ('hidden_dim')
+
+  79           LOAD_NAME                5 (int)
+
+  77           LOAD_CONST               4 ('num_experts')
+
+  80           LOAD_NAME                5 (int)
+
+  77           LOAD_CONST               5 ('capacity_threshold')
+
+  81           LOAD_NAME                6 (float)
+
+  77           LOAD_CONST               6 ('expert_dropout_p')
+
+  82           LOAD_NAME                6 (float)
+
+  77           LOAD_CONST               7 ('min_usage')
+
+  83           LOAD_NAME                6 (float)
+
+  77           LOAD_CONST               8 ('topology_only')
+
+  84           LOAD_NAME                7 (bool)
+
+  77           BUILD_TUPLE             12
+               LOAD_FAST                0 (__class__)
+               BUILD_TUPLE              1
+               LOAD_CONST               9 (<code object __init__ at 0x654cdf1c4e00, file "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/v6/gnn/model.py", line 77>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE   8 (closure)
+               SET_FUNCTION_ATTRIBUTE   4 (annotations)
+               SET_FUNCTION_ATTRIBUTE   1 (defaults)
+               STORE_NAME               8 (__init__)
+
+ 125           LOAD_CONST              10 ('log_degree')
+               LOAD_NAME                9 (torch)
+               LOAD_ATTR               20 (Tensor)
+               LOAD_CONST              11 ('rho')
+               LOAD_NAME                9 (torch)
+               LOAD_ATTR               20 (Tensor)
+               LOAD_CONST              12 ('return')
+               LOAD_CONST              13 (None)
+               BUILD_TUPLE              6
+               LOAD_CONST              14 (<code object _update_running_stats at 0x654cdf1c9350, file "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/v6/gnn/model.py", line 125>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE   4 (annotations)
+               STORE_NAME              11 (_update_running_stats)
+
+ 147           LOAD_CONST              15 ('x_tangent')
+
+ 149           LOAD_NAME                9 (torch)
+               LOAD_ATTR               20 (Tensor)
+
+ 147           LOAD_CONST              16 ('clustering')
+
+ 150           LOAD_NAME                9 (torch)
+               LOAD_ATTR               20 (Tensor)
+
+ 147           LOAD_CONST              17 ('cone_depth')
+
+ 151           LOAD_NAME                9 (torch)
+               LOAD_ATTR               20 (Tensor)
+
+ 147           LOAD_CONST              18 ('degree')
+
+ 152           LOAD_NAME                9 (torch)
+               LOAD_ATTR               20 (Tensor)
+
+ 147           LOAD_CONST              11 ('rho')
+
+ 153           LOAD_NAME                9 (torch)
+               LOAD_ATTR               20 (Tensor)
+
+ 147           LOAD_CONST              19 ('ss_onehot')
+
+ 154           LOAD_NAME                9 (torch)
+               LOAD_ATTR               20 (Tensor)
+
+ 147           LOAD_CONST              12 ('return')
+
+ 155           LOAD_NAME               12 (Tuple)
+               LOAD_NAME                9 (torch)
+               LOAD_ATTR               20 (Tensor)
+               LOAD_NAME                9 (torch)
+               LOAD_ATTR               20 (Tensor)
+               BUILD_TUPLE              2
+               BINARY_SUBSCR
+
+ 147           BUILD_TUPLE             14
+               LOAD_CONST              20 (<code object forward at 0x654cdf1ca9c0, file "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/v6/gnn/model.py", line 147>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE   4 (annotations)
+               STORE_NAME              13 (forward)
+               LOAD_CONST              21 (('capacity_threshold', 'detach_gate_input', 'expert_dropout_p', 'gate_net', 'hidden_dim', 'min_usage', 'num_experts', 'temperature', 'topology_only', 'use_gumbel'))
+               STORE_NAME              14 (__static_attributes__)
+               LOAD_FAST                0 (__class__)
+               COPY                     1
+               STORE_NAME              15 (__classcell__)
+               RETURN_VALUE
+
+Disassembly of <code object __init__ at 0x654cdf1c4e00, file "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/v6/gnn/model.py", line 77>:
+  --           COPY_FREE_VARS           1
+
+  77           RESUME                   0
+
+  86           LOAD_GLOBAL              0 (super)
+               LOAD_DEREF               8 (__class__)
+               LOAD_FAST                0 (self)
+               LOAD_SUPER_ATTR          5 (__init__ + NULL|self)
+               CALL                     0
+               POP_TOP
+
+  89           LOAD_FAST_LOAD_FAST     96 (topology_only, self)
+               STORE_ATTR               2 (topology_only)
+
+  90           LOAD_FAST                6 (topology_only)
+               TO_BOOL
+               POP_JUMP_IF_FALSE      135 (to L1)
+
+  91           LOAD_CONST               1 (7)
+               STORE_FAST               7 (gate_input_dim)
+
+  92           LOAD_GLOBAL              6 (nn)
+               LOAD_ATTR                8 (Sequential)
+               PUSH_NULL
+
+  93           LOAD_GLOBAL              6 (nn)
+               LOAD_ATTR               10 (Linear)
+               PUSH_NULL
+               LOAD_FAST                7 (gate_input_dim)
+               LOAD_CONST               2 (32)
+               CALL                     2
+
+  94           LOAD_GLOBAL              6 (nn)
+               LOAD_ATTR               12 (SiLU)
+               PUSH_NULL
+               CALL                     0
+
+  95           LOAD_GLOBAL              6 (nn)
+               LOAD_ATTR               10 (Linear)
+               PUSH_NULL
+               LOAD_CONST               2 (32)
+               LOAD_CONST               3 (16)
+               CALL                     2
+
+  96           LOAD_GLOBAL              6 (nn)
+               LOAD_ATTR               12 (SiLU)
+               PUSH_NULL
+               CALL                     0
+
+  97           LOAD_GLOBAL              6 (nn)
+               LOAD_ATTR               10 (Linear)
+               PUSH_NULL
+               LOAD_CONST               3 (16)
+               LOAD_FAST                2 (num_experts)
+               CALL                     2
+
+  92           CALL                     5
+               LOAD_FAST                0 (self)
+               STORE_ATTR               7 (gate_net)
+               JUMP_FORWARD           137 (to L2)
+
+ 101   L1:     LOAD_FAST                1 (hidden_dim)
+               LOAD_CONST               1 (7)
+               BINARY_OP                0 (+)
+               STORE_FAST               7 (gate_input_dim)
+
+ 102           LOAD_GLOBAL              6 (nn)
+               LOAD_ATTR                8 (Sequential)
+               PUSH_NULL
+
+ 103           LOAD_GLOBAL              6 (nn)
+               LOAD_ATTR               10 (Linear)
+               PUSH_NULL
+               LOAD_FAST                7 (gate_input_dim)
+               LOAD_CONST               4 (64)
+               CALL                     2
+
+ 104           LOAD_GLOBAL              6 (nn)
+               LOAD_ATTR               12 (SiLU)
+               PUSH_NULL
+               CALL                     0
+
+ 105           LOAD_GLOBAL              6 (nn)
+               LOAD_ATTR               10 (Linear)
+               PUSH_NULL
+               LOAD_CONST               4 (64)
+               LOAD_CONST               2 (32)
+               CALL                     2
+
+ 106           LOAD_GLOBAL              6 (nn)
+               LOAD_ATTR               12 (SiLU)
+               PUSH_NULL
+               CALL                     0
+
+ 107           LOAD_GLOBAL              6 (nn)
+               LOAD_ATTR               10 (Linear)
+               PUSH_NULL
+               LOAD_CONST               2 (32)
+               LOAD_FAST                2 (num_experts)
+               CALL                     2
+
+ 102           CALL                     5
+               LOAD_FAST                0 (self)
+               STORE_ATTR               7 (gate_net)
+
+ 109   L2:     LOAD_FAST_LOAD_FAST     16 (hidden_dim, self)
+               STORE_ATTR               8 (hidden_dim)
+
+ 110           LOAD_FAST_LOAD_FAST     32 (num_experts, self)
+               STORE_ATTR               9 (num_experts)
+
+ 111           LOAD_FAST_LOAD_FAST     48 (capacity_threshold, self)
+               STORE_ATTR              10 (capacity_threshold)
+
+ 112           LOAD_FAST_LOAD_FAST     64 (expert_dropout_p, self)
+               STORE_ATTR              11 (expert_dropout_p)
+
+ 113           LOAD_FAST_LOAD_FAST     80 (min_usage, self)
+               STORE_ATTR              12 (min_usage)
+
+ 114           LOAD_CONST               5 (False)
+               LOAD_FAST                0 (self)
+               STORE_ATTR              13 (detach_gate_input)
+
+ 115           LOAD_CONST               5 (False)
+               LOAD_FAST                0 (self)
+               STORE_ATTR              14 (use_gumbel)
+
+ 116           LOAD_CONST               6 (1.0)
+               LOAD_FAST                0 (self)
+               STORE_ATTR              15 (temperature)
+
+ 119           LOAD_FAST                0 (self)
+               LOAD_ATTR               33 (register_buffer + NULL|self)
+               LOAD_CONST               7 ('degree_mean')
+               LOAD_GLOBAL             34 (torch)
+               LOAD_ATTR               36 (tensor)
+               PUSH_NULL
+               LOAD_CONST               8 (0.0)
+               CALL                     1
+               CALL                     2
+               POP_TOP
+
+ 120           LOAD_FAST                0 (self)
+               LOAD_ATTR               33 (register_buffer + NULL|self)
+               LOAD_CONST               9 ('degree_var')
+               LOAD_GLOBAL             34 (torch)
+               LOAD_ATTR               36 (tensor)
+               PUSH_NULL
+               LOAD_CONST               6 (1.0)
+               CALL                     1
+               CALL                     2
+               POP_TOP
+
+ 121           LOAD_FAST                0 (self)
+               LOAD_ATTR               33 (register_buffer + NULL|self)
+               LOAD_CONST              10 ('rho_mean')
+               LOAD_GLOBAL             34 (torch)
+               LOAD_ATTR               36 (tensor)
+               PUSH_NULL
+               LOAD_CONST               8 (0.0)
+               CALL                     1
+               CALL                     2
+               POP_TOP
+
+ 122           LOAD_FAST                0 (self)
+               LOAD_ATTR               33 (register_buffer + NULL|self)
+               LOAD_CONST              11 ('rho_var')
+               LOAD_GLOBAL             34 (torch)
+               LOAD_ATTR               36 (tensor)
+               PUSH_NULL
+               LOAD_CONST               6 (1.0)
+               CALL                     1
+               CALL                     2
+               POP_TOP
+
+ 123           LOAD_FAST                0 (self)
+               LOAD_ATTR               33 (register_buffer + NULL|self)
+               LOAD_CONST              12 ('num_updates')
+               LOAD_GLOBAL             34 (torch)
+               LOAD_ATTR               36 (tensor)
+               PUSH_NULL
+               LOAD_CONST              13 (0)
+               CALL                     1
+               CALL                     2
+               POP_TOP
+               RETURN_CONST             0 (None)
+
+Disassembly of <code object _update_running_stats at 0x654cdf1c9350, file "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/v6/gnn/model.py", line 125>:
+ 125           RESUME                   0
+
+ 127           LOAD_CONST               1 (0.1)
+               STORE_FAST               3 (momentum)
+
+ 128           LOAD_GLOBAL              0 (torch)
+               LOAD_ATTR                2 (no_grad)
+               PUSH_NULL
+               CALL                     0
+               BEFORE_WITH
+       L1:     POP_TOP
+
+ 129           LOAD_FAST                1 (log_degree)
+               LOAD_ATTR                5 (mean + NULL|self)
+               CALL                     0
+               STORE_FAST               4 (batch_degree_mean)
+
+ 130           LOAD_FAST                1 (log_degree)
+               LOAD_ATTR                7 (var + NULL|self)
+               LOAD_CONST               2 (False)
+               LOAD_CONST               3 (('unbiased',))
+               CALL_KW                  1
+               STORE_FAST               5 (batch_degree_var)
+
+ 131           LOAD_FAST                2 (rho)
+               LOAD_ATTR                5 (mean + NULL|self)
+               CALL                     0
+               STORE_FAST               6 (batch_rho_mean)
+
+ 132           LOAD_FAST                2 (rho)
+               LOAD_ATTR                7 (var + NULL|self)
+               LOAD_CONST               2 (False)
+               LOAD_CONST               3 (('unbiased',))
+               CALL_KW                  1
+               STORE_FAST               7 (batch_rho_var)
+
+ 134           LOAD_FAST                0 (self)
+               LOAD_ATTR                8 (num_updates)
+               LOAD_CONST               4 (0)
+               COMPARE_OP              88 (bool(==))
+               POP_JUMP_IF_FALSE      109 (to L2)
+
+ 135           LOAD_FAST                0 (self)
+               LOAD_ATTR               10 (degree_mean)
+               LOAD_ATTR               13 (copy_ + NULL|self)
+               LOAD_FAST                4 (batch_degree_mean)
+               CALL                     1
+               POP_TOP
+
+ 136           LOAD_FAST                0 (self)
+               LOAD_ATTR               14 (degree_var)
+               LOAD_ATTR               13 (copy_ + NULL|self)
+               LOAD_FAST                5 (batch_degree_var)
+               CALL                     1
+               POP_TOP
+
+ 137           LOAD_FAST                0 (self)
+               LOAD_ATTR               16 (rho_mean)
+               LOAD_ATTR               13 (copy_ + NULL|self)
+               LOAD_FAST                6 (batch_rho_mean)
+               CALL                     1
+               POP_TOP
+
+ 138           LOAD_FAST                0 (self)
+               LOAD_ATTR               18 (rho_var)
+               LOAD_ATTR               13 (copy_ + NULL|self)
+               LOAD_FAST                7 (batch_rho_var)
+               CALL                     1
+               POP_TOP
+               JUMP_FORWARD           188 (to L3)
+
+ 140   L2:     LOAD_FAST                0 (self)
+               LOAD_ATTR               10 (degree_mean)
+               LOAD_ATTR               21 (mul_ + NULL|self)
+               LOAD_CONST               5 (1)
+               LOAD_FAST                3 (momentum)
+               BINARY_OP               10 (-)
+               CALL                     1
+               LOAD_ATTR               23 (add_ + NULL|self)
+               LOAD_FAST_LOAD_FAST     67 (batch_degree_mean, momentum)
+               BINARY_OP                5 (*)
+               CALL                     1
+               POP_TOP
+
+ 141           LOAD_FAST                0 (self)
+               LOAD_ATTR               14 (degree_var)
+               LOAD_ATTR               21 (mul_ + NULL|self)
+               LOAD_CONST               5 (1)
+               LOAD_FAST                3 (momentum)
+               BINARY_OP               10 (-)
+               CALL                     1
+               LOAD_ATTR               23 (add_ + NULL|self)
+               LOAD_FAST_LOAD_FAST     83 (batch_degree_var, momentum)
+               BINARY_OP                5 (*)
+               CALL                     1
+               POP_TOP
+
+ 142           LOAD_FAST                0 (self)
+               LOAD_ATTR               16 (rho_mean)
+               LOAD_ATTR               21 (mul_ + NULL|self)
+               LOAD_CONST               5 (1)
+               LOAD_FAST                3 (momentum)
+               BINARY_OP               10 (-)
+               CALL                     1
+               LOAD_ATTR               23 (add_ + NULL|self)
+               LOAD_FAST_LOAD_FAST     99 (batch_rho_mean, momentum)
+               BINARY_OP                5 (*)
+               CALL                     1
+               POP_TOP
+
+ 143           LOAD_FAST                0 (self)
+               LOAD_ATTR               18 (rho_var)
+               LOAD_ATTR               21 (mul_ + NULL|self)
+               LOAD_CONST               5 (1)
+               LOAD_FAST                3 (momentum)
+               BINARY_OP               10 (-)
+               CALL                     1
+               LOAD_ATTR               23 (add_ + NULL|self)
+               LOAD_FAST_LOAD_FAST    115 (batch_rho_var, momentum)
+               BINARY_OP                5 (*)
+               CALL                     1
+               POP_TOP
+
+ 145   L3:     LOAD_FAST                0 (self)
+               LOAD_ATTR                8 (num_updates)
+               LOAD_ATTR               23 (add_ + NULL|self)
+               LOAD_CONST               5 (1)
+               CALL                     1
+               POP_TOP
+
+ 128   L4:     LOAD_CONST               6 (None)
+               LOAD_CONST               6 (None)
+               LOAD_CONST               6 (None)
+               CALL                     2
+               POP_TOP
+               RETURN_CONST             6 (None)
+       L5:     PUSH_EXC_INFO
+               WITH_EXCEPT_START
+               TO_BOOL
+               POP_JUMP_IF_TRUE         1 (to L6)
+               RERAISE                  2
+       L6:     POP_TOP
+       L7:     POP_EXCEPT
+               POP_TOP
+               POP_TOP
+               RETURN_CONST             6 (None)
+
+  --   L8:     COPY                     3
+               POP_EXCEPT
+               RERAISE                  1
+ExceptionTable:
+  L1 to L4 -> L5 [1] lasti
+  L5 to L7 -> L8 [3] lasti
+
+Disassembly of <code object forward at 0x654cdf1ca9c0, file "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/v6/gnn/model.py", line 147>:
+147            RESUME                   0
+
+164            LOAD_GLOBAL              0 (torch)
+               LOAD_ATTR                2 (log1p)
+               PUSH_NULL
+               LOAD_FAST                4 (degree)
+               LOAD_ATTR                5 (float + NULL|self)
+               CALL                     0
+               CALL                     1
+               STORE_FAST               7 (log_degree)
+
+167            LOAD_FAST                0 (self)
+               LOAD_ATTR                6 (training)
+               TO_BOOL
+               POP_JUMP_IF_FALSE       17 (to L1)
+
+168            LOAD_FAST                0 (self)
+               LOAD_ATTR                9 (_update_running_stats + NULL|self)
+               LOAD_FAST_LOAD_FAST    117 (log_degree, rho)
+               CALL                     2
+               POP_TOP
+
+171    L1:     LOAD_FAST_LOAD_FAST    112 (log_degree, self)
+               LOAD_ATTR               10 (degree_mean)
+               BINARY_OP               10 (-)
+               LOAD_FAST                0 (self)
+               LOAD_ATTR               12 (degree_var)
+               LOAD_ATTR               15 (sqrt + NULL|self)
+               CALL                     0
+               LOAD_CONST               1 (1e-08)
+               BINARY_OP                0 (+)
+               BINARY_OP               11 (/)
+               STORE_FAST               8 (norm_degree)
+
+172            LOAD_FAST_LOAD_FAST     80 (rho, self)
+               LOAD_ATTR               16 (rho_mean)
+               BINARY_OP               10 (-)
+               LOAD_FAST                0 (self)
+               LOAD_ATTR               18 (rho_var)
+               LOAD_ATTR               15 (sqrt + NULL|self)
+               CALL                     0
+               LOAD_CONST               1 (1e-08)
+               BINARY_OP                0 (+)
+               BINARY_OP               11 (/)
+               STORE_FAST               9 (norm_rho)
+
+177            LOAD_FAST                0 (self)
+               LOAD_ATTR               20 (topology_only)
+               TO_BOOL
+               POP_JUMP_IF_FALSE       86 (to L2)
+
+178            LOAD_GLOBAL              0 (torch)
+               LOAD_ATTR               22 (cat)
+               PUSH_NULL
+
+179            LOAD_FAST                2 (clustering)
+               LOAD_ATTR               25 (unsqueeze + NULL|self)
+               LOAD_CONST               2 (-1)
+               CALL                     1
+
+180            LOAD_FAST                3 (cone_depth)
+               LOAD_ATTR               27 (detach + NULL|self)
+               CALL                     0
+
+181            LOAD_FAST                8 (norm_degree)
+               LOAD_ATTR               25 (unsqueeze + NULL|self)
+               LOAD_CONST               2 (-1)
+               CALL                     1
+
+182            LOAD_FAST                9 (norm_rho)
+               LOAD_ATTR               25 (unsqueeze + NULL|self)
+               LOAD_CONST               2 (-1)
+               CALL                     1
+
+183            LOAD_FAST                6 (ss_onehot)
+
+178            BUILD_LIST               5
+
+184            LOAD_CONST               2 (-1)
+
+178            LOAD_CONST               3 (('dim',))
+               CALL_KW                  2
+               STORE_FAST              10 (gate_input)
+               JUMP_FORWARD           121 (to L5)
+
+186    L2:     LOAD_FAST                0 (self)
+               LOAD_ATTR               28 (detach_gate_input)
+               TO_BOOL
+               POP_JUMP_IF_FALSE       16 (to L3)
+               LOAD_FAST                1 (x_tangent)
+               LOAD_ATTR               27 (detach + NULL|self)
+               CALL                     0
+               JUMP_FORWARD             1 (to L4)
+       L3:     LOAD_FAST                1 (x_tangent)
+       L4:     STORE_FAST              11 (gate_x_tangent)
+
+187            LOAD_GLOBAL              0 (torch)
+               LOAD_ATTR               22 (cat)
+               PUSH_NULL
+
+188            LOAD_FAST               11 (gate_x_tangent)
+
+189            LOAD_FAST                2 (clustering)
+               LOAD_ATTR               25 (unsqueeze + NULL|self)
+               LOAD_CONST               2 (-1)
+               CALL                     1
+
+190            LOAD_FAST                3 (cone_depth)
+               LOAD_ATTR               27 (detach + NULL|self)
+               CALL                     0
+
+191            LOAD_FAST                8 (norm_degree)
+               LOAD_ATTR               25 (unsqueeze + NULL|self)
+               LOAD_CONST               2 (-1)
+               CALL                     1
+
+192            LOAD_FAST                9 (norm_rho)
+               LOAD_ATTR               25 (unsqueeze + NULL|self)
+               LOAD_CONST               2 (-1)
+               CALL                     1
+
+193            LOAD_FAST                6 (ss_onehot)
+
+187            BUILD_LIST               6
+
+194            LOAD_CONST               2 (-1)
+
+187            LOAD_CONST               3 (('dim',))
+               CALL_KW                  2
+               STORE_FAST              10 (gate_input)
+
+197    L5:     LOAD_FAST                0 (self)
+               LOAD_ATTR               31 (gate_net + NULL|self)
+               LOAD_FAST               10 (gate_input)
+               CALL                     1
+               STORE_FAST              12 (raw_logits)
+
+201            LOAD_GLOBAL             32 (F)
+               LOAD_ATTR               34 (softmax)
+               PUSH_NULL
+               LOAD_FAST               12 (raw_logits)
+               LOAD_CONST               2 (-1)
+               LOAD_CONST               3 (('dim',))
+               CALL_KW                  2
+               STORE_FAST              13 (scores_initial)
+
+202            LOAD_FAST               13 (scores_initial)
+               LOAD_ATTR               37 (mean + NULL|self)
+               LOAD_CONST               4 (0)
+               LOAD_CONST               3 (('dim',))
+               CALL_KW                  1
+               STORE_FAST              14 (expected_load)
+
+205            LOAD_GLOBAL              0 (torch)
+               LOAD_ATTR               38 (relu)
+               PUSH_NULL
+               LOAD_FAST_LOAD_FAST    224 (expected_load, self)
+               LOAD_ATTR               40 (capacity_threshold)
+               BINARY_OP               10 (-)
+               CALL                     1
+               LOAD_CONST               5 (2)
+               BINARY_OP                8 (**)
+               STORE_FAST              15 (overload_penalty)
+
+206            LOAD_FAST               12 (raw_logits)
+               LOAD_CONST               6 (2.0)
+               LOAD_FAST               15 (overload_penalty)
+               LOAD_ATTR               25 (unsqueeze + NULL|self)
+               LOAD_CONST               4 (0)
+               CALL                     1
+               BINARY_OP                5 (*)
+               BINARY_OP               10 (-)
+               STORE_FAST              16 (adjusted_logits)
+
+209            LOAD_FAST                0 (self)
+               LOAD_ATTR                6 (training)
+               TO_BOOL
+               POP_JUMP_IF_FALSE      107 (to L6)
+               LOAD_GLOBAL              0 (torch)
+               LOAD_ATTR               42 (rand)
+               PUSH_NULL
+               LOAD_CONST               7 (1)
+               CALL                     1
+               LOAD_ATTR               45 (item + NULL|self)
+               CALL                     0
+               LOAD_FAST                0 (self)
+               LOAD_ATTR               46 (expert_dropout_p)
+               COMPARE_OP              18 (bool(<))
+               POP_JUMP_IF_FALSE       57 (to L6)
+
+210            LOAD_GLOBAL              0 (torch)
+               LOAD_ATTR               48 (randint)
+               PUSH_NULL
+               LOAD_CONST               4 (0)
+               LOAD_FAST                0 (self)
+               LOAD_ATTR               50 (num_experts)
+               LOAD_CONST               8 ((1,))
+               CALL                     3
+               LOAD_ATTR               45 (item + NULL|self)
+               CALL                     0
+               STORE_FAST              17 (drop_idx)
+
+211            LOAD_CONST               9 (-1000000000.0)
+               LOAD_FAST               16 (adjusted_logits)
+               LOAD_CONST              10 (None)
+               LOAD_CONST              10 (None)
+               BUILD_SLICE              2
+               LOAD_FAST               17 (drop_idx)
+               BUILD_TUPLE              2
+               STORE_SUBSCR
+
+214    L6:     LOAD_FAST                0 (self)
+               LOAD_ATTR               52 (use_gumbel)
+               COPY                     1
+               TO_BOOL
+               POP_JUMP_IF_FALSE       13 (to L7)
+               POP_TOP
+               LOAD_GLOBAL             55 (getattr + NULL)
+               LOAD_FAST                0 (self)
+               LOAD_CONST              11 ('_gumbel_active')
+               LOAD_CONST              12 (True)
+               CALL                     3
+       L7:     STORE_FAST              18 (gumbel_active)
+
+215            LOAD_FAST               18 (gumbel_active)
+               TO_BOOL
+               POP_JUMP_IF_FALSE       51 (to L8)
+               LOAD_FAST                0 (self)
+               LOAD_ATTR                6 (training)
+               TO_BOOL
+               POP_JUMP_IF_FALSE       34 (to L8)
+
+217            LOAD_GLOBAL             32 (F)
+               LOAD_ATTR               56 (gumbel_softmax)
+               PUSH_NULL
+               LOAD_FAST               16 (adjusted_logits)
+               LOAD_FAST                0 (self)
+               LOAD_ATTR               58 (temperature)
+               LOAD_CONST              12 (True)
+               LOAD_CONST               2 (-1)
+               LOAD_CONST              13 (('tau', 'hard', 'dim'))
+               CALL_KW                  4
+               STORE_FAST              19 (scores)
+               JUMP_FORWARD           101 (to L10)
+
+218    L8:     LOAD_FAST               18 (gumbel_active)
+               TO_BOOL
+               POP_JUMP_IF_FALSE       73 (to L9)
+               LOAD_FAST                0 (self)
+               LOAD_ATTR                6 (training)
+               TO_BOOL
+               POP_JUMP_IF_TRUE        56 (to L9)
+
+220            LOAD_GLOBAL              0 (torch)
+               LOAD_ATTR               60 (zeros_like)
+               PUSH_NULL
+               LOAD_FAST               16 (adjusted_logits)
+               CALL                     1
+               STORE_FAST              19 (scores)
+
+221            LOAD_FAST               19 (scores)
+               LOAD_ATTR               63 (scatter_ + NULL|self)
+               LOAD_CONST               7 (1)
+               LOAD_FAST               16 (adjusted_logits)
+               LOAD_ATTR               65 (argmax + NULL|self)
+               LOAD_CONST               2 (-1)
+               LOAD_CONST              12 (True)
+               LOAD_CONST              14 (('dim', 'keepdim'))
+               CALL_KW                  2
+               LOAD_CONST              15 (1.0)
+               CALL                     3
+               POP_TOP
+               JUMP_FORWARD            21 (to L10)
+
+224    L9:     LOAD_GLOBAL             32 (F)
+               LOAD_ATTR               34 (softmax)
+               PUSH_NULL
+               LOAD_FAST               16 (adjusted_logits)
+               LOAD_CONST               2 (-1)
+               LOAD_CONST               3 (('dim',))
+               CALL_KW                  2
+               STORE_FAST              19 (scores)
+
+228   L10:     LOAD_GLOBAL             32 (F)
+               LOAD_ATTR               34 (softmax)
+               PUSH_NULL
+               LOAD_FAST               16 (adjusted_logits)
+               LOAD_CONST               2 (-1)
+               LOAD_CONST               3 (('dim',))
+               CALL_KW                  2
+               STORE_FAST              20 (soft_scores)
+
+229            LOAD_FAST               20 (soft_scores)
+               LOAD_ATTR               37 (mean + NULL|self)
+               LOAD_CONST               4 (0)
+               LOAD_CONST               3 (('dim',))
+               CALL_KW                  1
+               STORE_FAST              21 (f)
+
+230            LOAD_GLOBAL              0 (torch)
+               LOAD_ATTR               38 (relu)
+               PUSH_NULL
+               LOAD_FAST                0 (self)
+               LOAD_ATTR               66 (min_usage)
+               LOAD_FAST               21 (f)
+               BINARY_OP               10 (-)
+               CALL                     1
+               LOAD_ATTR               69 (pow + NULL|self)
+               LOAD_CONST               5 (2)
+               CALL                     1
+               LOAD_ATTR               71 (sum + NULL|self)
+               CALL                     0
+               STORE_FAST              22 (capacity_loss)
+
+232            LOAD_FAST               19 (scores)
+               LOAD_FAST               22 (capacity_loss)
+               BUILD_TUPLE              2
+               RETURN_VALUE
+
+Disassembly of <code object GOSPConeMapperV6 at 0x654cdf1b09b0, file "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/v6/gnn/model.py", line 237>:
+  --           MAKE_CELL                0 (__class__)
+
+ 237           RESUME                   0
+               LOAD_NAME                0 (__name__)
+               STORE_NAME               1 (__module__)
+               LOAD_CONST               0 ('GOSPConeMapperV6')
+               STORE_NAME               2 (__qualname__)
+               LOAD_CONST               1 (237)
+               STORE_NAME               3 (__firstlineno__)
+
+ 238           LOAD_CONST               2 ('\nTokyo Eyes v6 — Topologically-Routed MoE Specialization.\n\nKey architectural differences from v5:\n  - MoE gate receives expanded input (hidden + 7 topological features)\n  - Asymmetric capacity loss replaces symmetric balance loss\n  - Expert dropout builds redundancy during training\n  - Capacity-aware soft routing prevents expert overload\n\nPreserves from v5:\n  - Decoupled RadialHead/AngularHead architecture\n  - SE(3)-equivariant backbone\n  - EvidentialHead for uncertainty\n  - Dual 2D/3D hyperbolic projections\n')
+               STORE_NAME               4 (__doc__)
+
+ 256           NOP
+
+ 257           NOP
+
+ 258           NOP
+
+ 259           NOP
+
+ 260           NOP
+
+ 261           NOP
+
+ 262           NOP
+
+ 263           NOP
+
+ 264           NOP
+
+ 265           NOP
+
+ 266           NOP
+
+ 267           NOP
+
+ 268           NOP
+
+ 269           NOP
+
+ 270           NOP
+
+ 271           NOP
+
+ 254           LOAD_CONST              28 ((4, 128, 6, 4, 64, 2, 3, False, 1e-07, -12.0, 6.0, 1.0, 0.4, 0.15, 0.05, False))
+               LOAD_CONST               3 ('node_dim')
+
+ 256           LOAD_NAME                5 (int)
+
+ 254           LOAD_CONST               4 ('hidden')
+
+ 257           LOAD_NAME                5 (int)
+
+ 254           LOAD_CONST               5 ('num_layers')
+
+ 258           LOAD_NAME                5 (int)
+
+ 254           LOAD_CONST               6 ('num_experts')
+
+ 259           LOAD_NAME                5 (int)
+
+ 254           LOAD_CONST               7 ('projection_dim')
+
+ 260           LOAD_NAME                5 (int)
+
+ 254           LOAD_CONST               8 ('hyp_proj_dim_2d')
+
+ 261           LOAD_NAME                5 (int)
+
+ 254           LOAD_CONST               9 ('hyp_proj_dim_3d')
+
+ 262           LOAD_NAME                5 (int)
+
+ 254           LOAD_CONST              10 ('depth_conditioning')
+
+ 263           LOAD_NAME                6 (bool)
+
+ 254           LOAD_CONST              11 ('projection_audit_tolerance')
+
+ 264           LOAD_NAME                7 (float)
+
+ 254           LOAD_CONST              12 ('aleatoric_logvar_min')
+
+ 265           LOAD_NAME                7 (float)
+
+ 254           LOAD_CONST              13 ('aleatoric_logvar_max')
+
+ 266           LOAD_NAME                7 (float)
+
+ 254           LOAD_CONST              14 ('epistemic_temp_scaling')
+
+ 267           LOAD_NAME                7 (float)
+
+ 254           LOAD_CONST              15 ('capacity_threshold')
+
+ 268           LOAD_NAME                7 (float)
+
+ 254           LOAD_CONST              16 ('expert_dropout_p')
+
+ 269           LOAD_NAME                7 (float)
+
+ 254           LOAD_CONST              17 ('min_usage')
+
+ 270           LOAD_NAME                7 (float)
+
+ 254           LOAD_CONST              18 ('topology_only_gate')
+
+ 271           LOAD_NAME                6 (bool)
+
+ 254           BUILD_TUPLE             32
+               LOAD_FAST                0 (__class__)
+               BUILD_TUPLE              1
+               LOAD_CONST              19 (<code object __init__ at 0x654cdf1cbc60, file "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/v6/gnn/model.py", line 254>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE   8 (closure)
+               SET_FUNCTION_ATTRIBUTE   4 (annotations)
+               SET_FUNCTION_ATTRIBUTE   1 (defaults)
+               STORE_NAME               8 (__init__)
+
+ 335           LOAD_CONST              20 ('x')
+
+ 336           LOAD_NAME                9 (torch)
+               LOAD_ATTR               20 (Tensor)
+
+ 335           LOAD_CONST              21 ('k')
+
+ 336           LOAD_NAME                9 (torch)
+               LOAD_ATTR               20 (Tensor)
+
+ 335           LOAD_CONST              22 ('return')
+
+ 337           LOAD_NAME               11 (Tuple)
+               LOAD_NAME                9 (torch)
+               LOAD_ATTR               20 (Tensor)
+               LOAD_NAME                9 (torch)
+               LOAD_ATTR               20 (Tensor)
+               LOAD_NAME                9 (torch)
+               LOAD_ATTR               20 (Tensor)
+               BUILD_TUPLE              3
+               BINARY_SUBSCR
+
+ 335           BUILD_TUPLE              6
+               LOAD_CONST              23 (<code object _project_with_audit at 0x78a3013ae040, file "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/v6/gnn/model.py", line 335>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE   4 (annotations)
+               STORE_NAME              12 (_project_with_audit)
+
+ 344           LOAD_NAME               13 (property)
+
+ 345           LOAD_CONST              22 ('return')
+               LOAD_NAME                9 (torch)
+               LOAD_ATTR               20 (Tensor)
+               BUILD_TUPLE              2
+               LOAD_CONST              24 (<code object curvature at 0x78a3012f08b0, file "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/v6/gnn/model.py", line 344>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE   4 (annotations)
+
+ 344           CALL                     0
+
+ 345           STORE_NAME              14 (curvature)
+
+ 349           LOAD_CONST              25 ('data')
+               LOAD_NAME               15 (Data)
+               LOAD_CONST              22 ('return')
+               LOAD_NAME               16 (Dict)
+               LOAD_NAME               17 (str)
+               LOAD_NAME               18 (Any)
+               BUILD_TUPLE              2
+               BINARY_SUBSCR
+               BUILD_TUPLE              4
+               LOAD_CONST              26 (<code object forward at 0x654cdf1cd320, file "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/v6/gnn/model.py", line 349>)
+               MAKE_FUNCTION
+               SET_FUNCTION_ATTRIBUTE   4 (annotations)
+               STORE_NAME              19 (forward)
+               LOAD_CONST              27 (('angular_head', 'convs', 'depth_conditioning', 'experts', 'gate', 'hidden', 'hyp_proj_dim_2d', 'hyp_proj_dim_3d', 'hyp_proj_head_2d', 'hyp_proj_head_3d', 'log_c', 'node_emb', 'norms', 'projection_audit_tolerance', 'projection_head', 'radial_head', 'uncertainty_head'))
+               STORE_NAME              20 (__static_attributes__)
+               LOAD_FAST                0 (__class__)
+               COPY                     1
+               STORE_NAME              21 (__classcell__)
+               RETURN_VALUE
+
+Disassembly of <code object __init__ at 0x654cdf1cbc60, file "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/v6/gnn/model.py", line 254>:
+  --            COPY_FREE_VARS           1
+
+ 254            RESUME                   0
+
+ 273            LOAD_GLOBAL              0 (super)
+                LOAD_DEREF              18 (__class__)
+                LOAD_FAST                0 (self)
+                LOAD_SUPER_ATTR          5 (__init__ + NULL|self)
+                CALL                     0
+                POP_TOP
+
+ 274            LOAD_FAST_LOAD_FAST     32 (hidden, self)
+                STORE_ATTR               2 (hidden)
+
+ 275            LOAD_FAST_LOAD_FAST    128 (depth_conditioning, self)
+                STORE_ATTR               3 (depth_conditioning)
+
+ 276            LOAD_FAST_LOAD_FAST    144 (projection_audit_tolerance, self)
+                STORE_ATTR               4 (projection_audit_tolerance)
+
+ 279            LOAD_GLOBAL             10 (nn)
+                LOAD_ATTR               12 (Linear)
+                PUSH_NULL
+                LOAD_FAST_LOAD_FAST     18 (node_dim, hidden)
+                CALL                     2
+                LOAD_FAST                0 (self)
+                STORE_ATTR               7 (node_emb)
+
+ 282            LOAD_GLOBAL             10 (nn)
+                LOAD_ATTR               16 (ModuleList)
+                PUSH_NULL
+
+ 284            LOAD_GLOBAL             19 (range + NULL)
+                LOAD_FAST                3 (num_layers)
+                CALL                     1
+                GET_ITER
+
+ 282            LOAD_FAST_AND_CLEAR     17 (_)
+                SWAP                     2
+        L1:     BUILD_LIST               0
+                SWAP                     2
+
+ 284            GET_ITER
+        L2:     FOR_ITER                13 (to L3)
+                STORE_FAST              17 (_)
+
+ 283            LOAD_GLOBAL             21 (EquivariantConv + NULL)
+                LOAD_FAST                2 (hidden)
+                LOAD_CONST               1 ('32x0e + 8x1e')
+                LOAD_CONST               2 (('irreps_hidden',))
+                CALL_KW                  2
+                LIST_APPEND              2
+                JUMP_BACKWARD           15 (to L2)
+
+ 284    L3:     END_FOR
+                POP_TOP
+
+ 282    L4:     SWAP                     2
+                STORE_FAST              17 (_)
+                CALL                     1
+                LOAD_FAST                0 (self)
+                STORE_ATTR              11 (convs)
+
+ 286            LOAD_GLOBAL             10 (nn)
+                LOAD_ATTR               16 (ModuleList)
+                PUSH_NULL
+
+ 287            LOAD_GLOBAL             19 (range + NULL)
+                LOAD_FAST                3 (num_layers)
+                CALL                     1
+                GET_ITER
+
+ 286            LOAD_FAST_AND_CLEAR     17 (_)
+                SWAP                     2
+        L5:     BUILD_LIST               0
+                SWAP                     2
+
+ 287            GET_ITER
+        L6:     FOR_ITER                25 (to L7)
+                STORE_FAST              17 (_)
+                LOAD_GLOBAL             10 (nn)
+                LOAD_ATTR               24 (LayerNorm)
+                PUSH_NULL
+                LOAD_FAST                2 (hidden)
+                CALL                     1
+                LIST_APPEND              2
+                JUMP_BACKWARD           27 (to L6)
+        L7:     END_FOR
+                POP_TOP
+
+ 286    L8:     SWAP                     2
+                STORE_FAST              17 (_)
+                CALL                     1
+                LOAD_FAST                0 (self)
+                STORE_ATTR              13 (norms)
+
+ 291            LOAD_GLOBAL             10 (nn)
+                LOAD_ATTR               28 (Parameter)
+                PUSH_NULL
+                LOAD_GLOBAL             30 (torch)
+                LOAD_ATTR               32 (tensor)
+                PUSH_NULL
+                LOAD_CONST               3 (0.0)
+                CALL                     1
+                CALL                     1
+                LOAD_FAST                0 (self)
+                STORE_ATTR              17 (log_c)
+
+ 294            LOAD_GLOBAL             37 (RadialHead + NULL)
+                LOAD_FAST                2 (hidden)
+                CALL                     1
+                LOAD_FAST                0 (self)
+                STORE_ATTR              19 (radial_head)
+
+ 295            LOAD_GLOBAL             41 (AngularHead + NULL)
+                LOAD_FAST                2 (hidden)
+                CALL                     1
+                LOAD_FAST                0 (self)
+                STORE_ATTR              21 (angular_head)
+
+ 298            LOAD_GLOBAL             45 (TopologicalMoEGateV6 + NULL)
+
+ 299            LOAD_FAST                2 (hidden)
+
+ 300            LOAD_FAST                4 (num_experts)
+
+ 301            LOAD_FAST               13 (capacity_threshold)
+
+ 302            LOAD_FAST               14 (expert_dropout_p)
+
+ 303            LOAD_FAST               15 (min_usage)
+
+ 304            LOAD_FAST               16 (topology_only_gate)
+
+ 298            LOAD_CONST               4 (('hidden_dim', 'num_experts', 'capacity_threshold', 'expert_dropout_p', 'min_usage', 'topology_only'))
+                CALL_KW                  6
+                LOAD_FAST                0 (self)
+                STORE_ATTR              23 (gate)
+
+ 308            LOAD_GLOBAL             10 (nn)
+                LOAD_ATTR               16 (ModuleList)
+                PUSH_NULL
+
+ 314            LOAD_GLOBAL             19 (range + NULL)
+                LOAD_FAST                4 (num_experts)
+                CALL                     1
+                GET_ITER
+
+ 308            LOAD_FAST_AND_CLEAR     17 (_)
+                SWAP                     2
+        L9:     BUILD_LIST               0
+                SWAP                     2
+
+ 314            GET_ITER
+       L10:     FOR_ITER                86 (to L11)
+                STORE_FAST              17 (_)
+
+ 309            LOAD_GLOBAL             10 (nn)
+                LOAD_ATTR               48 (Sequential)
+                PUSH_NULL
+
+ 310            LOAD_GLOBAL             10 (nn)
+                LOAD_ATTR               12 (Linear)
+                PUSH_NULL
+                LOAD_FAST_LOAD_FAST     34 (hidden, hidden)
+                CALL                     2
+
+ 311            LOAD_GLOBAL             10 (nn)
+                LOAD_ATTR               50 (SiLU)
+                PUSH_NULL
+                CALL                     0
+
+ 312            LOAD_GLOBAL             10 (nn)
+                LOAD_ATTR               12 (Linear)
+                PUSH_NULL
+                LOAD_FAST_LOAD_FAST     34 (hidden, hidden)
+                CALL                     2
+
+ 309            CALL                     3
+                LIST_APPEND              2
+                JUMP_BACKWARD           88 (to L10)
+
+ 314   L11:     END_FOR
+                POP_TOP
+
+ 308   L12:     SWAP                     2
+                STORE_FAST              17 (_)
+                CALL                     1
+                LOAD_FAST                0 (self)
+                STORE_ATTR              26 (experts)
+
+ 318            LOAD_GLOBAL             55 (EvidentialHead + NULL)
+
+ 319            LOAD_FAST                2 (hidden)
+
+ 320            LOAD_CONST               5 (2)
+
+ 321            LOAD_FAST               10 (aleatoric_logvar_min)
+
+ 322            LOAD_FAST               11 (aleatoric_logvar_max)
+
+ 323            LOAD_FAST               12 (epistemic_temp_scaling)
+
+ 318            LOAD_CONST               6 (('hidden_dim', 'extra_input_dim', 'aleatoric_logvar_min', 'aleatoric_logvar_max', 'epistemic_temp_scaling'))
+                CALL_KW                  5
+                LOAD_FAST                0 (self)
+                STORE_ATTR              28 (uncertainty_head)
+
+ 327            LOAD_GLOBAL             10 (nn)
+                LOAD_ATTR               12 (Linear)
+                PUSH_NULL
+                LOAD_FAST_LOAD_FAST     37 (hidden, projection_dim)
+                CALL                     2
+                LOAD_FAST                0 (self)
+                STORE_ATTR              29 (projection_head)
+
+ 330            LOAD_GLOBAL             61 (MobiusLinear + NULL)
+                LOAD_FAST_LOAD_FAST     38 (hidden, hyp_proj_dim_2d)
+                CALL                     2
+                LOAD_FAST                0 (self)
+                STORE_ATTR              31 (hyp_proj_head_2d)
+
+ 331            LOAD_GLOBAL             61 (MobiusLinear + NULL)
+                LOAD_FAST_LOAD_FAST     39 (hidden, hyp_proj_dim_3d)
+                CALL                     2
+                LOAD_FAST                0 (self)
+                STORE_ATTR              32 (hyp_proj_head_3d)
+
+ 332            LOAD_FAST_LOAD_FAST     96 (hyp_proj_dim_2d, self)
+                STORE_ATTR              33 (hyp_proj_dim_2d)
+
+ 333            LOAD_FAST_LOAD_FAST    112 (hyp_proj_dim_3d, self)
+                STORE_ATTR              34 (hyp_proj_dim_3d)
+                RETURN_CONST             0 (None)
+
+  --   L13:     SWAP                     2
+                POP_TOP
+
+ 282            SWAP                     2
+                STORE_FAST              17 (_)
+                RERAISE                  0
+
+  --   L14:     SWAP                     2
+                POP_TOP
+
+ 286            SWAP                     2
+                STORE_FAST              17 (_)
+                RERAISE                  0
+
+  --   L15:     SWAP                     2
+                POP_TOP
+
+ 308            SWAP                     2
+                STORE_FAST              17 (_)
+                RERAISE                  0
+ExceptionTable:
+  L1 to L4 -> L13 [4]
+  L5 to L8 -> L14 [4]
+  L9 to L12 -> L15 [4]
+
+Disassembly of <code object _project_with_audit at 0x78a3013ae040, file "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/v6/gnn/model.py", line 335>:
+335           RESUME                   0
+
+339           LOAD_CONST               1 (0)
+              LOAD_CONST               2 (('math',))
+              IMPORT_NAME              0 (geoopt.manifolds.stereographic)
+              IMPORT_FROM              1 (math)
+              STORE_FAST               3 (pmath)
+              POP_TOP
+
+340           LOAD_FAST                3 (pmath)
+              LOAD_ATTR                5 (project + NULL|self)
+              LOAD_FAST_LOAD_FAST     18 (x, k)
+              LOAD_CONST               3 (('k',))
+              CALL_KW                  2
+              STORE_FAST               4 (x_proj)
+
+341           LOAD_FAST_LOAD_FAST     65 (x_proj, x)
+              BINARY_OP               10 (-)
+              LOAD_ATTR                7 (abs + NULL|self)
+              CALL                     0
+              LOAD_ATTR                9 (amax + NULL|self)
+              LOAD_CONST               4 (-1)
+              LOAD_CONST               5 (('dim',))
+              CALL_KW                  1
+              LOAD_FAST                0 (self)
+              LOAD_ATTR               10 (projection_audit_tolerance)
+              COMPARE_OP             132 (>)
+              STORE_FAST               5 (changed)
+
+342           LOAD_FAST_LOAD_FAST     69 (x_proj, changed)
+              LOAD_ATTR               13 (sum + NULL|self)
+              CALL                     0
+              LOAD_FAST                5 (changed)
+              LOAD_ATTR               15 (float + NULL|self)
+              CALL                     0
+              LOAD_ATTR               17 (mean + NULL|self)
+              CALL                     0
+              BUILD_TUPLE              3
+              RETURN_VALUE
+
+Disassembly of <code object curvature at 0x78a3012f08b0, file "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/v6/gnn/model.py", line 344>:
+344           RESUME                   0
+
+347           LOAD_GLOBAL              0 (F)
+              LOAD_ATTR                2 (softplus)
+              PUSH_NULL
+              LOAD_FAST                0 (self)
+              LOAD_ATTR                4 (log_c)
+              CALL                     1
+              LOAD_CONST               1 (0.0001)
+              BINARY_OP                0 (+)
+              RETURN_VALUE
+
+Disassembly of <code object forward at 0x654cdf1cd320, file "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/v6/gnn/model.py", line 349>:
+ 349           RESUME                   0
+
+ 350           LOAD_CONST               1 (0)
+               LOAD_CONST               2 (('math',))
+               IMPORT_NAME              0 (geoopt.manifolds.stereographic)
+               IMPORT_FROM              1 (math)
+               STORE_FAST               2 (pmath)
+               POP_TOP
+
+ 353           LOAD_FAST                0 (self)
+               LOAD_ATTR                5 (node_emb + NULL|self)
+               LOAD_FAST                1 (data)
+               LOAD_ATTR                6 (x)
+               CALL                     1
+               STORE_FAST               3 (x)
+
+ 356           LOAD_GLOBAL              9 (zip + NULL)
+               LOAD_FAST                0 (self)
+               LOAD_ATTR               10 (convs)
+               LOAD_FAST                0 (self)
+               LOAD_ATTR               12 (norms)
+               CALL                     2
+               GET_ITER
+       L1:     FOR_ITER                68 (to L2)
+               UNPACK_SEQUENCE          2
+               STORE_FAST_STORE_FAST   69 (conv, norm)
+
+ 357           LOAD_FAST                3 (x)
+               STORE_FAST               6 (x_res)
+
+ 358           LOAD_FAST                4 (conv)
+               PUSH_NULL
+               LOAD_FAST_LOAD_FAST     49 (x, data)
+               LOAD_ATTR               14 (edge_index)
+               LOAD_FAST                1 (data)
+               LOAD_ATTR               16 (edge_attr)
+               CALL                     3
+               STORE_FAST               3 (x)
+
+ 359           LOAD_GLOBAL             18 (F)
+               LOAD_ATTR               20 (silu)
+               PUSH_NULL
+               LOAD_FAST                5 (norm)
+               PUSH_NULL
+               LOAD_FAST                3 (x)
+               CALL                     1
+               CALL                     1
+               STORE_FAST               3 (x)
+
+ 360           LOAD_FAST_LOAD_FAST     54 (x, x_res)
+               BINARY_OP                0 (+)
+               STORE_FAST               3 (x)
+               JUMP_BACKWARD           70 (to L1)
+
+ 356   L2:     END_FOR
+               POP_TOP
+
+ 363           LOAD_FAST                0 (self)
+               LOAD_ATTR               22 (curvature)
+               STORE_FAST               7 (c)
+
+ 364           LOAD_FAST                7 (c)
+               UNARY_NEGATIVE
+               STORE_FAST               8 (k)
+
+ 367           LOAD_FAST                0 (self)
+               LOAD_ATTR               25 (radial_head + NULL|self)
+               LOAD_FAST                3 (x)
+               CALL                     1
+               STORE_FAST               9 (radial_depth)
+
+ 370           LOAD_FAST                0 (self)
+               LOAD_ATTR               27 (angular_head + NULL|self)
+               LOAD_FAST                3 (x)
+               CALL                     1
+               STORE_FAST              10 (angular_direction)
+
+ 373           LOAD_FAST_LOAD_FAST    154 (radial_depth, angular_direction)
+               BINARY_OP                5 (*)
+               STORE_FAST              11 (tangent_vector)
+
+ 376           LOAD_FAST                2 (pmath)
+               LOAD_ATTR               29 (expmap0 + NULL|self)
+               LOAD_FAST_LOAD_FAST    184 (tangent_vector, k)
+               LOAD_CONST               3 (('k',))
+               CALL_KW                  2
+               STORE_FAST              12 (x_hyp)
+
+ 377           LOAD_FAST                0 (self)
+               LOAD_ATTR               31 (_project_with_audit + NULL|self)
+               LOAD_FAST_LOAD_FAST    200 (x_hyp, k)
+               LOAD_CONST               3 (('k',))
+               CALL_KW                  2
+               UNPACK_SEQUENCE          3
+               STORE_FAST_STORE_FAST  205 (x_hyp, proj_count_s1)
+               STORE_FAST              14 (proj_frac_s1)
+
+ 380           LOAD_FAST                2 (pmath)
+               LOAD_ATTR               33 (dist0 + NULL|self)
+               LOAD_FAST_LOAD_FAST    200 (x_hyp, k)
+               LOAD_CONST               4 (True)
+               LOAD_CONST               5 (('k', 'keepdim'))
+               CALL_KW                  3
+               STORE_FAST              15 (depth)
+
+ 381           LOAD_GLOBAL             34 (torch)
+               LOAD_ATTR               36 (exp)
+               PUSH_NULL
+               LOAD_FAST               15 (depth)
+               UNARY_NEGATIVE
+               CALL                     1
+               STORE_FAST              16 (cone_width)
+
+ 384           LOAD_FAST                2 (pmath)
+               LOAD_ATTR               39 (logmap0 + NULL|self)
+               LOAD_FAST_LOAD_FAST    200 (x_hyp, k)
+               LOAD_CONST               3 (('k',))
+               CALL_KW                  2
+               STORE_FAST              17 (x_tangent)
+
+ 387           LOAD_FAST                0 (self)
+               LOAD_ATTR               41 (gate + NULL|self)
+
+ 388           LOAD_FAST               17 (x_tangent)
+
+ 389           LOAD_FAST                1 (data)
+               LOAD_ATTR               42 (clustering)
+
+ 390           LOAD_FAST               15 (depth)
+
+ 391           LOAD_FAST                1 (data)
+               LOAD_ATTR               44 (degree)
+
+ 392           LOAD_FAST                1 (data)
+               LOAD_ATTR               46 (rho)
+
+ 393           LOAD_FAST                1 (data)
+               LOAD_ATTR               48 (ss_onehot)
+
+ 387           LOAD_CONST               6 (('x_tangent', 'clustering', 'cone_depth', 'degree', 'rho', 'ss_onehot'))
+               CALL_KW                  6
+               UNPACK_SEQUENCE          2
+               STORE_FAST              18 (scores)
+               STORE_FAST              19 (capacity_loss)
+
+ 396           LOAD_GLOBAL             34 (torch)
+               LOAD_ATTR               50 (stack)
+               PUSH_NULL
+
+ 397           LOAD_FAST                0 (self)
+               LOAD_ATTR               52 (experts)
+               GET_ITER
+               LOAD_FAST_AND_CLEAR     20 (expert)
+               SWAP                     2
+       L3:     BUILD_LIST               0
+               SWAP                     2
+               GET_ITER
+       L4:     FOR_ITER                11 (to L5)
+               STORE_FAST              20 (expert)
+               LOAD_FAST               20 (expert)
+               PUSH_NULL
+               LOAD_FAST               17 (x_tangent)
+               CALL                     1
+               LIST_APPEND              2
+               JUMP_BACKWARD           13 (to L4)
+       L5:     END_FOR
+               POP_TOP
+       L6:     SWAP                     2
+               STORE_FAST              20 (expert)
+               LOAD_CONST               7 (1)
+
+ 396           LOAD_CONST               8 (('dim',))
+               CALL_KW                  2
+               STORE_FAST              21 (expert_outputs)
+
+ 401           LOAD_GLOBAL             34 (torch)
+               LOAD_ATTR               54 (einsum)
+               PUSH_NULL
+               LOAD_CONST               9 ('ne,neh->nh')
+               LOAD_FAST               18 (scores)
+               LOAD_FAST               21 (expert_outputs)
+               CALL                     3
+               STORE_FAST              22 (x_routed_tangent)
+
+ 404           LOAD_FAST                2 (pmath)
+               LOAD_ATTR               29 (expmap0 + NULL|self)
+               LOAD_FAST               22 (x_routed_tangent)
+               LOAD_FAST                8 (k)
+               LOAD_CONST               3 (('k',))
+               CALL_KW                  2
+               STORE_FAST              23 (x_routed_hyp)
+
+ 405           LOAD_FAST                0 (self)
+               LOAD_ATTR               31 (_project_with_audit + NULL|self)
+
+ 406           LOAD_FAST               23 (x_routed_hyp)
+               LOAD_FAST                8 (k)
+
+ 405           LOAD_CONST               3 (('k',))
+               CALL_KW                  2
+               UNPACK_SEQUENCE          3
+               STORE_FAST              23 (x_routed_hyp)
+               STORE_FAST              24 (proj_count_s2)
+               STORE_FAST              25 (proj_frac_s2)
+
+ 410           LOAD_FAST                2 (pmath)
+               LOAD_ATTR               39 (logmap0 + NULL|self)
+               LOAD_FAST               23 (x_routed_hyp)
+               LOAD_FAST                8 (k)
+               LOAD_CONST               3 (('k',))
+               CALL_KW                  2
+               STORE_FAST              26 (x_routed_tangent_out)
+
+ 411           LOAD_GLOBAL             34 (torch)
+               LOAD_ATTR               56 (cat)
+               PUSH_NULL
+               LOAD_FAST               26 (x_routed_tangent_out)
+               LOAD_FAST               15 (depth)
+               LOAD_FAST               16 (cone_width)
+               BUILD_LIST               3
+               LOAD_CONST              10 (-1)
+               LOAD_CONST               8 (('dim',))
+               CALL_KW                  2
+               STORE_FAST              27 (x_for_unc)
+
+ 412           LOAD_FAST                0 (self)
+               LOAD_ATTR               59 (uncertainty_head + NULL|self)
+               LOAD_FAST               27 (x_for_unc)
+               CALL                     1
+               UNPACK_SEQUENCE          2
+               STORE_FAST              28 (uncertainty)
+               STORE_FAST              29 (evidence)
+
+ 416           LOAD_FAST                0 (self)
+               LOAD_ATTR               61 (hyp_proj_head_2d + NULL|self)
+               LOAD_FAST               23 (x_routed_hyp)
+               LOAD_FAST                7 (c)
+               LOAD_CONST              11 (('c',))
+               CALL_KW                  2
+               STORE_FAST              30 (hyp_proj_2d)
+
+ 417           LOAD_FAST                2 (pmath)
+               LOAD_ATTR               63 (project + NULL|self)
+               LOAD_FAST               30 (hyp_proj_2d)
+               LOAD_FAST                8 (k)
+               LOAD_CONST               3 (('k',))
+               CALL_KW                  2
+               STORE_FAST              30 (hyp_proj_2d)
+
+ 418           LOAD_FAST               30 (hyp_proj_2d)
+               LOAD_ATTR               65 (norm + NULL|self)
+               LOAD_CONST              10 (-1)
+               LOAD_CONST               4 (True)
+               LOAD_CONST              12 (('dim', 'keepdim'))
+               CALL_KW                  2
+               STORE_FAST              31 (hyp_norms_2d)
+
+ 419           LOAD_FAST               30 (hyp_proj_2d)
+               LOAD_GLOBAL             34 (torch)
+               LOAD_ATTR               66 (clamp)
+               PUSH_NULL
+               LOAD_CONST              13 (0.99)
+               LOAD_FAST               31 (hyp_norms_2d)
+               LOAD_CONST              14 (1e-08)
+               BINARY_OP                0 (+)
+               BINARY_OP               11 (/)
+               LOAD_CONST              15 (1.0)
+               LOAD_CONST              16 (('max',))
+               CALL_KW                  2
+               BINARY_OP                5 (*)
+               STORE_FAST              30 (hyp_proj_2d)
+
+ 422           LOAD_FAST                0 (self)
+               LOAD_ATTR               69 (hyp_proj_head_3d + NULL|self)
+               LOAD_FAST               23 (x_routed_hyp)
+               LOAD_FAST                7 (c)
+               LOAD_CONST              11 (('c',))
+               CALL_KW                  2
+               STORE_FAST              32 (hyp_proj_3d)
+
+ 423           LOAD_FAST                2 (pmath)
+               LOAD_ATTR               63 (project + NULL|self)
+               LOAD_FAST               32 (hyp_proj_3d)
+               LOAD_FAST                8 (k)
+               LOAD_CONST               3 (('k',))
+               CALL_KW                  2
+               STORE_FAST              32 (hyp_proj_3d)
+
+ 424           LOAD_FAST               32 (hyp_proj_3d)
+               LOAD_ATTR               65 (norm + NULL|self)
+               LOAD_CONST              10 (-1)
+               LOAD_CONST               4 (True)
+               LOAD_CONST              12 (('dim', 'keepdim'))
+               CALL_KW                  2
+               STORE_FAST              33 (hyp_norms_3d)
+
+ 425           LOAD_FAST               32 (hyp_proj_3d)
+               LOAD_GLOBAL             34 (torch)
+               LOAD_ATTR               66 (clamp)
+               PUSH_NULL
+               LOAD_CONST              13 (0.99)
+               LOAD_FAST               33 (hyp_norms_3d)
+               LOAD_CONST              14 (1e-08)
+               BINARY_OP                0 (+)
+               BINARY_OP               11 (/)
+               LOAD_CONST              15 (1.0)
+               LOAD_CONST              16 (('max',))
+               CALL_KW                  2
+               BINARY_OP                5 (*)
+               STORE_FAST              32 (hyp_proj_3d)
+
+ 428           LOAD_FAST                0 (self)
+               LOAD_ATTR               71 (projection_head + NULL|self)
+               LOAD_FAST               26 (x_routed_tangent_out)
+               CALL                     1
+               STORE_FAST              34 (projections)
+
+ 429           LOAD_FAST                0 (self)
+               LOAD_ATTR               72 (depth_conditioning)
+               TO_BOOL
+               POP_JUMP_IF_FALSE        5 (to L7)
+
+ 430           LOAD_FAST               34 (projections)
+               LOAD_FAST               16 (cone_width)
+               BINARY_OP                5 (*)
+               STORE_FAST              34 (projections)
+
+ 433   L7:     LOAD_FAST               18 (scores)
+               LOAD_ATTR               75 (mean + NULL|self)
+               LOAD_CONST               1 (0)
+               LOAD_CONST               8 (('dim',))
+               CALL_KW                  1
+               LOAD_ATTR               77 (detach + NULL|self)
+               CALL                     0
+               STORE_FAST              35 (expert_load)
+
+ 434           LOAD_FAST               18 (scores)
+               LOAD_ATTR               75 (mean + NULL|self)
+               LOAD_CONST               1 (0)
+               LOAD_CONST               8 (('dim',))
+               CALL_KW                  1
+               LOAD_GLOBAL             34 (torch)
+               LOAD_ATTR               78 (log)
+               PUSH_NULL
+               LOAD_FAST               18 (scores)
+               LOAD_ATTR               75 (mean + NULL|self)
+               LOAD_CONST               1 (0)
+               LOAD_CONST               8 (('dim',))
+               CALL_KW                  1
+               LOAD_CONST              14 (1e-08)
+               BINARY_OP                0 (+)
+               CALL                     1
+               BINARY_OP                5 (*)
+               LOAD_ATTR               81 (sum + NULL|self)
+               CALL                     0
+               UNARY_NEGATIVE
+               STORE_FAST              36 (routing_entropy)
+
+ 437           LOAD_FAST               13 (proj_count_s1)
+               LOAD_FAST               24 (proj_count_s2)
+               BINARY_OP                0 (+)
+               LOAD_ATTR               77 (detach + NULL|self)
+               CALL                     0
+               STORE_FAST              37 (proj_count_total)
+
+ 438           LOAD_FAST               14 (proj_frac_s1)
+               LOAD_FAST               25 (proj_frac_s2)
+               BINARY_OP                0 (+)
+               LOAD_CONST              17 (2.0)
+               BINARY_OP               11 (/)
+               LOAD_ATTR               77 (detach + NULL|self)
+               CALL                     0
+               STORE_FAST              38 (proj_frac_avg)
+
+ 441           LOAD_CONST              18 ('v6')
+
+ 442           LOAD_CONST              19 ('topological_moe_specialization')
+
+ 443           LOAD_CONST              20 ('hyperbolic_dist0')
+
+ 444           BUILD_LIST               0
+               LOAD_CONST              21 (('gate', 'cone_loss', 'uncertainty_head'))
+               LIST_EXTEND              1
+
+ 445           LOAD_FAST                0 (self)
+               LOAD_ATTR               24 (radial_head)
+               LOAD_ATTR               82 (radial_scale)
+               LOAD_ATTR               85 (item + NULL|self)
+               CALL                     0
+
+ 446           LOAD_FAST               37 (proj_count_total)
+
+ 447           LOAD_FAST               38 (proj_frac_avg)
+
+ 448           LOAD_FAST                7 (c)
+               LOAD_ATTR               77 (detach + NULL|self)
+               CALL                     0
+
+ 449           LOAD_FAST                0 (self)
+               LOAD_ATTR               40 (gate)
+               LOAD_ATTR               86 (hidden_dim)
+               LOAD_CONST              22 (7)
+               BINARY_OP                0 (+)
+
+ 450           BUILD_LIST               0
+               LOAD_CONST              23 (('cone_depth', 'cone_width', 'expert_weights', 'x_hyp', 'x_routed_hyp', 'hyp_projections_2d', 'hyp_projections_3d', 'uncertainty', 'capacity_loss', 'expert_load', 'routing_entropy'))
+               LIST_EXTEND              1
+
+ 455           LOAD_CONST              24 ('cone_consistency')
+               LOAD_CONST              25 ('capacity_loss')
+               BUILD_LIST               2
+
+ 456           BUILD_LIST               0
+               LOAD_CONST              26 (('gate', 'experts', 'euclidean_projection'))
+               LIST_EXTEND              1
+
+ 457           BUILD_LIST               0
+               LOAD_CONST              27 (('hyp_projections_2d', 'hyp_projections_3d', 'x_hyp_output'))
+               LIST_EXTEND              1
+
+ 440           LOAD_CONST              28 (('version', 'architecture', 'depth_metric', 'depth_used_in', 'radial_head_scale', 'projection_applied_count', 'projection_applied_fraction', 'curvature_value', 'gate_input_dim', 'affected_outputs', 'affected_losses', 'tangent_space_used_for', 'ball_space_used_for'))
+               BUILD_CONST_KEY_MAP     13
+               STORE_FAST              39 (audit_trail)
+
+ 460           BUILD_MAP                0
+
+ 462           LOAD_CONST              29 ('projections')
+               LOAD_FAST               34 (projections)
+
+ 460           MAP_ADD                  1
+
+ 463           LOAD_CONST              30 ('uncertainty')
+               LOAD_FAST               28 (uncertainty)
+
+ 460           MAP_ADD                  1
+
+ 464           LOAD_CONST              31 ('cone_depth')
+               LOAD_FAST               15 (depth)
+
+ 460           MAP_ADD                  1
+
+ 465           LOAD_CONST              32 ('cone_width')
+               LOAD_FAST               16 (cone_width)
+
+ 460           MAP_ADD                  1
+
+ 466           LOAD_CONST              33 ('expert_weights')
+               LOAD_FAST               18 (scores)
+
+ 460           MAP_ADD                  1
+
+ 467           LOAD_CONST              34 ('balance_loss')
+               LOAD_FAST               19 (capacity_loss)
+
+ 460           MAP_ADD                  1
+
+ 468           LOAD_CONST              35 ('evidence')
+               LOAD_FAST               29 (evidence)
+
+ 460           MAP_ADD                  1
+
+ 469           LOAD_CONST              36 ('audit_trail')
+               LOAD_FAST               39 (audit_trail)
+
+ 460           MAP_ADD                  1
+
+ 470           LOAD_CONST              37 ('x_hyp')
+               LOAD_FAST               12 (x_hyp)
+
+ 460           MAP_ADD                  1
+
+ 471           LOAD_CONST              38 ('x_routed_hyp')
+               LOAD_FAST               23 (x_routed_hyp)
+
+ 460           MAP_ADD                  1
+
+ 472           LOAD_CONST              39 ('hyp_projections')
+               LOAD_FAST               30 (hyp_proj_2d)
+
+ 460           MAP_ADD                  1
+
+ 473           LOAD_CONST              40 ('hyp_projections_2d')
+               LOAD_FAST               30 (hyp_proj_2d)
+
+ 460           MAP_ADD                  1
+
+ 474           LOAD_CONST              41 ('hyp_projections_3d')
+               LOAD_FAST               32 (hyp_proj_3d)
+
+ 460           MAP_ADD                  1
+
+ 475           LOAD_CONST              42 ('radial_features')
+               LOAD_FAST                9 (radial_depth)
+
+ 460           MAP_ADD                  1
+
+ 476           LOAD_CONST              43 ('angular_features')
+               LOAD_FAST               10 (angular_direction)
+
+ 460           MAP_ADD                  1
+
+ 478           LOAD_CONST              25 ('capacity_loss')
+               LOAD_FAST               19 (capacity_loss)
+
+ 460           MAP_ADD                  1
+
+ 479           LOAD_CONST              44 ('expert_load')
+               LOAD_FAST               35 (expert_load)
+
+ 460           MAP_ADD                  1
+
+ 480           LOAD_FAST               36 (routing_entropy)
+
+ 481           BUILD_LIST               0
+               LOAD_CONST              45 (('x_tangent', 'clustering', 'cone_depth', 'log_degree_norm', 'rho_norm', 'ss_onehot'))
+               LIST_EXTEND              1
+
+ 460           LOAD_CONST              46 (('routing_entropy', 'gate_features_used'))
+               BUILD_CONST_KEY_MAP      2
+               DICT_UPDATE              1
+               RETURN_VALUE
+
+  --   L8:     SWAP                     2
+               POP_TOP
+
+ 397           SWAP                     2
+               STORE_FAST              20 (expert)
+               RERAISE                  0
+ExceptionTable:
+  L3 to L6 -> L8 [4]

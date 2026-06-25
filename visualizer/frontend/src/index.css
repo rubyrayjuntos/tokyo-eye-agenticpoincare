@@ -1,5 +1,54 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@300;500;700&family=JetBrains+Mono:wght@400;700&display=swap');
 @import "tailwindcss";
 
+/* ─── Discovery Cockpit Theme Tokens (Tailwind v4 @theme) ─── */
+@theme {
+  /* Background surfaces */
+  --color-bg: #07080C;
+  --color-bg-surface: #0F1117;
+  --color-bg-elevated: #161822;
+
+  /* Accent colors */
+  --color-teal: #5DDBC2;
+  --color-teal-dim: #2A7A6B;
+  --color-teal-bright: #7EECD6;
+
+  --color-magenta: #C026D3;
+  --color-magenta-dim: #7B1A85;
+  --color-magenta-bright: #E040F0;
+
+  /* Slate panel backgrounds */
+  --color-slate: #1E2130;
+  --color-slate-light: #2A2E42;
+  --color-slate-lighter: #3A3F56;
+
+  /* Text hierarchy */
+  --color-text-primary: #E8E8ED;
+  --color-text-secondary: #9CA3AF;
+  --color-text-muted: #6B7280;
+
+  /* Status / semantic */
+  --color-success: #34D399;
+  --color-warning: #FBBF24;
+  --color-error: #F87171;
+
+  /* Typography */
+  --font-display: 'Orbitron', system-ui, sans-serif;
+  --font-body: 'Rajdhani', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Spacing scale (additional to Tailwind defaults) */
+  --spacing-panel: 320px;
+  --spacing-chat: 380px;
+
+  /* Border radius tokens */
+  --radius-panel: 12px;
+  --radius-card: 8px;
+  --radius-badge: 4px;
+  --radius-button: 6px;
+}
+
+/* ─── Base Styles ─── */
 * {
   margin: 0;
   padding: 0;
@@ -10,7 +59,189 @@ html, body, #root {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #020617;
-  color: #f1f5f9;
-  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  font-weight: 500;
+}
+
+/* Heading typography */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* Monospace for data values */
+code, pre, .code-block, .metric-value {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Glow / Animation Effects ─── */
+@keyframes glow-pulse {
+  0%, 100% {
+    text-shadow: 0 0 10px color-mix(in srgb, var(--color-teal) 50%, transparent),
+                 0 0 20px color-mix(in srgb, var(--color-teal) 30%, transparent);
+  }
+  50% {
+    text-shadow: 0 0 15px color-mix(in srgb, var(--color-magenta) 50%, transparent),
+                 0 0 30px color-mix(in srgb, var(--color-magenta) 30%, transparent);
+  }
+}
+
+@keyframes box-glow {
+  0%, 100% {
+    box-shadow: 0 0 10px color-mix(in srgb, var(--color-teal) 40%, transparent),
+                inset 0 0 10px color-mix(in srgb, var(--color-teal) 10%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 20px color-mix(in srgb, var(--color-magenta) 40%, transparent),
+                inset 0 0 15px color-mix(in srgb, var(--color-magenta) 10%, transparent);
+  }
+}
+
+/* ─── Interactive elements ─── */
+button, input, select, textarea, a {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.1);
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--color-teal);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--color-teal) 40%, transparent);
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-slate-lighter);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-teal-dim);
+}
+
+/* ─── Selection Pulse — synchronized sonar ping across viewers ─── */
+@keyframes selection-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+    box-shadow: 0 0 0 0 var(--color-teal);
+  }
+  50% {
+    transform: scale(1.8);
+    opacity: 0.3;
+    box-shadow: 0 0 20px 4px var(--color-teal);
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+    box-shadow: 0 0 30px 8px transparent;
+  }
+}
+
+.selection-pulse {
+  animation: selection-ping 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+}
+
+/* ─── Phase Stepper Glow ─── */
+@keyframes phase-breathe {
+  0%, 100% {
+    box-shadow: 0 0 4px var(--color-teal),
+                0 0 8px color-mix(in srgb, var(--color-teal) 40%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 8px var(--color-teal),
+                0 0 16px color-mix(in srgb, var(--color-teal) 60%, transparent),
+                0 0 24px color-mix(in srgb, var(--color-teal) 20%, transparent);
+  }
+}
+
+.phase-active {
+  animation: phase-breathe 2.5s ease-in-out infinite;
+}
+
+.phase-completed {
+  box-shadow: 0 0 4px color-mix(in srgb, var(--color-teal-dim) 60%, transparent);
+}
+
+/* ─── Residue Context Card ─── */
+@keyframes card-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.residue-card-enter {
+  animation: card-enter 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* ─── Fade In (for toasts) ─── */
+@keyframes fadeIn {
+  0% { opacity: 0; transform: translate(-50%, 8px); }
+  100% { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* ─── Depth Ring — visual cue around Poincaré disc boundary ─── */
+.depth-ring {
+  background: conic-gradient(
+    from 0deg,
+    color-mix(in srgb, var(--color-teal) 15%, transparent) 0deg,
+    color-mix(in srgb, var(--color-magenta) 25%, transparent) 120deg,
+    color-mix(in srgb, var(--color-teal) 15%, transparent) 240deg,
+    color-mix(in srgb, var(--color-magenta) 25%, transparent) 360deg
+  );
+  border-radius: 50%;
+  opacity: 0.3;
+}
+
+/* ─── Panel Header Ambient Glow ─── */
+@keyframes header-shimmer {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; text-shadow: 0 0 8px currentColor; }
+}
+
+.panel-header-glow {
+  animation: header-shimmer 4s ease-in-out infinite;
+}
+
+/* ─── Active Panel Border Glow (when residue selected) ─── */
+@keyframes border-pulse {
+  0%, 100% {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-teal) 20%, transparent);
+  }
+  50% {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-teal) 40%, transparent),
+                0 0 12px color-mix(in srgb, var(--color-teal) 15%, transparent);
+  }
+}
+
+.panel-active-glow {
+  animation: border-pulse 3s ease-in-out infinite;
 }

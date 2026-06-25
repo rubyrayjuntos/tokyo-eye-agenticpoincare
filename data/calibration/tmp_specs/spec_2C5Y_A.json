@@ -1,0 +1,17 @@
+{
+  "structure_id": "2C5Y",
+  "site_id": "2C5Y_A_benchmark",
+  "residue_ids": [
+    "A:160",
+    "A:161",
+    "A:162",
+    "A:163",
+    "A:164"
+  ],
+  "pdb_path": "data/structures/2C5Y.pdb",
+  "pulling_direction": [
+    0.0,
+    1.0,
+    0.0
+  ]
+}

@@ -33,9 +33,16 @@ biopython==1.84
 # Cheminformatics (Phase 5, 6)
 rdkit==2024.03.5
 
+# RCSB Data API client (installed from local copy — PyPI version requires Python >=3.11)
+# rcsbapi is installed via COPY + pip install below
+httpx==0.27.0
+
 # Scientific computing
 scipy==1.13.1
 scikit-learn==1.5.1
+scikit-learn-extra==0.3.0
+hdbscan==0.8.40
+openmm==8.5.2
 pandas==2.2.2
 networkx==3.3
 

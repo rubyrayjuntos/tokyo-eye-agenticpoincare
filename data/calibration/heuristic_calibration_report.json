@@ -1,0 +1,166 @@
+{
+  "version": "1.0",
+  "calibration_run_id": "7fd06035-920c-41e0-9699-de241fae2572",
+  "timestamp": "2026-06-20T02:39:23.854909+00:00",
+  "heuristic_metrics": {
+    "overall_accuracy": 0.0833,
+    "per_site_type": {
+      "allosteric_clamp": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "n_samples": 1,
+        "true_positives": 0,
+        "false_positives": 0,
+        "false_negatives": 1
+      },
+      "cryptic_wedge": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "n_samples": 2,
+        "true_positives": 0,
+        "false_positives": 0,
+        "false_negatives": 2
+      },
+      "dynamic_lid": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "n_samples": 1,
+        "true_positives": 0,
+        "false_positives": 0,
+        "false_negatives": 1
+      },
+      "strain_relief_insert": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "n_samples": 1,
+        "true_positives": 0,
+        "false_positives": 0,
+        "false_negatives": 1
+      },
+      "structural_stent": {
+        "precision": 0.0833,
+        "recall": 1.0,
+        "f1": 0.1538,
+        "n_samples": 1,
+        "true_positives": 1,
+        "false_positives": 11,
+        "false_negatives": 0
+      },
+      "surface_pocket": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "n_samples": 6,
+        "true_positives": 0,
+        "false_positives": 0,
+        "false_negatives": 6
+      }
+    },
+    "heuristic_version": "v1.0",
+    "minimum_precision_threshold": 0.7,
+    "flagged_types": [
+      "allosteric_clamp",
+      "cryptic_wedge",
+      "dynamic_lid",
+      "strain_relief_insert",
+      "structural_stent",
+      "surface_pocket"
+    ],
+    "total_sites_evaluated": 12
+  },
+  "precision_by_site_type": {
+    "allosteric_clamp": 0.0,
+    "cryptic_wedge": 0.0,
+    "dynamic_lid": 0.0,
+    "strain_relief_insert": 0.0,
+    "structural_stent": 0.0833,
+    "surface_pocket": 0.0
+  },
+  "flagged_types": [
+    "allosteric_clamp",
+    "cryptic_wedge",
+    "dynamic_lid",
+    "strain_relief_insert",
+    "structural_stent",
+    "surface_pocket"
+  ],
+  "predictions": [
+    {
+      "pdb_id": "4OBE",
+      "chain": "A",
+      "predicted": "structural_stent",
+      "actual": "cryptic_wedge"
+    },
+    {
+      "pdb_id": "5P21",
+      "chain": "A",
+      "predicted": "structural_stent",
+      "actual": "cryptic_wedge"
+    },
+    {
+      "pdb_id": "3GFT",
+      "chain": "A",
+      "predicted": "structural_stent",
+      "actual": "structural_stent"
+    },
+    {
+      "pdb_id": "1AGW",
+      "chain": "A",
+      "predicted": "structural_stent",
+      "actual": "dynamic_lid"
+    },
+    {
+      "pdb_id": "2C5Y",
+      "chain": "B",
+      "predicted": "structural_stent",
+      "actual": "allosteric_clamp"
+    },
+    {
+      "pdb_id": "1XKK",
+      "chain": "A",
+      "predicted": "structural_stent",
+      "actual": "strain_relief_insert"
+    },
+    {
+      "pdb_id": "4OBE",
+      "chain": "B",
+      "predicted": "structural_stent",
+      "actual": "surface_pocket"
+    },
+    {
+      "pdb_id": "5P21",
+      "chain": "B",
+      "predicted": "structural_stent",
+      "actual": "surface_pocket"
+    },
+    {
+      "pdb_id": "3GFT",
+      "chain": "B",
+      "predicted": "structural_stent",
+      "actual": "surface_pocket"
+    },
+    {
+      "pdb_id": "1AGW",
+      "chain": "B",
+      "predicted": "structural_stent",
+      "actual": "surface_pocket"
+    },
+    {
+      "pdb_id": "2C5Y",
+      "chain": "A",
+      "predicted": "structural_stent",
+      "actual": "surface_pocket"
+    },
+    {
+      "pdb_id": "1XKK",
+      "chain": "B",
+      "predicted": "structural_stent",
+      "actual": "surface_pocket"
+    }
+  ],
+  "regression_flags": []
+}

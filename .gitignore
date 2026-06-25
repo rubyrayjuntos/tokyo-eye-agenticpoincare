@@ -12,6 +12,8 @@ eggs/
 .eggs/
 lib/
 lib64/
+# Frontend src/lib is TypeScript source, not a Python lib — don't ignore it
+!visualizer/frontend/src/lib/
 parts/
 sdist/
 var/
@@ -32,6 +34,9 @@ env/
 *.swp
 *.swo
 
+# Hypothesis test database (auto-generated, contains local paths)
+.hypothesis/
+
 # Node / Frontend
 node_modules/
 dist/
@@ -51,12 +56,18 @@ override.tf.json
 *_override.tf.json
 
 # Large artifacts we don't want in git
-*.pt
 *.pth
 *.npz
 *.pickle
 *.pkl
 checkpoints/
+checkpoints_v5/
+checkpoints_v5_retrained/
+checkpoints_v6/
+checkpoints_v6_gumbel/
+checkpoints_v6_hybrid/
+checkpoints_v6_topo/
+# checkpoints_v6_retrained/ — tracked so checkpoint is accessible on branch
 cache/
 results/
 *.sdf
@@ -74,4 +85,33 @@ secrets/
 # Misc
 *.log
 *.tmp
-tmp/
+tmp/visualizer/frontend (Copy)/
+_Dockerfile.frontend_
+requirements-science (Copy).txt
+
+# Local generated science artifacts
+.vite/
+data/local_objects/
+data_backup_*/
+science_backup_*/
+visualizer/frontend/*.webm
+visualizer/frontend-refactor/
+
+# Keep only the canonical ingest/normalize/alignment package roots
+science/dtie/alignment/alignment/
+science/dtie/ingest/ingest/
+science/dtie/normalize/normalize/
+
+# Vendored rcsbapi runtime subset only; exclude docs, samples, and auxiliary apps
+rcsbapi_local/backend/
+rcsbapi_local/data/
+rcsbapi_local/docs/
+rcsbapi_local/frontend/
+rcsbapi_local/gcp/
+rcsbapi_local/notebooks/
+rcsbapi_local/pylintrc
+rcsbapi_local/tox.ini
+rcsbapi_local/tests/
+rcsbapi_local/viewer/
+rcsbapi_local/.gitignore
+rcsbapi_local/RESIDUE_ID_KEY_STRATEGY.md

@@ -1,0 +1,17 @@
+{
+  "structure_id": "1AGW",
+  "site_id": "1AGW_A_benchmark",
+  "residue_ids": [
+    "A:80",
+    "A:81",
+    "A:82",
+    "A:83",
+    "A:84"
+  ],
+  "pdb_path": "data/structures/1AGW.pdb",
+  "pulling_direction": [
+    1.0,
+    1.0,
+    0.0
+  ]
+}

@@ -39,15 +39,20 @@ class BedrockProvider(LLMProvider):
     - Configurable timeout per call
     """
 
+    @property
+    def supports_vision(self) -> bool:
+        """Bedrock Claude models support vision/multimodal input."""
+        return True
+
     def __init__(
         self,
-        model_id: str = "anthropic.claude-sonnet-4-20250514",
+        model_id: str | None = None,
         region: str | None = None,
         max_tokens: int = 4096,
         timeout: int = _LLM_TIMEOUT,
         max_retries: int = 3,
     ):
-        self.model_id = model_id
+        self.model_id = model_id or os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-sonnet-4-20250514")
         self.region = region or os.getenv("AWS_REGION", "us-east-1")
         self.max_tokens = max_tokens
         self.timeout = timeout
@@ -114,7 +119,22 @@ class BedrockProvider(LLMProvider):
         result = []
         for msg in messages:
             if msg.role == "user":
-                result.append({"role": "user", "content": [{"text": msg.content}]})
+                content = [{"text": msg.content}]
+                # Include image content block for multimodal (Requirements 3.2)
+                if msg.image:
+                    image_data = msg.image
+                    # Strip data URI prefix if present
+                    if image_data.startswith("data:"):
+                        parts = image_data.split(",", 1)
+                        if len(parts) == 2:
+                            image_data = parts[1]
+                    content.append({
+                        "image": {
+                            "format": "png",
+                            "source": {"bytes": image_data},
+                        }
+                    })
+                result.append({"role": "user", "content": content})
             elif msg.role == "assistant":
                 content = []
                 if msg.content:
@@ -202,6 +222,11 @@ class AnthropicProvider(LLMProvider):
     - The anthropic SDK handles retries internally
     """
 
+    @property
+    def supports_vision(self) -> bool:
+        """Anthropic Claude models support vision/multimodal input."""
+        return True
+
     def __init__(
         self,
         model: str = "claude-sonnet-4-20250514",
@@ -235,7 +260,27 @@ class AnthropicProvider(LLMProvider):
         api_messages = []
         for msg in messages:
             if msg.role == "user":
-                api_messages.append({"role": "user", "content": msg.content})
+                # Build multimodal content if image present (Requirements 3.2)
+                if msg.image:
+                    image_data = msg.image
+                    if image_data.startswith("data:"):
+                        parts = image_data.split(",", 1)
+                        if len(parts) == 2:
+                            image_data = parts[1]
+                    content = [
+                        {"type": "text", "text": msg.content},
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": image_data,
+                            },
+                        },
+                    ]
+                    api_messages.append({"role": "user", "content": content})
+                else:
+                    api_messages.append({"role": "user", "content": msg.content})
             elif msg.role == "assistant":
                 content = []
                 if msg.content:
@@ -326,6 +371,11 @@ class MockProvider(LLMProvider):
     Returns canned responses and simulates tool calling based on keywords.
     Reports synthetic token counts for testing budget logic.
     """
+
+    @property
+    def supports_vision(self) -> bool:
+        """Mock provider does not support vision by default."""
+        return False
 
     async def chat(
         self,

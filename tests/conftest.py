@@ -150,7 +150,7 @@ class QueryValidatingMockDB:
         import re
 
         # Must contain at least one SQL keyword
-        sql_keywords = ["SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "BEGIN", "REFRESH"]
+        sql_keywords = ["SELECT", "WITH", "INSERT", "UPDATE", "DELETE", "CREATE", "BEGIN", "REFRESH"]
         query_upper = query.upper().strip()
         if not any(query_upper.startswith(kw) for kw in sql_keywords):
             raise ValueError(f"Query doesn't start with a SQL keyword: {query[:50]}...")

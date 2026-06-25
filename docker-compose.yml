@@ -2,7 +2,10 @@ version: "3.9"
 
 services:
   db:
-    image: pgvector/pgvector:pg16
+    build:
+      context: .
+      dockerfile: Dockerfile.db
+    image: tokyoeye-db:latest
     container_name: tokyoeye_db
     environment:
       POSTGRES_DB: tokyoeye_dev
@@ -14,6 +17,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - wal_archive:/var/lib/postgresql/wal_archive
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U tokyoeye -d tokyoeye_dev"]
       interval: 5s
@@ -40,14 +44,22 @@ services:
       OMP_NUM_THREADS: "1"
     volumes:
       - ./checkpoints:/app/checkpoints
+      - ./checkpoints_v5:/app/checkpoints_v5
+      - ./checkpoints_v5_retrained:/app/checkpoints_v5_retrained
+      - ./checkpoints_v6:/app/checkpoints_v6
+      - ./checkpoints_v6_gumbel:/app/checkpoints_v6_gumbel
+      - ./checkpoints_v6_hybrid:/app/checkpoints_v6_hybrid
+      - ./checkpoints_v6_topo:/app/checkpoints_v6_topo
+      - ./checkpoints_v6_retrained:/app/checkpoints_v6_retrained
       - ./science:/app/science
+      - ./agent:/app/agent
       - ./data:/app/data
       - ./shared:/app/shared
+      - ./scripts:/app/scripts
+      - ./experiments:/app/experiments
     depends_on:
       db:
         condition: service_healthy
-    entrypoint: ["python"]
-    command: ["-c", "print('Science container ready. Use: docker compose run science python -m ...')"]
     networks:
       - tokyoeye_net
     deploy:
@@ -57,9 +69,13 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    restart: "no"
-    stdin_open: true
-    tty: true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
 
   agent:
     build:
@@ -96,7 +112,7 @@ services:
     networks:
       - tokyoeye_net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health || exit 1"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -109,4 +125,6 @@ networks:
 
 volumes:
   pgdata:
+    driver: local
+  wal_archive:
     driver: local

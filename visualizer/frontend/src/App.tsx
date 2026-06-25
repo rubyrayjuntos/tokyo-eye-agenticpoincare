@@ -1,332 +1,255 @@
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import * as THREE from 'three';
-import Visualizer3D from './components/Visualizer3D';
-import Visualizer2D from './components/Visualizer2D';
-import OverlayUI from './components/OverlayUI';
-import ChatPanel from './components/ChatPanel';
-import { generateMockGNNData, NodeData, EdgeData } from './lib/math';
-import { loadGNNData, loadGNNDataFromFile, LoadedData } from './lib/dataLoader';
-import { ViewportClient, checkAgent, fetchPoincareData, ViewportDirective, PoincareResidue } from './lib/agentClient';
-import { adaptPoincareData, recolorNodes } from './lib/dataAdapter';
-import { useDirectives, getHighlightColor, shouldPulse } from './lib/useDirectives';
+import { useState, useCallback } from "react";
+import NavBar from "./components/NavBar";
+import KPIBar from "./components/KPIBar";
+import AgentTelemetryPanel from "./components/AgentTelemetryPanel";
+import ResultsTable from "./components/ResultsTable";
+import VizGrid from "./components/VizGrid";
+import AgentChat from "./components/AgentChat";
+import ToolPanelSidebar from "./components/ToolPanelSidebar";
+import VisualizationToolbar from "./components/controls/VisualizationToolbar";
+import CompareIndicatorBar from "./components/CompareIndicatorBar";
+import { HydrationProvider } from "./context/HydrationProvider";
+import { DashboardContext } from "./lib/context";
+import { api } from "./lib/api";
+import { useViewportSocket } from "./lib/useViewportSocket";
+import { useActor } from "@xstate/react";
+import { viewportMachine } from "./lib/viewportMachine";
+import { useOrchestratorPolicy } from "./lib/useOrchestratorPolicy";
+import type {
+  Structure,
+  ViewportDirective,
+  PoincareColorMode,
+  SelectedResidueInfo,
+  StructureColorModeType,
+  ActivePanelName,
+  CompareState,
+  AgentChatResponse,
+} from "./lib/types";
 
 export default function App() {
-  // Data state
-  const [data, setData] = useState<LoadedData>(() => ({ ...generateMockGNNData(), metadata: undefined }));
-  const [residues, setResidues] = useState<PoincareResidue[]>([]);
-  const [dataSource, setDataSource] = useState<'mock' | 'static' | 'live' | 'agent'>('mock');
-  const [activePdb, setActivePdb] = useState('4OBE');
-  const [proteins, setProteins] = useState<Array<{ pdb_id: string; gene: string; desc: string }>>([]);
+  const [activeStructure, setActiveStructure] = useState<Structure | null>(
+    null
+  );
+  const [chatOpen, setChatOpen] = useState(false);
+  const [highlightedResidues, setHighlightedResidues] = useState<string[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [currentDirective, setCurrentDirective] =
+    useState<ViewportDirective | null>(null);
 
-  // Agent connection state
-  const [agentAvailable, setAgentAvailable] = useState(false);
-  const [wsConnected, setWsConnected] = useState(false);
-  const viewportClientRef = useRef<ViewportClient | null>(null);
-  const sessionIdRef = useRef(crypto.randomUUID());
+  const [poincareColorMode, setPoincareColorMode] = useState<PoincareColorMode>("cone_depth");
+  const [poincareSelectedResidue, setPoincareSelectedResidue] = useState<SelectedResidueInfo | null>(null);
+  const [mobiusFocus, setMobiusFocus] = useState(false);
+  const [brushSelection, setBrushSelection] = useState<string[]>([]);
+  const [viewerColorMode, setViewerColorMode] = useState<StructureColorModeType>("spectrum");
+  const [riskThreshold, setRiskThreshold] = useState(0);
+  const [activePanel, setActivePanel] = useState<ActivePanelName>(null);
 
-  // Viewport directive state
-  const {
-    highlights, focusTargets, activeMetric, annotations, lastMessage,
-    applyDirective, clearHighlights,
-  } = useDirectives('cone_depth');
+  const [compareState, setCompareState] = useState<CompareState>({
+    active: false,
+    secondaryStructure: null,
+    displacements: null,
+    graphDiff: null,
+    loading: false,
+    error: null,
+  });
 
-  // Shared interaction state
-  const [hoveredNode, setHoveredNode] = useState<string | null>(null);
-  const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set());
+  const [selectedPocketId, setSelectedPocketId] = useState<number | null>(null);
+  const [isRadarActive, setIsRadarActive] = useState<boolean>(false);
+  const [therapeuticCompilerState, setTherapeuticCompilerState] = useState<any | null>(null);
+  const [collapseSimulationState, setCollapseSimulationState] = useState({
+    fraction: 0.0,
+    goal: "Exploit isolated targets post-fragmentation",
+    active: false,
+  });
+  const [latestAgentTelemetry, setLatestAgentTelemetry] = useState<AgentChatResponse["telemetry"] | null>(null);
+  const [agentSessionId, setAgentSessionId] = useState<string | null>(null);
 
-  // Hyper-parameters
-  const [mobiusOffset, setMobiusOffset] = useState<THREE.Vector3>(new THREE.Vector3(0, 0, 0));
-  const [mobiusOffset2D, setMobiusOffset2D] = useState<[number, number]>([0, 0]);
-  const [curvature, setCurvature] = useState<number>(1.0);
-  const [showLabels, setShowLabels] = useState(false);
-  const [highlightOutliers, setHighlightOutliers] = useState(true);
-  const [viewMode, setViewMode] = useState<'dual' | '3d' | '2d'>('dual');
-  const [showChat, setShowChat] = useState(false);
+  // XState machines
+  const [viewportState, sendViewport] = useActor(viewportMachine);
+  const orchestrator = useOrchestratorPolicy(viewportState.context);
 
-  // ------------------------------------------------------------------
-  // Agent connection + WebSocket
-  // ------------------------------------------------------------------
+  const enterCompareMode = useCallback(
+    (secondary: Structure) => {
+      if (!activeStructure) return;
+      if (!activeStructure.has_embeddings || !secondary.has_embeddings) return;
 
-  useEffect(() => {
-    const init = async () => {
-      const available = await checkAgent();
-      setAgentAvailable(available);
+      setCompareState({
+        active: true,
+        secondaryStructure: secondary,
+        displacements: null,
+        graphDiff: null,
+        loading: true,
+        error: null,
+      });
 
-      if (available) {
-        // Load data from agent
-        try {
-          const response = await fetchPoincareData(activePdb);
-          const adapted = adaptPoincareData(response, 'cone_depth');
-          setData({ nodes: adapted.nodes, edges: adapted.edges, metadata: undefined });
-          setResidues(response.residues);
-          setCurvature(response.curvature_c);
-          setDataSource('agent');
-        } catch {
-          // Fall back to legacy data loading
-          const loaded = await loadGNNData(activePdb);
-          setData(loaded);
-          setDataSource(loaded.metadata ? 'static' : 'mock');
-        }
+      const primaryId = activeStructure.structure_id;
+      const secondaryId = secondary.structure_id;
 
-        // Connect WebSocket
-        const client = new ViewportClient({
-          sessionId: sessionIdRef.current,
-          onDirective: (directive) => applyDirective(directive),
-          onConnection: (connected) => setWsConnected(connected),
-        });
-        client.connect();
-        viewportClientRef.current = client;
-      } else {
-        // No agent — use legacy data loading
-        const loaded = await loadGNNData(activePdb);
-        setData(loaded);
-        if (loaded.metadata) {
-          setDataSource('static');
-          if (loaded.metadata.curvature) setCurvature(loaded.metadata.curvature);
-        }
-      }
-    };
-    init();
+      Promise.all([
+        api.compareEmbeddings(primaryId, secondaryId).catch(() => null),
+        api.compareGraphsDirect(primaryId, secondaryId).catch(() => null),
+      ]).then(([displacements, graphDiff]) => {
+        setCompareState((prev) => ({
+          ...prev,
+          displacements: displacements ?? null,
+          graphDiff: graphDiff ?? null,
+          loading: false,
+          error:
+            !displacements && !graphDiff
+              ? "Failed to load comparison data"
+              : null,
+        }));
+      });
+    },
+    [activeStructure]
+  );
 
-    return () => {
-      viewportClientRef.current?.disconnect();
-    };
-  }, []);
-
-  // ------------------------------------------------------------------
-  // Load protein (from agent or legacy)
-  // ------------------------------------------------------------------
-
-  const loadProtein = useCallback(async (pdbId: string) => {
-    setActivePdb(pdbId);
-    clearHighlights();
-
-    if (agentAvailable) {
-      try {
-        const response = await fetchPoincareData(pdbId);
-        const adapted = adaptPoincareData(response, activeMetric as any);
-        setData({ nodes: adapted.nodes, edges: adapted.edges, metadata: undefined });
-        setResidues(response.residues);
-        setCurvature(response.curvature_c);
-        setDataSource('agent');
-        return;
-      } catch { /* fall through */ }
-    }
-
-    const loaded = await loadGNNData(pdbId);
-    setData(loaded);
-    setDataSource(loaded.metadata ? 'static' : 'mock');
-  }, [agentAvailable, activeMetric, clearHighlights]);
-
-  // ------------------------------------------------------------------
-  // Re-color when metric changes (from directives or UI)
-  // ------------------------------------------------------------------
-
-  useEffect(() => {
-    if (residues.length > 0 && dataSource === 'agent') {
-      const recolored = recolorNodes(data.nodes, residues, activeMetric as any);
-      setData(prev => ({ ...prev, nodes: recolored }));
-    }
-  }, [activeMetric, residues]);
-
-  // ------------------------------------------------------------------
-  // Interaction handlers (send events to agent via WebSocket)
-  // ------------------------------------------------------------------
-
-  const handleNodeHover = useCallback((nodeId: string | null) => {
-    setHoveredNode(nodeId);
-    viewportClientRef.current?.sendHover(nodeId);
-  }, []);
-
-  const handleNodeSelect = useCallback((nodeId: string) => {
-    setSelectedNodes(prev => {
-      const next = new Set(prev);
-      if (next.has(nodeId)) next.delete(nodeId);
-      else next.add(nodeId);
-      viewportClientRef.current?.sendSelection(Array.from(next));
-      return next;
+  const exitCompareMode = useCallback(() => {
+    setCompareState({
+      active: false,
+      secondaryStructure: null,
+      displacements: null,
+      graphDiff: null,
+      loading: false,
+      error: null,
     });
   }, []);
 
-  // Handle directives from chat panel
-  const handleChatDirective = useCallback((directive: ViewportDirective) => {
-    applyDirective(directive);
-  }, [applyDirective]);
-
-  // ------------------------------------------------------------------
-  // File drop
-  // ------------------------------------------------------------------
-
-  useEffect(() => {
-    const handleDrop = async (e: DragEvent) => {
-      e.preventDefault();
-      const file = e.dataTransfer?.files[0];
-      if (file && file.name.endsWith('.json')) {
-        const loaded = await loadGNNDataFromFile(file);
-        setData(loaded);
-        setDataSource('static');
-        if (loaded.metadata?.curvature) setCurvature(loaded.metadata.curvature);
-      }
-    };
-    const handleDragOver = (e: DragEvent) => e.preventDefault();
-    window.addEventListener('drop', handleDrop);
-    window.addEventListener('dragover', handleDragOver);
-    return () => {
-      window.removeEventListener('drop', handleDrop);
-      window.removeEventListener('dragover', handleDragOver);
-    };
+  const triggerRefresh = useCallback(() => {
+    setRefreshKey((k) => k + 1);
   }, []);
 
-  // ------------------------------------------------------------------
-  // Stats
-  // ------------------------------------------------------------------
+  const emitDirective = useCallback(
+    (directive: ViewportDirective) => {
+      const normalizedDirective =
+        directive.action === "focus" &&
+        (!directive.highlight_groups || directive.highlight_groups.length === 0) &&
+        directive.focus_residues?.length
+          ? {
+              ...directive,
+              highlight_groups: [
+                {
+                  residue_ids: directive.focus_residues,
+                  color: "#4ecdc4",
+                  style: "glow" as const,
+                  label: "Focus",
+                },
+              ],
+            }
+          : directive;
 
-  const stats = useMemo(() => {
-    const outliers = data.nodes.filter(n => n.isOutlier).length;
-    const depths = data.nodes.map(n => n.depth);
-    const values = data.nodes.map(n => n.value);
-    const n = depths.length;
-    if (n === 0) return { totalNodes: 0, outliers: 0, regressionSlope: 0, correlation: 0 };
+      setCurrentDirective(normalizedDirective);
+      if (
+        normalizedDirective.action === "highlight" ||
+        normalizedDirective.action === "focus"
+      ) {
+        const residues =
+          normalizedDirective.highlight_groups?.flatMap((g) => g.residue_ids) ??
+          [];
+        if (residues.length > 0) {
+          setHighlightedResidues(residues);
+        }
+      } else if (normalizedDirective.action === "clear") {
+        setHighlightedResidues([]);
+        setIsRadarActive(false);
+      }
+    },
+    []
+  );
 
-    const sumX = depths.reduce((a, b) => a + b, 0);
-    const sumY = values.reduce((a, b) => a + b, 0);
-    const sumXY = depths.reduce((a, b, i) => a + b * values[i], 0);
-    const sumXX = depths.reduce((a, b) => a + b * b, 0);
-    const sumYY = values.reduce((a, b) => a + b * b, 0);
-    const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX) || 0;
-    const correlation = (n * sumXY - sumX * sumY) /
-      Math.sqrt((n * sumXX - sumX * sumX) * (n * sumYY - sumY * sumY)) || 0;
-
-    return { totalNodes: n, outliers, regressionSlope: slope, correlation };
-  }, [data]);
-
-  const handleExport = () => {
-    const json = JSON.stringify(data, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `tokyo_eyes_v5_${activePdb}.json`;
-    a.click();
-  };
-
-  // ------------------------------------------------------------------
-  // Render
-  // ------------------------------------------------------------------
+  useViewportSocket({
+    onDirective: emitDirective,
+    enabled: true,
+    sessionId: agentSessionId,
+  });
 
   return (
-    <div className="w-full h-screen relative bg-slate-950 overflow-hidden font-sans text-slate-100">
-      {/* Main layout */}
-      <div className="absolute inset-0 flex">
-        {/* Left sidebar (controls) */}
-        <div className="w-64 shrink-0" />
-
-        {/* Viewport area */}
-        <div className="flex-1 flex relative">
-          {(viewMode === 'dual' || viewMode === '3d') && (
-            <div className={viewMode === 'dual' ? 'w-1/2 h-full relative' : 'w-full h-full relative'}>
-              <Visualizer3D
-                nodes={data.nodes}
-                edges={data.edges}
-                curvature={curvature}
-                mobiusOffset={mobiusOffset}
-                showLabels={showLabels}
-                highlightOutliers={highlightOutliers}
-                hoveredNode={hoveredNode}
-                selectedNodes={selectedNodes}
-                onNodeHover={handleNodeHover}
-                onNodeSelect={handleNodeSelect}
+    <DashboardContext.Provider
+      value={{
+        activeStructure,
+        setActiveStructure,
+        chatOpen,
+        setChatOpen,
+        highlightedResidues,
+        setHighlightedResidues,
+        refreshKey,
+        triggerRefresh,
+        emitDirective,
+        currentDirective,
+        compareState,
+        enterCompareMode,
+        exitCompareMode,
+        selectedPocketId,
+        setSelectedPocketId,
+        isRadarActive,
+        setIsRadarActive,
+        therapeuticCompilerState,
+        setTherapeuticCompilerState,
+        collapseSimulationState,
+        setCollapseSimulationState,
+        latestAgentTelemetry,
+        setLatestAgentTelemetry,
+        agentSessionId,
+        setAgentSessionId,
+        discoveryContext: orchestrator.discoveryContext,
+        sendDiscovery: orchestrator.sendDiscovery,
+        hypothesisContext: orchestrator.hypothesisContext,
+        sendHypothesis: orchestrator.sendHypothesis,
+        plannerPolicy: orchestrator.plannerPolicy,
+        sessionMode: orchestrator.sessionMode,
+        setSessionMode: orchestrator.setSessionMode,
+        structureScope: orchestrator.structureScope,
+        setStructureScope: orchestrator.setStructureScope,
+        poincareColorMode,
+        viewerColorMode,
+        riskThreshold,
+        activePanel,
+        sidebarOpen: viewportState.context.sidebarOpen,
+        activeEditorTab: viewportState.context.activeEditorTab,
+        bottomPanelOpen: viewportState.context.bottomPanelOpen,
+        activeBottomPanel: viewportState.context.activeBottomPanel,
+        layoutModelJSON: null,
+        userSelectedResidue: null,
+        sendViewport,
+      }}
+    >
+      <HydrationProvider>
+        <div className="w-full h-screen flex flex-col bg-zinc-950 text-zinc-100 font-sans overflow-hidden">
+          <NavBar />
+          <KPIBar />
+          <div className="flex flex-1 min-h-0">
+            <AgentTelemetryPanel />
+            <main className="flex-1 flex flex-col gap-2 p-3 min-h-0 overflow-hidden">
+              <VisualizationToolbar
+                selectedResidues={highlightedResidues}
+                onDirective={emitDirective}
               />
-              <div className="absolute bottom-2 left-2 text-[9px] font-mono text-slate-500 uppercase tracking-widest pointer-events-none">
-                Poincaré Ball (3D)
-              </div>
-            </div>
-          )}
-          {viewMode === 'dual' && <div className="w-px bg-slate-700/50 shrink-0" />}
-          {(viewMode === 'dual' || viewMode === '2d') && (
-            <div className={viewMode === 'dual' ? 'w-1/2 h-full relative' : 'w-full h-full relative'}>
-              <Visualizer2D
-                nodes={data.nodes}
-                edges={data.edges}
-                curvature={curvature}
-                mobiusOffset2D={mobiusOffset2D}
-                showLabels={showLabels}
-                highlightOutliers={highlightOutliers}
-                hoveredNode={hoveredNode}
-                selectedNodes={selectedNodes}
-                onNodeHover={handleNodeHover}
-                onNodeSelect={handleNodeSelect}
+              <CompareIndicatorBar />
+              <VizGrid
+                onPoincareColorModeChange={setPoincareColorMode}
+                onPoincareSelectedResidueChange={setPoincareSelectedResidue}
+                onMobiusFocusChange={setMobiusFocus}
+                onBrushSelectionChange={setBrushSelection}
+                onViewerColorModeChange={setViewerColorMode}
+                onRiskThresholdChange={setRiskThreshold}
               />
-              <div className="absolute bottom-2 left-2 text-[9px] font-mono text-slate-500 uppercase tracking-widest pointer-events-none">
-                Poincaré Disc (2D)
+              <div className="shrink-0 max-h-[25%] overflow-y-auto">
+                <ResultsTable />
               </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Chat Modal */}
-      {showChat && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
-          {/* Backdrop */}
-          <div 
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto"
-            onClick={() => setShowChat(false)}
-          />
-          {/* Modal */}
-          <div className="relative w-[420px] h-[600px] max-h-[80vh] pointer-events-auto rounded-xl overflow-hidden shadow-2xl shadow-black/50 border border-slate-700/50">
-            <ChatPanel
-              sessionId={sessionIdRef.current}
-              structureId={activePdb}
-              currentMetric={activeMetric}
-              curvature={curvature}
-              onDirective={handleChatDirective}
-              agentConnected={agentAvailable}
+            </main>
+            <ToolPanelSidebar onActivePanelChange={setActivePanel} />
+            <AgentChat
+              poincareColorMode={poincareColorMode}
+              poincareSelectedResidue={poincareSelectedResidue}
+              mobiusFocus={mobiusFocus}
+              brushSelection={brushSelection}
+              viewerColorMode={viewerColorMode}
+              riskThreshold={riskThreshold}
+              activePanel={activePanel}
             />
           </div>
         </div>
-      )}
-
-      {/* Directive status bar */}
-      {lastMessage && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-lg px-4 py-2 text-xs text-cyan-300 pointer-events-none animate-pulse">
-          {lastMessage}
-        </div>
-      )}
-
-      {/* Connection status */}
-      <div className="absolute top-2 right-2 flex items-center gap-2 text-[10px] text-slate-500 pointer-events-none">
-        <div className={`w-1.5 h-1.5 rounded-full ${wsConnected ? 'bg-emerald-400' : agentAvailable ? 'bg-amber-400' : 'bg-red-400'}`} />
-        <span>{wsConnected ? 'live' : agentAvailable ? 'REST only' : dataSource}</span>
-      </div>
-
-      {/* UI Overlay (left sidebar controls) */}
-      <OverlayUI
-        curvature={curvature}
-        setCurvature={setCurvature}
-        mobiusOffset={mobiusOffset}
-        setMobiusOffset={setMobiusOffset}
-        mobiusOffset2D={mobiusOffset2D}
-        setMobiusOffset2D={setMobiusOffset2D}
-        showLabels={showLabels}
-        setShowLabels={setShowLabels}
-        highlightOutliers={highlightOutliers}
-        setHighlightOutliers={setHighlightOutliers}
-        viewMode={viewMode}
-        setViewMode={setViewMode}
-        stats={stats}
-        onExport={handleExport}
-        hoveredNode={hoveredNode}
-        selectedNodes={selectedNodes}
-        dataSource={dataSource}
-        serverAvailable={agentAvailable}
-        proteins={proteins}
-        activePdb={activePdb}
-        onLoadProtein={loadProtein}
-        showChat={showChat}
-        onToggleChat={() => setShowChat(prev => !prev)}
-        agentConnected={agentAvailable}
-      />
-    </div>
+      </HydrationProvider>
+    </DashboardContext.Provider>
   );
 }

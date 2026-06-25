@@ -1,4 +1,0 @@
-# file: /home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/science/dtie/common/keys.py
-# hypothesis_version: 6.151.9
-
-['[^a-z0-9_]', '^[A-Za-z0-9]+$', '^derived_', '_', 'alphafold', 'derived', 'rcsb', 'user']

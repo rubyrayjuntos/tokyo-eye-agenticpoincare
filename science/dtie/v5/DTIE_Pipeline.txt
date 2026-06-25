@@ -1,0 +1,175 @@
+The mathematical logic and network physics in your script are generally sound—using the pseudo-inverse of the Laplacian (L 
+†
+ ) to compute effective resistance (R 
+eff
+​
+ =L 
+ii
+†
+​
+ +L 
+jj
+†
+​
+ −2L 
+ij
+†
+​
+ ) is exactly correct.
+
+However, there are a few critical algorithmic bugs, assumptions, and performance bottlenecks that will likely break this in production or return incorrect structural biology insights.
+
+Here is a breakdown of what looks right, what is broken, and how to fix it.
+
+🚨 Critical Issues & Bugs
+1. Hinge Residue Calculation is Broken
+Your current implementation checks for a sign change between consecutive indices in the Fiedler vector:
+
+Python
+for i in range(1, len(fiedler)):
+    if fiedler[i] * fiedler[i - 1] < 0:
+        hinges.append(i)
+Why it's wrong: The Fiedler vector indices correspond to the node order in the NetworkX graph. Because your nodes array is ordered by structure/chain alignment, checking fiedler[i] * fiedler[i-1] simply flags places where adjacent residues in sequence sequence happen to fall on opposite sides of a graph partition.
+
+The fix: True hinge residues in structural spectral analysis are typically nodes where the Fiedler vector value is closest to zero (the boundary of the partition), or you should be analyzing structural domains by grouping nodes with identical signs. If you want boundaries, look for ∣v 
+i
+​
+ ∣<ϵ.
+
+2. Disconnected Graphs Will Break R 
+eff
+​
+ 
+If your spatial cutoff (8.0 
+A
+˚
+ ) results in a disconnected graph (e.g., a multi-chain protein, or highly flexible regions missing Cα coordinates), the Laplacian matrix is strictly singular with a multiplicity of 0 eigenvalues equal to the number of connected components.
+
+Why it's wrong: While nla.pinv (Moore-Penrose pseudoinverse) will technically execute without throwing an error on a singular matrix, the effective resistance formula only holds within the same connected component. If source_idx and target_idx are in disconnected components, the calculated R 
+eff
+​
+  will yield garbage numbers (often very small or negative due to numerical noise).
+
+The fix: Either isolate the largest connected component first, or verify that both nodes share a path before calculating R 
+eff
+​
+ .
+
+3. Coordinate Alignment Vulnerability
+You match database coordinates to GNN nodes using a dictionary lookup:
+
+Python
+for row in rows:
+    key = (row["chain_label"], row["residue_index"])
+    if key in node_key_to_idx:
+        idx = node_key_to_idx[key]
+        ca_coords[idx] = [row["x"], row["y"], row["z"]]
+Why it's dangerous: If a residue exists in gnn_result.nodes but is missing from the 3D structure file (common for disordered loops in PDBs), its coordinate remains [0.0, 0.0, 0.0].
+
+The consequence: A cluster of missing residues will all collapse onto the origin (0,0,0), creating an artificial, massively high-conductance spatial clique that destroys both your spectral analysis and your resistance mapping.
+
+The fix: Initialize ca_coords with NaN and drop nodes that don't have matching structural data before passing them to the KDTree.
+
+4. Severe Performance Bottleneck (nla.pinv)
+You convert a sparse NetworkX Laplacian to a dense array and run a full pseudo-inverse:
+
+Python
+L = nx.laplacian_matrix(G, weight="conductance").toarray().astype(np.float64)
+L_pinv = await asyncio.to_thread(nla.pinv, L)
+Why it's a bottleneck: np.linalg.pinv is an O(N 
+3
+ ) operation. For a standard protein of 400 residues, it's fine. For a large multi-domain protein or complex (e.g., 2,000 residues), this will freeze your event loop or completely drain CPU resources.
+
+The fix: NetworkX has a native, optimized nx.effective_resistance function, or you can use scipy.sparse.linalg to solve the linear system (L+ 
+N
+1
+​
+ J) 
+−1
+  or use a sparse solver for specific source-target pairs instead of computing the entire dense all-pairs matrix.
+
+🧬 Structural Biology & Modeling Logic
+The Conductance Formula
+Python
+conductance = 1.0 / np.exp(cone_depths[i] + cone_depths[j])
+Implication: Because you are dividing by the exponentiated sum of depths, buried residues (high cone depth) will have tiny conductances (massive resistance). Conversely, exposed surface residues (low cone depth) will have huge conductances (low resistance).
+
+Does this match your intent? In your comments, you state: "Lower effective resistance = stronger allosteric coupling." If buried residues have massive resistance, energy/information will prefer to route through the fluid, highly exposed surface loops rather than the rigid hydrophobic core. If your goal is to model allosteric propagation through dense, rigid structural cores, your formula should make conductance proportional to depth, not inversely proportional.
+
+🛠️ Refactored Clean Code
+Here is a corrected and more robust version of your core mathematical functions:
+
+Python
+import numpy as np
+import scipy.linalg as sla
+import networkx as nx
+from scipy.spatial import KDTree
+
+def _build_conductance_graph(
+    ca_coords: np.ndarray,
+    cone_depths: np.ndarray,
+    cutoff: float,
+) -> nx.Graph:
+    G = nx.Graph()
+    n = len(ca_coords)
+    
+    # Track which nodes actually have valid structural data
+    valid_nodes = [i for i in range(n) if not np.isnan(ca_coords[i]).any()]
+    
+    for i in valid_nodes:
+        G.add_node(i, xyz=ca_coords[i].tolist())
+
+    if not valid_nodes:
+        return G
+
+    # Build KDTree only on valid spatial coordinates
+    valid_coords = ca_coords[valid_nodes]
+    tree = KDTree(valid_coords)
+    pairs = tree.query_pairs(cutoff)
+    
+    for pi, pj in pairs:
+        i, j = valid_nodes[pi], valid_nodes[pj]
+        # Ensure depth values don't overflow/underflow exponentially
+        # ADJUST THIS FORMULA based on whether core or surface should conduct
+        conductance = float(1.0 / np.exp(cone_depths[i] + cone_depths[j]))
+        G.add_edge(i, j, conductance=conductance)
+
+    return G
+
+
+def _spectral_analysis(G: nx.Graph) -> dict:
+    if G.number_of_nodes() < 3 or not nx.is_connected(G):
+        # Handle disconnected components gracefully
+        return {"lambda_2": 0.0, "hinge_residues": [], "fiedler_vector": []}
+
+    # Use dense solver safely only if graph is small, or swap to scipy.sparse.linalg.eigsh
+    L = nx.laplacian_matrix(G, weight="conductance").toarray().astype(np.float64)
+    eigenvalues, eigenvectors = sla.eigh(L)
+
+    lambda_2 = float(eigenvalues[1])
+    fiedler = eigenvectors[:, 1]
+
+    # Hinge residues: Defined as boundary nodes where Fiedler value crosses near 0
+    # or identify structural partitions using the sign vector
+    hinges = []
+    epsilon = 0.02  # Define a tolerance band around the partition boundary
+    for idx, node_id in enumerate(G.nodes()):
+        if abs(fiedler[idx]) < epsilon:
+            hinges.append(int(node_id))
+
+    return {
+        "lambda_2": lambda_2,
+        "hinge_residues": hinges,
+        "fiedler_vector": fiedler.tolist(),
+    }
+Recommendation for run_phase4_resistance
+Before computing R 
+eff
+​
+ , extract the largest connected component so you don't calculate broken resistances between disjoint subgraphs:
+
+Python
+# Ensure we only work with the largest connected component for path calculations
+if not nx.is_connected(G):
+    largest_cc = max(nx.connected_components(G), key=len)
+    G = G.subgraph(largest_cc).copy()

@@ -1,0 +1,17 @@
+{
+  "structure_id": "4OBE",
+  "site_id": "4OBE_B_benchmark",
+  "residue_ids": [
+    "B:150",
+    "B:151",
+    "B:152",
+    "B:153",
+    "B:154"
+  ],
+  "pdb_path": "data/structures/4OBE.pdb",
+  "pulling_direction": [
+    1.0,
+    0.0,
+    0.0
+  ]
+}

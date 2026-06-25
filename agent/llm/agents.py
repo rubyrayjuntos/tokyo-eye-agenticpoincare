@@ -424,6 +424,38 @@ HYPOTHESIS_TOOLS = [
     ),
 ]
 
+DISC_TOPOLOGY_TOOLS = [
+    ToolDefinition(
+        name="get_disc_topology",
+        description="Compute the spatial topology of the Poincaré disc for a structure: HDBSCAN clusters, angular sectors, hub residues, bridge residues, peripheral residues, and radial density profile. Results are cached per (structure_id, run_id).",
+        parameters={
+            "type": "object",
+            "properties": {
+                "structure_id": {"type": "string", "description": "Structure to compute disc topology for"},
+                "run_id": {"type": "string", "description": "Specific run_id (latest if omitted)"},
+                "min_cluster_size": {"type": "integer", "default": 5, "description": "Minimum cluster size for HDBSCAN"},
+            },
+            "required": ["structure_id"],
+        },
+        handler=None,
+    ),
+    ToolDefinition(
+        name="get_disc_neighborhood",
+        description="Get the k-nearest neighbors on the Poincaré disc for a specific residue. Returns hyperbolic distances, cluster membership, cone depth, and epistemic uncertainty for each neighbor. Annotates whether the target is a hub or peripheral residue.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "structure_id": {"type": "string", "description": "Structure to query"},
+                "residue_id": {"type": "string", "description": "Target residue to find neighbors for"},
+                "k": {"type": "integer", "default": 8, "description": "Number of nearest neighbors"},
+                "run_id": {"type": "string", "description": "Specific run_id (latest if omitted)"},
+            },
+            "required": ["structure_id", "residue_id"],
+        },
+        handler=None,
+    ),
+]
+
 PLOTTING_TOOLS = [
     ToolDefinition(
         name="generate_plot",
@@ -675,6 +707,26 @@ def create_coordinator(llm: LLMProvider, db: Any = None) -> Agent:
                 handler=handler,
             ))
 
+    # Wire disc topology tools
+    from agent.tools.disc_tools import (
+        get_disc_topology,
+        get_disc_neighborhood,
+    )
+
+    disc_handler_map = {
+        "get_disc_topology": lambda db=db, **kwargs: get_disc_topology(db=db, **kwargs),
+        "get_disc_neighborhood": lambda db=db, **kwargs: get_disc_neighborhood(db=db, **kwargs),
+    }
+    for tool_def in DISC_TOPOLOGY_TOOLS:
+        handler = disc_handler_map.get(tool_def.name)
+        if handler:
+            tools.append(ToolDefinition(
+                name=tool_def.name,
+                description=tool_def.description,
+                parameters=tool_def.parameters,
+                handler=handler,
+            ))
+
     return Agent(
         name="coordinator",
         system_prompt=COORDINATOR_PROMPT,
@@ -738,19 +790,32 @@ async def _clear_highlights() -> dict:
 
 
 async def _run_pipeline(db: Any = None, structure_id: str = "", source_leak_only: bool = False) -> dict:
-    """Run the full DTIE pipeline via the orchestrator."""
-    from science.dtie import DTIEOrchestrator, PipelineConfig
+    """Run the full DTIE pipeline via the Science Container API."""
+    from agent.tools.science_client import ScienceClient, ScienceComputeError, ScienceTimeoutError
 
-    orchestrator = DTIEOrchestrator(db=db)
-    config = PipelineConfig(
-        structure_id=structure_id,
-        source_leak_only=source_leak_only,
-    )
-    result = await orchestrator.run(config)
-
-    return {
-        "success": result.success,
-        "run_id": result.run_id,
-        "phases_run": list(result.phase_results.keys()),
-        "warnings": result.warnings,
-    }
+    client = ScienceClient()
+    try:
+        result = await client.run_pipeline(
+            structure_id=structure_id,
+            source_leak_only=source_leak_only,
+        )
+        return {
+            "success": True,
+            "run_id": result.get("run_id"),
+            "phases_run": result.get("phases_run", []),
+            "warnings": result.get("warnings", []),
+        }
+    except ScienceTimeoutError as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "phases_run": [],
+            "warnings": [f"Pipeline timed out after {e.timeout}s"],
+        }
+    except ScienceComputeError as e:
+        return {
+            "success": False,
+            "error": e.detail,
+            "phases_run": [],
+            "warnings": [f"Science API error ({e.status}): {e.detail}"],
+        }
