@@ -513,7 +513,7 @@ export interface ViewportDirective {
 
 export interface SourceLeakData {
   structure_id: string;
-  leaks: Array<{
+  leaks?: Array<{
     residue_id: string;
     leak_score: number;
     source: string;
@@ -546,8 +546,94 @@ export interface ResistanceData {
   pathways?: Array<Record<string, unknown>>;
 }
 
+export interface StructureSnapshotScope {
+  primary_chain_ids: string[];
+  reference_chain: string | null;
+  exclude_chain_ids: string[];
+  normalization_protocol: string | null;
+  scope_source: string | null;
+  selection_reason: string | null;
+}
+
+export interface StructureSnapshotRunMetadata {
+  latest_run_ids_by_pipeline: Record<string, string>;
+  latest_model_versions: Record<string, string | null>;
+}
+
+export interface StructureSnapshotFindingSite {
+  site_id: string;
+  confidence?: number | null;
+  confidence_score?: number | null;
+  residue_ids: string[];
+}
+
+export interface StructureSnapshotFindings {
+  source_leaks: SourceLeakData | null;
+  allosteric_sites: {
+    structure_id: string;
+    run_id?: string | null;
+    sites: StructureSnapshotFindingSite[];
+    count?: number;
+    total_residues?: number;
+  } | null;
+  vulnerability_doorways: {
+    structure_id: string;
+    run_id?: string | null;
+    doorways: Array<Record<string, unknown>>;
+    count?: number;
+  } | null;
+  resistance: ResistanceData | null;
+  pharmacophores: {
+    structure_id: string;
+    pockets?: PharmacophoreRow[];
+    pharmacophores?: PharmacophoreRow[];
+    count?: number;
+  } | null;
+  drug_candidates: {
+    structure_id: string;
+    candidates?: DrugCandidateRow[];
+    drug_candidates?: DrugCandidateRow[];
+    count?: number;
+    admet_passed_count?: number;
+    state_selective_count?: number;
+  } | null;
+}
+
+export interface StructureSnapshotStatus {
+  embeddings_persisted: boolean;
+  graph_persisted: boolean;
+  sites_persisted: boolean;
+  phase2_persisted?: boolean;
+  phase4_persisted?: boolean;
+  phase5_persisted?: boolean;
+  phase6_persisted?: boolean;
+  resistance_data_available?: boolean;
+}
+
+export interface StructureAnalysisSnapshot {
+  structure: {
+    structure_id: string;
+    pdb_id: string;
+    title: string;
+    method: string;
+    resolution: number | null;
+    source: string;
+    organism?: string | null;
+    release_date?: string | null;
+    polymer_composition?: string | null;
+  };
+  scope: StructureSnapshotScope;
+  provenance: StructureSnapshotRunMetadata;
+  curvature: number;
+  residues: ResidueEmbedding[];
+  graph_metrics: GraphMetricsData | null;
+  findings: StructureSnapshotFindings;
+  status: StructureSnapshotStatus;
+}
+
 export interface HydrationResponse {
   structure_id: string;
+  structure_snapshot?: StructureAnalysisSnapshot | null;
   embeddings: EmbeddingData | null;
   graph_metrics: GraphMetricsData | null;
   allosteric_sites: AllostericSitesData | null;
@@ -574,12 +660,18 @@ export interface HydrationResponse {
   } | null;
   phase4_resistance?: ResistanceData | null;
   buffering_atlas?: Record<string, unknown> | null;
-  persistence_status: {
-    embeddings_persisted: boolean;
-    graph_persisted: boolean;
-    sites_persisted: boolean;
-    phase5_persisted?: boolean;
-    phase6_persisted?: boolean;
+  persistence_status: StructureSnapshotStatus;
+  context_summary?: {
+    residue_count: number;
+    source_leak_count: number;
+    hypothesis_count: number;
+    top_uncertainty_residues: Array<{
+      residue_id: string;
+      chain_label?: string | null;
+      residue_index?: number | null;
+      epistemic_uncertainty?: number | null;
+    }>;
+    latest_run_ids_by_pipeline?: Record<string, string>;
   };
 }
 
@@ -645,7 +737,27 @@ export interface SelectedResidueInfo {
 
 export type PoincareColorMode = "cone_depth" | "uncertainty";
 export type StructureColorModeType = "spectrum" | "cone_depth" | "epistemic" | "aleatoric" | "plasticity" | "allosteric" | "resistance" | "pockets" | "drug_candidates";
-export type ActivePanelName = "rcsb_search" | "graph_topology" | "hypothesis" | "data_tools" | "provenance" | "plot_generator" | "compare" | "data_inspector" | null;
+export type ToolPanelId =
+  | "briefing"
+  | "control_console"
+  | "rcsb_search"
+  | "graph_topology"
+  | "hypothesis"
+  | "data_tools"
+  | "provenance"
+  | "plot_generator"
+  | "compare"
+  | "data_inspector";
+export type ActivePanelName = ToolPanelId | null;
+export type EditorTabId = "manifold" | "structure" | "agent";
+export type BottomPanelId =
+  | "summary"
+  | "hypotheses"
+  | "pockets"
+  | "fragments"
+  | "motifs"
+  | "results"
+  | "telemetry";
 
 // --- Compare Mode ---
 

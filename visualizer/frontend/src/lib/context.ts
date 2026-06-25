@@ -1,5 +1,15 @@
 import { createContext, useContext } from "react";
-import type { AgentChatResponse, Structure, ViewportDirective, CompareState, PoincareColorMode, StructureColorModeType, ActivePanelName } from "./types";
+import type {
+  AgentChatResponse,
+  Structure,
+  ViewportDirective,
+  CompareState,
+  PoincareColorMode,
+  StructureColorModeType,
+  ActivePanelName,
+  BottomPanelId,
+  EditorTabId,
+} from "./types";
 import type { DiscoveryPhaseContext, DiscoveryPhaseEvent } from "./discoveryPhaseMachine";
 import type { HypothesisLifecycleContext, HypothesisLifecycleEvent } from "./hypothesisLifecycleMachine";
 import type { PlannerPolicy, SessionMode, StructureScopeContext } from "./plannerPolicySelector";
@@ -50,6 +60,10 @@ export interface DashboardContextValue {
   viewerColorMode: StructureColorModeType;
   riskThreshold: number;
   activePanel: ActivePanelName;
+  sidebarOpen: boolean;
+  activeEditorTab: EditorTabId;
+  bottomPanelOpen: boolean;
+  activeBottomPanel: BottomPanelId;
   layoutModelJSON: any | null;
   userSelectedResidue: string | null;
   sendViewport: (event: any) => void;
@@ -100,7 +114,11 @@ export const DashboardContext = createContext<DashboardContextValue>({
   poincareColorMode: "cone_depth",
   viewerColorMode: "spectrum",
   riskThreshold: 0,
-  activePanel: null,
+  activePanel: "briefing",
+  sidebarOpen: true,
+  activeEditorTab: "structure",
+  bottomPanelOpen: true,
+  activeBottomPanel: "summary",
   layoutModelJSON: null,
   userSelectedResidue: null,
   sendViewport: () => {},

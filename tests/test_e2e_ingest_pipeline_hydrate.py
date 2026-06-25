@@ -63,6 +63,65 @@ MOCK_EMBEDDING_ROWS = [
     for i in range(1, 6)
 ]
 
+MOCK_STRUCTURE_SNAPSHOT = {
+    "structure": {
+        "structure_id": STRUCTURE_ID,
+        "pdb_id": PDB_ID,
+        "title": "Mock 4OBE",
+        "method": "X-RAY",
+        "resolution": 2.1,
+        "source": "rcsb",
+        "organism": "Homo sapiens",
+        "release_date": "2024-01-01",
+        "polymer_composition": "protein",
+    },
+    "scope": {
+        "primary_chain_ids": ["A"],
+        "reference_chain": "A",
+        "exclude_chain_ids": [],
+        "normalization_protocol": "graph_default",
+        "scope_source": "auto",
+        "selection_reason": "mock",
+    },
+    "provenance": {
+        "latest_run_ids_by_pipeline": {"embeddings": "run_mock"},
+        "latest_model_versions": {"embeddings": "GOSPConeMapper-v6"},
+    },
+    "curvature": 1.0,
+    "residues": [
+        {
+            "residue_id": r["residue_id"],
+            "residue_index": r["residue_index"],
+            "residue_name": "ALA",
+            "chain_label": r["chain_label"],
+            "x": r["hyp_projections"][0],
+            "y": r["hyp_projections"][1],
+            "cone_depth": r["cone_depth"],
+            "epistemic_uncertainty": r.get("epistemic_uncertainty", 0.1),
+            "aleatoric_uncertainty": r.get("aleatoric_uncertainty", 0.05),
+        }
+        for r in MOCK_EMBEDDING_ROWS
+    ],
+    "graph_metrics": {"structure_id": STRUCTURE_ID, "metrics": {"nodes": 5}},
+    "findings": {
+        "source_leaks": {"structure_id": STRUCTURE_ID, "source_leaks": [], "count": 0},
+        "allosteric_sites": {"structure_id": STRUCTURE_ID, "sites": [], "count": 0},
+        "vulnerability_doorways": None,
+        "resistance": None,
+        "pharmacophores": None,
+        "drug_candidates": None,
+    },
+    "status": {
+        "embeddings_persisted": True,
+        "graph_persisted": True,
+        "sites_persisted": False,
+        "phase2_persisted": False,
+        "phase4_persisted": False,
+        "phase5_persisted": False,
+        "phase6_persisted": False,
+    },
+}
+
 
 @asynccontextmanager
 async def _mock_get_connection():
@@ -217,38 +276,9 @@ class TestE2EIngestPipelineHydrate:
             patch("data.db.close_pool", new_callable=AsyncMock),
             patch("agent.tools.diagnostics.run_startup_diagnostics") as mock_diag,
             patch(
-                "agent.coordinator.routers.dashboard._fetch_embeddings_for_hydration",
+                "agent.coordinator.routers.dashboard._fetch_structure_analysis_snapshot",
                 new_callable=AsyncMock,
-                return_value={
-                    "structure_id": STRUCTURE_ID,
-                    "curvature": 1.0,
-                    "residues": [
-                        {
-                            "residue_id": r["residue_id"],
-                            "residue_index": r["residue_index"],
-                            "chain_label": r["chain_label"],
-                            "x": r["hyp_projections"][0],
-                            "y": r["hyp_projections"][1],
-                            "cone_depth": r["cone_depth"],
-                        }
-                        for r in MOCK_EMBEDDING_ROWS
-                    ],
-                },
-            ),
-            patch(
-                "agent.tools.graph_tools.get_graph_metrics",
-                new_callable=AsyncMock,
-                return_value=MagicMock(success=True, data={"metrics": {"nodes": 5}}),
-            ),
-            patch(
-                "agent.tools.data_tools.get_allosteric_sites",
-                new_callable=AsyncMock,
-                return_value=MagicMock(success=True, data={"sites": []}),
-            ),
-            patch(
-                "agent.tools.dtie.tools.get_source_leaks",
-                new_callable=AsyncMock,
-                return_value=MagicMock(success=True, data={"source_leaks": []}),
+                return_value=MOCK_STRUCTURE_SNAPSHOT,
             ),
             patch(
                 "agent.tools.hypothesis.tools.get_hypotheses",
@@ -305,6 +335,8 @@ class TestE2EIngestPipelineHydrate:
 
                 assert resp.status_code == 200
                 body = resp.json()
+                assert body["structure_snapshot"] is not None
+                assert body["structure_snapshot"]["structure"]["structure_id"] == STRUCTURE_ID
                 # Embeddings should be populated (not null)
                 assert body["embeddings"] is not None
                 assert body["embeddings"]["structure_id"] == STRUCTURE_ID
@@ -354,38 +386,9 @@ class TestE2EIngestPipelineHydrate:
                 new_callable=AsyncMock,
             ),
             patch(
-                "agent.coordinator.routers.dashboard._fetch_embeddings_for_hydration",
+                "agent.coordinator.routers.dashboard._fetch_structure_analysis_snapshot",
                 new_callable=AsyncMock,
-                return_value={
-                    "structure_id": STRUCTURE_ID,
-                    "curvature": 1.0,
-                    "residues": [
-                        {
-                            "residue_id": r["residue_id"],
-                            "residue_index": r["residue_index"],
-                            "chain_label": r["chain_label"],
-                            "x": r["hyp_projections"][0],
-                            "y": r["hyp_projections"][1],
-                            "cone_depth": r["cone_depth"],
-                        }
-                        for r in MOCK_EMBEDDING_ROWS
-                    ],
-                },
-            ),
-            patch(
-                "agent.tools.graph_tools.get_graph_metrics",
-                new_callable=AsyncMock,
-                return_value=MagicMock(success=True, data={"metrics": {"nodes": 5}}),
-            ),
-            patch(
-                "agent.tools.data_tools.get_allosteric_sites",
-                new_callable=AsyncMock,
-                return_value=MagicMock(success=True, data={"sites": []}),
-            ),
-            patch(
-                "agent.tools.dtie.tools.get_source_leaks",
-                new_callable=AsyncMock,
-                return_value=MagicMock(success=True, data={"source_leaks": []}),
+                return_value=MOCK_STRUCTURE_SNAPSHOT,
             ),
             patch(
                 "agent.tools.hypothesis.tools.get_hypotheses",
@@ -465,6 +468,7 @@ class TestE2EIngestPipelineHydrate:
                     )
                     assert hydrate_resp.status_code == 200
                     hydrate_body = hydrate_resp.json()
+                    assert hydrate_body["structure_snapshot"] is not None
 
                     # Verify embeddings are populated
                     assert hydrate_body["embeddings"] is not None

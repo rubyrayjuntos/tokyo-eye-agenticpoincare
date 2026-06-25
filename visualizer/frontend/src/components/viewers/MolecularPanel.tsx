@@ -55,7 +55,7 @@ export function MolecularPanel({
   );
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full min-h-0 flex-col">
       {/* Panel chrome header */}
       <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-slate">
         <span className="text-xs font-display tracking-wider text-teal uppercase panel-header-glow">
@@ -93,7 +93,7 @@ export function MolecularPanel({
       </div>
 
       {/* Molecular viewer */}
-      <div className="flex-1 min-h-0 relative">
+      <div className="relative flex-1 min-h-0">
         {structureId ? (
           <MolecularViewer
             highlightResidues={highlightedResidues}

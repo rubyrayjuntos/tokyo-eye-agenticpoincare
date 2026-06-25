@@ -1,0 +1,409 @@
+Tokyo Eye cross-layer data-governance audit
+Generated: 2026-06-24
+
+Inputs compared
+- Frontend audit: visualizer/frontend/state-machine-audit.txt
+- Backend read paths:
+  - agent/coordinator/routers/dashboard.py
+  - visualizer/server/app.py
+- Database values from local PostgreSQL (tokyoeye_dev)
+- Science/normalizer write path:
+  - science/dtie/common/interfaces.py
+  - science/dtie/common/normalizer_payloads.py
+  - science/dtie/v5/gnn/model.py
+  - data/normalizer/core.py
+
+Goal
+- Compare what the frontend thinks it should have with what the database actually has,
+  and compare that with what the science engine says it should be producing.
+- Identify where truth diverges.
+
+========================================================================
+1. Executive summary
+========================================================================
+The current system violates the intended source-of-truth chain in three places:
+
+1. Backend route mismatch
+   - /api/structures/{id}/hydrate tries to build a single curated snapshot,
+     but its embedding-run resolver picks the newest embedding run regardless
+     of space type.
+   - For 4uj1, that means it selects the newest EUCLIDEAN run id, then later
+     filters for HYPERBOLIC rows, producing zero embedding residues.
+
+2. Raw embeddings endpoint bypasses curation
+   - /api/structures/{id}/embeddings reads directly from fact_gnn_node_embedding
+     and returns all hyperbolic rows for the structure without pinning to a single
+     latest hyperbolic run.
+   - For 4uj1, it returns 714 residues because it is merging two hyperbolic runs
+     (357 + 357), not one authoritative run.
+
+3. Science/data inconsistency
+   - The science model code says hyp_projections are valid native Poincare disc
+     coordinates clamped to radius <= 0.99.
+   - The database currently stores hyperbolic 2D coordinates for 4uj1 at ~1e-40,
+     i.e. effectively zero.
+   - That means either:
+       a) the science engine produced collapsed coordinates,
+       b) serialization/writeback altered them,
+       c) the wrong representation is being persisted or read.
+
+The temporary frontend backfill addresses only the symptom that hydrate returned
+0 residues while the direct embeddings endpoint returned >0. It does not resolve
+the deeper governance issue.
+
+========================================================================
+2. Frontend audit baseline
+========================================================================
+From the frontend audit:
+- activeStructure residue_count = 730
+- hydrate context_summary residue_count = 0
+- hydrate structure_snapshot residues = 0
+- /embeddings endpoint residue_count = 714
+- state machines are not fully synchronized from loaded structure scope
+
+That already showed that the cockpit was operating on contradictory truths.
+
+========================================================================
+3. What the database actually contains for 4uj1
+========================================================================
+3.1 Structures list payload
+
+/api/structures returns one row:
+- structure_id: 4uj1
+- pdb_id: 4uj1
+- source: rcsb
+- resolution: 1.768
+- method: X-RAY DIFFRACTION
+- residue_count: 730
+- chain_count: 2
+- has_embeddings: true
+- ingested_at: 2026-06-24 20:04:48.560743+00:00
+
+Problems:
+- This payload omits title, chains, and last_run_id expected by the frontend Structure type.
+- It exposes chain_count, not chains.
+- It says has_embeddings = true while the hydrate snapshot reports no embedding residues.
+
+3.2 Provenance runs in DB
+
+provenance_run rows for 4uj1 include:
+- dtie_d8c34c16f0de_euc
+- dtie_d8c34c16f0de_hyp
+- dtie_d8c34c16f0de_phase2_vulnerability_scan
+- dtie_d8c34c16f0de_phase35_topological_lift
+- dtie_d8c34c16f0de_phase4_resistance_mapping
+- dtie_d8c34c16f0de_phase5_pharmacophore
+- dtie_d8c34c16f0de_phase6_drug_discovery
+- dtie_d8c34c16f0de_source_leak_detection
+- dtie_d8c34c16f0de_allosteric_sites
+- ingest_audit_* runs
+
+Observation:
+- The DB does have distinct euclidean and hyperbolic embedding runs.
+- This matters because a consumer must intentionally pick the right one.
+
+3.3 Embedding fact rows in DB
+
+fact_gnn_node_embedding counts for 4uj1:
+- dtie_363bafcc388d_euc = 357 rows (euclidean)
+- dtie_363bafcc388d_hyp = 357 rows (hyperbolic)
+- dtie_d8c34c16f0de_euc = 357 rows (euclidean)
+- dtie_d8c34c16f0de_hyp = 357 rows (hyperbolic)
+
+Critical observation:
+- The direct /embeddings endpoint currently returns 714 rows because it is
+  reading both hyperbolic runs, not the latest one.
+
+3.4 Coordinate values in DB
+
+Sample hyperbolic rows for dtie_d8c34c16f0de_hyp:
+- hyp_projection_2d = [7.56226e-40,-4.31527e-40]
+- hyp_projection_2d = [8.68706e-40,-4.56047e-40]
+- hyp_projection_2d = [8.65233e-40,-4.55617e-40]
+
+These values are effectively zero.
+
+Observation:
+- The database is not holding a useful Poincare disc geometry for this structure/run.
+- The problem is already present in DB, before the frontend sees it.
+
+========================================================================
+4. What the backend server is doing
+========================================================================
+4.1 Direct embeddings endpoint is not governed enough
+
+File:
+- agent/coordinator/routers/dashboard.py:369-432
+
+Behavior:
+- Queries fact_gnn_node_embedding joined to embedding_space
+- Filters only on:
+  - structure_id
+  - space_type = 'hyperbolic'
+- Does NOT constrain to a single run_id
+- Orders only by residue_index
+
+Result:
+- It merges all hyperbolic runs for the structure.
+- For 4uj1, that means 714 rows instead of 357.
+
+Governance implication:
+- This endpoint is not returning one authoritative current state.
+- It is returning a historical union of hyperbolic rows.
+
+4.2 Hydrate route is attempting curation, but resolves the wrong embedding run
+
+Files:
+- agent/coordinator/routers/dashboard.py:672-871
+- agent/coordinator/routers/dashboard.py:957-1136
+- agent/coordinator/routers/dashboard.py:1097-1136
+
+Route behavior:
+- hydrate_structure() calls _fetch_structure_analysis_snapshot()
+- snapshot builder calls _resolve_latest_productive_run_metadata()
+- then _fetch_embeddings_for_hydration(structure_id, run_id=<resolved embeddings run>)
+
+Resolver behavior:
+- _resolve_latest_productive_run_metadata() uses fact_gnn_node_embedding joined to provenance_run
+- It picks the latest run by run_ts DESC, computed_at DESC
+- It does NOT distinguish euclidean vs hyperbolic for the "embeddings" surface
+
+For 4uj1, the DB ordering is:
+- dtie_d8c34c16f0de_euc   (newest)
+- dtie_d8c34c16f0de_hyp   (slightly older)
+
+So hydrate resolves:
+- embeddings run id = dtie_d8c34c16f0de_euc
+
+Then _fetch_embeddings_for_hydration() does:
+- WHERE e.structure_id = :structure_id
+- AND es.space_type = 'hyperbolic'
+- AND e.run_id = :run_id
+
+For 4uj1 + run_id dtie_d8c34c16f0de_euc:
+- hyperbolic row count = 0
+
+This is the concrete reason hydrate reports:
+- structure_snapshot.residues = []
+- embeddings = null
+- context_summary.residue_count = 0
+
+But it still reports:
+- latest_run_ids_by_pipeline.embeddings = dtie_d8c34c16f0de_euc
+
+Governance implication:
+- The curated snapshot path is selecting a non-authoritative run for the consumer it serves.
+- This is a backend read-model bug, not a frontend-only problem.
+
+4.3 There is already an intended governed view pattern, but the active route bypasses it
+
+Files:
+- data/aurora/migrations/029_production_views.sql
+- visualizer/server/app.py:131-175
+
+Intended production views:
+- v_agent_residue_state
+- v_viz_poincare_disc_data
+
+Important details:
+- v_agent_residue_state explicitly prefers hyperbolic embeddings first
+- v_viz_poincare_disc_data is the rendering-oriented access view
+
+But the active coordinator dashboard routes do not use these views.
+Instead they query raw fact tables directly.
+
+Governance implication:
+- The codebase already contains the beginning of the correct pattern
+  (consumer-specific governed views),
+  but the currently used backend routes are bypassing that pattern.
+
+========================================================================
+5. What the science engine says should be true
+========================================================================
+5.1 Science interface contract
+
+File:
+- science/dtie/common/interfaces.py
+
+GNN node output includes:
+- projections: Euclidean projection
+- x_hyp: full hyperbolic embedding
+- x_routed_hyp: post-MoE hyperbolic embedding
+- hyp_projections: native 2D disc projection
+
+Meaning:
+- The science layer explicitly distinguishes Euclidean and hyperbolic outputs.
+- A consumer should not collapse them into a single "latest embeddings" concept without
+  specifying which space it wants.
+
+5.2 Normalizer payload contract
+
+File:
+- science/dtie/common/normalizer_payloads.py
+
+GNNNodeResult includes:
+- embedding
+- x_hyp
+- hyp_projections
+- embedding_double
+
+Meaning:
+- The write contract is designed to preserve the native hyperbolic projection.
+
+5.3 Science model expectation for 2D disc coords
+
+File:
+- science/dtie/v5/gnn/model.py:556-562
+
+Behavior:
+- hyp_proj_2d = self.hyp_proj_head_2d(...)
+- hyp_proj_2d = pmath.project(...)
+- hyp_proj_2d = hyp_proj_2d * clamp(0.99 / norm, max=1.0)
+
+Meaning:
+- The model expects 2D hyperbolic disc coordinates to be valid Poincare disc positions.
+- Norms should be bounded inside the disc, not collapse to ~1e-40.
+
+5.4 Training/diagnostic code expectation
+
+File:
+- experiments/training/v5/train_v5.py:95-112
+
+Behavior:
+- pulls hyp_projections_2d
+- computes disc_norms = np.linalg.norm(hyp_proj_2d, axis=1)
+- evaluates whether the 2D representation is meaningful
+
+Meaning:
+- The science stack assumes the disc coordinates have a usable spread.
+- DB values near zero are inconsistent with that intended semantics.
+
+5.5 Normalizer write path
+
+File:
+- data/normalizer/core.py:2589-2645
+
+Behavior:
+- Writes hyp_projections as JSON
+- Writes hyp_projection_2d as textified vector from node.hyp_projections
+
+Meaning:
+- The normalizer appears to persist exactly what the science layer hands it.
+- No obvious frontend-specific corruption is happening here.
+- If the DB contains near-zero hyperbolic coordinates, the likely issue is either:
+  - science generated them that way, or
+  - upstream adapter handed the normalizer already-collapsed values.
+
+========================================================================
+6. Database vs science comparison
+========================================================================
+Expected from science contract:
+- Hyperbolic run should provide a meaningful native disc projection per residue.
+- Euclidean and hyperbolic runs are distinct products and must not be conflated.
+
+Observed in DB:
+- Distinct euclidean and hyperbolic runs do exist.
+- Hyperbolic rows for 4uj1 exist.
+- Hyperbolic 2D coordinates are numerically collapsed near zero.
+- The backend "latest embeddings" resolver chooses the newer euclidean run when asked
+  for the latest embedding surface.
+
+Conclusion:
+- The DB does contain the source facts, but the facts are not yet cleanly governed
+  into a single trustworthy read model.
+- There are TWO issues:
+  1. consumer selection bug (backend choosing the wrong run / merging runs)
+  2. science/data quality bug (hyperbolic coordinates look invalid)
+
+========================================================================
+7. Why the current cockpit is not trustworthy yet
+========================================================================
+The cockpit currently allows all of these contradictory states at once:
+
+- Structure list says has_embeddings = true
+- Hydrate snapshot says residue_count = 0
+- Direct embeddings endpoint says residue_count = 714
+- DB latest hyperbolic run actually has 357 rows
+- DB hyperbolic coordinates are effectively all zero
+- Science contract says those coords should be valid disc positions
+
+This is exactly the kind of multi-truth system that breaks auditability.
+
+========================================================================
+8. Governance controls needed
+========================================================================
+1. Define a single authoritative embedding product for each consumer
+   - "latest hyperbolic embedding run"
+   - "latest euclidean embedding run"
+   - "latest current residue state"
+   Do not use a generic "latest embeddings" concept when the DB stores multiple spaces.
+
+2. Backend read models must query governed views or explicit selectors
+   - hydrate should use a latest-hyperbolic selector for disc-facing residue state
+   - direct /embeddings should pin to one run, not merge historical runs
+
+3. Snapshot invariants must be enforced
+   Examples:
+   - if latest_run_ids_by_pipeline.embeddings exists, then residue_count must be > 0
+   - if has_embeddings = true in structure list, then a current embedding run must resolve cleanly
+   - if a curated snapshot returns graph/sites/leaks but no embeddings, return degraded status explicitly
+
+4. Science-to-DB validation must be added
+   Before or during write:
+   - validate hyp_projections radius distribution
+   - reject or quarantine near-zero/collapsed coordinates
+   - persist diagnostic metadata so a bad run is visibly bad, not silently accepted
+
+5. State machine should ingest one validated read model
+   - not panel-specific endpoints
+   - not mixed direct + snapshot data
+   - not frontend-local arbitration
+
+========================================================================
+9. Immediate root causes
+========================================================================
+Root cause A: hydrate selects euclidean run id for embedding surface
+- This is why the curated snapshot drops residues to zero.
+
+Root cause B: /embeddings endpoint merges multiple hyperbolic runs
+- This is why the direct path shows 714 residues instead of one canonical 357-row run.
+
+Root cause C: persisted hyperbolic coordinates for 4uj1 are effectively zero
+- This is why even when data exists, the disc view is not scientifically believable.
+
+========================================================================
+10. Recommended next decisions
+========================================================================
+If the architecture is:
+DB -> state-machine-centered server read model -> cockpit/agent
+
+then the next concrete decisions should be:
+
+1. Choose the canonical DB read model for "current structure state"
+   - likely a governed view or structured snapshot query that explicitly prefers latest hyperbolic residue state
+
+2. Remove raw fact-table reads from UI-serving routes where they bypass curation
+
+3. Make the snapshot contract explicit about degraded states
+   - no silent 0 residue counts when an embeddings run exists
+
+4. Investigate the science output for dtie_d8c34c16f0de_hyp
+   - are the ~1e-40 coords already present before normalizer write?
+   - if yes, the issue is upstream in inference/projection generation
+   - if no, the issue is in adapter/write serialization
+
+========================================================================
+11. Bottom line
+========================================================================
+The frontend audit was correct, but incomplete by itself.
+
+Cross-layer comparison shows:
+- the frontend contradiction is caused by a real backend read-model bug,
+- that bug is exposed because the DB stores separate euclidean and hyperbolic products,
+- and even the correct hyperbolic product currently appears numerically untrustworthy.
+
+So the larger issue is not "frontend state drift" alone.
+It is a full governance gap across:
+- run selection,
+- read-model construction,
+- and validation of scientific outputs before they become trusted database facts.

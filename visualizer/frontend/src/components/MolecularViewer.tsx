@@ -295,6 +295,34 @@ export default function MolecularViewer({ highlightResidues = [], onColorModeCha
   }, [embeddings]);
 
   useEffect(() => {
+    if (!containerRef.current) return;
+
+    const container = containerRef.current;
+    const applyResize = () => {
+      if (!viewerRef.current || !containerRef.current) return;
+      const height = containerRef.current.clientHeight;
+      const width = containerRef.current.clientWidth;
+      if (height <= 0 || width <= 0) return;
+      try {
+        viewerRef.current.resize();
+        viewerRef.current.render();
+      } catch {}
+    };
+
+    const observer = new ResizeObserver(() => {
+      applyResize();
+    });
+
+    observer.observe(container);
+    const frame = requestAnimationFrame(applyResize);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [activeStructure?.structure_id]);
+
+  useEffect(() => {
     if (!activeStructure || !containerRef.current) return;
     let cancelled = false;
 
@@ -748,7 +776,7 @@ export default function MolecularViewer({ highlightResidues = [], onColorModeCha
   const thresholdPercent = Math.round((1 - riskThreshold) * 100);
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="flex h-full min-h-0 flex-1 flex-col">
       <div className="flex items-center justify-between px-2 py-1 shrink-0">
         <span className="text-[10px] uppercase tracking-wider text-zinc-500">
           Molecular Viewer
@@ -793,7 +821,7 @@ export default function MolecularViewer({ highlightResidues = [], onColorModeCha
         </div>
       )}
 
-      <div className="flex-1 min-h-0 relative">
+      <div className="relative flex-1 min-h-0">
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/80 z-10">
             <span className="text-xs text-zinc-400">Loading structure…</span>
@@ -804,7 +832,7 @@ export default function MolecularViewer({ highlightResidues = [], onColorModeCha
             <span className="text-xs text-red-400">{error}</span>
           </div>
         )}
-        <div ref={containerRef} className="w-full h-full" />
+        <div ref={containerRef} className="h-full min-h-0 w-full" />
 
         {/* Hover tooltip — shows in ALL color modes */}
         {hoveredResidue && (

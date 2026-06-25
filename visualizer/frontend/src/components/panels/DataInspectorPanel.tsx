@@ -186,7 +186,7 @@ export default function DataInspectorPanel() {
 
   // Candidate click highlights binding site residues + its *specific* connected locks
   const handleCandidateClick = useCallback((candidate: DrugCandidateRow) => {
-    const pocket = pharmacophorePockets?.pockets.find((p) => p.pocket_index === candidate.pocket_index);
+    const pocket = (pharmacophorePockets?.pockets ?? []).find((p) => p.pocket_index === candidate.pocket_index);
     const lockIds = pocket?.connected_allosteric_locks || allostericSites?.sites?.[0]?.residue_ids || [];
     if (pocket) {
       setSelectedPocketId(pocket.pocket_index);

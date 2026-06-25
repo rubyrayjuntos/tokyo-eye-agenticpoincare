@@ -20,7 +20,9 @@ from data.db import DBAdapter, get_connection
 from data.normalizer.core import Normalizer
 from science.dtie.common.adapters import GNNOutputAdapter
 from science.dtie.common.graph_builder import GraphBuilder
-from science.dtie.v5.gnn.runner import V5GNNRunner
+from science.dtie.v6.gnn.runner import V6GNNRunner
+
+DEFAULT_PRODUCTION_CHECKPOINT = "checkpoints_v6_retrained/v6_best.pt"
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +36,9 @@ router = APIRouter()
 
 class GNNRequest(BaseModel):
     structure_id: str
-    model_version: str = "v5"
+    model_version: str = "v6"
     device: str = "cpu"
-    checkpoint_path: str = "checkpoints_v5/v5_stage4_11prot.pt"
+    checkpoint_path: str = DEFAULT_PRODUCTION_CHECKPOINT
 
 
 class GNNResponse(BaseModel):
@@ -51,7 +53,7 @@ class PipelineRequest(BaseModel):
     structure_id: str
     source_leak_only: bool = False
     device: str = "cpu"
-    checkpoint_path: str = "checkpoints_v5/v5_stage4_11prot.pt"
+    checkpoint_path: str = DEFAULT_PRODUCTION_CHECKPOINT
 
 
 class PipelineResponse(BaseModel):
@@ -168,7 +170,7 @@ async def run_gnn_inference(request: GNNRequest) -> GNNResponse:
         pyg_data = builder.to_pyg(protein_graph)
 
         # 3. Run GNN inference
-        runner = V5GNNRunner(
+        runner = V6GNNRunner(
             checkpoint_path=request.checkpoint_path,
             device=request.device,
         )

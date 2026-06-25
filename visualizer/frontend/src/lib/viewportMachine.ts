@@ -1,5 +1,12 @@
 import { setup, assign } from "xstate";
-import type { ViewportDirective, PoincareColorMode, StructureColorModeType, ActivePanelName } from "./types";
+import type {
+  ViewportDirective,
+  PoincareColorMode,
+  StructureColorModeType,
+  ActivePanelName,
+  BottomPanelId,
+  EditorTabId,
+} from "./types";
 
 export interface ViewportContext {
   highlightedResidues: string[];
@@ -12,6 +19,10 @@ export interface ViewportContext {
   riskThreshold: number;
   selectedPocketId: number | null;
   activePanel: ActivePanelName;
+  sidebarOpen: boolean;
+  activeEditorTab: EditorTabId;
+  bottomPanelOpen: boolean;
+  activeBottomPanel: BottomPanelId;
   layoutModelJSON: Record<string, any> | null;
 }
 
@@ -25,6 +36,10 @@ export type ViewportEvent =
   | { type: "SET_RISK_THRESHOLD"; threshold: number }
   | { type: "SET_SELECTED_POCKET"; pocketId: number | null }
   | { type: "SET_ACTIVE_PANEL"; panel: ActivePanelName }
+  | { type: "SET_SIDEBAR_OPEN"; open: boolean }
+  | { type: "SET_ACTIVE_EDITOR_TAB"; tab: EditorTabId }
+  | { type: "SET_BOTTOM_PANEL_OPEN"; open: boolean }
+  | { type: "SET_ACTIVE_BOTTOM_PANEL"; panel: BottomPanelId }
   | { type: "SET_LAYOUT_MODEL"; modelJSON: Record<string, any> };
 
 export const viewportMachine = setup({
@@ -112,6 +127,14 @@ export const viewportMachine = setup({
         event.type === "SET_SELECTED_POCKET" ? event.pocketId : context.selectedPocketId,
       activePanel: ({ event, context }) => 
         event.type === "SET_ACTIVE_PANEL" ? event.panel : context.activePanel,
+      sidebarOpen: ({ event, context }) =>
+        event.type === "SET_SIDEBAR_OPEN" ? event.open : context.sidebarOpen,
+      activeEditorTab: ({ event, context }) =>
+        event.type === "SET_ACTIVE_EDITOR_TAB" ? event.tab : context.activeEditorTab,
+      bottomPanelOpen: ({ event, context }) =>
+        event.type === "SET_BOTTOM_PANEL_OPEN" ? event.open : context.bottomPanelOpen,
+      activeBottomPanel: ({ event, context }) =>
+        event.type === "SET_ACTIVE_BOTTOM_PANEL" ? event.panel : context.activeBottomPanel,
       layoutModelJSON: ({ event, context }) => 
         event.type === "SET_LAYOUT_MODEL" ? event.modelJSON : context.layoutModelJSON,
     }),
@@ -129,7 +152,11 @@ export const viewportMachine = setup({
     viewerColorMode: "spectrum",
     riskThreshold: 0,
     selectedPocketId: null,
-    activePanel: null,
+    activePanel: "briefing",
+    sidebarOpen: true,
+    activeEditorTab: "structure",
+    bottomPanelOpen: true,
+    activeBottomPanel: "summary",
     layoutModelJSON: null,
   },
   states: {
@@ -149,6 +176,10 @@ export const viewportMachine = setup({
         SET_RISK_THRESHOLD: { actions: "applyUIPrefs" },
         SET_SELECTED_POCKET: { actions: "applyUIPrefs" },
         SET_ACTIVE_PANEL: { actions: "applyUIPrefs" },
+        SET_SIDEBAR_OPEN: { actions: "applyUIPrefs" },
+        SET_ACTIVE_EDITOR_TAB: { actions: "applyUIPrefs" },
+        SET_BOTTOM_PANEL_OPEN: { actions: "applyUIPrefs" },
+        SET_ACTIVE_BOTTOM_PANEL: { actions: "applyUIPrefs" },
         SET_LAYOUT_MODEL: { actions: "applyUIPrefs" },
       },
     },
@@ -169,6 +200,10 @@ export const viewportMachine = setup({
         SET_RISK_THRESHOLD: { actions: "applyUIPrefs" },
         SET_SELECTED_POCKET: { actions: "applyUIPrefs" },
         SET_ACTIVE_PANEL: { actions: "applyUIPrefs" },
+        SET_SIDEBAR_OPEN: { actions: "applyUIPrefs" },
+        SET_ACTIVE_EDITOR_TAB: { actions: "applyUIPrefs" },
+        SET_BOTTOM_PANEL_OPEN: { actions: "applyUIPrefs" },
+        SET_ACTIVE_BOTTOM_PANEL: { actions: "applyUIPrefs" },
         SET_LAYOUT_MODEL: { actions: "applyUIPrefs" },
       },
     },
@@ -189,6 +224,10 @@ export const viewportMachine = setup({
         SET_RISK_THRESHOLD: { actions: "applyUIPrefs" },
         SET_SELECTED_POCKET: { actions: "applyUIPrefs" },
         SET_ACTIVE_PANEL: { actions: "applyUIPrefs" },
+        SET_SIDEBAR_OPEN: { actions: "applyUIPrefs" },
+        SET_ACTIVE_EDITOR_TAB: { actions: "applyUIPrefs" },
+        SET_BOTTOM_PANEL_OPEN: { actions: "applyUIPrefs" },
+        SET_ACTIVE_BOTTOM_PANEL: { actions: "applyUIPrefs" },
         SET_LAYOUT_MODEL: { actions: "applyUIPrefs" },
       },
     },

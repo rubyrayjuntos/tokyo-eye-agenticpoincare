@@ -1,0 +1,221 @@
+Tokyo Eye science container trust audit
+Generated: 2026-06-24
+Mode: Read-only evaluator audit
+
+========================================================================
+1. Executive verdict
+========================================================================
+not yet trustworthy
+
+Reason:
+- The write path is not consistently governed at runtime.
+- Provenance completeness is materially weaker than the stated contract.
+- Several science paths can degrade, substitute, or persist placeholder
+  behavior without hard failure.
+- Highest-risk issue: MD validation can persist synthetic/random outputs as
+  governed facts.
+
+========================================================================
+2. Top findings
+========================================================================
+
+1. Governed write path is not actually singular
+Evidence:
+- AGENTS.md says all data writes should go through data/normalizer/core.py.
+- Active science routes still write directly to fact/config tables.
+- Direct-write examples were identified in:
+  - science/api/routers/compute.py:378-419
+  - science/api/routers/compute.py:806-844
+  - science/api/routers/compute.py:1166-1206
+  - science/api/routers/ingest.py:517-561
+Risk:
+- Governance is policy-level, not runtime-enforced.
+- Facts can enter governed tables outside the stricter payload path.
+Confidence:
+- high
+
+2. MD validation can persist synthetic behavior as scientific truth
+Evidence:
+- The implementation uses a simplified/random OpenMM stub rather than the
+  actual structure:
+  - science/api/routers/compute.py:984-993
+  - science/api/routers/compute.py:1046-1113
+  - science/api/routers/compute.py:1166-1206
+Risk:
+- A governed validation artifact can look plausible but be scientifically
+  non-authoritative.
+Confidence:
+- high
+
+3. Provenance contract is weaker than stated governance
+Evidence:
+- Governance schema requires checkpoint_sha256 and code_version:
+  - data/governance/schemas/provenance.schema.json:25-50
+- Runtime ProvenanceContext makes them optional:
+  - science/dtie/common/normalizer_payloads.py:67-77
+- Active compute paths often omit them:
+  - science/api/routers/compute.py:150-191
+  - science/api/routers/compute.py:226-243
+  - science/api/routers/compute.py:790-803
+  - science/api/routers/compute.py:1143-1164
+- _ensure_provenance_run persists nullable values without stronger
+  enforcement:
+  - data/normalizer/core.py:2500-2533
+Risk:
+- Live facts may be impossible to tie back to exact code/checkpoint state.
+Confidence:
+- high
+
+4. Hyperbolic outputs are separated on write, but not reliably on read
+Evidence:
+- Adapter emits separate *_hyp and *_euc runs/spaces:
+  - science/dtie/common/adapters.py:177-249
+- Motif analysis reads by structure, not run, and can silently coerce bad
+  coordinates to [0,0]:
+  - science/api/routers/compute.py:586-620
+- Write path does not validate disc geometry before persistence:
+  - science/dtie/common/normalizer_payloads.py:112-118
+  - data/normalizer/core.py:2632-2633
+Risk:
+- Storage separation exists, but downstream consumers can mix runs or
+  fabricate usable coordinates from malformed rows.
+Confidence:
+- high
+
+5. Pipeline semantics are fail-open for many scientific outputs
+Evidence:
+- Several downstream phase failures become warnings rather than hard failure:
+  - science/dtie/v5/orchestrator/pipeline.py:262-315
+  - science/dtie/v5/orchestrator/pipeline.py:331-486
+  - science/dtie/v5/orchestrator/pipeline.py:667-689
+- Tests codify that some optional phase failures still yield success:
+  - tests/test_pipeline_orchestrator.py:80-126
+Risk:
+- The system can emit a successful run while major scientific derivations
+  are missing or degraded.
+Confidence:
+- high
+
+========================================================================
+3. Quiet-failure / fail-open paths
+========================================================================
+
+- science/dtie/v5/orchestrator/pipeline.py:262-315
+  Hyperbolic distance materialization failure is downgraded to warnings
+  unless strict geometric governance is enabled.
+
+- science/dtie/v5/orchestrator/pipeline.py:331-486
+  Multiple scientific phases can fail while overall pipeline success remains
+  true.
+
+- science/dtie/v5/orchestrator/pipeline.py:569-614
+  Buffering atlas can fall back to a direct fact_phase_output insert when no
+  adapter exists.
+
+- science/api/routers/compute.py:611-620
+  Malformed hyperbolic coordinates are silently replaced with [0,0] during
+  motif analysis.
+
+- science/api/routers/compute.py:628-647
+  Motif analysis silently substitutes sklearn DBSCAN when HDBSCAN is
+  unavailable.
+
+- science/api/routers/ingest.py:569-627
+  Alignment sidecar is explicitly non-blocking; failures are only logged.
+
+- data/normalizer/core.py:2694-2726
+  Audit logging is fire-and-forget; audit failures do not block the primary
+  write path.
+
+========================================================================
+4. Provenance gaps
+========================================================================
+
+- No runtime enforcement of the governance JSON provenance schema was found
+  in the active science/data write path.
+- Runtime authority is mostly Pydantic payload validation plus SQL schema,
+  not the governance JSON schema itself.
+- checkpoint_sha256 is required by governance but omitted in active compute,
+  motif, and MD paths.
+- code_version is schema-required but optional at runtime and commonly null.
+- Manual provenance inserts in graph topology and duplicate-ingest audit use
+  reduced field sets and bypass the richer schema contract.
+- Validation evidence is not persisted as a strong structured provenance
+  artifact in the inspected paths.
+
+========================================================================
+5. Hyperbolic vs euclidean separation assessment
+========================================================================
+
+Write path:
+- Mostly separated.
+- Adapter emits separate hyperbolic and euclidean runs/spaces.
+- Normalizer stores them under distinct run_id/space_id combinations.
+
+Read path:
+- Not reliably separated.
+- Motif analysis is structure-scoped rather than run-scoped.
+- Legacy source-leak fallback also queries fact_gnn_node_embedding by
+  structure only.
+
+Assessment:
+- Separation exists in storage, but not as a hard downstream trust boundary.
+- The system is vulnerable to cross-run mixing and silent coercion of
+  malformed hyperbolic rows.
+
+========================================================================
+6. Test coverage assessment
+========================================================================
+
+What is actually proven:
+- Disc-topology utilities satisfy synthetic mathematical properties over
+  generated valid disc points:
+  - tests/test_disc_topology_properties.py
+- Adapter contract produces separate hyp/euc payload counts.
+- Normalizer basic persistence/idempotency/provenance row creation works in
+  integration tests for minimal payloads.
+- Lineage traversal logic works on mocked DAGs.
+
+What is not proven:
+- That the active production runner outputs scientifically meaningful,
+  non-degenerate Poincare coordinates.
+- That real persisted hyperbolic rows remain run-scoped and are never mixed
+  by consumers.
+- That provenance completeness matches governance schema on live runs.
+- That malformed hyperbolic coordinates are rejected rather than coerced.
+- That validation outputs correspond to external scientific corroboration.
+- That hydrate/API tests reflect real DB behavior rather than mocks.
+- That GNN persistence tests validate real trust boundaries instead of
+  synthetic generated coordinates already scaled inside the disc.
+
+========================================================================
+7. Recommended validation sequence
+========================================================================
+
+1. Review-first
+- Trace every science-to-DB write path.
+- Trace every downstream consumer query for run_id, space_id, and provenance
+  completeness.
+- Treat direct SQL paths as separate trust boundaries.
+
+2. Live-data tests next
+- For a structure like 4uj1, compare:
+  checkpoint output -> adapter payload -> fact_gnn_node_embedding rows ->
+  hydrate/consumer reads.
+- Measure null provenance rates, run mixing, and hyperbolic radius
+  distributions explicitly.
+
+3. External benchmark validation after
+- Corroborate stored hyperbolic geometry and downstream scientific calls
+  against independent calculations, publications, lab findings, and MD
+  validation before treating any derived view as authoritative.
+
+========================================================================
+8. Highest-confidence trust risks ranked
+========================================================================
+
+1. Synthetic MD validation persisted as governed fact.
+2. Direct SQL bypasses of the claimed single governed write path.
+3. Provenance incompleteness vs stated schema/contract.
+4. Structure-scoped hyperbolic consumption with silent [0,0] substitution.
+5. Fail-open pipeline success semantics producing partial-truth snapshots.

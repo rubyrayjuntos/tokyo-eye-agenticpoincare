@@ -60,7 +60,7 @@ export default function AgentTelemetryPanel() {
   }, [latestAgentTelemetry, snapshot]);
 
   return (
-    <aside className="w-64 shrink-0 border-r border-zinc-800 bg-zinc-900/60 flex flex-col overflow-y-auto">
+    <aside className="flex h-full min-w-0 flex-col overflow-y-auto bg-zinc-900/60">
       <div className="px-4 py-3 border-b border-zinc-800">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
           Agent Telemetry

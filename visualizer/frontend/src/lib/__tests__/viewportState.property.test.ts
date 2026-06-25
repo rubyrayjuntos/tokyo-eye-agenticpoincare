@@ -23,7 +23,7 @@ const arbViewerColorMode = fc.constantFrom(
 
 const arbActivePanel = fc.option(
   fc.constantFrom(
-    "rcsb_search" as const, "graph_topology" as const, "hypothesis" as const,
+    "briefing" as const, "control_console" as const, "rcsb_search" as const, "graph_topology" as const, "hypothesis" as const,
     "data_tools" as const, "provenance" as const, "plot_generator" as const,
     "compare" as const, "data_inspector" as const,
   ),

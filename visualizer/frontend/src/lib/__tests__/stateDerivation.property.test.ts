@@ -51,11 +51,23 @@ const arbViewportContext: fc.Arbitrary<ViewportContext> = fc.record({
   selectedPocketId: fc.option(fc.nat({ max: 10 }), { nil: null }),
   activePanel: fc.option(
     fc.constantFrom(
-      "rcsb_search" as const, "graph_topology" as const, "hypothesis" as const,
+      "briefing" as const, "control_console" as const, "rcsb_search" as const, "graph_topology" as const, "hypothesis" as const,
       "data_tools" as const, "provenance" as const, "plot_generator" as const,
       "compare" as const, "data_inspector" as const,
     ),
     { nil: null },
+  ),
+  sidebarOpen: fc.boolean(),
+  activeEditorTab: fc.constantFrom("manifold" as const, "structure" as const, "agent" as const),
+  bottomPanelOpen: fc.boolean(),
+  activeBottomPanel: fc.constantFrom(
+    "summary" as const,
+    "hypotheses" as const,
+    "pockets" as const,
+    "fragments" as const,
+    "motifs" as const,
+    "results" as const,
+    "telemetry" as const,
   ),
   layoutModelJSON: fc.constant(null),
 });

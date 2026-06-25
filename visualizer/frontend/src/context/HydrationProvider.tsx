@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback } from "rea
 import type { ReactNode } from "react";
 import { api } from "../lib/api";
 import { useDashboard } from "../lib/context";
+import { buildHydrationView } from "../lib/hydrationView";
 import type {
   HydrationResponse,
   EmbeddingData,
@@ -14,6 +15,7 @@ import type {
   Annotation,
   PharmacophoreData,
   DrugCandidateData,
+  StructureAnalysisSnapshot,
 } from "../lib/types";
 
 export interface LoadingState {
@@ -43,6 +45,7 @@ export interface HydrationContextValue {
   multiHydrations: Record<string, HydrationResponse | null>;
   /** Refresh all (active + multi) */
   refreshAll: () => void;
+  structureSnapshot: StructureAnalysisSnapshot | null;
   /** Convenience accessors */
   embeddings: EmbeddingData | null;
   graphMetrics: GraphMetricsData | null;
@@ -77,6 +80,7 @@ const HydrationContext = createContext<HydrationContextValue>({
   refresh: () => {},
   multiHydrations: {},
   refreshAll: () => {},
+  structureSnapshot: null,
   embeddings: null,
   graphMetrics: null,
   allostericSites: null,
@@ -127,7 +131,18 @@ export function HydrationProvider({ children }: HydrationProviderProps) {
 
     try {
       const data = await api.hydrate(structureId);
-      setHydration(data);
+      const snapshotResidues = data.structure_snapshot?.residues ?? [];
+      const legacyResidues = data.embeddings?.residues ?? [];
+
+      if (snapshotResidues.length === 0 && legacyResidues.length === 0) {
+        const embeddings = await api.getEmbeddings(structureId);
+        setHydration({
+          ...data,
+          embeddings,
+        });
+      } else {
+        setHydration(data);
+      }
       setError(null);
     } catch (err: unknown) {
       const msg =
@@ -198,47 +213,31 @@ export function HydrationProvider({ children }: HydrationProviderProps) {
     Object.keys(multiHydrations).forEach(sid => fetchMultiHydration(sid));
   }, [refresh, multiHydrations, fetchMultiHydration]);
 
+  const hydrationView = buildHydrationView(
+    hydration,
+    activeStructure?.structure_id,
+  );
+
   const value: HydrationContextValue = {
     hydration,
     loading,
     isHydrating,
     error,
     refresh,
-    embeddings: hydration?.embeddings ?? null,
-    graphMetrics: hydration?.graph_metrics ?? null,
-    allostericSites: hydration?.allosteric_sites ?? null,
-    sourceLeaks: hydration?.source_leaks
-      ? {
-          structure_id: hydration.source_leaks.structure_id ?? activeStructure?.structure_id ?? "",
-          leaks: hydration.source_leaks.source_leaks ?? hydration.source_leaks.leaks ?? [],
-        }
-      : null,
-    resistanceData: hydration?.resistance_data ?? null,
+    structureSnapshot: hydrationView.structureSnapshot,
+    embeddings: hydrationView.embeddings,
+    graphMetrics: hydrationView.graphMetrics,
+    allostericSites: hydrationView.allostericSites,
+    sourceLeaks: hydrationView.sourceLeaks,
+    resistanceData: hydrationView.resistanceData,
     hypotheses: hydration?.hypotheses ?? null,
     provenanceRuns: hydration?.provenance_runs ?? null,
     annotations: hydration?.annotations ?? null,
-    // Map the governed phase5/phase6 (with our backend enrichment for connected_allosteric_locks,
-    // connecting_pathways, connecting_coupling_sum etc. per pocket, plus B-chain aware residue_ids)
-    // into the shape expected by GraphTopologyPanel, MolecularViewer radar, and DataInspector.
-    pharmacophorePockets: hydration?.phase5_pharmacophore
-      ? {
-          structure_id: hydration.phase5_pharmacophore.structure_id,
-          pockets: hydration.phase5_pharmacophore.pharmacophores || hydration.phase5_pharmacophore.pockets || [],
-          count: hydration.phase5_pharmacophore.count || (hydration.phase5_pharmacophore.pharmacophores || []).length,
-        }
-      : (hydration?.pharmacophore_pockets ?? null),
-    drugCandidates: hydration?.phase6_drug_candidates
-      ? {
-          structure_id: hydration.phase6_drug_candidates.structure_id,
-          candidates: hydration.phase6_drug_candidates.candidates || hydration.phase6_drug_candidates.drug_candidates || [],
-          count: hydration.phase6_drug_candidates.count || 0,
-          admet_passed_count: hydration.phase6_drug_candidates.admet_passed_count ?? 0,
-          state_selective_count: hydration.phase6_drug_candidates.state_selective_count ?? 0,
-        }
-      : (hydration?.drug_candidates ?? null),
-    phase4_resistance: hydration?.phase4_resistance ?? null,
+    pharmacophorePockets: hydrationView.pharmacophorePockets,
+    drugCandidates: hydrationView.drugCandidates,
+    phase4_resistance: hydrationView.phase4Resistance,
     bufferingAtlas: hydration?.buffering_atlas ?? null,  // live (X, Y) from Phase 7 / governed facts for the current structure
-    persistenceStatus: hydration?.persistence_status ?? null,
+    persistenceStatus: hydrationView.persistenceStatus,
     multiHydrations,
     refreshAll,
   };

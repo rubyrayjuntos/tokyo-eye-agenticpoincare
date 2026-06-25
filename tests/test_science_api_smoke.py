@@ -152,7 +152,7 @@ def test_compute_models_importable():
     # Test with default values where available
     gnn_req = GNNRequest(structure_id="test_4obe")
     assert gnn_req.structure_id == "test_4obe"
-    assert gnn_req.model_version == "v5"
+    assert gnn_req.model_version == "v6"
     assert gnn_req.device == "cpu"
 
     gnn_resp = GNNResponse(

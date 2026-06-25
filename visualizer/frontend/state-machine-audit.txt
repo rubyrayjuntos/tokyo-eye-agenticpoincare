@@ -1,0 +1,458 @@
+Tokyo Eye frontend state/data audit
+Generated: 2026-06-24
+
+Purpose
+- Record the values the frontend state surfaces should have for the loaded 4UJ1 workspace.
+- Note where values are missing, null, contradictory, or never wired into the machines.
+- Distinguish between the temporary backfill fix and the larger contract/wiring issue.
+
+Scope audited
+1. DashboardContext activeStructure
+2. viewportMachine context
+3. discoveryPhaseMachine context
+4. hypothesisLifecycleMachine context
+5. structureScope / planner policy inputs
+6. HydrationProvider + buildHydrationView
+7. PoincareScatter local data path
+8. MolecularViewer data path
+9. Backend payload contracts currently feeding the frontend
+
+========================================================================
+1. DashboardContext.activeStructure
+========================================================================
+Type expects:
+- structure_id
+- pdb_id
+- title
+- resolution
+- method
+- source
+- chains
+- residue_count
+- has_embeddings
+- last_run_id
+- ingested_at
+
+Observed bootstrap value in AppCockpit:
+- structure_id: "4uj1"
+- pdb_id: "4uj1"
+- title: "KRAS G12C GDP-bound structure"
+- resolution: 1.768
+- method: "X-RAY DIFFRACTION"
+- source: "rcsb"
+- chains: ["A", "B"]
+- residue_count: 730
+- has_embeddings: true
+- last_run_id: null
+- ingested_at: "2026-06-24T20:04:48.560743+00:00"
+
+Observed from /api/structures:
+- structure_id: "4uj1"
+- pdb_id: "4uj1"
+- source: "rcsb"
+- resolution: 1.768
+- method: "X-RAY DIFFRACTION"
+- residue_count: 730
+- chain_count: 2
+- has_embeddings: true
+- ingested_at: "2026-06-24 20:04:48.560743+00:00"
+
+Problems:
+- /api/structures does NOT match the Structure type.
+- Missing from list payload: title, chains, last_run_id.
+- Extra field returned: chain_count.
+- activeStructure.residue_count says 730, but /api/structures/4uj1/embeddings returns 714 residues.
+- activeStructure is present in DashboardContext, but is not mirrored into the XState machines that should represent loaded scope/structure state.
+
+========================================================================
+2. viewportMachine context
+========================================================================
+viewportMachine context contains:
+- highlightedResidues
+- userSelectedResidue
+- currentDirective
+- activeMetric
+- isRadarActive
+- poincareColorMode
+- viewerColorMode
+- riskThreshold
+- selectedPocketId
+- activePanel
+- sidebarOpen
+- activeEditorTab
+- bottomPanelOpen
+- activeBottomPanel
+- layoutModelJSON
+
+Observed/default values from code:
+- highlightedResidues: []
+- userSelectedResidue: null
+- currentDirective: null
+- activeMetric: "cone_depth"
+- isRadarActive: false
+- poincareColorMode: "cone_depth"
+- viewerColorMode: "spectrum"
+- riskThreshold: 0
+- selectedPocketId: null
+- activePanel: "briefing"
+- sidebarOpen: true
+- activeEditorTab: "structure"
+- bottomPanelOpen: true
+- activeBottomPanel: "summary"
+- layoutModelJSON: null
+
+What it should additionally know for a loaded workspace, but does not:
+- primary structure identity
+- structure readiness
+- ingestion/inference/pipeline readiness
+- whether hydration is authoritative or degraded
+
+Problem:
+- The viewport machine is only UI state.
+- It has no structure identity fields at all, so it cannot be the source of truth for whether the workspace is actually loaded coherently.
+
+========================================================================
+3. discoveryPhaseMachine context
+========================================================================
+Machine context fields:
+- phase
+- phaseSource
+- lastActor
+- lastTransitionAt
+- activeStructureId
+- selectedResidues
+- selectedClusterId
+- selectedPocketIndex
+- hasResidueSelection
+- hasTopologySelection
+- hasStructureMapping
+- hasPocketExtraction
+- hasPharmacophoreMap
+- hasScreeningResults
+- hasDockingResults
+- hasReportDraft
+- lastScreeningRunId
+- lastDockingRunId
+- lastReportId
+- blockedTools
+- allowedTools
+- phaseRationale
+
+For the currently loaded 4UJ1 workspace, this machine should at minimum have:
+- phase: "residue" (matches the UI)
+- activeStructureId: "4uj1"
+- hasStructureMapping: true
+- selectedResidues: [] unless user has selected some
+
+Depending on how much the machine is intended to reflect hydrated results, it may also eventually need:
+- hasPocketExtraction: true when phase5 data exists
+- hasScreeningResults: true when phase6 data exists
+
+Observed wiring reality:
+- The event types exist: STRUCTURE_MAPPED, POCKET_EXTRACTED, PHARMACOPHORE_MAPPED, SCREENING_COMPLETED, REPORT_STARTED, etc.
+- Those events are not dispatched from the application code paths that load the workspace.
+- Search across src found the event names only in the machine definition, not in the runtime wiring.
+
+Result:
+- activeStructureId likely remains null.
+- hasStructureMapping likely remains false.
+- hasPocketExtraction likely remains false.
+- hasScreeningResults likely remains false.
+
+This means the discovery machine does not actually reflect the currently loaded 4UJ1 workspace.
+
+========================================================================
+4. hypothesisLifecycleMachine context
+========================================================================
+Machine context fields:
+- stateLabel
+- hypothesisId
+- hypothesisText
+- priorHypothesisText
+- source
+- lastActor
+- lastTransitionAt
+- supportingEvidenceCount
+- contradictionCount
+- unresolvedContradictions
+- evidenceRefs
+- confidenceBand
+- recommendedReasoningMode
+- allowedSpeechActs
+- blockedSpeechActs
+- canEscalateTools
+- shouldAskClarifyingQuestion
+- summaryReady
+
+Observed/default values:
+- stateLabel: "emergent"
+- hypothesisId: null
+- hypothesisText: null
+- supportingEvidenceCount: 0
+- contradictionCount: 0
+- confidenceBand: "low"
+- recommendedReasoningMode: "explore"
+- canEscalateTools: false
+
+Assessment:
+- This machine does not appear to be the source of the current structure/data mismatch.
+- Its defaults are plausible for a fresh workspace.
+- It is not carrying structure identity, so it cannot correct the larger loaded-scope inconsistency.
+
+========================================================================
+5. structureScope / plannerPolicy input state
+========================================================================
+StructureScopeContext fields:
+- scopeId
+- scopeType
+- structureIds
+- primaryStructureId
+- activeChainIds
+- ingestionReady
+- inferenceReady
+- pipelineReady
+- provenanceLabel
+- lastLoadedAt
+- lastActor
+- requiresReset
+- resetReason
+- sessionMode
+
+Default values from createDefaultStructureScope():
+- scopeId: null
+- scopeType: "single_structure"
+- structureIds: []
+- primaryStructureId: null
+- activeChainIds: []
+- ingestionReady: false
+- inferenceReady: false
+- pipelineReady: false
+- provenanceLabel: null
+- lastLoadedAt: null
+- lastActor: null
+- requiresReset: false
+- resetReason: null
+- sessionMode: "scientific_rigor"
+
+What it should contain for the loaded 4UJ1 workspace:
+- primaryStructureId: "4uj1"
+- structureIds: ["4uj1"]
+- activeChainIds: ["A", "B"]
+- ingestionReady: true
+- inferenceReady: true if embeddings are actually available
+- pipelineReady: true only if the governed snapshot is complete, otherwise false with an explicit degraded reason
+- provenanceLabel: latest run id or snapshot provenance summary
+- lastActor: "system" or "user" depending on how bootstrapped
+
+Observed wiring reality:
+- setStructureScope is only used for sessionMode changes.
+- There is no runtime code that populates structureIds, primaryStructureId, activeChainIds, ingestionReady, inferenceReady, or pipelineReady from activeStructure or hydration.
+
+Result:
+- plannerPolicy is derived from a structureScope that still says no structure is loaded and no pipeline is ready.
+- This is a major underlying issue and is not fixed by hydration backfill.
+
+========================================================================
+6. HydrationProvider + buildHydrationView
+========================================================================
+What hydrate should provide for a usable loaded workspace:
+- Either structure_snapshot.residues must be populated
+  OR embeddings.residues must be populated
+- Counts should agree closely enough that UI summaries are consistent
+- context_summary should not report 0 residues if an embeddings run exists
+
+Observed /api/structures/4uj1/hydrate:
+- structure_id: "4uj1"
+- structure_snapshot.structure.structure_id: "4uj1"
+- structure_snapshot.status.embeddings_persisted: false
+- structure_snapshot.status.graph_persisted: true
+- structure_snapshot.status.sites_persisted: true
+- structure_snapshot.status.phase4_persisted: true
+- structure_snapshot.status.phase5_persisted: true
+- structure_snapshot.status.phase6_persisted: true
+- structure_snapshot.residues length: 0
+- embeddings.residues length: 0
+- graph_metrics.metrics length: 357
+- source_leaks length: 36
+- allosteric_sites.sites length: 1
+- resistance_data.residues length: 15
+- hypotheses length: 0
+- provenance_runs length: 3
+- annotations length: 0
+- drug_candidates length: 16
+- context_summary.residue_count: 0
+- context_summary.latest_run_ids_by_pipeline.embeddings exists: "dtie_d8c34c16f0de_euc"
+
+What this means:
+- The hydrate contract claims graph/leak/site/resistance/drug-candidate data exists.
+- The hydrate contract also says there is an embeddings pipeline run id.
+- But both structure_snapshot.residues and embeddings.residues are empty.
+- So the frontend receives a logically inconsistent "half-hydrated" structure.
+
+Previous frontend failure mode:
+- buildHydrationView preferred structure_snapshot whenever it existed, even if snapshot.residues was empty.
+- This made left-side counts become 0 while Poincare still showed data from its own direct embeddings fetch.
+
+Temporary mitigation currently in frontend:
+- HydrationProvider backfills embeddings from /embeddings when hydrate has no residues.
+- buildHydrationView now prefers snapshot residues only when snapshot.residues.length > 0.
+
+Important:
+- This mitigation prevents UI self-contradiction.
+- It does NOT resolve the backend or contract-level inconsistency.
+
+========================================================================
+7. PoincareScatter local data path
+========================================================================
+Observed /api/structures/4uj1/embeddings:
+- structure_id: "4uj1"
+- residue_count: 714
+- first residue:
+  residue_id: "4uj1:B:5"
+  residue_index: 5
+  chain_label: "B"
+  x: 7.59298e-40
+  y: -4.31949e-40
+  cone_depth: 8.0
+  epistemic_uncertainty: 0.33332955837249756
+  aleatoric_uncertainty: 0.03920372202992439
+- x range: ~1.83e-40 to ~8.75e-40
+- y range: ~-4.58e-40 to ~-2.87e-40
+
+What it should have:
+- 714-ish residues if this is the authoritative embeddings set
+- x/y in a meaningful Poincare coordinate range, typically not effectively zero for every point
+
+Observed issue:
+- x/y values are effectively underflowed/collapsed to zero.
+- This explains the near-center Poincare rendering even when the residue count exists.
+
+Conclusion:
+- PoincareScatter is getting data, but the coordinate payload itself looks wrong.
+- This is not a state machine issue.
+- It is a backend numeric/data-contract issue for embeddings coordinates.
+
+========================================================================
+8. MolecularViewer data path
+========================================================================
+MolecularViewer does not use hydrate to fetch the structure body.
+It does:
+- activeStructure.pdb_id -> fetch https://files.rcsb.org/download/{pdbId}.pdb
+- then renders with 3Dmol
+
+So the 3D structure pane depends on:
+- activeStructure being present
+- pdb_id being correct
+- external fetch succeeding
+
+Observed:
+- activeStructure is present
+- pdb_id is "4uj1"
+- RCSB PDB fetch is available
+- 3D pane still shows black canvas in the screenshot
+
+Implication:
+- The 3D pane issue is separate from the left-panel 0-residue inconsistency.
+- It is not evidence that the state machine lacks structure identity.
+- The data/state contradiction is more clearly shown by:
+  left panels = 0 residues
+  Poincare = 714 residues
+
+========================================================================
+9. Main mismatches, summarized
+========================================================================
+A. Structure list contract mismatch
+- Frontend Structure type expects title/chains/last_run_id.
+- /api/structures does not provide them.
+
+B. activeStructure exists, but state machines are not synchronized from it
+- discoveryPhaseMachine activeStructureId not wired
+- structureScope primaryStructureId not wired
+- structureScope readiness flags not wired
+
+C. Hydrate contract is internally inconsistent
+- embeddings run id exists
+- graph/site/resistance/candidate data exists
+- residue-bearing embeddings payload is empty
+- context_summary residue_count is 0
+
+D. Poincare path bypasses hydration
+- Poincare fetches /embeddings directly
+- left panels use hydrate/buildHydrationView
+- therefore the same workspace renders contradictory counts
+
+E. Embeddings coordinate payload itself looks broken
+- residue count exists
+- x/y are effectively zero for all residues
+
+========================================================================
+10. Values that should be present but currently are missing/null/incorrect
+========================================================================
+These are the concrete values the frontend state system should have for the loaded 4UJ1 workspace:
+
+Should be present:
+- structureScope.primaryStructureId = "4uj1"
+- structureScope.structureIds = ["4uj1"]
+- structureScope.activeChainIds = ["A", "B"]
+- discoveryContext.activeStructureId = "4uj1"
+- discoveryContext.hasStructureMapping = true
+
+Should not still be default false/null:
+- structureScope.ingestionReady
+- structureScope.inferenceReady
+- structureScope.pipelineReady
+- structureScope.lastLoadedAt
+- structureScope.lastActor
+
+Should not be contradictory:
+- activeStructure.residue_count = 730
+- hydrate.context_summary.residue_count = 0
+- hydrate snapshot residue count = 0
+- embeddings endpoint residue count = 714
+
+Should not be empty if embeddings run exists:
+- structure_snapshot.residues
+- embeddings.residues in hydrate payload
+
+Should not be numerically collapsed:
+- embeddings[].x
+- embeddings[].y
+
+========================================================================
+11. Root issue to resolve (not the backfill)
+========================================================================
+The larger issue is:
+- there is no single authoritative loaded-structure state flowing through the frontend,
+  and the backend hydrate contract is incomplete/inconsistent for 4UJ1.
+
+The backfill only masks one symptom.
+
+Real fix path:
+1. Backend: make /hydrate authoritative
+   - if embeddings run exists, hydrate must include real residues
+   - context_summary.residue_count must agree with the real embeddings count
+   - if embeddings are not available, all readiness flags and summaries must say so consistently
+
+2. Frontend: synchronize structure into machine state
+   - on activeStructure load, populate structureScope
+   - dispatch discovery STRUCTURE_MAPPED
+   - derive readiness flags from authoritative hydration/provenance
+
+3. Frontend: unify residue-bearing data source
+   - either Poincare and summary panels both use hydrate
+   - or both use a single normalized source derived from hydrate + explicit fallback rules
+
+4. Backend/data: repair embeddings coordinates
+   - x/y values near 1e-40 are not usable for a Poincare layout
+
+========================================================================
+12. Bottom line
+========================================================================
+The hydration backfill is a temporary guardrail.
+
+The actual unresolved problems are:
+- machine scope/structure state is not wired from the loaded structure
+- hydrate is returning an inconsistent partial snapshot
+- embeddings coordinates appear corrupted/collapsed
+
+Until those are fixed, the same class of contradiction will keep resurfacing.

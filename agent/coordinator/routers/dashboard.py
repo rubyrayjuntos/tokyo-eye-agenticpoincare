@@ -681,25 +681,16 @@ async def hydrate_structure(structure_id: str, db=Depends(get_db)):
 
     Requirements: 1.1, 1.4, 7.1, 7.2, 7.3, 7.4, 7.5, 8.1
     """
-    from agent.tools.data_tools import get_allosteric_sites, get_provenance_lineage
-    from agent.tools.dtie.tools import get_source_leaks
-    from agent.tools.graph_tools import get_graph_metrics
+    from agent.tools.data_tools import get_provenance_lineage
     from agent.tools.hypothesis.tools import get_hypotheses
 
     try:
         # Run all queries in parallel — return_exceptions=True so one failure doesn't kill all
         results = await asyncio.gather(
-            _fetch_embeddings_for_hydration(structure_id, db),
-            get_graph_metrics(structure_id=structure_id, db=db),
-            get_allosteric_sites(structure_id=structure_id, db=db),
-            get_source_leaks(structure_id=structure_id, db=db),
+            _fetch_structure_analysis_snapshot(structure_id, db),
             get_hypotheses(structure_id=structure_id, db=db),
             get_provenance_lineage(structure_id=structure_id, db=db),
             _fetch_annotations_for_hydration(structure_id, db),
-            _fetch_phase2_vulnerability(structure_id, db),
-            _fetch_phase4_resistance(structure_id, db),
-            _fetch_phase5_pharmacophore(structure_id, db),
-            _fetch_phase6_drug_candidates(structure_id, db),
             return_exceptions=True,
         )
 
@@ -707,23 +698,34 @@ async def hydrate_structure(structure_id: str, db=Depends(get_db)):
         def _safe(r):
             return None if isinstance(r, BaseException) else r
 
-        embeddings_result = _safe(results[0])
-        graph_result = _safe(results[1])
-        sites_result = _safe(results[2])
-        leaks_result = _safe(results[3])
-        hypotheses_result = _safe(results[4])
-        provenance_result = _safe(results[5])
-        annotations_rows = _safe(results[6])
-        phase2_result = _safe(results[7])
-        phase4_result = _safe(results[8])
-        phase5_result = _safe(results[9])
-        phase6_result = _safe(results[10])
+        snapshot = _safe(results[0])
+        hypotheses_result = _safe(results[1])
+        provenance_result = _safe(results[2])
+        annotations_rows = _safe(results[3])
+
+        findings = snapshot.get("findings", {}) if snapshot else {}
+        embeddings = (
+            {
+                "structure_id": structure_id,
+                "curvature": snapshot.get("curvature", 1.0),
+                "residues": snapshot.get("residues", []),
+            }
+            if snapshot and snapshot.get("residues")
+            else None
+        )
+        graph_metrics = snapshot.get("graph_metrics") if snapshot else None
+        allosteric_sites = findings.get("allosteric_sites")
+        source_leaks = findings.get("source_leaks")
+        phase2_vulnerability = findings.get("vulnerability_doorways")
+        phase4_resistance = findings.get("resistance")
+        phase5_pharmacophore = findings.get("pharmacophores")
+        phase6_drug_candidates = findings.get("drug_candidates")
 
         # Derive per-residue resistance sensitivity from Phase 4 data
         resistance_data = None
-        if phase4_result and phase4_result.get("pathways"):
-            pathways = phase4_result["pathways"]
-            spectral = phase4_result.get("spectral")
+        if phase4_resistance and phase4_resistance.get("pathways"):
+            pathways = phase4_resistance["pathways"]
+            spectral = phase4_resistance.get("spectral")
             # Collect all unique residue_ids from pathways
             residue_ids_set: set[str] = set()
             for p in pathways:
@@ -738,18 +740,9 @@ async def hydrate_structure(structure_id: str, db=Depends(get_db)):
                     residue_ids=sorted(residue_ids_set),
                 )
 
-        # Build response with null for missing data
-        embeddings = embeddings_result if embeddings_result else None
-        graph_metrics = graph_result.data if graph_result and hasattr(graph_result, 'success') and graph_result.success and graph_result.data.get("metrics") else None
-        allosteric_sites = sites_result.data if sites_result and hasattr(sites_result, 'success') and sites_result.success and sites_result.data.get("sites") else None
-        source_leaks = leaks_result.data if leaks_result and hasattr(leaks_result, 'success') and leaks_result.success and leaks_result.data.get("source_leaks") else None
         hypotheses = hypotheses_result.data if hypotheses_result and hasattr(hypotheses_result, 'success') and hypotheses_result.success and hypotheses_result.data.get("hypotheses") else None
         provenance_runs = provenance_result.data if provenance_result and hasattr(provenance_result, 'success') and provenance_result.success and provenance_result.data.get("runs") else None
         annotations = annotations_rows if annotations_rows else None
-        phase2_vulnerability = phase2_result if phase2_result else None
-        phase4_resistance = phase4_result if phase4_result else None
-        phase5_pharmacophore = phase5_result if phase5_result else None
-        phase6_drug_candidates = phase6_result if phase6_result else None
 
         # Enrich pharmacophores with "connected allosteric locks" (the precision locks
         # from source_leak 90th-percentile + derived allosteric network) and the exact
@@ -804,27 +797,34 @@ async def hydrate_structure(structure_id: str, db=Depends(get_db)):
             phase5_pharmacophore["pharmacophores"] = enriched
 
         # Persistence status flags
-        persistence_status = {
-            "embeddings_persisted": embeddings is not None,
-            "graph_persisted": graph_metrics is not None,
-            "sites_persisted": allosteric_sites is not None,
-            "phase2_persisted": phase2_vulnerability is not None,
-            "phase4_persisted": phase4_resistance is not None,
-            "phase5_persisted": phase5_pharmacophore is not None,
-            "phase6_persisted": phase6_drug_candidates is not None,
-            "resistance_data_available": resistance_data is not None,
-        }
+        persistence_status = (
+            {
+                **snapshot.get("status", {}),
+                "resistance_data_available": resistance_data is not None,
+            }
+            if snapshot
+            else {
+                "embeddings_persisted": embeddings is not None,
+                "graph_persisted": graph_metrics is not None,
+                "sites_persisted": allosteric_sites is not None,
+                "phase2_persisted": phase2_vulnerability is not None,
+                "phase4_persisted": phase4_resistance is not None,
+                "phase5_persisted": phase5_pharmacophore is not None,
+                "phase6_persisted": phase6_drug_candidates is not None,
+                "resistance_data_available": resistance_data is not None,
+            }
+        )
 
         # Build agent context summary (Requirement 1.4)
-        residue_count = len(embeddings.get("residues", [])) if embeddings else 0
+        residue_count = len(snapshot.get("residues", [])) if snapshot else len(embeddings.get("residues", [])) if embeddings else 0
         source_leak_count = source_leaks.get("count", 0) if source_leaks else 0
         hypothesis_count = len(hypotheses.get("hypotheses", [])) if hypotheses else 0
 
         # Top uncertainty residues (top 5 by epistemic uncertainty)
         top_uncertainty_residues = []
-        if embeddings and embeddings.get("residues"):
+        if snapshot and snapshot.get("residues"):
             sorted_residues = sorted(
-                embeddings["residues"],
+                snapshot["residues"],
                 key=lambda r: r.get("epistemic_uncertainty") or 0,
                 reverse=True,
             )
@@ -843,10 +843,15 @@ async def hydrate_structure(structure_id: str, db=Depends(get_db)):
             "source_leak_count": source_leak_count,
             "hypothesis_count": hypothesis_count,
             "top_uncertainty_residues": top_uncertainty_residues,
+            "latest_run_ids_by_pipeline": (
+                snapshot.get("provenance", {}).get("latest_run_ids_by_pipeline", {})
+                if snapshot else {}
+            ),
         }
 
         return {
             "structure_id": structure_id,
+            "structure_snapshot": snapshot,
             "embeddings": embeddings,
             "graph_metrics": graph_metrics,
             "allosteric_sites": allosteric_sites,
@@ -877,13 +882,23 @@ async def hydrate_structure(structure_id: str, db=Depends(get_db)):
         )
 
 
-async def _fetch_embeddings_for_hydration(structure_id: str, db) -> dict[str, Any] | None:
+async def _fetch_embeddings_for_hydration(
+    structure_id: str,
+    db,
+    run_id: str | None = None,
+) -> dict[str, Any] | None:
     """Fetch embeddings data for hydration (returns dict or None)."""
     from agent.tools.dtie.tools import ToolDB
 
     tool_db = ToolDB(db)
+    params: dict[str, Any] = {"structure_id": structure_id}
+    run_filter = ""
+    if run_id:
+        run_filter = " AND e.run_id = :run_id"
+        params["run_id"] = run_id
+
     rows = await tool_db.fetch_all(
-        """
+        f"""
         SELECT r.residue_id, r.residue_index, r.residue_name,
                c.chain_label,
                e.hyp_projection_2d, e.hyp_projections,
@@ -896,9 +911,10 @@ async def _fetch_embeddings_for_hydration(structure_id: str, db) -> dict[str, An
         JOIN embedding_space es ON es.space_id = e.space_id
         WHERE e.structure_id = :structure_id
           AND es.space_type = 'hyperbolic'
+          {run_filter}
         ORDER BY r.residue_index
         """,
-        {"structure_id": structure_id},
+        params,
     )
 
     if not rows:
@@ -938,6 +954,283 @@ async def _fetch_embeddings_for_hydration(structure_id: str, db) -> dict[str, An
     }
 
 
+async def _fetch_structure_analysis_snapshot(structure_id: str, db) -> dict[str, Any] | None:
+    """Build the first curated structure-scoped snapshot from canonical persisted facts."""
+    from agent.tools.graph_tools import get_graph_metrics
+    from agent.tools.dtie.tools import ToolDB
+
+    tool_db = ToolDB(db)
+    structure = await tool_db.fetch_one(
+        """
+        SELECT structure_id, pdb_id, title, method, resolution, source,
+               organism, release_date, polymer_composition
+        FROM dim_structure
+        WHERE structure_id = :structure_id
+        """,
+        {"structure_id": structure_id},
+    )
+    if not structure:
+        return None
+
+    scope = await tool_db.fetch_one(
+        """
+        SELECT primary_chain_ids, reference_chain, exclude_chain_ids,
+               normalization_protocol, scope_source, selection_reason
+        FROM structure_computation_scope
+        WHERE structure_id = :structure_id
+        """,
+        {"structure_id": structure_id},
+    )
+
+    run_metadata = await _resolve_latest_productive_run_metadata(structure_id, db)
+    graph_task = get_graph_metrics(
+        structure_id=structure_id,
+        run_id=run_metadata.get("graph_metrics", {}).get("run_id"),
+        db=db,
+    )
+    snapshot_results = await asyncio.gather(
+        _fetch_embeddings_for_hydration(
+            structure_id,
+            db,
+            run_id=run_metadata.get("embeddings", {}).get("run_id"),
+        ),
+        graph_task,
+        _fetch_source_leaks_for_snapshot(
+            structure_id,
+            db,
+            run_id=run_metadata.get("source_leaks", {}).get("run_id"),
+        ),
+        _fetch_allosteric_sites_for_snapshot(
+            structure_id,
+            db,
+            run_id=run_metadata.get("allosteric_sites", {}).get("run_id"),
+        ),
+        _fetch_phase2_vulnerability(
+            structure_id,
+            db,
+            run_id=run_metadata.get("phase2_vulnerability", {}).get("run_id"),
+        ),
+        _fetch_phase4_resistance(
+            structure_id,
+            db,
+            run_id=run_metadata.get("phase4_resistance", {}).get("run_id"),
+        ),
+        _fetch_phase5_pharmacophore(
+            structure_id,
+            db,
+            run_id=run_metadata.get("pharmacophores", {}).get("run_id"),
+        ),
+        _fetch_phase6_drug_candidates(
+            structure_id,
+            db,
+            run_id=run_metadata.get("drug_candidates", {}).get("run_id"),
+        ),
+        return_exceptions=True,
+    )
+
+    def _safe(result: Any) -> Any:
+        return None if isinstance(result, BaseException) else result
+
+    embeddings = _safe(snapshot_results[0])
+    graph_result = _safe(snapshot_results[1])
+    source_leaks = _safe(snapshot_results[2])
+    allosteric_sites = _safe(snapshot_results[3])
+    phase2_vulnerability = _safe(snapshot_results[4])
+    phase4_resistance = _safe(snapshot_results[5])
+    pharmacophores = _safe(snapshot_results[6])
+    drug_candidates = _safe(snapshot_results[7])
+    graph_metrics = (
+        graph_result.data
+        if graph_result and hasattr(graph_result, "success")
+        and graph_result.success and graph_result.data.get("metrics")
+        else None
+    )
+
+    latest_run_ids_by_pipeline = {
+        key: meta["run_id"]
+        for key, meta in run_metadata.items()
+        if meta and meta.get("run_id")
+    }
+    latest_model_versions = {
+        key: meta.get("model_version")
+        for key, meta in run_metadata.items()
+        if meta and meta.get("model_version")
+    }
+
+    return {
+        "structure": structure,
+        "scope": scope or {
+            "primary_chain_ids": [],
+            "reference_chain": None,
+            "exclude_chain_ids": [],
+            "normalization_protocol": None,
+            "scope_source": None,
+            "selection_reason": None,
+        },
+        "provenance": {
+            "latest_run_ids_by_pipeline": latest_run_ids_by_pipeline,
+            "latest_model_versions": latest_model_versions,
+        },
+        "curvature": embeddings.get("curvature", 1.0) if embeddings else 1.0,
+        "residues": embeddings.get("residues", []) if embeddings else [],
+        "graph_metrics": graph_metrics,
+        "findings": {
+            "source_leaks": source_leaks,
+            "allosteric_sites": allosteric_sites,
+            "vulnerability_doorways": phase2_vulnerability,
+            "resistance": phase4_resistance,
+            "pharmacophores": pharmacophores,
+            "drug_candidates": drug_candidates,
+        },
+        "status": {
+            "embeddings_persisted": embeddings is not None,
+            "graph_persisted": graph_metrics is not None,
+            "sites_persisted": allosteric_sites is not None,
+            "phase2_persisted": phase2_vulnerability is not None,
+            "phase4_persisted": phase4_resistance is not None,
+            "phase5_persisted": pharmacophores is not None,
+            "phase6_persisted": drug_candidates is not None,
+        },
+    }
+
+
+async def _resolve_latest_productive_run_metadata(
+    structure_id: str,
+    db,
+) -> dict[str, dict[str, Any]]:
+    """Resolve the latest productive run per persisted surface for a structure."""
+    from agent.tools.dtie.tools import ToolDB
+
+    tool_db = ToolDB(db)
+    table_map = {
+        "embeddings": "fact_gnn_node_embedding",
+        "graph_metrics": "fact_graph_node_metrics",
+        "source_leaks": "fact_source_leak",
+        "allosteric_sites": "fact_allosteric_site",
+        "phase2_vulnerability": "fact_phase2_vulnerability",
+        "phase4_resistance": "fact_resistance_spectral",
+        "pharmacophores": "fact_pharmacophore",
+        "drug_candidates": "fact_drug_candidate",
+    }
+
+    async def _for_table(table_name: str) -> dict[str, Any] | None:
+        return await tool_db.fetch_one(
+            f"""
+            SELECT f.run_id, p.pipeline_name, p.model_version,
+                   COALESCE(p.completed_at, p.started_at) AS run_ts
+            FROM {table_name} f
+            JOIN provenance_run p ON p.run_id = f.run_id
+            WHERE f.structure_id = :structure_id
+              AND COALESCE(p.parameters->>'audit_only', 'false') != 'true'
+            ORDER BY run_ts DESC, f.computed_at DESC
+            LIMIT 1
+            """,
+            {"structure_id": structure_id},
+        )
+
+    rows = await asyncio.gather(*[_for_table(table_name) for table_name in table_map.values()])
+    return {
+        key: row
+        for key, row in zip(table_map.keys(), rows, strict=False)
+        if row
+    }
+
+
+async def _fetch_source_leaks_for_snapshot(
+    structure_id: str,
+    db,
+    run_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Fetch canonical source-leak facts for a single productive run."""
+    if not run_id:
+        return None
+
+    from agent.tools.dtie.tools import ToolDB
+
+    tool_db = ToolDB(db)
+    rows = await tool_db.fetch_all(
+        """
+        SELECT residue_id, epistemic_uncertainty, cone_depth, leak_score,
+               is_confirmed, computed_at
+        FROM fact_source_leak
+        WHERE structure_id = :structure_id
+          AND run_id = :run_id
+        ORDER BY leak_score DESC, epistemic_uncertainty DESC
+        """,
+        {"structure_id": structure_id, "run_id": run_id},
+    )
+    if not rows:
+        return None
+    return {
+        "structure_id": structure_id,
+        "run_id": run_id,
+        "source_leaks": rows,
+        "count": len(rows),
+    }
+
+
+async def _fetch_allosteric_sites_for_snapshot(
+    structure_id: str,
+    db,
+    run_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Fetch canonical allosteric site facts for a single productive run."""
+    if not run_id:
+        return None
+
+    from agent.tools.dtie.tools import ToolDB
+
+    tool_db = ToolDB(db)
+    site_rows = await tool_db.fetch_all(
+        """
+        SELECT site_id, centroid_x, centroid_y, centroid_z,
+               confidence_score, cluster_method, n_residues, computed_at
+        FROM fact_allosteric_site
+        WHERE structure_id = :structure_id
+          AND run_id = :run_id
+        ORDER BY confidence_score DESC NULLS LAST
+        """,
+        {"structure_id": structure_id, "run_id": run_id},
+    )
+    if not site_rows:
+        return None
+
+    member_rows = await tool_db.fetch_all(
+        """
+        SELECT m.site_id, m.residue_id, m.contribution_score,
+               r.residue_index, r.residue_name, c.chain_label
+        FROM fact_allosteric_site_residue m
+        JOIN dim_residue r ON r.residue_id = m.residue_id
+        JOIN dim_chain c ON c.chain_id = r.chain_id
+        WHERE m.run_id = :run_id
+        ORDER BY m.site_id, r.residue_index
+        """,
+        {"run_id": run_id},
+    )
+
+    members_by_site: dict[str, list[dict[str, Any]]] = {}
+    for row in member_rows:
+        members_by_site.setdefault(row["site_id"], []).append(dict(row))
+
+    sites = []
+    for row in site_rows:
+        residues = members_by_site.get(row["site_id"], [])
+        residue_ids = [member["residue_id"] for member in residues]
+        site = dict(row)
+        site["residue_ids"] = residue_ids
+        site["residues"] = residues
+        site["residue_count"] = len(residue_ids)
+        sites.append(site)
+
+    return {
+        "structure_id": structure_id,
+        "run_id": run_id,
+        "sites": sites,
+        "count": len(sites),
+        "total_residues": sum(site["residue_count"] for site in sites),
+    }
+
+
 async def _fetch_annotations_for_hydration(structure_id: str, db) -> list[dict[str, Any]] | None:
     """Fetch annotations for hydration (returns list or None)."""
     from agent.tools.dtie.tools import ToolDB
@@ -958,7 +1251,11 @@ async def _fetch_annotations_for_hydration(structure_id: str, db) -> list[dict[s
     return rows if rows else None
 
 
-async def _fetch_phase2_vulnerability(structure_id: str, db) -> dict[str, Any] | None:
+async def _fetch_phase2_vulnerability(
+    structure_id: str,
+    db,
+    run_id: str | None = None,
+) -> dict[str, Any] | None:
     """Fetch Phase 2 vulnerability doorway data for hydration.
 
     Requirements: 7.1
@@ -966,15 +1263,22 @@ async def _fetch_phase2_vulnerability(structure_id: str, db) -> dict[str, Any] |
     from agent.tools.dtie.tools import ToolDB
 
     tool_db = ToolDB(db)
+    params: dict[str, Any] = {"structure_id": structure_id}
+    run_filter = ""
+    if run_id:
+        run_filter = " AND run_id = :run_id"
+        params["run_id"] = run_id
+
     rows = await tool_db.fetch_all(
-        """
+        f"""
         SELECT residue_id, cone_depth, epistemic_uncertainty,
                aleatoric_uncertainty, depth_threshold, computed_at
         FROM fact_phase2_vulnerability
         WHERE structure_id = :structure_id
+          {run_filter}
         ORDER BY epistemic_uncertainty DESC
         """,
-        {"structure_id": structure_id},
+        params,
     )
 
     if not rows:
@@ -982,6 +1286,7 @@ async def _fetch_phase2_vulnerability(structure_id: str, db) -> dict[str, Any] |
 
     return {
         "structure_id": structure_id,
+        "run_id": run_id,
         "doorways": rows,
         "count": len(rows),
     }
@@ -1075,7 +1380,11 @@ def _compute_resistance_sensitivity(
     }
 
 
-async def _fetch_phase4_resistance(structure_id: str, db) -> dict[str, Any] | None:
+async def _fetch_phase4_resistance(
+    structure_id: str,
+    db,
+    run_id: str | None = None,
+) -> dict[str, Any] | None:
     """Fetch Phase 4 resistance pathway data for hydration.
 
     Resolves bare residue indices (common in pathway storage) to full
@@ -1130,15 +1439,22 @@ async def _fetch_phase4_resistance(structure_id: str, db) -> dict[str, Any] | No
                 return rid
         return ids[0]
 
+    params: dict[str, Any] = {"structure_id": structure_id}
+    run_filter = ""
+    if run_id:
+        run_filter = " AND run_id = :run_id"
+        params["run_id"] = run_id
+
     pathways_raw = await tool_db.fetch_all(
-        """
+        f"""
         SELECT source_node, target_node, source_residue, target_residue,
                effective_resistance, coupling_strength, computed_at
         FROM fact_resistance_pathway
         WHERE structure_id = :structure_id
+          {run_filter}
         ORDER BY effective_resistance DESC
         """,
-        {"structure_id": structure_id},
+        params,
     )
 
     # Resolve to full IDs for reliable matching in enrichment + frontend filters
@@ -1153,14 +1469,15 @@ async def _fetch_phase4_resistance(structure_id: str, db) -> dict[str, Any] | No
         resolved_pathways.append(p)
 
     spectral = await tool_db.fetch_one(
-        """
+        f"""
         SELECT lambda_2, hinge_residues, graph_nodes, graph_edges, computed_at
         FROM fact_resistance_spectral
         WHERE structure_id = :structure_id
+          {run_filter}
         ORDER BY computed_at DESC
         LIMIT 1
         """,
-        {"structure_id": structure_id},
+        params,
     )
 
     if not resolved_pathways and not spectral:
@@ -1168,13 +1485,18 @@ async def _fetch_phase4_resistance(structure_id: str, db) -> dict[str, Any] | No
 
     return {
         "structure_id": structure_id,
+        "run_id": run_id,
         "pathways": resolved_pathways,
         "spectral": spectral,
         "pathway_count": len(resolved_pathways),
     }
 
 
-async def _fetch_phase5_pharmacophore(structure_id: str, db) -> dict[str, Any] | None:
+async def _fetch_phase5_pharmacophore(
+    structure_id: str,
+    db,
+    run_id: str | None = None,
+) -> dict[str, Any] | None:
     """Fetch Phase 5 pharmacophore data for hydration.
 
     Maps residue indices to residue_ids for frontend highlighting.
@@ -1186,16 +1508,23 @@ async def _fetch_phase5_pharmacophore(structure_id: str, db) -> dict[str, Any] |
     tool_db = ToolDB(db)
     
     # 1. Fetch pharmacophores
+    params: dict[str, Any] = {"structure_id": structure_id}
+    run_filter = ""
+    if run_id:
+        run_filter = " AND run_id = :run_id"
+        params["run_id"] = run_id
+
     pharma_rows = await tool_db.fetch_all(
-        """
+        f"""
         SELECT pocket_index, center_x, center_y, center_z,
                druggability_score, residue_count, residue_indices,
                allosteric_coupling, volume_estimate, computed_at
         FROM fact_pharmacophore
         WHERE structure_id = :structure_id
+          {run_filter}
         ORDER BY druggability_score DESC
         """,
-        {"structure_id": structure_id},
+        params,
     )
 
     if not pharma_rows:
@@ -1262,12 +1591,17 @@ async def _fetch_phase5_pharmacophore(structure_id: str, db) -> dict[str, Any] |
 
     return {
         "structure_id": structure_id,
+        "run_id": run_id,
         "pharmacophores": enriched_pharmacophores,
         "count": len(enriched_pharmacophores),
     }
 
 
-async def _fetch_phase6_drug_candidates(structure_id: str, db) -> dict[str, Any] | None:
+async def _fetch_phase6_drug_candidates(
+    structure_id: str,
+    db,
+    run_id: str | None = None,
+) -> dict[str, Any] | None:
     """Fetch Phase 6 drug candidate data for hydration.
 
     Requirements: 7.4
@@ -1275,17 +1609,24 @@ async def _fetch_phase6_drug_candidates(structure_id: str, db) -> dict[str, Any]
     from agent.tools.dtie.tools import ToolDB
 
     tool_db = ToolDB(db)
+    params: dict[str, Any] = {"structure_id": structure_id}
+    run_filter = ""
+    if run_id:
+        run_filter = " AND run_id = :run_id"
+        params["run_id"] = run_id
+
     rows = await tool_db.fetch_all(
-        """
+        f"""
         SELECT pocket_index, center_x, center_y, center_z,
                accessibility_score, binding_potential, admet_pass,
                selectivity_ratio, is_state_selective,
                combined_druggability, computed_at
         FROM fact_drug_candidate
         WHERE structure_id = :structure_id
+          {run_filter}
         ORDER BY combined_druggability DESC
         """,
-        {"structure_id": structure_id},
+        params,
     )
 
     if not rows:
@@ -1293,6 +1634,7 @@ async def _fetch_phase6_drug_candidates(structure_id: str, db) -> dict[str, Any]
 
     return {
         "structure_id": structure_id,
+        "run_id": run_id,
         "candidates": rows,
         "count": len(rows),
         "admet_passed_count": sum(1 for r in rows if r.get("admet_pass")),
@@ -1491,10 +1833,13 @@ def _build_context_block(context: dict[str, Any]) -> str:
 
     # Enriched format
     sections: list[str] = []
+    snapshot = context.get("structure_snapshot") or {}
 
     # Section 1: Structure
     structure_id = context.get("structure_id") or context.get("active_structure_id")
     structure_title = context.get("structure_title")
+    if not structure_title and snapshot.get("structure"):
+        structure_title = snapshot["structure"].get("title")
     if structure_id:
         s = f"Structure: {structure_id}"
         if structure_title:
@@ -1528,6 +1873,14 @@ def _build_context_block(context: dict[str, Any]) -> str:
 
     # Section 4: Data Availability
     ds = context.get("data_summary")
+    if not ds and snapshot:
+        findings = snapshot.get("findings", {})
+        ds = {
+            "residue_count": len(snapshot.get("residues", [])),
+            "source_leak_count": findings.get("source_leaks", {}).get("count", 0)
+            if findings.get("source_leaks") else 0,
+            "persistence_status": snapshot.get("status", {}),
+        }
     if ds:
         lines = [f"Data: {ds.get('residue_count', 0)} residues, {ds.get('source_leak_count', 0)} source leaks"]
         if ds.get("hypothesis_count"):
