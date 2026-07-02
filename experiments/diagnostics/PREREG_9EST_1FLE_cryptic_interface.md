@@ -23,8 +23,8 @@
 
 ### 0.1 Freeze record
 
-- Frozen commit hash: `__________` *(fill at `git commit`)*
-- Frozen UTC timestamp: `__________`
+- Frozen commit hash: `57f81d8988ce033cbba81500e521efc01a2f03ee`
+- Frozen UTC timestamp: `2026-07-02T13:58:31Z`
 - Tokyo Eye / DTIE model commit under test: `lever_a_clean_slate_v1/v6_best_disc.pt`
 - PeSTo version / webserver date under test: `__________` *(fill at Phase 2)*
 
