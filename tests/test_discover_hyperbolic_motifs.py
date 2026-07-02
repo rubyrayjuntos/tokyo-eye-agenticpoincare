@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from science.dtie.common.curvature_loader import CANONICAL_V6_CURVATURE
 from scripts.discover_hyperbolic_motifs import (
     choose_best_k,
     load_filtered_rows,
@@ -113,14 +114,14 @@ def test_parse_args_normalizes_csv_inputs() -> None:
 
 def test_validate_embeddings_and_distance_matrix_match_shared_geometry() -> None:
     df = _sample_df()
-    validate_embeddings(df, dim=128, curvature=0.6054342985153198, stored_curvature=0.6054342985153198)
+    validate_embeddings(df, dim=128, curvature=CANONICAL_V6_CURVATURE, stored_curvature=CANONICAL_V6_CURVATURE)
 
     x = np.vstack(df["embedding_double"].apply(lambda value: np.asarray(value, dtype=np.float64)))
-    expected = hyperbolic_pairwise_distance(x, c=0.6054342985153198)
-    actual = poincare_distance_matrix(x, c=0.6054342985153198)
+    expected = hyperbolic_pairwise_distance(x, c=CANONICAL_V6_CURVATURE)
+    actual = poincare_distance_matrix(x, c=CANONICAL_V6_CURVATURE)
     blockwise = poincare_distance_matrix(
         x,
-        c=0.6054342985153198,
+        c=CANONICAL_V6_CURVATURE,
         block_size=2,
         blockwise_threshold=2,
     )
@@ -134,13 +135,13 @@ def test_validate_embeddings_rejects_out_of_ball() -> None:
     df.at[df.index[0], "embedding_double"] = [1.6] + [0.0] * 127
 
     with pytest.raises(ValueError, match="violates Poincare ball bounds"):
-        validate_embeddings(df, dim=128, curvature=0.6054342985153198)
+        validate_embeddings(df, dim=128, curvature=CANONICAL_V6_CURVATURE)
 
 
 def test_score_clusters_and_choose_best_k() -> None:
     df = _sample_df()
     x = np.vstack(df["embedding_double"].apply(lambda value: np.asarray(value, dtype=np.float64)))
-    distance_matrix = poincare_distance_matrix(x, c=0.6054342985153198)
+    distance_matrix = poincare_distance_matrix(x, c=CANONICAL_V6_CURVATURE)
 
     labels = np.array([0, 0, 1, 1], dtype=np.int64)
     medoid_indices = np.array([0, 2], dtype=np.int64)
@@ -187,7 +188,7 @@ async def test_load_filtered_rows_builds_governed_query(validating_mock_db) -> N
                 "betweenness": 0.2,
                 "degree": 5,
                 "space_name": "space_gospconemapper_v6_hyp128",
-                "stored_curvature": 0.6054342985153198,
+                "stored_curvature": CANONICAL_V6_CURVATURE,
             }
         ],
     )
@@ -216,7 +217,7 @@ async def test_load_filtered_rows_builds_governed_query(validating_mock_db) -> N
 def test_write_artifacts_emits_expected_files(tmp_path) -> None:
     df = _sample_df()
     x = np.vstack(df["embedding_double"].apply(lambda value: np.asarray(value, dtype=np.float64)))
-    distance_matrix = poincare_distance_matrix(x, c=0.6054342985153198)
+    distance_matrix = poincare_distance_matrix(x, c=CANONICAL_V6_CURVATURE)
     labels = np.array([0, 0, 1, 1], dtype=np.int64)
     medoid_indices = np.array([0, 2], dtype=np.int64)
     membership, summary = score_clusters(df, distance_matrix, labels, medoid_indices)
@@ -243,10 +244,11 @@ def test_write_artifacts_emits_expected_files(tmp_path) -> None:
         k_sweep_summary=k_sweep,
         selected_k=2,
         args=args,
+        curvature=CANONICAL_V6_CURVATURE,
         load_metadata={
             "row_count": 4,
             "structure_count": 2,
-            "stored_curvature": 0.6054342985153198,
+            "stored_curvature": CANONICAL_V6_CURVATURE,
             "sql_query": "SELECT ...",
             "sql_params": {"space": "space_gospconemapper_v6_hyp128"},
         },
