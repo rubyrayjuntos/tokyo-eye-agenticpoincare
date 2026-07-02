@@ -32,12 +32,12 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from data.db import DBAdapter, get_connection as pooled_get_connection, open_pool
+from science.dtie.common.curvature_loader import get_curvature
 from science.dtie.common.hyperbolic_utils import hyperbolic_pairwise_distance
 
 LOGGER = logging.getLogger(__name__)
 
 DEFAULT_SPACE = "space_gospconemapper_v6_hyp128"
-DEFAULT_CURVATURE = 0.6054342985153198
 DEFAULT_K_RANGE = [8, 10, 12, 16, 20]
 DEFAULT_RANDOM_STATE = 42
 DEFAULT_BLOCKWISE_THRESHOLD = 7000
@@ -87,12 +87,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--space", type=str, default=DEFAULT_SPACE, help="Embedding space id or name")
     parser.add_argument("--dsn", type=str, default=None, help="Optional Postgres DSN override")
-    parser.add_argument(
-        "--curvature",
-        type=float,
-        default=DEFAULT_CURVATURE,
-        help=f"Poincare curvature parameter c (default: {DEFAULT_CURVATURE})",
-    )
     parser.add_argument(
         "--cone-depth-min",
         type=float,
@@ -192,8 +186,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--top-k-clusters must be a positive integer")
     if args.block_size <= 0:
         parser.error("--block-size must be a positive integer")
-    if args.curvature <= 0:
-        parser.error("--curvature must be positive")
     return args
 
 
@@ -657,6 +649,7 @@ def write_artifacts(
     k_sweep_summary: pd.DataFrame,
     selected_k: int,
     args: argparse.Namespace,
+    curvature: float,
     load_metadata: dict[str, Any],
     runtime_seconds: float,
     distance_matrix: np.ndarray | None,
@@ -725,7 +718,7 @@ def write_artifacts(
         "timestamp": datetime.now(UTC).isoformat(),
         "git_commit": _resolve_git_commit(),
         "space": args.space,
-        "requested_curvature": args.curvature,
+        "requested_curvature": curvature,
         "stored_curvature": load_metadata.get("stored_curvature"),
         "filters": {
             "cone_depth_min": args.cone_depth_min,
@@ -784,18 +777,19 @@ async def async_main(argv: list[str] | None = None) -> int:
     start_time = time.perf_counter()
 
     async with get_db_adapter(args.dsn) as db:
+        curvature = await get_curvature(args.space, db=db)
         df, load_metadata = await load_filtered_rows(db, args)
 
     validate_embeddings(
         df,
         dim=EXPECTED_EMBEDDING_DIM,
-        curvature=args.curvature,
+        curvature=curvature,
         stored_curvature=load_metadata.get("stored_curvature"),
     )
     embedding_matrix = embeddings_to_matrix(df)
     distance_matrix = poincare_distance_matrix(
         embedding_matrix,
-        args.curvature,
+        curvature,
         block_size=args.block_size,
     )
     validate_distance_matrix(distance_matrix)
@@ -837,6 +831,7 @@ async def async_main(argv: list[str] | None = None) -> int:
         k_sweep_summary=k_sweep_summary,
         selected_k=selected_k,
         args=args,
+        curvature=curvature,
         load_metadata=load_metadata,
         runtime_seconds=time.perf_counter() - start_time,
         distance_matrix=distance_matrix,

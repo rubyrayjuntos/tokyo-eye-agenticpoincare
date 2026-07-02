@@ -65,13 +65,12 @@ import numpy as np
 
 from data.db import get_connection, DBAdapter  # hardened connection layer
 from data.db_helpers.vector_queries import poincare_ball_distance  # correct Poincaré (stereographic) math for GNNv6
+from science.dtie.common.curvature_loader import get_curvature_for_space_id
 
 logger = logging.getLogger(__name__)
 
-# Curvature for v6 space (GOSPConeMapper-v6, extracted from checkpoint)
-V6_C = 0.6054342985153198
 
-def _poincare_distance_np(u: np.ndarray, v: np.ndarray) -> float:
+def _poincare_distance_np(u: np.ndarray, v: np.ndarray, curvature_c: float) -> float:
     """
     Pure NumPy implementation of the correct Poincaré ball distance for GNNv6 embeddings.
     Replaces the old Lorentz formula (which produced the 0.0000 artifact on ball coordinates).
@@ -79,7 +78,7 @@ def _poincare_distance_np(u: np.ndarray, v: np.ndarray) -> float:
     """
     if u.shape != v.shape:
         raise ValueError("Embedding vectors must have identical shape.")
-    return poincare_ball_distance(u, v, V6_C)
+    return poincare_ball_distance(u, v, curvature_c)
 
 
 async def _fetch_hyperbolic_embeddings(
@@ -171,6 +170,12 @@ async def populate_hyperbolic_distances(
     structure_id = structure_id.lower()
     logger.info("Starting hyperbolic distance population for %s / %s", structure_id, space_id)
 
+    if db is not None:
+        curvature_c = await get_curvature_for_space_id(space_id, db=db)
+    else:
+        async with get_connection() as conn:
+            curvature_c = await get_curvature_for_space_id(space_id, db=DBAdapter(conn))
+
     # === PHASE 1: FETCH (short connection lifetime) ===
     # We deliberately do NOT hold any connection across the upcoming compute.
     if db is not None:
@@ -217,12 +222,12 @@ async def populate_hyperbolic_distances(
             for j in range(n):
                 if li == j:
                     continue
-                dist = _poincare_distance_np(emb_matrix[li], emb_matrix[j])
+                dist = _poincare_distance_np(emb_matrix[li], emb_matrix[j], curvature_c)
                 pairs.append((residue_ids[li], residue_ids[j], dist))
     else:
         for i in range(n):
             for j in range(i + 1, n):
-                dist = _poincare_distance_np(emb_matrix[i], emb_matrix[j])
+                dist = _poincare_distance_np(emb_matrix[i], emb_matrix[j], curvature_c)
                 pairs.append((residue_ids[i], residue_ids[j], dist))
 
     logger.info("Computed %d Lorentz distances for %s (compute performed with no DB connection held)", len(pairs), structure_id)

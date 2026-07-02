@@ -22,6 +22,7 @@ from typing import Any, Optional
 import numpy as np
 
 from data.db import get_connection, DBAdapter
+from science.dtie.common.curvature_loader import get_curvature_for_space_id
 
 
 def _lorentz_distance_np(u: np.ndarray, v: np.ndarray) -> float:
@@ -97,7 +98,7 @@ async def find_hyperbolic_neighbors(
     exclude_structure_id: str | None = None,
     target_residue_id: str | None = None,  # If provided, try precomputed table first
     db: Any = None,  # If provided, reuse caller's DBAdapter instead of acquiring new conn (pool + tx hygiene)
-    curvature_c: float = 0.6054343,  # v6 model curvature (softplus(log_c)+eps). Must match the GNN run that produced the embeddings.
+    curvature_c: float | None = None,  # Default: SSOT from embedding_space via get_curvature()
     # New cross-protein discovery filters (applied in Python fallback path for flexibility)
     exclude_structures: list[str] | None = None,  # e.g. ["3oxz", "3cs9", "1iep"]
     include_structures: list[str] | None = None,  # e.g. specific proteins or families mapped to IDs
@@ -119,11 +120,17 @@ async def find_hyperbolic_neighbors(
     if not target_vector:
         raise ValueError("target_vector cannot be empty")
 
+    async def _resolve_curvature(adapter: Any) -> float:
+        if curvature_c is not None:
+            return float(curvature_c)
+        return await get_curvature_for_space_id(space_id, db=adapter)
+
     # Support injected db (from agent tool context or caller) to avoid extra pool acquire
     # and to share the transaction/connection for embedding fetch + neighbor search.
     if db is None:
         async with get_connection() as conn:
             db = DBAdapter(conn)
+            resolved_c = await _resolve_curvature(db)
             return await _find_hyperbolic_neighbors_impl(
                 db=db,
                 target_vector=target_vector,
@@ -133,13 +140,13 @@ async def find_hyperbolic_neighbors(
                 limit=limit,
                 exclude_structure_id=exclude_structure_id,
                 target_residue_id=target_residue_id,
-                curvature_c=curvature_c,
+                curvature_c=resolved_c,
                 exclude_structures=exclude_structures,
                 include_structures=include_structures,
                 distance_max=distance_max,
             )
-    else:
-        return await _find_hyperbolic_neighbors_impl(
+    resolved_c = await _resolve_curvature(db)
+    return await _find_hyperbolic_neighbors_impl(
             db=db,
             target_vector=target_vector,
             space_id=space_id,
@@ -147,12 +154,12 @@ async def find_hyperbolic_neighbors(
             leak_score_min=leak_score_min,
             limit=limit,
             exclude_structure_id=exclude_structure_id,
-            target_residue_id=target_residue_id,
-            curvature_c=curvature_c,
-            exclude_structures=exclude_structures,
-            include_structures=include_structures,
-            distance_max=distance_max,
-        )
+        target_residue_id=target_residue_id,
+        curvature_c=resolved_c,
+        exclude_structures=exclude_structures,
+        include_structures=include_structures,
+        distance_max=distance_max,
+    )
 
 
 async def _find_hyperbolic_neighbors_impl(

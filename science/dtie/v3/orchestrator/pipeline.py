@@ -1436,12 +1436,6 @@ def main():
         help="Number of landmark witness points for Phase 1 (default: 200)",
     )
     parser.add_argument(
-        "--curvature-c",
-        type=float,
-        default=None,
-        help="Override Poincaré curvature c (overrides checkpoint value; default: from checkpoint or 1.0)",
-    )
-    parser.add_argument(
         "--top-n-screen",
         type=int,
         default=500,
@@ -1529,7 +1523,6 @@ def main():
             top_n_dock=args.top_n_dock,
             effector_sites=args.effectors,
             return_internal=args.test_glu697,
-            curvature_c_override=args.curvature_c,
             pipeline_mode=args.pipeline_mode,
         )
 
