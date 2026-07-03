@@ -103,6 +103,20 @@ Resolved **before** redundancy matrix run. No new policy — each row cites an e
 |-----|--------|--------|
 | 1CHO | `chain: A` has no CATH; domains on F/G/I | **Defer fix, exclude Stage A.** Re-entry requires chain correction + re-probe |
 
+### 3.7 Locked review dispositions — TM-align draft (2026-07-03)
+
+Applied to `corpus_redundancy_report_tmalign.json` via `lock_stage_a_corpus.py`. Metric: `tm_align_tmtools`.
+
+| PDB:chain | Action | Rule |
+|-----------|--------|------|
+| 1SUP:A | train → holdout | `CROSS_FOLD_HIGH_TM` vs 4OBE (CATH sibling `3.40.50.200`); SOD filler yields to GTPase centrality |
+| 2ABD:A | train → holdout | `CROSS_FOLD_HIGH_TM` hub (9 pairs); acyl-carrier filler mimics multiple fold trains |
+| 3CON:A | holdout → train | GTPase **cap-2 biological-centrality override** — structurally farthest RAS paralog from 4OBE (TM=0.894) |
+
+**GTPase cap-2 principle (locked):** fold `3.40.50.300` carries 2 train slots (`4OBE:A` + `3CON:A`) by documented biological-centrality override, not algorithm-default cap-1. Identity dedup still governs KRAS-variant collapse; the second slot is paralog diversity (NRAS), not a third KRAS mutant.
+
+**Locked output:** 25 train / 16 holdout, 0 cross-fold high-TM violations among train pairs.
+
 ---
 
 ## 4. Redundancy script
