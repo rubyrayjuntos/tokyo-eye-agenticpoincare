@@ -1,0 +1,298 @@
+{
+  "4mne": {
+    "CATH": {
+      "3.30.200.20": {
+        "name": "Dual specificity mitogen-activated protein kinase kinase 1. Chain: a,d, e, h. Fragment: unp residues 62-393. Synonym: map kinase kinase 1,mapkk 1, mkk1, erk activator kinase 1, mapk/erk kinase 1, mek 1. Engineered: yes. Serine/threonine-protein kinase b-raf. Chain: b, c, f, g.Fragment: kinase domain (unp residues 432-726). Synonym: braf, proto-oncogene b-raf, p94, v-raf murine sarcoma viral oncogene homolog b1. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "2-Layer Sandwich",
+        "topology": "Phosphorylase Kinase; domain 1",
+        "homology": "Phosphorylase Kinase; domain 1",
+        "mappings": [
+          {
+            "domain": "4mneA01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 63,
+              "author_insertion_code": "",
+              "residue_number": 3
+            },
+            "end": {
+              "author_residue_number": 146,
+              "author_insertion_code": "",
+              "residue_number": 86
+            }
+          },
+          {
+            "domain": "4mneB01",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 449,
+              "author_insertion_code": "",
+              "residue_number": 30
+            },
+            "end": {
+              "author_residue_number": 533,
+              "author_insertion_code": "",
+              "residue_number": 114
+            }
+          },
+          {
+            "domain": "4mneC01",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "C",
+            "struct_asym_id": "C",
+            "start": {
+              "author_residue_number": 449,
+              "author_insertion_code": "",
+              "residue_number": 30
+            },
+            "end": {
+              "author_residue_number": 533,
+              "author_insertion_code": "",
+              "residue_number": 114
+            }
+          },
+          {
+            "domain": "4mneD01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "D",
+            "struct_asym_id": "D",
+            "start": {
+              "author_residue_number": 66,
+              "author_insertion_code": "",
+              "residue_number": 6
+            },
+            "end": {
+              "author_residue_number": 146,
+              "author_insertion_code": "",
+              "residue_number": 86
+            }
+          },
+          {
+            "domain": "4mneE01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "E",
+            "struct_asym_id": "E",
+            "start": {
+              "author_residue_number": 62,
+              "author_insertion_code": "",
+              "residue_number": 2
+            },
+            "end": {
+              "author_residue_number": 146,
+              "author_insertion_code": "",
+              "residue_number": 86
+            }
+          },
+          {
+            "domain": "4mneF01",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "F",
+            "struct_asym_id": "F",
+            "start": {
+              "author_residue_number": 449,
+              "author_insertion_code": "",
+              "residue_number": 30
+            },
+            "end": {
+              "author_residue_number": 533,
+              "author_insertion_code": "",
+              "residue_number": 114
+            }
+          },
+          {
+            "domain": "4mneG01",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "G",
+            "struct_asym_id": "G",
+            "start": {
+              "author_residue_number": 449,
+              "author_insertion_code": "",
+              "residue_number": 30
+            },
+            "end": {
+              "author_residue_number": 533,
+              "author_insertion_code": "",
+              "residue_number": 114
+            }
+          },
+          {
+            "domain": "4mneH01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "H",
+            "struct_asym_id": "H",
+            "start": {
+              "author_residue_number": 66,
+              "author_insertion_code": "",
+              "residue_number": 6
+            },
+            "end": {
+              "author_residue_number": 146,
+              "author_insertion_code": "",
+              "residue_number": 86
+            }
+          }
+        ],
+        "identifier": "Phosphorylase Kinase; domain 1"
+      },
+      "1.10.510.10": {
+        "name": "Dual specificity mitogen-activated protein kinase kinase 1. Chain: a,d, e, h. Fragment: unp residues 62-393. Synonym: map kinase kinase 1,mapkk 1, mkk1, erk activator kinase 1, mapk/erk kinase 1, mek 1. Engineered: yes. Serine/threonine-protein kinase b-raf. Chain: b, c, f, g.Fragment: kinase domain (unp residues 432-726). Synonym: braf, proto-oncogene b-raf, p94, v-raf murine sarcoma viral oncogene homolog b1. Engineered: yes",
+        "class": "Mainly Alpha",
+        "architecture": "Orthogonal Bundle",
+        "topology": "Transferase(Phosphotransferase); domain 1",
+        "homology": "Transferase(Phosphotransferase) domain 1",
+        "mappings": [
+          {
+            "domain": "4mneA02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 147,
+              "author_insertion_code": "",
+              "residue_number": 87
+            },
+            "end": {
+              "author_residue_number": 379,
+              "author_insertion_code": "",
+              "residue_number": 319
+            }
+          },
+          {
+            "domain": "4mneB02",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 534,
+              "author_insertion_code": "",
+              "residue_number": 115
+            },
+            "end": {
+              "author_residue_number": 722,
+              "author_insertion_code": "",
+              "residue_number": 303
+            }
+          },
+          {
+            "domain": "4mneC02",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "C",
+            "struct_asym_id": "C",
+            "start": {
+              "author_residue_number": 534,
+              "author_insertion_code": "",
+              "residue_number": 115
+            },
+            "end": {
+              "author_residue_number": 720,
+              "author_insertion_code": "",
+              "residue_number": 301
+            }
+          },
+          {
+            "domain": "4mneD02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "D",
+            "struct_asym_id": "D",
+            "start": {
+              "author_residue_number": 147,
+              "author_insertion_code": "",
+              "residue_number": 87
+            },
+            "end": {
+              "author_residue_number": 382,
+              "author_insertion_code": "",
+              "residue_number": 322
+            }
+          },
+          {
+            "domain": "4mneE02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "E",
+            "struct_asym_id": "E",
+            "start": {
+              "author_residue_number": 147,
+              "author_insertion_code": "",
+              "residue_number": 87
+            },
+            "end": {
+              "author_residue_number": 379,
+              "author_insertion_code": "",
+              "residue_number": 319
+            }
+          },
+          {
+            "domain": "4mneF02",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "F",
+            "struct_asym_id": "F",
+            "start": {
+              "author_residue_number": 534,
+              "author_insertion_code": "",
+              "residue_number": 115
+            },
+            "end": {
+              "author_residue_number": 721,
+              "author_insertion_code": "",
+              "residue_number": 302
+            }
+          },
+          {
+            "domain": "4mneG02",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "G",
+            "struct_asym_id": "G",
+            "start": {
+              "author_residue_number": 534,
+              "author_insertion_code": "",
+              "residue_number": 115
+            },
+            "end": {
+              "author_residue_number": 720,
+              "author_insertion_code": "",
+              "residue_number": 301
+            }
+          },
+          {
+            "domain": "4mneH02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "H",
+            "struct_asym_id": "H",
+            "start": {
+              "author_residue_number": 147,
+              "author_insertion_code": "",
+              "residue_number": 87
+            },
+            "end": {
+              "author_residue_number": 380,
+              "author_insertion_code": "",
+              "residue_number": 320
+            }
+          }
+        ],
+        "identifier": "Transferase(Phosphotransferase); domain 1"
+      }
+    }
+  }
+}

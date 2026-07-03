@@ -1,0 +1,33 @@
+{
+  "2z6h": {
+    "CATH": {
+      "1.25.10.10": {
+        "name": "Catenin beta-1. Chain: a. Fragment: armadillo repeat region and c-terminal domain (unp residues 138-781). Synonym: beta-catenin. Engineered:yes",
+        "class": "Mainly Alpha",
+        "architecture": "Alpha Horseshoe",
+        "topology": "Leucine-rich Repeat Variant",
+        "homology": "Leucine-rich Repeat Variant",
+        "mappings": [
+          {
+            "domain": "2z6hA00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 149,
+              "author_insertion_code": "",
+              "residue_number": 12
+            },
+            "end": {
+              "author_residue_number": 691,
+              "author_insertion_code": "",
+              "residue_number": 554
+            }
+          }
+        ],
+        "identifier": "Leucine-rich Repeat Variant"
+      }
+    }
+  }
+}

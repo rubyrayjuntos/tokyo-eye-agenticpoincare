@@ -1,0 +1,33 @@
+{
+  "1r69": {
+    "CATH": {
+      "1.10.260.40": {
+        "name": "Repressor protein ci. Chain: a. Engineered: yes",
+        "class": "Mainly Alpha",
+        "architecture": "Orthogonal Bundle",
+        "topology": "434 Repressor (Amino-terminal Domain)",
+        "homology": "lambda repressor-like DNA-binding domains",
+        "mappings": [
+          {
+            "domain": "1r69A00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 63,
+              "author_insertion_code": "",
+              "residue_number": 63
+            }
+          }
+        ],
+        "identifier": "434 Repressor (Amino-terminal Domain)"
+      }
+    }
+  }
+}

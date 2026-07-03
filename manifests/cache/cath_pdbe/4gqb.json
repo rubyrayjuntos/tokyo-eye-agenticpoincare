@@ -1,0 +1,114 @@
+{
+  "4gqb": {
+    "CATH": {
+      "3.20.20.150": {
+        "name": "Protein arginine n-methyltransferase 5. Chain: a. Synonym: 72 kda icln-binding protein, histone-arginine n- methyltransferase prmt5, jak-binding protein 1, shk1 kinase-binding protein 1 homolog, skb1 homolog, skb1hs, protein arginine n- methyltransferase 5, n-terminally processed., 2.1.1.125. Engineered: yes. Methylosome protein 50. Chain: b. Synonym: mep-50, androgen receptor cofactor p44, wd repeat-containing protein 77, p44/mep50. Engineered: yes. Histone h4 peptide. Chain: c. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "Alpha-Beta Barrel",
+        "topology": "TIM Barrel",
+        "homology": "Divalent-metal-dependent TIM barrel enzymes",
+        "mappings": [
+          {
+            "domain": "4gqbA01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 13,
+              "author_insertion_code": "",
+              "residue_number": 13
+            },
+            "end": {
+              "author_residue_number": 299,
+              "author_insertion_code": "",
+              "residue_number": 299
+            }
+          }
+        ],
+        "identifier": "TIM Barrel"
+      },
+      "3.40.50.150": {
+        "name": "Protein arginine n-methyltransferase 5. Chain: a. Synonym: 72 kda icln-binding protein, histone-arginine n- methyltransferase prmt5, jak-binding protein 1, shk1 kinase-binding protein 1 homolog, skb1 homolog, skb1hs, protein arginine n- methyltransferase 5, n-terminally processed., 2.1.1.125. Engineered: yes. Methylosome protein 50. Chain: b. Synonym: mep-50, androgen receptor cofactor p44, wd repeat-containing protein 77, p44/mep50. Engineered: yes. Histone h4 peptide. Chain: c. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "3-Layer(aba) Sandwich",
+        "topology": "Rossmann fold",
+        "homology": "Vaccinia Virus protein VP39",
+        "mappings": [
+          {
+            "domain": "4gqbA02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 300,
+              "author_insertion_code": "",
+              "residue_number": 300
+            },
+            "end": {
+              "author_residue_number": 466,
+              "author_insertion_code": "",
+              "residue_number": 466
+            }
+          }
+        ],
+        "identifier": "Rossmann fold"
+      },
+      "2.70.160.11": {
+        "name": "Protein arginine n-methyltransferase 5. Chain: a. Synonym: 72 kda icln-binding protein, histone-arginine n- methyltransferase prmt5, jak-binding protein 1, shk1 kinase-binding protein 1 homolog, skb1 homolog, skb1hs, protein arginine n- methyltransferase 5, n-terminally processed., 2.1.1.125. Engineered: yes. Methylosome protein 50. Chain: b. Synonym: mep-50, androgen receptor cofactor p44, wd repeat-containing protein 77, p44/mep50. Engineered: yes. Histone h4 peptide. Chain: c. Engineered: yes",
+        "class": "Mainly Beta",
+        "architecture": "Distorted Sandwich",
+        "topology": "Hnrnp arginine n-methyltransferase1",
+        "homology": "Hnrnp arginine n-methyltransferase1",
+        "mappings": [
+          {
+            "domain": "4gqbA03",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 467,
+              "author_insertion_code": "",
+              "residue_number": 467
+            },
+            "end": {
+              "author_residue_number": 637,
+              "author_insertion_code": "",
+              "residue_number": 637
+            }
+          }
+        ],
+        "identifier": "Hnrnp arginine n-methyltransferase1"
+      },
+      "2.130.10.10": {
+        "name": "Protein arginine n-methyltransferase 5. Chain: a. Synonym: 72 kda icln-binding protein, histone-arginine n- methyltransferase prmt5, jak-binding protein 1, shk1 kinase-binding protein 1 homolog, skb1 homolog, skb1hs, protein arginine n- methyltransferase 5, n-terminally processed., 2.1.1.125. Engineered: yes. Methylosome protein 50. Chain: b. Synonym: mep-50, androgen receptor cofactor p44, wd repeat-containing protein 77, p44/mep50. Engineered: yes. Histone h4 peptide. Chain: c. Engineered: yes",
+        "class": "Mainly Beta",
+        "architecture": "7 Propeller",
+        "topology": "Methylamine Dehydrogenase; Chain H",
+        "homology": "YVTN repeat-like/Quinoprotein amine dehydrogenase",
+        "mappings": [
+          {
+            "domain": "4gqbB00",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 21,
+              "author_insertion_code": "",
+              "residue_number": 23
+            },
+            "end": {
+              "author_residue_number": 329,
+              "author_insertion_code": "",
+              "residue_number": 331
+            }
+          }
+        ],
+        "identifier": "Methylamine Dehydrogenase; Chain H"
+      }
+    }
+  }
+}

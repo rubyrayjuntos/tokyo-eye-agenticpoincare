@@ -69,6 +69,10 @@ checkpoints_v6_hybrid/
 checkpoints_v6_topo/
 # checkpoints_v6_retrained/ — tracked so checkpoint is accessible on branch
 cache/
+!manifests/cache/
+!manifests/cache/**
+!manifests/cache/
+!manifests/cache/**
 results/
 *.sdf
 *.pdb

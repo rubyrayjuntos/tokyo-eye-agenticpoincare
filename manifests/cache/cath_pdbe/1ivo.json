@@ -1,0 +1,172 @@
+{
+  "1ivo": {
+    "CATH": {
+      "3.80.20.20": {
+        "name": "Epidermal growth factor receptor. Chain: a, b. Fragment: extracellulardomains i, ii, ii and iv. Engineered: yes. Epidermal growth factor. Chain: c, d. Fragment: residues 1-53. Synonym: egf. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "Alpha-Beta Horseshoe",
+        "topology": "24 nucleotide stem-loop, u2 snrnp hairpin iv. U2 a'; Chain A",
+        "homology": "Receptor L-domain",
+        "mappings": [
+          {
+            "domain": "1ivoA01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 2,
+              "author_insertion_code": "",
+              "residue_number": 2
+            },
+            "end": {
+              "author_residue_number": 186,
+              "author_insertion_code": "",
+              "residue_number": 186
+            }
+          },
+          {
+            "domain": "1ivoA03",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 310,
+              "author_insertion_code": "",
+              "residue_number": 310
+            },
+            "end": {
+              "author_residue_number": 500,
+              "author_insertion_code": "",
+              "residue_number": 500
+            }
+          },
+          {
+            "domain": "1ivoB01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 3,
+              "author_insertion_code": "",
+              "residue_number": 3
+            },
+            "end": {
+              "author_residue_number": 186,
+              "author_insertion_code": "",
+              "residue_number": 186
+            }
+          },
+          {
+            "domain": "1ivoB03",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 310,
+              "author_insertion_code": "",
+              "residue_number": 310
+            },
+            "end": {
+              "author_residue_number": 500,
+              "author_insertion_code": "",
+              "residue_number": 500
+            }
+          }
+        ],
+        "identifier": "24 nucleotide stem-loop, u2 snrnp hairpin iv. U2 a'; Chain A"
+      },
+      "2.10.220.10": {
+        "name": "Epidermal growth factor receptor. Chain: a, b. Fragment: extracellulardomains i, ii, ii and iv. Engineered: yes. Epidermal growth factor. Chain: c, d. Fragment: residues 1-53. Synonym: egf. Engineered: yes",
+        "class": "Mainly Beta",
+        "architecture": "Ribbon",
+        "topology": "Hormone Receptor, Insulin-like Growth Factor Receptor 1; Chain A domain 2",
+        "homology": "Hormone Receptor, Insulin-like Growth Factor Receptor 1; Chain A, domain 2",
+        "mappings": [
+          {
+            "domain": "1ivoA02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 187,
+              "author_insertion_code": "",
+              "residue_number": 187
+            },
+            "end": {
+              "author_residue_number": 309,
+              "author_insertion_code": "",
+              "residue_number": 309
+            }
+          },
+          {
+            "domain": "1ivoB02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 187,
+              "author_insertion_code": "",
+              "residue_number": 187
+            },
+            "end": {
+              "author_residue_number": 309,
+              "author_insertion_code": "",
+              "residue_number": 309
+            }
+          }
+        ],
+        "identifier": "Hormone Receptor, Insulin-like Growth Factor Receptor 1; Chain A domain 2"
+      },
+      "2.10.25.10": {
+        "name": "Epidermal growth factor receptor. Chain: a, b. Fragment: extracellulardomains i, ii, ii and iv. Engineered: yes. Epidermal growth factor. Chain: c, d. Fragment: residues 1-53. Synonym: egf. Engineered: yes",
+        "class": "Mainly Beta",
+        "architecture": "Ribbon",
+        "topology": "Laminin",
+        "homology": "Laminin",
+        "mappings": [
+          {
+            "domain": "1ivoC00",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "C",
+            "struct_asym_id": "C",
+            "start": {
+              "author_residue_number": 5,
+              "author_insertion_code": "",
+              "residue_number": 5
+            },
+            "end": {
+              "author_residue_number": 51,
+              "author_insertion_code": "",
+              "residue_number": 51
+            }
+          },
+          {
+            "domain": "1ivoD00",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "D",
+            "struct_asym_id": "D",
+            "start": {
+              "author_residue_number": 5,
+              "author_insertion_code": "",
+              "residue_number": 5
+            },
+            "end": {
+              "author_residue_number": 51,
+              "author_insertion_code": "",
+              "residue_number": 51
+            }
+          }
+        ],
+        "identifier": "Laminin"
+      }
+    }
+  }
+}

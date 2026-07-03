@@ -1,0 +1,128 @@
+{
+  "2shp": {
+    "CATH": {
+      "3.30.505.10": {
+        "name": "Shp-2. Chain: a, b. Synonym: syp, shptp-2. Engineered: yes. Mutation:yes",
+        "class": "Alpha Beta",
+        "architecture": "2-Layer Sandwich",
+        "topology": "SHC Adaptor Protein",
+        "homology": "SH2 domain",
+        "mappings": [
+          {
+            "domain": "2shpA01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 2,
+              "author_insertion_code": "",
+              "residue_number": 2
+            },
+            "end": {
+              "author_residue_number": 109,
+              "author_insertion_code": "",
+              "residue_number": 109
+            }
+          },
+          {
+            "domain": "2shpA02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 110,
+              "author_insertion_code": "",
+              "residue_number": 110
+            },
+            "end": {
+              "author_residue_number": 215,
+              "author_insertion_code": "",
+              "residue_number": 215
+            }
+          },
+          {
+            "domain": "2shpB01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 2,
+              "author_insertion_code": "",
+              "residue_number": 2
+            },
+            "end": {
+              "author_residue_number": 109,
+              "author_insertion_code": "",
+              "residue_number": 109
+            }
+          },
+          {
+            "domain": "2shpB02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 110,
+              "author_insertion_code": "",
+              "residue_number": 110
+            },
+            "end": {
+              "author_residue_number": 215,
+              "author_insertion_code": "",
+              "residue_number": 215
+            }
+          }
+        ],
+        "identifier": "SHC Adaptor Protein"
+      },
+      "3.90.190.10": {
+        "name": "Shp-2. Chain: a, b. Synonym: syp, shptp-2. Engineered: yes. Mutation:yes",
+        "class": "Alpha Beta",
+        "architecture": "Alpha-Beta Complex",
+        "topology": "Protein-Tyrosine Phosphatase; Chain A",
+        "homology": "Protein tyrosine phosphatase superfamily",
+        "mappings": [
+          {
+            "domain": "2shpA03",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 216,
+              "author_insertion_code": "",
+              "residue_number": 216
+            },
+            "end": {
+              "author_residue_number": 525,
+              "author_insertion_code": "",
+              "residue_number": 525
+            }
+          },
+          {
+            "domain": "2shpB03",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 216,
+              "author_insertion_code": "",
+              "residue_number": 216
+            },
+            "end": {
+              "author_residue_number": 521,
+              "author_insertion_code": "",
+              "residue_number": 521
+            }
+          }
+        ],
+        "identifier": "Protein-Tyrosine Phosphatase; Chain A"
+      }
+    }
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "5vq2": {
+    "CATH": {
+      "3.40.50.300": {
+        "name": "Gtpase kras. Chain: a, b. Fragment: residues 1-169. Synonym: k-ras 2,ki-ras,c-k-ras,c-ki-ras. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "3-Layer(aba) Sandwich",
+        "topology": "Rossmann fold",
+        "homology": "P-loop containing nucleotide triphosphate hydrolases",
+        "mappings": [
+          {
+            "domain": "5vq2A00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 0,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 168,
+              "author_insertion_code": "",
+              "residue_number": 169
+            }
+          },
+          {
+            "domain": "5vq2B00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 0,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 168,
+              "author_insertion_code": "",
+              "residue_number": 169
+            }
+          }
+        ],
+        "identifier": "Rossmann fold"
+      }
+    }
+  }
+}

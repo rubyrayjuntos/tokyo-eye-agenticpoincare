@@ -1,0 +1,33 @@
+{
+  "1ten": {
+    "CATH": {
+      "2.60.40.10": {
+        "name": "Tenascin. Chain: a. Engineered: yes",
+        "class": "Mainly Beta",
+        "architecture": "Sandwich",
+        "topology": "Immunoglobulin-like",
+        "homology": "Immunoglobulins",
+        "mappings": [
+          {
+            "domain": "1tenA00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 802,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 891,
+              "author_insertion_code": "",
+              "residue_number": 90
+            }
+          }
+        ],
+        "identifier": "Immunoglobulin-like"
+      }
+    }
+  }
+}

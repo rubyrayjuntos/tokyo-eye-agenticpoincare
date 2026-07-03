@@ -1,0 +1,33 @@
+{
+  "2vik": {
+    "CATH": {
+      "3.40.20.10": {
+        "name": "Villin 14t. Chain: a. Fragment: residues 1 - 126. Synonym: villin domain 1, villin segment 1. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "3-Layer(aba) Sandwich",
+        "topology": "Severin",
+        "homology": "Severin",
+        "mappings": [
+          {
+            "domain": "2vikA00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 126,
+              "author_insertion_code": "",
+              "residue_number": 126
+            }
+          }
+        ],
+        "identifier": "Severin"
+      }
+    }
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "1f88": {
+    "CATH": {
+      "1.20.1070.10": {
+        "name": "Rhodopsin. Chain: a, b",
+        "class": "Mainly Alpha",
+        "architecture": "Up-down Bundle",
+        "topology": "Rhopdopsin 7-helix transmembrane proteins",
+        "homology": "Rhodopsin 7-helix transmembrane proteins",
+        "mappings": [
+          {
+            "domain": "1f88A00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 348,
+              "author_insertion_code": "",
+              "residue_number": 348
+            }
+          },
+          {
+            "domain": "1f88B00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 326,
+              "author_insertion_code": "",
+              "residue_number": 326
+            }
+          }
+        ],
+        "identifier": "Rhopdopsin 7-helix transmembrane proteins"
+      }
+    }
+  }
+}

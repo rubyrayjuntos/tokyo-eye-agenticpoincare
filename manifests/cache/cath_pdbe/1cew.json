@@ -1,0 +1,33 @@
+{
+  "1cew": {
+    "CATH": {
+      "3.10.450.10": {
+        "name": "Cystatin. Chain: i. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "Roll",
+        "topology": "Nuclear Transport Factor 2; Chain: A,",
+        "homology": "Nuclear Transport Factor 2; Chain: A,",
+        "mappings": [
+          {
+            "domain": "1cewI00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "I",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 9,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 116,
+              "author_insertion_code": "",
+              "residue_number": 108
+            }
+          }
+        ],
+        "identifier": "Nuclear Transport Factor 2; Chain: A,"
+      }
+    }
+  }
+}

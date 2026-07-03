@@ -1,0 +1,60 @@
+{
+  "4g0n": {
+    "CATH": {
+      "3.40.50.300": {
+        "name": "Gtpase hras. Chain: a. Fragment: unp residues 1-166. Synonym: h-ras-1,ha-ras, transforming protein p21, c-h-ras, p21ras, gtpase hras, n-terminally processed. Engineered: yes. Raf proto-oncogene serine/threonine-protein kinase. Chain: b. Fragment: unp residues 54-131. Synonym: proto-oncogene c-raf, craf, raf-1. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "3-Layer(aba) Sandwich",
+        "topology": "Rossmann fold",
+        "homology": "P-loop containing nucleotide triphosphate hydrolases",
+        "mappings": [
+          {
+            "domain": "4g0nA00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 166,
+              "author_insertion_code": "",
+              "residue_number": 166
+            }
+          }
+        ],
+        "identifier": "Rossmann fold"
+      },
+      "3.10.20.90": {
+        "name": "Gtpase hras. Chain: a. Fragment: unp residues 1-166. Synonym: h-ras-1,ha-ras, transforming protein p21, c-h-ras, p21ras, gtpase hras, n-terminally processed. Engineered: yes. Raf proto-oncogene serine/threonine-protein kinase. Chain: b. Fragment: unp residues 54-131. Synonym: proto-oncogene c-raf, craf, raf-1. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "Roll",
+        "topology": "Ubiquitin-like (UB roll)",
+        "homology": "Phosphatidylinositol 3-kinase Catalytic Subunit; Chain A, domain 1",
+        "mappings": [
+          {
+            "domain": "4g0nB00",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 54,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 131,
+              "author_insertion_code": "",
+              "residue_number": 78
+            }
+          }
+        ],
+        "identifier": "Ubiquitin-like (UB roll)"
+      }
+    }
+  }
+}

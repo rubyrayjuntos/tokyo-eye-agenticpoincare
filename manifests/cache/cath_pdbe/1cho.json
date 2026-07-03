@@ -1,0 +1,77 @@
+{
+  "1cho": {
+    "CATH": {
+      "2.40.10.10": {
+        "name": "Alpha-chymotrypsin a. Chain: e. Alpha-chymotrypsin a. Chain: f. Alpha-chymotrypsin a. Chain: g. Turkey ovomucoid third domain (omtky3). Chain: i",
+        "class": "Mainly Beta",
+        "architecture": "Beta Barrel",
+        "topology": "Thrombin, subunit H",
+        "homology": "Trypsin-like serine proteases",
+        "mappings": [
+          {
+            "domain": "1choF00",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "F",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 16,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 146,
+              "author_insertion_code": "",
+              "residue_number": 131
+            }
+          },
+          {
+            "domain": "1choG00",
+            "segment_id": 1,
+            "entity_id": 3,
+            "chain_id": "G",
+            "struct_asym_id": "C",
+            "start": {
+              "author_residue_number": 149,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 245,
+              "author_insertion_code": "",
+              "residue_number": 97
+            }
+          }
+        ],
+        "identifier": "Thrombin, subunit H"
+      },
+      "3.30.60.30": {
+        "name": "Alpha-chymotrypsin a. Chain: e. Alpha-chymotrypsin a. Chain: f. Alpha-chymotrypsin a. Chain: g. Turkey ovomucoid third domain (omtky3). Chain: i",
+        "class": "Alpha Beta",
+        "architecture": "2-Layer Sandwich",
+        "topology": "Wheat Germ Agglutinin (Isolectin 2); domain 1",
+        "homology": "Wheat Germ Agglutinin (Isolectin 2); domain 1",
+        "mappings": [
+          {
+            "domain": "1choI00",
+            "segment_id": 1,
+            "entity_id": 4,
+            "chain_id": "I",
+            "struct_asym_id": "D",
+            "start": {
+              "author_residue_number": 4,
+              "author_insertion_code": "",
+              "residue_number": 4
+            },
+            "end": {
+              "author_residue_number": 56,
+              "author_insertion_code": "",
+              "residue_number": 56
+            }
+          }
+        ],
+        "identifier": "Wheat Germ Agglutinin (Isolectin 2); domain 1"
+      }
+    }
+  }
+}

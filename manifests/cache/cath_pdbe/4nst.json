@@ -1,0 +1,172 @@
+{
+  "4nst": {
+    "CATH": {
+      "3.30.200.20": {
+        "name": "Cyclin-dependent kinase 12. Chain: a, c. Fragment: protein kinase domain, residues 714-1063. Synonym: cdc2-related kinase, arginine/serine-rich, crkrs, cell division cycle 2-related protein kinase 7, cdc2-related protein kinase 7, cell division protein kinase 12, hcdk12., 2.7.11.23. Engineered: yes. Cyclin-k. Chain: b, d. Fragment: unp residues 1-267. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "2-Layer Sandwich",
+        "topology": "Phosphorylase Kinase; domain 1",
+        "homology": "Phosphorylase Kinase; domain 1",
+        "mappings": [
+          {
+            "domain": "4nstA01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 716,
+              "author_insertion_code": "",
+              "residue_number": 4
+            },
+            "end": {
+              "author_residue_number": 817,
+              "author_insertion_code": "",
+              "residue_number": 105
+            }
+          },
+          {
+            "domain": "4nstC01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "C",
+            "struct_asym_id": "C",
+            "start": {
+              "author_residue_number": 717,
+              "author_insertion_code": "",
+              "residue_number": 5
+            },
+            "end": {
+              "author_residue_number": 817,
+              "author_insertion_code": "",
+              "residue_number": 105
+            }
+          }
+        ],
+        "identifier": "Phosphorylase Kinase; domain 1"
+      },
+      "1.10.510.10": {
+        "name": "Cyclin-dependent kinase 12. Chain: a, c. Fragment: protein kinase domain, residues 714-1063. Synonym: cdc2-related kinase, arginine/serine-rich, crkrs, cell division cycle 2-related protein kinase 7, cdc2-related protein kinase 7, cell division protein kinase 12, hcdk12., 2.7.11.23. Engineered: yes. Cyclin-k. Chain: b, d. Fragment: unp residues 1-267. Engineered: yes",
+        "class": "Mainly Alpha",
+        "architecture": "Orthogonal Bundle",
+        "topology": "Transferase(Phosphotransferase); domain 1",
+        "homology": "Transferase(Phosphotransferase) domain 1",
+        "mappings": [
+          {
+            "domain": "4nstA02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 818,
+              "author_insertion_code": "",
+              "residue_number": 106
+            },
+            "end": {
+              "author_residue_number": 1046,
+              "author_insertion_code": "",
+              "residue_number": 334
+            }
+          },
+          {
+            "domain": "4nstC02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "C",
+            "struct_asym_id": "C",
+            "start": {
+              "author_residue_number": 818,
+              "author_insertion_code": "",
+              "residue_number": 106
+            },
+            "end": {
+              "author_residue_number": 1045,
+              "author_insertion_code": "",
+              "residue_number": 333
+            }
+          }
+        ],
+        "identifier": "Transferase(Phosphotransferase); domain 1"
+      },
+      "1.10.472.10": {
+        "name": "Cyclin-dependent kinase 12. Chain: a, c. Fragment: protein kinase domain, residues 714-1063. Synonym: cdc2-related kinase, arginine/serine-rich, crkrs, cell division cycle 2-related protein kinase 7, cdc2-related protein kinase 7, cell division protein kinase 12, hcdk12., 2.7.11.23. Engineered: yes. Cyclin-k. Chain: b, d. Fragment: unp residues 1-267. Engineered: yes",
+        "class": "Mainly Alpha",
+        "architecture": "Orthogonal Bundle",
+        "topology": "Cyclin A; domain 1",
+        "homology": "Cyclin-like",
+        "mappings": [
+          {
+            "domain": "4nstB01",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 20,
+              "author_insertion_code": "",
+              "residue_number": 21
+            },
+            "end": {
+              "author_residue_number": 156,
+              "author_insertion_code": "",
+              "residue_number": 157
+            }
+          },
+          {
+            "domain": "4nstB02",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 157,
+              "author_insertion_code": "",
+              "residue_number": 158
+            },
+            "end": {
+              "author_residue_number": 265,
+              "author_insertion_code": "",
+              "residue_number": 266
+            }
+          },
+          {
+            "domain": "4nstD01",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "D",
+            "struct_asym_id": "D",
+            "start": {
+              "author_residue_number": 21,
+              "author_insertion_code": "",
+              "residue_number": 22
+            },
+            "end": {
+              "author_residue_number": 156,
+              "author_insertion_code": "",
+              "residue_number": 157
+            }
+          },
+          {
+            "domain": "4nstD02",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "D",
+            "struct_asym_id": "D",
+            "start": {
+              "author_residue_number": 157,
+              "author_insertion_code": "",
+              "residue_number": 158
+            },
+            "end": {
+              "author_residue_number": 261,
+              "author_insertion_code": "",
+              "residue_number": 262
+            }
+          }
+        ],
+        "identifier": "Cyclin A; domain 1"
+      }
+    }
+  }
+}

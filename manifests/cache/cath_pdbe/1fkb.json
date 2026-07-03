@@ -1,0 +1,33 @@
+{
+  "1fkb": {
+    "CATH": {
+      "3.10.50.40": {
+        "name": "Fk506 binding protein. Chain: a. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "Roll",
+        "topology": "Chitinase A; domain 3",
+        "homology": "Chitinase A; domain 3",
+        "mappings": [
+          {
+            "domain": "1fkbA00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 107,
+              "author_insertion_code": "",
+              "residue_number": 107
+            }
+          }
+        ],
+        "identifier": "Chitinase A; domain 3"
+      }
+    }
+  }
+}

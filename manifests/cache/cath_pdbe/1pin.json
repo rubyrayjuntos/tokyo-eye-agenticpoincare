@@ -1,0 +1,60 @@
+{
+  "1pin": {
+    "CATH": {
+      "2.20.70.10": {
+        "name": "Peptidyl-prolyl cis-trans isomerase. Chain: a. Synonym: pin1. Engineered: yes",
+        "class": "Mainly Beta",
+        "architecture": "Single Sheet",
+        "topology": "Ubiquitin Ligase Nedd4; Chain: W;",
+        "homology": "Ubiquitin Ligase Nedd4; Chain: W;",
+        "mappings": [
+          {
+            "domain": "1pinA01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 6,
+              "author_insertion_code": "",
+              "residue_number": 6
+            },
+            "end": {
+              "author_residue_number": 37,
+              "author_insertion_code": "",
+              "residue_number": 37
+            }
+          }
+        ],
+        "identifier": "Ubiquitin Ligase Nedd4; Chain: W;"
+      },
+      "3.10.50.40": {
+        "name": "Peptidyl-prolyl cis-trans isomerase. Chain: a. Synonym: pin1. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "Roll",
+        "topology": "Chitinase A; domain 3",
+        "homology": "Chitinase A; domain 3",
+        "mappings": [
+          {
+            "domain": "1pinA02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 54,
+              "author_insertion_code": "",
+              "residue_number": 54
+            },
+            "end": {
+              "author_residue_number": 163,
+              "author_insertion_code": "",
+              "residue_number": 163
+            }
+          }
+        ],
+        "identifier": "Chitinase A; domain 3"
+      }
+    }
+  }
+}

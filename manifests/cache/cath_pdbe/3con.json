@@ -1,0 +1,33 @@
+{
+  "3con": {
+    "CATH": {
+      "3.40.50.300": {
+        "name": "Gtpase nras. Chain: a. Fragment: residues 1-172. Synonym: transformingprotein n-ras. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "3-Layer(aba) Sandwich",
+        "topology": "Rossmann fold",
+        "homology": "P-loop containing nucleotide triphosphate hydrolases",
+        "mappings": [
+          {
+            "domain": "3conA00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 19
+            },
+            "end": {
+              "author_residue_number": 167,
+              "author_insertion_code": "",
+              "residue_number": 185
+            }
+          }
+        ],
+        "identifier": "Rossmann fold"
+      }
+    }
+  }
+}

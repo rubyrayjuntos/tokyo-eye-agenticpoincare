@@ -1,0 +1,94 @@
+{
+  "2oiq": {
+    "CATH": {
+      "3.30.200.20": {
+        "name": "Proto-oncogene tyrosine-protein kinase src. Chain: a, b. Fragment: kinase domain. Synonym: p60-src, c- src, pp60c-src. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "2-Layer Sandwich",
+        "topology": "Phosphorylase Kinase; domain 1",
+        "homology": "Phosphorylase Kinase; domain 1",
+        "mappings": [
+          {
+            "domain": "2oiqA01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 256,
+              "author_insertion_code": "",
+              "residue_number": 9
+            },
+            "end": {
+              "author_residue_number": 340,
+              "author_insertion_code": "",
+              "residue_number": 93
+            }
+          },
+          {
+            "domain": "2oiqB01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 258,
+              "author_insertion_code": "",
+              "residue_number": 11
+            },
+            "end": {
+              "author_residue_number": 340,
+              "author_insertion_code": "",
+              "residue_number": 93
+            }
+          }
+        ],
+        "identifier": "Phosphorylase Kinase; domain 1"
+      },
+      "1.10.510.10": {
+        "name": "Proto-oncogene tyrosine-protein kinase src. Chain: a, b. Fragment: kinase domain. Synonym: p60-src, c- src, pp60c-src. Engineered: yes",
+        "class": "Mainly Alpha",
+        "architecture": "Orthogonal Bundle",
+        "topology": "Transferase(Phosphotransferase); domain 1",
+        "homology": "Transferase(Phosphotransferase) domain 1",
+        "mappings": [
+          {
+            "domain": "2oiqA02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 341,
+              "author_insertion_code": "",
+              "residue_number": 94
+            },
+            "end": {
+              "author_residue_number": 526,
+              "author_insertion_code": "",
+              "residue_number": 279
+            }
+          },
+          {
+            "domain": "2oiqB02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 341,
+              "author_insertion_code": "",
+              "residue_number": 94
+            },
+            "end": {
+              "author_residue_number": 526,
+              "author_insertion_code": "",
+              "residue_number": 279
+            }
+          }
+        ],
+        "identifier": "Transferase(Phosphotransferase); domain 1"
+      }
+    }
+  }
+}

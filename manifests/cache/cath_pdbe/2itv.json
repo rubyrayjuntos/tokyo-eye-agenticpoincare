@@ -1,0 +1,60 @@
+{
+  "2itv": {
+    "CATH": {
+      "3.30.200.20": {
+        "name": "Epidermal growth factor receptor. Chain: a. Fragment: kinase domain, residues 696-1022. Synonym: receptor, tyrosine-protein kinase erbb-1. Engineered: yes. Mutation: yes",
+        "class": "Alpha Beta",
+        "architecture": "2-Layer Sandwich",
+        "topology": "Phosphorylase Kinase; domain 1",
+        "homology": "Phosphorylase Kinase; domain 1",
+        "mappings": [
+          {
+            "domain": "2itvA01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 696,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 792,
+              "author_insertion_code": "",
+              "residue_number": 97
+            }
+          }
+        ],
+        "identifier": "Phosphorylase Kinase; domain 1"
+      },
+      "1.10.510.10": {
+        "name": "Epidermal growth factor receptor. Chain: a. Fragment: kinase domain, residues 696-1022. Synonym: receptor, tyrosine-protein kinase erbb-1. Engineered: yes. Mutation: yes",
+        "class": "Mainly Alpha",
+        "architecture": "Orthogonal Bundle",
+        "topology": "Transferase(Phosphotransferase); domain 1",
+        "homology": "Transferase(Phosphotransferase) domain 1",
+        "mappings": [
+          {
+            "domain": "2itvA02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 793,
+              "author_insertion_code": "",
+              "residue_number": 98
+            },
+            "end": {
+              "author_residue_number": 987,
+              "author_insertion_code": "",
+              "residue_number": 292
+            }
+          }
+        ],
+        "identifier": "Transferase(Phosphotransferase); domain 1"
+      }
+    }
+  }
+}

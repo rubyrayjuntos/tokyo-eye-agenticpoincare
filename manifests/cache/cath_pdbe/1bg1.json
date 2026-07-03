@@ -1,0 +1,114 @@
+{
+  "1bg1": {
+    "CATH": {
+      "1.20.1050.20": {
+        "name": "Dna (5'- d(*tp*gp*cp*ap*tp*tp*tp*cp*cp*cp*gp*tp*ap*ap*ap*tp*cp*t)- 3'). Chain: b. Engineered: yes. Other_details: 18-mer chemically synthesized, active form is 17-mer duplex with overhanging ends. Protein (transcription factor stat3b). Chain: a. Engineered: yes",
+        "class": "Mainly Alpha",
+        "architecture": "Up-down Bundle",
+        "topology": "Glutathione S-transferase Yfyf (Class Pi); Chain A, domain 2",
+        "homology": "STAT transcription factor, all-alpha domain",
+        "mappings": [
+          {
+            "domain": "1bg1A01",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "A",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 138,
+              "author_insertion_code": "",
+              "residue_number": 12
+            },
+            "end": {
+              "author_residue_number": 321,
+              "author_insertion_code": "",
+              "residue_number": 195
+            }
+          }
+        ],
+        "identifier": "Glutathione S-transferase Yfyf (Class Pi); Chain A, domain 2"
+      },
+      "2.60.40.630": {
+        "name": "Dna (5'- d(*tp*gp*cp*ap*tp*tp*tp*cp*cp*cp*gp*tp*ap*ap*ap*tp*cp*t)- 3'). Chain: b. Engineered: yes. Other_details: 18-mer chemically synthesized, active form is 17-mer duplex with overhanging ends. Protein (transcription factor stat3b). Chain: a. Engineered: yes",
+        "class": "Mainly Beta",
+        "architecture": "Sandwich",
+        "topology": "Immunoglobulin-like",
+        "homology": "STAT transcription factor, DNA-binding domain",
+        "mappings": [
+          {
+            "domain": "1bg1A02",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "A",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 322,
+              "author_insertion_code": "",
+              "residue_number": 196
+            },
+            "end": {
+              "author_residue_number": 466,
+              "author_insertion_code": "",
+              "residue_number": 340
+            }
+          }
+        ],
+        "identifier": "Immunoglobulin-like"
+      },
+      "1.10.238.10": {
+        "name": "Dna (5'- d(*tp*gp*cp*ap*tp*tp*tp*cp*cp*cp*gp*tp*ap*ap*ap*tp*cp*t)- 3'). Chain: b. Engineered: yes. Other_details: 18-mer chemically synthesized, active form is 17-mer duplex with overhanging ends. Protein (transcription factor stat3b). Chain: a. Engineered: yes",
+        "class": "Mainly Alpha",
+        "architecture": "Orthogonal Bundle",
+        "topology": "Recoverin; domain 1",
+        "homology": "EF-hand",
+        "mappings": [
+          {
+            "domain": "1bg1A03",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "A",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 467,
+              "author_insertion_code": "",
+              "residue_number": 341
+            },
+            "end": {
+              "author_residue_number": 588,
+              "author_insertion_code": "",
+              "residue_number": 462
+            }
+          }
+        ],
+        "identifier": "Recoverin; domain 1"
+      },
+      "3.30.505.10": {
+        "name": "Dna (5'- d(*tp*gp*cp*ap*tp*tp*tp*cp*cp*cp*gp*tp*ap*ap*ap*tp*cp*t)- 3'). Chain: b. Engineered: yes. Other_details: 18-mer chemically synthesized, active form is 17-mer duplex with overhanging ends. Protein (transcription factor stat3b). Chain: a. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "2-Layer Sandwich",
+        "topology": "SHC Adaptor Protein",
+        "homology": "SH2 domain",
+        "mappings": [
+          {
+            "domain": "1bg1A04",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "A",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 589,
+              "author_insertion_code": "",
+              "residue_number": 463
+            },
+            "end": {
+              "author_residue_number": 711,
+              "author_insertion_code": "",
+              "residue_number": 585
+            }
+          }
+        ],
+        "identifier": "SHC Adaptor Protein"
+      }
+    }
+  }
+}

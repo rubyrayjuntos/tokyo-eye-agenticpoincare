@@ -1,0 +1,33 @@
+{
+  "1ubq": {
+    "CATH": {
+      "3.10.20.90": {
+        "name": "Ubiquitin. Chain: a. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "Roll",
+        "topology": "Ubiquitin-like (UB roll)",
+        "homology": "Phosphatidylinositol 3-kinase Catalytic Subunit; Chain A, domain 1",
+        "mappings": [
+          {
+            "domain": "1ubqA00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 76,
+              "author_insertion_code": "",
+              "residue_number": 76
+            }
+          }
+        ],
+        "identifier": "Ubiquitin-like (UB roll)"
+      }
+    }
+  }
+}

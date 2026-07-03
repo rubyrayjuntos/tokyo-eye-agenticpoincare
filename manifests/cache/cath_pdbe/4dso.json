@@ -1,0 +1,33 @@
+{
+  "4dso": {
+    "CATH": {
+      "3.40.50.300": {
+        "name": "Gtpase kras, isoform 2b. Chain: a. Synonym: kras 4b, k-ras 2, ki-ras,c-k-ras, c-ki-ras, gtpase kras, n- terminally processed. Ec: 3.6.-.-.Engineered: yes. Mutation: yes",
+        "class": "Alpha Beta",
+        "architecture": "3-Layer(aba) Sandwich",
+        "topology": "Rossmann fold",
+        "homology": "P-loop containing nucleotide triphosphate hydrolases",
+        "mappings": [
+          {
+            "domain": "4dsoA00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 2
+            },
+            "end": {
+              "author_residue_number": 180,
+              "author_insertion_code": "",
+              "residue_number": 181
+            }
+          }
+        ],
+        "identifier": "Rossmann fold"
+      }
+    }
+  }
+}

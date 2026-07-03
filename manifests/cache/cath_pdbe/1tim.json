@@ -1,0 +1,50 @@
+{
+  "1tim": {
+    "CATH": {
+      "3.20.20.70": {
+        "name": "Triosephosphate isomerase. Chain: a, b. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "Alpha-Beta Barrel",
+        "topology": "TIM Barrel",
+        "homology": "Aldolase class I",
+        "mappings": [
+          {
+            "domain": "1timA00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 248,
+              "author_insertion_code": "",
+              "residue_number": 247
+            }
+          },
+          {
+            "domain": "1timB00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 248,
+              "author_insertion_code": "",
+              "residue_number": 247
+            }
+          }
+        ],
+        "identifier": "TIM Barrel"
+      }
+    }
+  }
+}

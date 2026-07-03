@@ -1,0 +1,67 @@
+{
+  "1a2p": {
+    "CATH": {
+      "3.10.450.30": {
+        "name": "BaRNAse. Chain: a, b, c. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "Roll",
+        "topology": "Nuclear Transport Factor 2; Chain: A,",
+        "homology": "Microbial ribonucleases",
+        "mappings": [
+          {
+            "domain": "1a2pA00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 3,
+              "author_insertion_code": "",
+              "residue_number": 3
+            },
+            "end": {
+              "author_residue_number": 110,
+              "author_insertion_code": "",
+              "residue_number": 110
+            }
+          },
+          {
+            "domain": "1a2pB00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 3,
+              "author_insertion_code": "",
+              "residue_number": 3
+            },
+            "end": {
+              "author_residue_number": 110,
+              "author_insertion_code": "",
+              "residue_number": 110
+            }
+          },
+          {
+            "domain": "1a2pC00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "C",
+            "struct_asym_id": "C",
+            "start": {
+              "author_residue_number": 3,
+              "author_insertion_code": "",
+              "residue_number": 3
+            },
+            "end": {
+              "author_residue_number": 110,
+              "author_insertion_code": "",
+              "residue_number": 110
+            }
+          }
+        ],
+        "identifier": "Nuclear Transport Factor 2; Chain: A,"
+      }
+    }
+  }
+}

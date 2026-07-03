@@ -1,0 +1,1355 @@
+{
+  "1aon": {
+    "CATH": {
+      "1.10.560.10": {
+        "name": "Groel. Chain: a, b, c, d, e, f, g, h, i, j, k, l, m, n. Synonym: 60 kdchaperonin, protein cpn60. Engineered: yes. Groel/groes complex. Chain: o, p, q, r, s, t, u. Synonym: 10 kd chaperonin, protein cpn10. Engineered: yes",
+        "class": "Mainly Alpha",
+        "architecture": "Orthogonal Bundle",
+        "topology": "GROEL; domain 1",
+        "homology": "GroEL-like equatorial domain",
+        "mappings": [
+          {
+            "domain": "1aonA01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 2,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 135,
+              "author_insertion_code": "",
+              "residue_number": 134
+            }
+          },
+          {
+            "domain": "1aonA01",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 411,
+              "author_insertion_code": "",
+              "residue_number": 410
+            },
+            "end": {
+              "author_residue_number": 525,
+              "author_insertion_code": "",
+              "residue_number": 524
+            }
+          },
+          {
+            "domain": "1aonB01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 2,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 135,
+              "author_insertion_code": "",
+              "residue_number": 134
+            }
+          },
+          {
+            "domain": "1aonB01",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 411,
+              "author_insertion_code": "",
+              "residue_number": 410
+            },
+            "end": {
+              "author_residue_number": 525,
+              "author_insertion_code": "",
+              "residue_number": 524
+            }
+          },
+          {
+            "domain": "1aonC01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "C",
+            "struct_asym_id": "C",
+            "start": {
+              "author_residue_number": 2,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 135,
+              "author_insertion_code": "",
+              "residue_number": 134
+            }
+          },
+          {
+            "domain": "1aonC01",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "C",
+            "struct_asym_id": "C",
+            "start": {
+              "author_residue_number": 411,
+              "author_insertion_code": "",
+              "residue_number": 410
+            },
+            "end": {
+              "author_residue_number": 525,
+              "author_insertion_code": "",
+              "residue_number": 524
+            }
+          },
+          {
+            "domain": "1aonD01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "D",
+            "struct_asym_id": "D",
+            "start": {
+              "author_residue_number": 2,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 135,
+              "author_insertion_code": "",
+              "residue_number": 134
+            }
+          },
+          {
+            "domain": "1aonD01",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "D",
+            "struct_asym_id": "D",
+            "start": {
+              "author_residue_number": 411,
+              "author_insertion_code": "",
+              "residue_number": 410
+            },
+            "end": {
+              "author_residue_number": 525,
+              "author_insertion_code": "",
+              "residue_number": 524
+            }
+          },
+          {
+            "domain": "1aonE01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "E",
+            "struct_asym_id": "E",
+            "start": {
+              "author_residue_number": 2,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 135,
+              "author_insertion_code": "",
+              "residue_number": 134
+            }
+          },
+          {
+            "domain": "1aonE01",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "E",
+            "struct_asym_id": "E",
+            "start": {
+              "author_residue_number": 411,
+              "author_insertion_code": "",
+              "residue_number": 410
+            },
+            "end": {
+              "author_residue_number": 525,
+              "author_insertion_code": "",
+              "residue_number": 524
+            }
+          },
+          {
+            "domain": "1aonF01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "F",
+            "struct_asym_id": "F",
+            "start": {
+              "author_residue_number": 2,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 135,
+              "author_insertion_code": "",
+              "residue_number": 134
+            }
+          },
+          {
+            "domain": "1aonF01",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "F",
+            "struct_asym_id": "F",
+            "start": {
+              "author_residue_number": 411,
+              "author_insertion_code": "",
+              "residue_number": 410
+            },
+            "end": {
+              "author_residue_number": 525,
+              "author_insertion_code": "",
+              "residue_number": 524
+            }
+          },
+          {
+            "domain": "1aonG01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "G",
+            "struct_asym_id": "G",
+            "start": {
+              "author_residue_number": 2,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 135,
+              "author_insertion_code": "",
+              "residue_number": 134
+            }
+          },
+          {
+            "domain": "1aonG01",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "G",
+            "struct_asym_id": "G",
+            "start": {
+              "author_residue_number": 411,
+              "author_insertion_code": "",
+              "residue_number": 410
+            },
+            "end": {
+              "author_residue_number": 525,
+              "author_insertion_code": "",
+              "residue_number": 524
+            }
+          },
+          {
+            "domain": "1aonH01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "H",
+            "struct_asym_id": "H",
+            "start": {
+              "author_residue_number": 2,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 135,
+              "author_insertion_code": "",
+              "residue_number": 134
+            }
+          },
+          {
+            "domain": "1aonH01",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "H",
+            "struct_asym_id": "H",
+            "start": {
+              "author_residue_number": 411,
+              "author_insertion_code": "",
+              "residue_number": 410
+            },
+            "end": {
+              "author_residue_number": 525,
+              "author_insertion_code": "",
+              "residue_number": 524
+            }
+          },
+          {
+            "domain": "1aonI01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "I",
+            "struct_asym_id": "I",
+            "start": {
+              "author_residue_number": 2,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 135,
+              "author_insertion_code": "",
+              "residue_number": 134
+            }
+          },
+          {
+            "domain": "1aonI01",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "I",
+            "struct_asym_id": "I",
+            "start": {
+              "author_residue_number": 411,
+              "author_insertion_code": "",
+              "residue_number": 410
+            },
+            "end": {
+              "author_residue_number": 525,
+              "author_insertion_code": "",
+              "residue_number": 524
+            }
+          },
+          {
+            "domain": "1aonJ01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "J",
+            "struct_asym_id": "J",
+            "start": {
+              "author_residue_number": 2,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 135,
+              "author_insertion_code": "",
+              "residue_number": 134
+            }
+          },
+          {
+            "domain": "1aonJ01",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "J",
+            "struct_asym_id": "J",
+            "start": {
+              "author_residue_number": 411,
+              "author_insertion_code": "",
+              "residue_number": 410
+            },
+            "end": {
+              "author_residue_number": 525,
+              "author_insertion_code": "",
+              "residue_number": 524
+            }
+          },
+          {
+            "domain": "1aonK01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "K",
+            "struct_asym_id": "K",
+            "start": {
+              "author_residue_number": 2,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 135,
+              "author_insertion_code": "",
+              "residue_number": 134
+            }
+          },
+          {
+            "domain": "1aonK01",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "K",
+            "struct_asym_id": "K",
+            "start": {
+              "author_residue_number": 411,
+              "author_insertion_code": "",
+              "residue_number": 410
+            },
+            "end": {
+              "author_residue_number": 525,
+              "author_insertion_code": "",
+              "residue_number": 524
+            }
+          },
+          {
+            "domain": "1aonL01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "L",
+            "struct_asym_id": "L",
+            "start": {
+              "author_residue_number": 2,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 135,
+              "author_insertion_code": "",
+              "residue_number": 134
+            }
+          },
+          {
+            "domain": "1aonL01",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "L",
+            "struct_asym_id": "L",
+            "start": {
+              "author_residue_number": 411,
+              "author_insertion_code": "",
+              "residue_number": 410
+            },
+            "end": {
+              "author_residue_number": 525,
+              "author_insertion_code": "",
+              "residue_number": 524
+            }
+          },
+          {
+            "domain": "1aonM01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "M",
+            "struct_asym_id": "M",
+            "start": {
+              "author_residue_number": 2,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 135,
+              "author_insertion_code": "",
+              "residue_number": 134
+            }
+          },
+          {
+            "domain": "1aonM01",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "M",
+            "struct_asym_id": "M",
+            "start": {
+              "author_residue_number": 411,
+              "author_insertion_code": "",
+              "residue_number": 410
+            },
+            "end": {
+              "author_residue_number": 525,
+              "author_insertion_code": "",
+              "residue_number": 524
+            }
+          },
+          {
+            "domain": "1aonN01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "N",
+            "struct_asym_id": "N",
+            "start": {
+              "author_residue_number": 2,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 135,
+              "author_insertion_code": "",
+              "residue_number": 134
+            }
+          },
+          {
+            "domain": "1aonN01",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "N",
+            "struct_asym_id": "N",
+            "start": {
+              "author_residue_number": 411,
+              "author_insertion_code": "",
+              "residue_number": 410
+            },
+            "end": {
+              "author_residue_number": 525,
+              "author_insertion_code": "",
+              "residue_number": 524
+            }
+          }
+        ],
+        "identifier": "GROEL; domain 1"
+      },
+      "3.30.260.10": {
+        "name": "Groel. Chain: a, b, c, d, e, f, g, h, i, j, k, l, m, n. Synonym: 60 kdchaperonin, protein cpn60. Engineered: yes. Groel/groes complex. Chain: o, p, q, r, s, t, u. Synonym: 10 kd chaperonin, protein cpn10. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "2-Layer Sandwich",
+        "topology": "GROEL; domain 2",
+        "homology": "TCP-1-like chaperonin intermediate domain",
+        "mappings": [
+          {
+            "domain": "1aonA02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 136,
+              "author_insertion_code": "",
+              "residue_number": 135
+            },
+            "end": {
+              "author_residue_number": 191,
+              "author_insertion_code": "",
+              "residue_number": 190
+            }
+          },
+          {
+            "domain": "1aonA02",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 373,
+              "author_insertion_code": "",
+              "residue_number": 372
+            },
+            "end": {
+              "author_residue_number": 410,
+              "author_insertion_code": "",
+              "residue_number": 409
+            }
+          },
+          {
+            "domain": "1aonB02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 136,
+              "author_insertion_code": "",
+              "residue_number": 135
+            },
+            "end": {
+              "author_residue_number": 191,
+              "author_insertion_code": "",
+              "residue_number": 190
+            }
+          },
+          {
+            "domain": "1aonB02",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 373,
+              "author_insertion_code": "",
+              "residue_number": 372
+            },
+            "end": {
+              "author_residue_number": 410,
+              "author_insertion_code": "",
+              "residue_number": 409
+            }
+          },
+          {
+            "domain": "1aonC02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "C",
+            "struct_asym_id": "C",
+            "start": {
+              "author_residue_number": 136,
+              "author_insertion_code": "",
+              "residue_number": 135
+            },
+            "end": {
+              "author_residue_number": 191,
+              "author_insertion_code": "",
+              "residue_number": 190
+            }
+          },
+          {
+            "domain": "1aonC02",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "C",
+            "struct_asym_id": "C",
+            "start": {
+              "author_residue_number": 373,
+              "author_insertion_code": "",
+              "residue_number": 372
+            },
+            "end": {
+              "author_residue_number": 410,
+              "author_insertion_code": "",
+              "residue_number": 409
+            }
+          },
+          {
+            "domain": "1aonD02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "D",
+            "struct_asym_id": "D",
+            "start": {
+              "author_residue_number": 136,
+              "author_insertion_code": "",
+              "residue_number": 135
+            },
+            "end": {
+              "author_residue_number": 191,
+              "author_insertion_code": "",
+              "residue_number": 190
+            }
+          },
+          {
+            "domain": "1aonD02",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "D",
+            "struct_asym_id": "D",
+            "start": {
+              "author_residue_number": 373,
+              "author_insertion_code": "",
+              "residue_number": 372
+            },
+            "end": {
+              "author_residue_number": 410,
+              "author_insertion_code": "",
+              "residue_number": 409
+            }
+          },
+          {
+            "domain": "1aonE02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "E",
+            "struct_asym_id": "E",
+            "start": {
+              "author_residue_number": 136,
+              "author_insertion_code": "",
+              "residue_number": 135
+            },
+            "end": {
+              "author_residue_number": 191,
+              "author_insertion_code": "",
+              "residue_number": 190
+            }
+          },
+          {
+            "domain": "1aonE02",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "E",
+            "struct_asym_id": "E",
+            "start": {
+              "author_residue_number": 373,
+              "author_insertion_code": "",
+              "residue_number": 372
+            },
+            "end": {
+              "author_residue_number": 410,
+              "author_insertion_code": "",
+              "residue_number": 409
+            }
+          },
+          {
+            "domain": "1aonF02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "F",
+            "struct_asym_id": "F",
+            "start": {
+              "author_residue_number": 136,
+              "author_insertion_code": "",
+              "residue_number": 135
+            },
+            "end": {
+              "author_residue_number": 191,
+              "author_insertion_code": "",
+              "residue_number": 190
+            }
+          },
+          {
+            "domain": "1aonF02",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "F",
+            "struct_asym_id": "F",
+            "start": {
+              "author_residue_number": 373,
+              "author_insertion_code": "",
+              "residue_number": 372
+            },
+            "end": {
+              "author_residue_number": 410,
+              "author_insertion_code": "",
+              "residue_number": 409
+            }
+          },
+          {
+            "domain": "1aonG02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "G",
+            "struct_asym_id": "G",
+            "start": {
+              "author_residue_number": 136,
+              "author_insertion_code": "",
+              "residue_number": 135
+            },
+            "end": {
+              "author_residue_number": 191,
+              "author_insertion_code": "",
+              "residue_number": 190
+            }
+          },
+          {
+            "domain": "1aonG02",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "G",
+            "struct_asym_id": "G",
+            "start": {
+              "author_residue_number": 373,
+              "author_insertion_code": "",
+              "residue_number": 372
+            },
+            "end": {
+              "author_residue_number": 410,
+              "author_insertion_code": "",
+              "residue_number": 409
+            }
+          },
+          {
+            "domain": "1aonH02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "H",
+            "struct_asym_id": "H",
+            "start": {
+              "author_residue_number": 136,
+              "author_insertion_code": "",
+              "residue_number": 135
+            },
+            "end": {
+              "author_residue_number": 191,
+              "author_insertion_code": "",
+              "residue_number": 190
+            }
+          },
+          {
+            "domain": "1aonH02",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "H",
+            "struct_asym_id": "H",
+            "start": {
+              "author_residue_number": 373,
+              "author_insertion_code": "",
+              "residue_number": 372
+            },
+            "end": {
+              "author_residue_number": 410,
+              "author_insertion_code": "",
+              "residue_number": 409
+            }
+          },
+          {
+            "domain": "1aonI02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "I",
+            "struct_asym_id": "I",
+            "start": {
+              "author_residue_number": 136,
+              "author_insertion_code": "",
+              "residue_number": 135
+            },
+            "end": {
+              "author_residue_number": 191,
+              "author_insertion_code": "",
+              "residue_number": 190
+            }
+          },
+          {
+            "domain": "1aonI02",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "I",
+            "struct_asym_id": "I",
+            "start": {
+              "author_residue_number": 373,
+              "author_insertion_code": "",
+              "residue_number": 372
+            },
+            "end": {
+              "author_residue_number": 410,
+              "author_insertion_code": "",
+              "residue_number": 409
+            }
+          },
+          {
+            "domain": "1aonJ02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "J",
+            "struct_asym_id": "J",
+            "start": {
+              "author_residue_number": 136,
+              "author_insertion_code": "",
+              "residue_number": 135
+            },
+            "end": {
+              "author_residue_number": 191,
+              "author_insertion_code": "",
+              "residue_number": 190
+            }
+          },
+          {
+            "domain": "1aonJ02",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "J",
+            "struct_asym_id": "J",
+            "start": {
+              "author_residue_number": 373,
+              "author_insertion_code": "",
+              "residue_number": 372
+            },
+            "end": {
+              "author_residue_number": 410,
+              "author_insertion_code": "",
+              "residue_number": 409
+            }
+          },
+          {
+            "domain": "1aonK02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "K",
+            "struct_asym_id": "K",
+            "start": {
+              "author_residue_number": 136,
+              "author_insertion_code": "",
+              "residue_number": 135
+            },
+            "end": {
+              "author_residue_number": 191,
+              "author_insertion_code": "",
+              "residue_number": 190
+            }
+          },
+          {
+            "domain": "1aonK02",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "K",
+            "struct_asym_id": "K",
+            "start": {
+              "author_residue_number": 373,
+              "author_insertion_code": "",
+              "residue_number": 372
+            },
+            "end": {
+              "author_residue_number": 410,
+              "author_insertion_code": "",
+              "residue_number": 409
+            }
+          },
+          {
+            "domain": "1aonL02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "L",
+            "struct_asym_id": "L",
+            "start": {
+              "author_residue_number": 136,
+              "author_insertion_code": "",
+              "residue_number": 135
+            },
+            "end": {
+              "author_residue_number": 191,
+              "author_insertion_code": "",
+              "residue_number": 190
+            }
+          },
+          {
+            "domain": "1aonL02",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "L",
+            "struct_asym_id": "L",
+            "start": {
+              "author_residue_number": 373,
+              "author_insertion_code": "",
+              "residue_number": 372
+            },
+            "end": {
+              "author_residue_number": 410,
+              "author_insertion_code": "",
+              "residue_number": 409
+            }
+          },
+          {
+            "domain": "1aonM02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "M",
+            "struct_asym_id": "M",
+            "start": {
+              "author_residue_number": 136,
+              "author_insertion_code": "",
+              "residue_number": 135
+            },
+            "end": {
+              "author_residue_number": 191,
+              "author_insertion_code": "",
+              "residue_number": 190
+            }
+          },
+          {
+            "domain": "1aonM02",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "M",
+            "struct_asym_id": "M",
+            "start": {
+              "author_residue_number": 373,
+              "author_insertion_code": "",
+              "residue_number": 372
+            },
+            "end": {
+              "author_residue_number": 410,
+              "author_insertion_code": "",
+              "residue_number": 409
+            }
+          },
+          {
+            "domain": "1aonN02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "N",
+            "struct_asym_id": "N",
+            "start": {
+              "author_residue_number": 136,
+              "author_insertion_code": "",
+              "residue_number": 135
+            },
+            "end": {
+              "author_residue_number": 191,
+              "author_insertion_code": "",
+              "residue_number": 190
+            }
+          },
+          {
+            "domain": "1aonN02",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "N",
+            "struct_asym_id": "N",
+            "start": {
+              "author_residue_number": 373,
+              "author_insertion_code": "",
+              "residue_number": 372
+            },
+            "end": {
+              "author_residue_number": 410,
+              "author_insertion_code": "",
+              "residue_number": 409
+            }
+          }
+        ],
+        "identifier": "GROEL; domain 2"
+      },
+      "3.50.7.10": {
+        "name": "Groel. Chain: a, b, c, d, e, f, g, h, i, j, k, l, m, n. Synonym: 60 kdchaperonin, protein cpn60. Engineered: yes. Groel/groes complex. Chain: o, p, q, r, s, t, u. Synonym: 10 kd chaperonin, protein cpn10. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "3-Layer(bba) Sandwich",
+        "topology": "GroEL",
+        "homology": "GroEL",
+        "mappings": [
+          {
+            "domain": "1aonA03",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 192,
+              "author_insertion_code": "",
+              "residue_number": 191
+            },
+            "end": {
+              "author_residue_number": 372,
+              "author_insertion_code": "",
+              "residue_number": 371
+            }
+          },
+          {
+            "domain": "1aonB03",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 192,
+              "author_insertion_code": "",
+              "residue_number": 191
+            },
+            "end": {
+              "author_residue_number": 372,
+              "author_insertion_code": "",
+              "residue_number": 371
+            }
+          },
+          {
+            "domain": "1aonC03",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "C",
+            "struct_asym_id": "C",
+            "start": {
+              "author_residue_number": 192,
+              "author_insertion_code": "",
+              "residue_number": 191
+            },
+            "end": {
+              "author_residue_number": 372,
+              "author_insertion_code": "",
+              "residue_number": 371
+            }
+          },
+          {
+            "domain": "1aonD03",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "D",
+            "struct_asym_id": "D",
+            "start": {
+              "author_residue_number": 192,
+              "author_insertion_code": "",
+              "residue_number": 191
+            },
+            "end": {
+              "author_residue_number": 372,
+              "author_insertion_code": "",
+              "residue_number": 371
+            }
+          },
+          {
+            "domain": "1aonE03",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "E",
+            "struct_asym_id": "E",
+            "start": {
+              "author_residue_number": 192,
+              "author_insertion_code": "",
+              "residue_number": 191
+            },
+            "end": {
+              "author_residue_number": 372,
+              "author_insertion_code": "",
+              "residue_number": 371
+            }
+          },
+          {
+            "domain": "1aonF03",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "F",
+            "struct_asym_id": "F",
+            "start": {
+              "author_residue_number": 192,
+              "author_insertion_code": "",
+              "residue_number": 191
+            },
+            "end": {
+              "author_residue_number": 372,
+              "author_insertion_code": "",
+              "residue_number": 371
+            }
+          },
+          {
+            "domain": "1aonG03",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "G",
+            "struct_asym_id": "G",
+            "start": {
+              "author_residue_number": 192,
+              "author_insertion_code": "",
+              "residue_number": 191
+            },
+            "end": {
+              "author_residue_number": 372,
+              "author_insertion_code": "",
+              "residue_number": 371
+            }
+          },
+          {
+            "domain": "1aonH03",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "H",
+            "struct_asym_id": "H",
+            "start": {
+              "author_residue_number": 192,
+              "author_insertion_code": "",
+              "residue_number": 191
+            },
+            "end": {
+              "author_residue_number": 372,
+              "author_insertion_code": "",
+              "residue_number": 371
+            }
+          },
+          {
+            "domain": "1aonI03",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "I",
+            "struct_asym_id": "I",
+            "start": {
+              "author_residue_number": 192,
+              "author_insertion_code": "",
+              "residue_number": 191
+            },
+            "end": {
+              "author_residue_number": 372,
+              "author_insertion_code": "",
+              "residue_number": 371
+            }
+          },
+          {
+            "domain": "1aonJ03",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "J",
+            "struct_asym_id": "J",
+            "start": {
+              "author_residue_number": 192,
+              "author_insertion_code": "",
+              "residue_number": 191
+            },
+            "end": {
+              "author_residue_number": 372,
+              "author_insertion_code": "",
+              "residue_number": 371
+            }
+          },
+          {
+            "domain": "1aonK03",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "K",
+            "struct_asym_id": "K",
+            "start": {
+              "author_residue_number": 192,
+              "author_insertion_code": "",
+              "residue_number": 191
+            },
+            "end": {
+              "author_residue_number": 372,
+              "author_insertion_code": "",
+              "residue_number": 371
+            }
+          },
+          {
+            "domain": "1aonL03",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "L",
+            "struct_asym_id": "L",
+            "start": {
+              "author_residue_number": 192,
+              "author_insertion_code": "",
+              "residue_number": 191
+            },
+            "end": {
+              "author_residue_number": 372,
+              "author_insertion_code": "",
+              "residue_number": 371
+            }
+          },
+          {
+            "domain": "1aonM03",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "M",
+            "struct_asym_id": "M",
+            "start": {
+              "author_residue_number": 192,
+              "author_insertion_code": "",
+              "residue_number": 191
+            },
+            "end": {
+              "author_residue_number": 372,
+              "author_insertion_code": "",
+              "residue_number": 371
+            }
+          },
+          {
+            "domain": "1aonN03",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "N",
+            "struct_asym_id": "N",
+            "start": {
+              "author_residue_number": 192,
+              "author_insertion_code": "",
+              "residue_number": 191
+            },
+            "end": {
+              "author_residue_number": 372,
+              "author_insertion_code": "",
+              "residue_number": 371
+            }
+          }
+        ],
+        "identifier": "GroEL"
+      },
+      "2.30.33.40": {
+        "name": "Groel. Chain: a, b, c, d, e, f, g, h, i, j, k, l, m, n. Synonym: 60 kdchaperonin, protein cpn60. Engineered: yes. Groel/groes complex. Chain: o, p, q, r, s, t, u. Synonym: 10 kd chaperonin, protein cpn10. Engineered: yes",
+        "class": "Mainly Beta",
+        "architecture": "Roll",
+        "topology": "10 Kd Chaperonin, Protein Cpn10; Chain O",
+        "homology": "GroES chaperonin",
+        "mappings": [
+          {
+            "domain": "1aonO00",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "O",
+            "struct_asym_id": "O",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 97,
+              "author_insertion_code": "",
+              "residue_number": 97
+            }
+          },
+          {
+            "domain": "1aonP00",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "P",
+            "struct_asym_id": "P",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 97,
+              "author_insertion_code": "",
+              "residue_number": 97
+            }
+          },
+          {
+            "domain": "1aonQ00",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "Q",
+            "struct_asym_id": "Q",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 97,
+              "author_insertion_code": "",
+              "residue_number": 97
+            }
+          },
+          {
+            "domain": "1aonR00",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "R",
+            "struct_asym_id": "R",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 97,
+              "author_insertion_code": "",
+              "residue_number": 97
+            }
+          },
+          {
+            "domain": "1aonS00",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "S",
+            "struct_asym_id": "S",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 97,
+              "author_insertion_code": "",
+              "residue_number": 97
+            }
+          },
+          {
+            "domain": "1aonT00",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "T",
+            "struct_asym_id": "T",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 97,
+              "author_insertion_code": "",
+              "residue_number": 97
+            }
+          },
+          {
+            "domain": "1aonU00",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "U",
+            "struct_asym_id": "U",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 97,
+              "author_insertion_code": "",
+              "residue_number": 97
+            }
+          }
+        ],
+        "identifier": "10 Kd Chaperonin, Protein Cpn10; Chain O"
+      }
+    }
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "1a0i": {
+    "CATH": {
+      "3.30.1490.70": {
+        "name": "Dna ligase. Chain: a. Engineered: yes. Mutation: yes",
+        "class": "Alpha Beta",
+        "architecture": "2-Layer Sandwich",
+        "topology": "Dna Ligase; domain 1",
+        "homology": "Dna Ligase; domain 1",
+        "mappings": [
+          {
+            "domain": "1a0iA01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 2,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 36,
+              "author_insertion_code": "",
+              "residue_number": 35
+            }
+          },
+          {
+            "domain": "1a0iA01",
+            "segment_id": 2,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 193,
+              "author_insertion_code": "",
+              "residue_number": 192
+            },
+            "end": {
+              "author_residue_number": 240,
+              "author_insertion_code": "",
+              "residue_number": 239
+            }
+          }
+        ],
+        "identifier": "Dna Ligase; domain 1"
+      },
+      "3.30.470.30": {
+        "name": "Dna ligase. Chain: a. Engineered: yes. Mutation: yes",
+        "class": "Alpha Beta",
+        "architecture": "2-Layer Sandwich",
+        "topology": "D-amino Acid Aminotransferase; Chain A, domain 1",
+        "homology": "DNA ligase/mRNA capping enzyme",
+        "mappings": [
+          {
+            "domain": "1a0iA03",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 37,
+              "author_insertion_code": "",
+              "residue_number": 36
+            },
+            "end": {
+              "author_residue_number": 192,
+              "author_insertion_code": "",
+              "residue_number": 191
+            }
+          }
+        ],
+        "identifier": "D-amino Acid Aminotransferase; Chain A, domain 1"
+      },
+      "2.40.50.140": {
+        "name": "Dna ligase. Chain: a. Engineered: yes. Mutation: yes",
+        "class": "Mainly Beta",
+        "architecture": "Beta Barrel",
+        "topology": "OB fold (Dihydrolipoamide Acetyltransferase, E2P)",
+        "homology": "Nucleic acid-binding proteins",
+        "mappings": [
+          {
+            "domain": "1a0iA02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 241,
+              "author_insertion_code": "",
+              "residue_number": 240
+            },
+            "end": {
+              "author_residue_number": 349,
+              "author_insertion_code": "",
+              "residue_number": 348
+            }
+          }
+        ],
+        "identifier": "OB fold (Dihydrolipoamide Acetyltransferase, E2P)"
+      }
+    }
+  }
+}

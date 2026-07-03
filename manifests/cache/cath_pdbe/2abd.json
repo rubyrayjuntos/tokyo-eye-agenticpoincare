@@ -1,0 +1,33 @@
+{
+  "2abd": {
+    "CATH": {
+      "1.20.80.10": {
+        "name": "Acyl-coenzyme a binding protein. Chain: a. Engineered: yes",
+        "class": "Mainly Alpha",
+        "architecture": "Up-down Bundle",
+        "topology": "Acyl-CoA Binding Protein",
+        "homology": "Acyl-CoA Binding Protein",
+        "mappings": [
+          {
+            "domain": "2abdA00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 86,
+              "author_insertion_code": "",
+              "residue_number": 86
+            }
+          }
+        ],
+        "identifier": "Acyl-CoA Binding Protein"
+      }
+    }
+  }
+}

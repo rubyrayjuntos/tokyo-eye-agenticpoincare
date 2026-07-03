@@ -1,0 +1,33 @@
+{
+  "1crn": {
+    "CATH": {
+      "3.30.1350.10": {
+        "name": "Crambin. Chain: a. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "2-Layer Sandwich",
+        "topology": "Crambin",
+        "homology": "Thionin-like",
+        "mappings": [
+          {
+            "domain": "1crnA00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 46,
+              "author_insertion_code": "",
+              "residue_number": 46
+            }
+          }
+        ],
+        "identifier": "Crambin"
+      }
+    }
+  }
+}

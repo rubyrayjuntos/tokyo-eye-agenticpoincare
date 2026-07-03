@@ -1,0 +1,84 @@
+{
+  "2hhb": {
+    "CATH": {
+      "1.10.490.10": {
+        "name": "Hemoglobin (deoxy) (alpha chain). Chain: a, c. Hemoglobin (deoxy) (beta chain). Chain: b, d",
+        "class": "Mainly Alpha",
+        "architecture": "Orthogonal Bundle",
+        "topology": "Globin-like",
+        "homology": "Globins",
+        "mappings": [
+          {
+            "domain": "2hhbA00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 141,
+              "author_insertion_code": "",
+              "residue_number": 141
+            }
+          },
+          {
+            "domain": "2hhbB00",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 146,
+              "author_insertion_code": "",
+              "residue_number": 146
+            }
+          },
+          {
+            "domain": "2hhbC00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "C",
+            "struct_asym_id": "C",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 141,
+              "author_insertion_code": "",
+              "residue_number": 141
+            }
+          },
+          {
+            "domain": "2hhbD00",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "D",
+            "struct_asym_id": "D",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 146,
+              "author_insertion_code": "",
+              "residue_number": 146
+            }
+          }
+        ],
+        "identifier": "Globin-like"
+      }
+    }
+  }
+}

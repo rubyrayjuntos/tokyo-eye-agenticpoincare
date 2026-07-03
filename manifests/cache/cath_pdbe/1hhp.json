@@ -1,0 +1,33 @@
+{
+  "1hhp": {
+    "CATH": {
+      "2.40.70.10": {
+        "name": "Unliganded hiv-1 protease. Chain: a. Engineered: yes",
+        "class": "Mainly Beta",
+        "architecture": "Beta Barrel",
+        "topology": "Cathepsin D, subunit A; domain 1",
+        "homology": "Acid Proteases",
+        "mappings": [
+          {
+            "domain": "1hhpA00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 99,
+              "author_insertion_code": "",
+              "residue_number": 99
+            }
+          }
+        ],
+        "identifier": "Cathepsin D, subunit A; domain 1"
+      }
+    }
+  }
+}

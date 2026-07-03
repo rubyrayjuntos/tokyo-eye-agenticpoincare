@@ -1,0 +1,33 @@
+{
+  "1sup": {
+    "CATH": {
+      "3.40.50.200": {
+        "name": "Subtilisin bpn'. Chain: a. Synonym: subtilisin novo.",
+        "class": "Alpha Beta",
+        "architecture": "3-Layer(aba) Sandwich",
+        "topology": "Rossmann fold",
+        "homology": "Peptidase S8/S53 domain",
+        "mappings": [
+          {
+            "domain": "1supA00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 275,
+              "author_insertion_code": "",
+              "residue_number": 275
+            }
+          }
+        ],
+        "identifier": "Rossmann fold"
+      }
+    }
+  }
+}

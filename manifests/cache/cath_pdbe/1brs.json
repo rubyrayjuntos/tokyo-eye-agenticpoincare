@@ -1,0 +1,128 @@
+{
+  "1brs": {
+    "CATH": {
+      "3.10.450.30": {
+        "name": "BaRNAse. Chain: a, b, c. Engineered: yes. Barstar. Chain: d, e, f. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "Roll",
+        "topology": "Nuclear Transport Factor 2; Chain: A,",
+        "homology": "Microbial ribonucleases",
+        "mappings": [
+          {
+            "domain": "1brsA00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 3,
+              "author_insertion_code": "",
+              "residue_number": 3
+            },
+            "end": {
+              "author_residue_number": 110,
+              "author_insertion_code": "",
+              "residue_number": 110
+            }
+          },
+          {
+            "domain": "1brsB00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 110,
+              "author_insertion_code": "",
+              "residue_number": 110
+            }
+          },
+          {
+            "domain": "1brsC00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "C",
+            "struct_asym_id": "C",
+            "start": {
+              "author_residue_number": 3,
+              "author_insertion_code": "",
+              "residue_number": 3
+            },
+            "end": {
+              "author_residue_number": 110,
+              "author_insertion_code": "",
+              "residue_number": 110
+            }
+          }
+        ],
+        "identifier": "Nuclear Transport Factor 2; Chain: A,"
+      },
+      "3.30.370.10": {
+        "name": "BaRNAse. Chain: a, b, c. Engineered: yes. Barstar. Chain: d, e, f. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "2-Layer Sandwich",
+        "topology": "Barnase; Chain D",
+        "homology": "Barstar-like",
+        "mappings": [
+          {
+            "domain": "1brsD00",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "D",
+            "struct_asym_id": "D",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 89,
+              "author_insertion_code": "",
+              "residue_number": 89
+            }
+          },
+          {
+            "domain": "1brsE00",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "E",
+            "struct_asym_id": "E",
+            "start": {
+              "author_residue_number": 2,
+              "author_insertion_code": "",
+              "residue_number": 2
+            },
+            "end": {
+              "author_residue_number": 89,
+              "author_insertion_code": "",
+              "residue_number": 89
+            }
+          },
+          {
+            "domain": "1brsF00",
+            "segment_id": 1,
+            "entity_id": 2,
+            "chain_id": "F",
+            "struct_asym_id": "F",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 89,
+              "author_insertion_code": "",
+              "residue_number": 89
+            }
+          }
+        ],
+        "identifier": "Barnase; Chain D"
+      }
+    }
+  }
+}

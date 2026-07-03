@@ -1,0 +1,94 @@
+{
+  "3pp0": {
+    "CATH": {
+      "3.30.200.20": {
+        "name": "Receptor tyrosine-protein kinase erbb-2. Chain: a, b. Fragment: kinasedomain, residues 706-1009. Synonym: metastatic lymph node gene 19 protein, mln 19, proto- oncogene neu, proto-oncogene c-erbb-2, tyrosine kinase-type cell surface receptor her2, p185erbb2. Engineered: yes. Mutation: yes",
+        "class": "Alpha Beta",
+        "architecture": "2-Layer Sandwich",
+        "topology": "Phosphorylase Kinase; domain 1",
+        "homology": "Phosphorylase Kinase; domain 1",
+        "mappings": [
+          {
+            "domain": "3pp0A01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 706,
+              "author_insertion_code": "",
+              "residue_number": 5
+            },
+            "end": {
+              "author_residue_number": 800,
+              "author_insertion_code": "",
+              "residue_number": 99
+            }
+          },
+          {
+            "domain": "3pp0B01",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 706,
+              "author_insertion_code": "",
+              "residue_number": 5
+            },
+            "end": {
+              "author_residue_number": 800,
+              "author_insertion_code": "",
+              "residue_number": 99
+            }
+          }
+        ],
+        "identifier": "Phosphorylase Kinase; domain 1"
+      },
+      "1.10.510.10": {
+        "name": "Receptor tyrosine-protein kinase erbb-2. Chain: a, b. Fragment: kinasedomain, residues 706-1009. Synonym: metastatic lymph node gene 19 protein, mln 19, proto- oncogene neu, proto-oncogene c-erbb-2, tyrosine kinase-type cell surface receptor her2, p185erbb2. Engineered: yes. Mutation: yes",
+        "class": "Mainly Alpha",
+        "architecture": "Orthogonal Bundle",
+        "topology": "Transferase(Phosphotransferase); domain 1",
+        "homology": "Transferase(Phosphotransferase) domain 1",
+        "mappings": [
+          {
+            "domain": "3pp0A02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 801,
+              "author_insertion_code": "",
+              "residue_number": 100
+            },
+            "end": {
+              "author_residue_number": 993,
+              "author_insertion_code": "",
+              "residue_number": 292
+            }
+          },
+          {
+            "domain": "3pp0B02",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 801,
+              "author_insertion_code": "",
+              "residue_number": 100
+            },
+            "end": {
+              "author_residue_number": 999,
+              "author_insertion_code": "",
+              "residue_number": 298
+            }
+          }
+        ],
+        "identifier": "Transferase(Phosphotransferase); domain 1"
+      }
+    }
+  }
+}

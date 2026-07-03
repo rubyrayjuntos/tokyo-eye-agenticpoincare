@@ -1,0 +1,33 @@
+{
+  "1lyz": {
+    "CATH": {
+      "1.10.530.10": {
+        "name": "Hen egg white lysozyme. Chain: a. Engineered: yes",
+        "class": "Mainly Alpha",
+        "architecture": "Orthogonal Bundle",
+        "topology": "Lysozyme",
+        "homology": "Lysozyme",
+        "mappings": [
+          {
+            "domain": "1lyzA00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 129,
+              "author_insertion_code": "",
+              "residue_number": 129
+            }
+          }
+        ],
+        "identifier": "Lysozyme"
+      }
+    }
+  }
+}

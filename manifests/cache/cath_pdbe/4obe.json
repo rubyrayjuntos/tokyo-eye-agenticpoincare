@@ -1,0 +1,50 @@
+{
+  "4obe": {
+    "CATH": {
+      "3.40.50.300": {
+        "name": "Gtpase kras. Chain: a, b. Fragment: unp residues 1-169. Synonym: 'k-ras 2, ki-ras, c-k-ras, c-ki-ras, gtpase kras, n- terminally processed,kras, v-ki-ras2 kirsten rat sarcoma viral oncogene homolog. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "3-Layer(aba) Sandwich",
+        "topology": "Rossmann fold",
+        "homology": "P-loop containing nucleotide triphosphate hydrolases",
+        "mappings": [
+          {
+            "domain": "4obeA00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 2
+            },
+            "end": {
+              "author_residue_number": 169,
+              "author_insertion_code": "",
+              "residue_number": 170
+            }
+          },
+          {
+            "domain": "4obeB00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "B",
+            "struct_asym_id": "B",
+            "start": {
+              "author_residue_number": 0,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 169,
+              "author_insertion_code": "",
+              "residue_number": 170
+            }
+          }
+        ],
+        "identifier": "Rossmann fold"
+      }
+    }
+  }
+}

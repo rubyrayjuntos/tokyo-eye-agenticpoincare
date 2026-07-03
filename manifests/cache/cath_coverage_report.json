@@ -1,0 +1,1607 @@
+{
+  "spec_version": "cath-coverage-probe:2026-07-03",
+  "input_manifest": "manifests/v6_corpus_120.json",
+  "cache_dir": "manifests/cache/cath_pdbe",
+  "api": "https://www.ebi.ac.uk/pdbe/api/mappings/cath/{pdb_id}",
+  "enabled_count": 46,
+  "coverage": {
+    "topology": 40,
+    "architecture_only": 0,
+    "unverified": 6,
+    "topology_pct": 87.0,
+    "any_cath_pct": 87.0,
+    "mixed_tier_vocabulary": false
+  },
+  "structures": [
+    {
+      "pdb_id": "4OBE",
+      "chain": "A",
+      "gene": "KRAS",
+      "manifest_fold_class": "alpha_beta",
+      "fold_id": "3.40.50.300",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "4obeA00",
+      "topology_name": "Rossmann fold",
+      "architecture_name": "3-Layer(aba) Sandwich",
+      "all_hits": [
+        {
+          "cath_code": "3.40.50.300",
+          "parts": [
+            "3",
+            "40",
+            "50",
+            "300"
+          ],
+          "domain": "4obeA00",
+          "start": 1,
+          "end": 169,
+          "topology_name": "Rossmann fold",
+          "architecture_name": "3-Layer(aba) Sandwich",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "4DSO",
+      "chain": "A",
+      "gene": "KRAS",
+      "manifest_fold_class": "alpha_beta",
+      "fold_id": "3.40.50.300",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "4dsoA00",
+      "topology_name": "Rossmann fold",
+      "architecture_name": "3-Layer(aba) Sandwich",
+      "all_hits": [
+        {
+          "cath_code": "3.40.50.300",
+          "parts": [
+            "3",
+            "40",
+            "50",
+            "300"
+          ],
+          "domain": "4dsoA00",
+          "start": 1,
+          "end": 180,
+          "topology_name": "Rossmann fold",
+          "architecture_name": "3-Layer(aba) Sandwich",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "6OIM",
+      "chain": "A",
+      "gene": "KRAS",
+      "manifest_fold_class": "alpha_beta",
+      "fold_id": null,
+      "fold_id_tier": "unverified",
+      "status": "FOLD_UNVERIFIED",
+      "fetch_error": "HTTP 404"
+    },
+    {
+      "pdb_id": "5VQ2",
+      "chain": "A",
+      "gene": "KRAS",
+      "manifest_fold_class": "alpha_beta",
+      "fold_id": "3.40.50.300",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "5vq2A00",
+      "topology_name": "Rossmann fold",
+      "architecture_name": "3-Layer(aba) Sandwich",
+      "all_hits": [
+        {
+          "cath_code": "3.40.50.300",
+          "parts": [
+            "3",
+            "40",
+            "50",
+            "300"
+          ],
+          "domain": "5vq2A00",
+          "start": 0,
+          "end": 168,
+          "topology_name": "Rossmann fold",
+          "architecture_name": "3-Layer(aba) Sandwich",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "3CON",
+      "chain": "A",
+      "gene": "NRAS",
+      "manifest_fold_class": "alpha_beta",
+      "fold_id": "3.40.50.300",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "3conA00",
+      "topology_name": "Rossmann fold",
+      "architecture_name": "3-Layer(aba) Sandwich",
+      "all_hits": [
+        {
+          "cath_code": "3.40.50.300",
+          "parts": [
+            "3",
+            "40",
+            "50",
+            "300"
+          ],
+          "domain": "3conA00",
+          "start": 1,
+          "end": 167,
+          "topology_name": "Rossmann fold",
+          "architecture_name": "3-Layer(aba) Sandwich",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "4G0N",
+      "chain": "A",
+      "gene": "HRAS",
+      "manifest_fold_class": "alpha_beta",
+      "fold_id": "3.40.50.300",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "4g0nA00",
+      "topology_name": "Rossmann fold",
+      "architecture_name": "3-Layer(aba) Sandwich",
+      "all_hits": [
+        {
+          "cath_code": "3.40.50.300",
+          "parts": [
+            "3",
+            "40",
+            "50",
+            "300"
+          ],
+          "domain": "4g0nA00",
+          "start": 1,
+          "end": 166,
+          "topology_name": "Rossmann fold",
+          "architecture_name": "3-Layer(aba) Sandwich",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "4MNE",
+      "chain": "A",
+      "gene": "BRAF",
+      "manifest_fold_class": "alpha_beta",
+      "fold_id": "1.10.510.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "4mneA02",
+      "topology_name": "Transferase(Phosphotransferase); domain 1",
+      "architecture_name": "Orthogonal Bundle",
+      "all_hits": [
+        {
+          "cath_code": "3.30.200.20",
+          "parts": [
+            "3",
+            "30",
+            "200",
+            "20"
+          ],
+          "domain": "4mneA01",
+          "start": 63,
+          "end": 146,
+          "topology_name": "Phosphorylase Kinase; domain 1",
+          "architecture_name": "2-Layer Sandwich",
+          "class_name": "Alpha Beta"
+        },
+        {
+          "cath_code": "1.10.510.10",
+          "parts": [
+            "1",
+            "10",
+            "510",
+            "10"
+          ],
+          "domain": "4mneA02",
+          "start": 147,
+          "end": 379,
+          "topology_name": "Transferase(Phosphotransferase); domain 1",
+          "architecture_name": "Orthogonal Bundle",
+          "class_name": "Mainly Alpha"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1IVO",
+      "chain": "A",
+      "gene": "EGFR",
+      "manifest_fold_class": "alpha_beta",
+      "fold_id": "3.80.20.20",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1ivoA03",
+      "topology_name": "24 nucleotide stem-loop, u2 snrnp hairpin iv. U2 a'; Chain A",
+      "architecture_name": "Alpha-Beta Horseshoe",
+      "all_hits": [
+        {
+          "cath_code": "3.80.20.20",
+          "parts": [
+            "3",
+            "80",
+            "20",
+            "20"
+          ],
+          "domain": "1ivoA01",
+          "start": 2,
+          "end": 186,
+          "topology_name": "24 nucleotide stem-loop, u2 snrnp hairpin iv. U2 a'; Chain A",
+          "architecture_name": "Alpha-Beta Horseshoe",
+          "class_name": "Alpha Beta"
+        },
+        {
+          "cath_code": "3.80.20.20",
+          "parts": [
+            "3",
+            "80",
+            "20",
+            "20"
+          ],
+          "domain": "1ivoA03",
+          "start": 310,
+          "end": 500,
+          "topology_name": "24 nucleotide stem-loop, u2 snrnp hairpin iv. U2 a'; Chain A",
+          "architecture_name": "Alpha-Beta Horseshoe",
+          "class_name": "Alpha Beta"
+        },
+        {
+          "cath_code": "2.10.220.10",
+          "parts": [
+            "2",
+            "10",
+            "220",
+            "10"
+          ],
+          "domain": "1ivoA02",
+          "start": 187,
+          "end": 309,
+          "topology_name": "Hormone Receptor, Insulin-like Growth Factor Receptor 1; Chain A domain 2",
+          "architecture_name": "Ribbon",
+          "class_name": "Mainly Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "2ITV",
+      "chain": "A",
+      "gene": "EGFR",
+      "manifest_fold_class": "alpha_beta",
+      "fold_id": "1.10.510.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "2itvA02",
+      "topology_name": "Transferase(Phosphotransferase); domain 1",
+      "architecture_name": "Orthogonal Bundle",
+      "all_hits": [
+        {
+          "cath_code": "3.30.200.20",
+          "parts": [
+            "3",
+            "30",
+            "200",
+            "20"
+          ],
+          "domain": "2itvA01",
+          "start": 696,
+          "end": 792,
+          "topology_name": "Phosphorylase Kinase; domain 1",
+          "architecture_name": "2-Layer Sandwich",
+          "class_name": "Alpha Beta"
+        },
+        {
+          "cath_code": "1.10.510.10",
+          "parts": [
+            "1",
+            "10",
+            "510",
+            "10"
+          ],
+          "domain": "2itvA02",
+          "start": 793,
+          "end": 987,
+          "topology_name": "Transferase(Phosphotransferase); domain 1",
+          "architecture_name": "Orthogonal Bundle",
+          "class_name": "Mainly Alpha"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "4NST",
+      "chain": "A",
+      "gene": "CDK12",
+      "manifest_fold_class": "alpha_beta",
+      "fold_id": "1.10.510.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "4nstA02",
+      "topology_name": "Transferase(Phosphotransferase); domain 1",
+      "architecture_name": "Orthogonal Bundle",
+      "all_hits": [
+        {
+          "cath_code": "3.30.200.20",
+          "parts": [
+            "3",
+            "30",
+            "200",
+            "20"
+          ],
+          "domain": "4nstA01",
+          "start": 716,
+          "end": 817,
+          "topology_name": "Phosphorylase Kinase; domain 1",
+          "architecture_name": "2-Layer Sandwich",
+          "class_name": "Alpha Beta"
+        },
+        {
+          "cath_code": "1.10.510.10",
+          "parts": [
+            "1",
+            "10",
+            "510",
+            "10"
+          ],
+          "domain": "4nstA02",
+          "start": 818,
+          "end": 1046,
+          "topology_name": "Transferase(Phosphotransferase); domain 1",
+          "architecture_name": "Orthogonal Bundle",
+          "class_name": "Mainly Alpha"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "3PP0",
+      "chain": "A",
+      "gene": "SRC",
+      "manifest_fold_class": "alpha_beta",
+      "fold_id": "1.10.510.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "3pp0A02",
+      "topology_name": "Transferase(Phosphotransferase); domain 1",
+      "architecture_name": "Orthogonal Bundle",
+      "all_hits": [
+        {
+          "cath_code": "3.30.200.20",
+          "parts": [
+            "3",
+            "30",
+            "200",
+            "20"
+          ],
+          "domain": "3pp0A01",
+          "start": 706,
+          "end": 800,
+          "topology_name": "Phosphorylase Kinase; domain 1",
+          "architecture_name": "2-Layer Sandwich",
+          "class_name": "Alpha Beta"
+        },
+        {
+          "cath_code": "1.10.510.10",
+          "parts": [
+            "1",
+            "10",
+            "510",
+            "10"
+          ],
+          "domain": "3pp0A02",
+          "start": 801,
+          "end": 993,
+          "topology_name": "Transferase(Phosphotransferase); domain 1",
+          "architecture_name": "Orthogonal Bundle",
+          "class_name": "Mainly Alpha"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "2OIQ",
+      "chain": "A",
+      "gene": "ABL1",
+      "manifest_fold_class": "alpha_beta",
+      "fold_id": "1.10.510.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "2oiqA02",
+      "topology_name": "Transferase(Phosphotransferase); domain 1",
+      "architecture_name": "Orthogonal Bundle",
+      "all_hits": [
+        {
+          "cath_code": "3.30.200.20",
+          "parts": [
+            "3",
+            "30",
+            "200",
+            "20"
+          ],
+          "domain": "2oiqA01",
+          "start": 256,
+          "end": 340,
+          "topology_name": "Phosphorylase Kinase; domain 1",
+          "architecture_name": "2-Layer Sandwich",
+          "class_name": "Alpha Beta"
+        },
+        {
+          "cath_code": "1.10.510.10",
+          "parts": [
+            "1",
+            "10",
+            "510",
+            "10"
+          ],
+          "domain": "2oiqA02",
+          "start": 341,
+          "end": 526,
+          "topology_name": "Transferase(Phosphotransferase); domain 1",
+          "architecture_name": "Orthogonal Bundle",
+          "class_name": "Mainly Alpha"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "2SHP",
+      "chain": "A",
+      "gene": "SHP2",
+      "manifest_fold_class": "alpha_beta",
+      "fold_id": "3.90.190.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "2shpA03",
+      "topology_name": "Protein-Tyrosine Phosphatase; Chain A",
+      "architecture_name": "Alpha-Beta Complex",
+      "all_hits": [
+        {
+          "cath_code": "3.30.505.10",
+          "parts": [
+            "3",
+            "30",
+            "505",
+            "10"
+          ],
+          "domain": "2shpA01",
+          "start": 2,
+          "end": 109,
+          "topology_name": "SHC Adaptor Protein",
+          "architecture_name": "2-Layer Sandwich",
+          "class_name": "Alpha Beta"
+        },
+        {
+          "cath_code": "3.30.505.10",
+          "parts": [
+            "3",
+            "30",
+            "505",
+            "10"
+          ],
+          "domain": "2shpA02",
+          "start": 110,
+          "end": 215,
+          "topology_name": "SHC Adaptor Protein",
+          "architecture_name": "2-Layer Sandwich",
+          "class_name": "Alpha Beta"
+        },
+        {
+          "cath_code": "3.90.190.10",
+          "parts": [
+            "3",
+            "90",
+            "190",
+            "10"
+          ],
+          "domain": "2shpA03",
+          "start": 216,
+          "end": 525,
+          "topology_name": "Protein-Tyrosine Phosphatase; Chain A",
+          "architecture_name": "Alpha-Beta Complex",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1BG1",
+      "chain": "A",
+      "gene": "STAT3",
+      "manifest_fold_class": "all_alpha",
+      "fold_id": "1.20.1050.20",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1bg1A01",
+      "topology_name": "Glutathione S-transferase Yfyf (Class Pi); Chain A, domain 2",
+      "architecture_name": "Up-down Bundle",
+      "all_hits": [
+        {
+          "cath_code": "1.20.1050.20",
+          "parts": [
+            "1",
+            "20",
+            "1050",
+            "20"
+          ],
+          "domain": "1bg1A01",
+          "start": 138,
+          "end": 321,
+          "topology_name": "Glutathione S-transferase Yfyf (Class Pi); Chain A, domain 2",
+          "architecture_name": "Up-down Bundle",
+          "class_name": "Mainly Alpha"
+        },
+        {
+          "cath_code": "2.60.40.630",
+          "parts": [
+            "2",
+            "60",
+            "40",
+            "630"
+          ],
+          "domain": "1bg1A02",
+          "start": 322,
+          "end": 466,
+          "topology_name": "Immunoglobulin-like",
+          "architecture_name": "Sandwich",
+          "class_name": "Mainly Beta"
+        },
+        {
+          "cath_code": "1.10.238.10",
+          "parts": [
+            "1",
+            "10",
+            "238",
+            "10"
+          ],
+          "domain": "1bg1A03",
+          "start": 467,
+          "end": 588,
+          "topology_name": "Recoverin; domain 1",
+          "architecture_name": "Orthogonal Bundle",
+          "class_name": "Mainly Alpha"
+        },
+        {
+          "cath_code": "3.30.505.10",
+          "parts": [
+            "3",
+            "30",
+            "505",
+            "10"
+          ],
+          "domain": "1bg1A04",
+          "start": 589,
+          "end": 711,
+          "topology_name": "SHC Adaptor Protein",
+          "architecture_name": "2-Layer Sandwich",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "2Z6H",
+      "chain": "A",
+      "gene": "CTNNB1",
+      "manifest_fold_class": "alpha_beta",
+      "fold_id": "1.25.10.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "2z6hA00",
+      "topology_name": "Leucine-rich Repeat Variant",
+      "architecture_name": "Alpha Horseshoe",
+      "all_hits": [
+        {
+          "cath_code": "1.25.10.10",
+          "parts": [
+            "1",
+            "25",
+            "10",
+            "10"
+          ],
+          "domain": "2z6hA00",
+          "start": 149,
+          "end": 691,
+          "topology_name": "Leucine-rich Repeat Variant",
+          "architecture_name": "Alpha Horseshoe",
+          "class_name": "Mainly Alpha"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "4GQB",
+      "chain": "A",
+      "gene": "PRMT5",
+      "manifest_fold_class": "alpha_beta",
+      "fold_id": "3.20.20.150",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "4gqbA01",
+      "topology_name": "TIM Barrel",
+      "architecture_name": "Alpha-Beta Barrel",
+      "all_hits": [
+        {
+          "cath_code": "3.20.20.150",
+          "parts": [
+            "3",
+            "20",
+            "20",
+            "150"
+          ],
+          "domain": "4gqbA01",
+          "start": 13,
+          "end": 299,
+          "topology_name": "TIM Barrel",
+          "architecture_name": "Alpha-Beta Barrel",
+          "class_name": "Alpha Beta"
+        },
+        {
+          "cath_code": "3.40.50.150",
+          "parts": [
+            "3",
+            "40",
+            "50",
+            "150"
+          ],
+          "domain": "4gqbA02",
+          "start": 300,
+          "end": 466,
+          "topology_name": "Rossmann fold",
+          "architecture_name": "3-Layer(aba) Sandwich",
+          "class_name": "Alpha Beta"
+        },
+        {
+          "cath_code": "2.70.160.11",
+          "parts": [
+            "2",
+            "70",
+            "160",
+            "11"
+          ],
+          "domain": "4gqbA03",
+          "start": 467,
+          "end": 637,
+          "topology_name": "Hnrnp arginine n-methyltransferase1",
+          "architecture_name": "Distorted Sandwich",
+          "class_name": "Mainly Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "2HHB",
+      "chain": "B",
+      "gene": "HBB",
+      "manifest_fold_class": "all_alpha",
+      "fold_id": "1.10.490.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "2hhbB00",
+      "topology_name": "Globin-like",
+      "architecture_name": "Orthogonal Bundle",
+      "all_hits": [
+        {
+          "cath_code": "1.10.490.10",
+          "parts": [
+            "1",
+            "10",
+            "490",
+            "10"
+          ],
+          "domain": "2hhbB00",
+          "start": 1,
+          "end": 146,
+          "topology_name": "Globin-like",
+          "architecture_name": "Orthogonal Bundle",
+          "class_name": "Mainly Alpha"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1UBQ",
+      "chain": "A",
+      "gene": "UBQ",
+      "manifest_fold_class": "alpha_beta",
+      "fold_id": "3.10.20.90",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1ubqA00",
+      "topology_name": "Ubiquitin-like (UB roll)",
+      "architecture_name": "Roll",
+      "all_hits": [
+        {
+          "cath_code": "3.10.20.90",
+          "parts": [
+            "3",
+            "10",
+            "20",
+            "90"
+          ],
+          "domain": "1ubqA00",
+          "start": 1,
+          "end": 76,
+          "topology_name": "Ubiquitin-like (UB roll)",
+          "architecture_name": "Roll",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1CRN",
+      "chain": "A",
+      "gene": "CRN",
+      "manifest_fold_class": "all_alpha",
+      "fold_id": "3.30.1350.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1crnA00",
+      "topology_name": "Crambin",
+      "architecture_name": "2-Layer Sandwich",
+      "all_hits": [
+        {
+          "cath_code": "3.30.1350.10",
+          "parts": [
+            "3",
+            "30",
+            "1350",
+            "10"
+          ],
+          "domain": "1crnA00",
+          "start": 1,
+          "end": 46,
+          "topology_name": "Crambin",
+          "architecture_name": "2-Layer Sandwich",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1TIM",
+      "chain": "A",
+      "gene": "TIM",
+      "manifest_fold_class": "alpha_beta",
+      "fold_id": "3.20.20.70",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1timA00",
+      "topology_name": "TIM Barrel",
+      "architecture_name": "Alpha-Beta Barrel",
+      "all_hits": [
+        {
+          "cath_code": "3.20.20.70",
+          "parts": [
+            "3",
+            "20",
+            "20",
+            "70"
+          ],
+          "domain": "1timA00",
+          "start": 1,
+          "end": 248,
+          "topology_name": "TIM Barrel",
+          "architecture_name": "Alpha-Beta Barrel",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1AKE",
+      "chain": "A",
+      "gene": "ADK",
+      "manifest_fold_class": "alpha_beta",
+      "fold_id": "3.40.50.300",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1akeA00",
+      "topology_name": "Rossmann fold",
+      "architecture_name": "3-Layer(aba) Sandwich",
+      "all_hits": [
+        {
+          "cath_code": "3.40.50.300",
+          "parts": [
+            "3",
+            "40",
+            "50",
+            "300"
+          ],
+          "domain": "1akeA00",
+          "start": 1,
+          "end": 214,
+          "topology_name": "Rossmann fold",
+          "architecture_name": "3-Layer(aba) Sandwich",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1LYZ",
+      "chain": "A",
+      "gene": "LYZ",
+      "manifest_fold_class": "alpha_beta",
+      "fold_id": "1.10.530.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1lyzA00",
+      "topology_name": "Lysozyme",
+      "architecture_name": "Orthogonal Bundle",
+      "all_hits": [
+        {
+          "cath_code": "1.10.530.10",
+          "parts": [
+            "1",
+            "10",
+            "530",
+            "10"
+          ],
+          "domain": "1lyzA00",
+          "start": 1,
+          "end": 129,
+          "topology_name": "Lysozyme",
+          "architecture_name": "Orthogonal Bundle",
+          "class_name": "Mainly Alpha"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1MBN",
+      "chain": "A",
+      "gene": "MBN",
+      "manifest_fold_class": "all_alpha",
+      "fold_id": "1.10.490.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1mbnA00",
+      "topology_name": "Globin-like",
+      "architecture_name": "Orthogonal Bundle",
+      "all_hits": [
+        {
+          "cath_code": "1.10.490.10",
+          "parts": [
+            "1",
+            "10",
+            "490",
+            "10"
+          ],
+          "domain": "1mbnA00",
+          "start": 1,
+          "end": 153,
+          "topology_name": "Globin-like",
+          "architecture_name": "Orthogonal Bundle",
+          "class_name": "Mainly Alpha"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "2ABD",
+      "chain": "A",
+      "gene": "ABD",
+      "manifest_fold_class": "all_alpha",
+      "fold_id": "1.20.80.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "2abdA00",
+      "topology_name": "Acyl-CoA Binding Protein",
+      "architecture_name": "Up-down Bundle",
+      "all_hits": [
+        {
+          "cath_code": "1.20.80.10",
+          "parts": [
+            "1",
+            "20",
+            "80",
+            "10"
+          ],
+          "domain": "2abdA00",
+          "start": 1,
+          "end": 86,
+          "topology_name": "Acyl-CoA Binding Protein",
+          "architecture_name": "Up-down Bundle",
+          "class_name": "Mainly Alpha"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1PGB",
+      "chain": "A",
+      "gene": "GB1",
+      "manifest_fold_class": "all_beta",
+      "fold_id": "3.10.20.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1pgbA00",
+      "topology_name": "Ubiquitin-like (UB roll)",
+      "architecture_name": "Roll",
+      "all_hits": [
+        {
+          "cath_code": "3.10.20.10",
+          "parts": [
+            "3",
+            "10",
+            "20",
+            "10"
+          ],
+          "domain": "1pgbA00",
+          "start": 1,
+          "end": 56,
+          "topology_name": "Ubiquitin-like (UB roll)",
+          "architecture_name": "Roll",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "2VIK",
+      "chain": "A",
+      "gene": "VIK",
+      "manifest_fold_class": "all_beta",
+      "fold_id": "3.40.20.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "2vikA00",
+      "topology_name": "Severin",
+      "architecture_name": "3-Layer(aba) Sandwich",
+      "all_hits": [
+        {
+          "cath_code": "3.40.20.10",
+          "parts": [
+            "3",
+            "40",
+            "20",
+            "10"
+          ],
+          "domain": "2vikA00",
+          "start": 1,
+          "end": 126,
+          "topology_name": "Severin",
+          "architecture_name": "3-Layer(aba) Sandwich",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1BEN",
+      "chain": "A",
+      "gene": "BEN",
+      "manifest_fold_class": "all_beta",
+      "fold_id": null,
+      "fold_id_tier": "unverified",
+      "status": "FOLD_UNVERIFIED",
+      "fetch_error": "HTTP 404"
+    },
+    {
+      "pdb_id": "1SUP",
+      "chain": "A",
+      "gene": "SUP",
+      "manifest_fold_class": "all_beta",
+      "fold_id": "3.40.50.200",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1supA00",
+      "topology_name": "Rossmann fold",
+      "architecture_name": "3-Layer(aba) Sandwich",
+      "all_hits": [
+        {
+          "cath_code": "3.40.50.200",
+          "parts": [
+            "3",
+            "40",
+            "50",
+            "200"
+          ],
+          "domain": "1supA00",
+          "start": 1,
+          "end": 275,
+          "topology_name": "Rossmann fold",
+          "architecture_name": "3-Layer(aba) Sandwich",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1A2P",
+      "chain": "A",
+      "gene": "A2P",
+      "manifest_fold_class": "all_beta",
+      "fold_id": "3.10.450.30",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1a2pA00",
+      "topology_name": "Nuclear Transport Factor 2; Chain: A,",
+      "architecture_name": "Roll",
+      "all_hits": [
+        {
+          "cath_code": "3.10.450.30",
+          "parts": [
+            "3",
+            "10",
+            "450",
+            "30"
+          ],
+          "domain": "1a2pA00",
+          "start": 3,
+          "end": 110,
+          "topology_name": "Nuclear Transport Factor 2; Chain: A,",
+          "architecture_name": "Roll",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1HHP",
+      "chain": "A",
+      "gene": "HHP",
+      "manifest_fold_class": "all_beta",
+      "fold_id": "2.40.70.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1hhpA00",
+      "topology_name": "Cathepsin D, subunit A; domain 1",
+      "architecture_name": "Beta Barrel",
+      "all_hits": [
+        {
+          "cath_code": "2.40.70.10",
+          "parts": [
+            "2",
+            "40",
+            "70",
+            "10"
+          ],
+          "domain": "1hhpA00",
+          "start": 1,
+          "end": 99,
+          "topology_name": "Cathepsin D, subunit A; domain 1",
+          "architecture_name": "Beta Barrel",
+          "class_name": "Mainly Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1FKB",
+      "chain": "A",
+      "gene": "FKBP",
+      "manifest_fold_class": "all_beta",
+      "fold_id": "3.10.50.40",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1fkbA00",
+      "topology_name": "Chitinase A; domain 3",
+      "architecture_name": "Roll",
+      "all_hits": [
+        {
+          "cath_code": "3.10.50.40",
+          "parts": [
+            "3",
+            "10",
+            "50",
+            "40"
+          ],
+          "domain": "1fkbA00",
+          "start": 1,
+          "end": 107,
+          "topology_name": "Chitinase A; domain 3",
+          "architecture_name": "Roll",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1TEN",
+      "chain": "A",
+      "gene": "TEN",
+      "manifest_fold_class": "all_beta",
+      "fold_id": "2.60.40.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1tenA00",
+      "topology_name": "Immunoglobulin-like",
+      "architecture_name": "Sandwich",
+      "all_hits": [
+        {
+          "cath_code": "2.60.40.10",
+          "parts": [
+            "2",
+            "60",
+            "40",
+            "10"
+          ],
+          "domain": "1tenA00",
+          "start": 802,
+          "end": 891,
+          "topology_name": "Immunoglobulin-like",
+          "architecture_name": "Sandwich",
+          "class_name": "Mainly Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1CEW",
+      "chain": "A",
+      "gene": "CEW",
+      "manifest_fold_class": "alpha_plus_beta",
+      "fold_id": "3.10.450.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1cewI00",
+      "topology_name": "Nuclear Transport Factor 2; Chain: A,",
+      "architecture_name": "Roll",
+      "all_hits": [
+        {
+          "cath_code": "3.10.450.10",
+          "parts": [
+            "3",
+            "10",
+            "450",
+            "10"
+          ],
+          "domain": "1cewI00",
+          "start": 9,
+          "end": 116,
+          "topology_name": "Nuclear Transport Factor 2; Chain: A,",
+          "architecture_name": "Roll",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1R69",
+      "chain": "A",
+      "gene": "R69",
+      "manifest_fold_class": "alpha_plus_beta",
+      "fold_id": "1.10.260.40",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1r69A00",
+      "topology_name": "434 Repressor (Amino-terminal Domain)",
+      "architecture_name": "Orthogonal Bundle",
+      "all_hits": [
+        {
+          "cath_code": "1.10.260.40",
+          "parts": [
+            "1",
+            "10",
+            "260",
+            "40"
+          ],
+          "domain": "1r69A00",
+          "start": 1,
+          "end": 63,
+          "topology_name": "434 Repressor (Amino-terminal Domain)",
+          "architecture_name": "Orthogonal Bundle",
+          "class_name": "Mainly Alpha"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1CTF",
+      "chain": "A",
+      "gene": "CTF",
+      "manifest_fold_class": "alpha_plus_beta",
+      "fold_id": "3.30.1390.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1ctfA00",
+      "topology_name": "Ribosomal Protein L30; Chain: A,",
+      "architecture_name": "2-Layer Sandwich",
+      "all_hits": [
+        {
+          "cath_code": "3.30.1390.10",
+          "parts": [
+            "3",
+            "30",
+            "1390",
+            "10"
+          ],
+          "domain": "1ctfA00",
+          "start": 53,
+          "end": 120,
+          "topology_name": "Ribosomal Protein L30; Chain: A,",
+          "architecture_name": "2-Layer Sandwich",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "2CRO",
+      "chain": "A",
+      "gene": "CRO",
+      "manifest_fold_class": "alpha_plus_beta",
+      "fold_id": "1.10.260.40",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "2croA00",
+      "topology_name": "434 Repressor (Amino-terminal Domain)",
+      "architecture_name": "Orthogonal Bundle",
+      "all_hits": [
+        {
+          "cath_code": "1.10.260.40",
+          "parts": [
+            "1",
+            "10",
+            "260",
+            "40"
+          ],
+          "domain": "2croA00",
+          "start": -1,
+          "end": 63,
+          "topology_name": "434 Repressor (Amino-terminal Domain)",
+          "architecture_name": "Orthogonal Bundle",
+          "class_name": "Mainly Alpha"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1PIN",
+      "chain": "A",
+      "gene": "PIN",
+      "manifest_fold_class": "alpha_plus_beta",
+      "fold_id": "3.10.50.40",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1pinA02",
+      "topology_name": "Chitinase A; domain 3",
+      "architecture_name": "Roll",
+      "all_hits": [
+        {
+          "cath_code": "2.20.70.10",
+          "parts": [
+            "2",
+            "20",
+            "70",
+            "10"
+          ],
+          "domain": "1pinA01",
+          "start": 6,
+          "end": 37,
+          "topology_name": "Ubiquitin Ligase Nedd4; Chain: W;",
+          "architecture_name": "Single Sheet",
+          "class_name": "Mainly Beta"
+        },
+        {
+          "cath_code": "3.10.50.40",
+          "parts": [
+            "3",
+            "10",
+            "50",
+            "40"
+          ],
+          "domain": "1pinA02",
+          "start": 54,
+          "end": 163,
+          "topology_name": "Chitinase A; domain 3",
+          "architecture_name": "Roll",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1BRS",
+      "chain": "A",
+      "gene": "BRS",
+      "manifest_fold_class": "multi_domain",
+      "fold_id": "3.10.450.30",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1brsA00",
+      "topology_name": "Nuclear Transport Factor 2; Chain: A,",
+      "architecture_name": "Roll",
+      "all_hits": [
+        {
+          "cath_code": "3.10.450.30",
+          "parts": [
+            "3",
+            "10",
+            "450",
+            "30"
+          ],
+          "domain": "1brsA00",
+          "start": 3,
+          "end": 110,
+          "topology_name": "Nuclear Transport Factor 2; Chain: A,",
+          "architecture_name": "Roll",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1CHO",
+      "chain": "A",
+      "gene": "CHO",
+      "manifest_fold_class": "multi_domain",
+      "fold_id": null,
+      "fold_id_tier": "unverified",
+      "status": "FOLD_UNVERIFIED",
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1AON",
+      "chain": "A",
+      "gene": "AON",
+      "manifest_fold_class": "multi_domain",
+      "fold_id": "3.50.7.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1aonA03",
+      "topology_name": "GroEL",
+      "architecture_name": "3-Layer(bba) Sandwich",
+      "all_hits": [
+        {
+          "cath_code": "1.10.560.10",
+          "parts": [
+            "1",
+            "10",
+            "560",
+            "10"
+          ],
+          "domain": "1aonA01",
+          "start": 2,
+          "end": 135,
+          "topology_name": "GROEL; domain 1",
+          "architecture_name": "Orthogonal Bundle",
+          "class_name": "Mainly Alpha"
+        },
+        {
+          "cath_code": "1.10.560.10",
+          "parts": [
+            "1",
+            "10",
+            "560",
+            "10"
+          ],
+          "domain": "1aonA01",
+          "start": 411,
+          "end": 525,
+          "topology_name": "GROEL; domain 1",
+          "architecture_name": "Orthogonal Bundle",
+          "class_name": "Mainly Alpha"
+        },
+        {
+          "cath_code": "3.30.260.10",
+          "parts": [
+            "3",
+            "30",
+            "260",
+            "10"
+          ],
+          "domain": "1aonA02",
+          "start": 136,
+          "end": 191,
+          "topology_name": "GROEL; domain 2",
+          "architecture_name": "2-Layer Sandwich",
+          "class_name": "Alpha Beta"
+        },
+        {
+          "cath_code": "3.30.260.10",
+          "parts": [
+            "3",
+            "30",
+            "260",
+            "10"
+          ],
+          "domain": "1aonA02",
+          "start": 373,
+          "end": 410,
+          "topology_name": "GROEL; domain 2",
+          "architecture_name": "2-Layer Sandwich",
+          "class_name": "Alpha Beta"
+        },
+        {
+          "cath_code": "3.50.7.10",
+          "parts": [
+            "3",
+            "50",
+            "7",
+            "10"
+          ],
+          "domain": "1aonA03",
+          "start": 192,
+          "end": 372,
+          "topology_name": "GroEL",
+          "architecture_name": "3-Layer(bba) Sandwich",
+          "class_name": "Alpha Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1A0I",
+      "chain": "A",
+      "gene": "A0I",
+      "manifest_fold_class": "membrane",
+      "fold_id": "3.30.470.30",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1a0iA03",
+      "topology_name": "D-amino Acid Aminotransferase; Chain A, domain 1",
+      "architecture_name": "2-Layer Sandwich",
+      "all_hits": [
+        {
+          "cath_code": "3.30.1490.70",
+          "parts": [
+            "3",
+            "30",
+            "1490",
+            "70"
+          ],
+          "domain": "1a0iA01",
+          "start": 2,
+          "end": 36,
+          "topology_name": "Dna Ligase; domain 1",
+          "architecture_name": "2-Layer Sandwich",
+          "class_name": "Alpha Beta"
+        },
+        {
+          "cath_code": "3.30.1490.70",
+          "parts": [
+            "3",
+            "30",
+            "1490",
+            "70"
+          ],
+          "domain": "1a0iA01",
+          "start": 193,
+          "end": 240,
+          "topology_name": "Dna Ligase; domain 1",
+          "architecture_name": "2-Layer Sandwich",
+          "class_name": "Alpha Beta"
+        },
+        {
+          "cath_code": "3.30.470.30",
+          "parts": [
+            "3",
+            "30",
+            "470",
+            "30"
+          ],
+          "domain": "1a0iA03",
+          "start": 37,
+          "end": 192,
+          "topology_name": "D-amino Acid Aminotransferase; Chain A, domain 1",
+          "architecture_name": "2-Layer Sandwich",
+          "class_name": "Alpha Beta"
+        },
+        {
+          "cath_code": "2.40.50.140",
+          "parts": [
+            "2",
+            "40",
+            "50",
+            "140"
+          ],
+          "domain": "1a0iA02",
+          "start": 241,
+          "end": 349,
+          "topology_name": "OB fold (Dihydrolipoamide Acetyltransferase, E2P)",
+          "architecture_name": "Beta Barrel",
+          "class_name": "Mainly Beta"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1F88",
+      "chain": "A",
+      "gene": "F88",
+      "manifest_fold_class": "membrane",
+      "fold_id": "1.20.1070.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "1f88A00",
+      "topology_name": "Rhopdopsin 7-helix transmembrane proteins",
+      "architecture_name": "Up-down Bundle",
+      "all_hits": [
+        {
+          "cath_code": "1.20.1070.10",
+          "parts": [
+            "1",
+            "20",
+            "1070",
+            "10"
+          ],
+          "domain": "1f88A00",
+          "start": 1,
+          "end": 348,
+          "topology_name": "Rhopdopsin 7-helix transmembrane proteins",
+          "architecture_name": "Up-down Bundle",
+          "class_name": "Mainly Alpha"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "2Z73",
+      "chain": "A",
+      "gene": "Z73",
+      "manifest_fold_class": "membrane",
+      "fold_id": "1.20.1070.10",
+      "fold_id_tier": "topology",
+      "status": "OK_TOPOLOGY",
+      "domain": "2z73A01",
+      "topology_name": "Rhopdopsin 7-helix transmembrane proteins",
+      "architecture_name": "Up-down Bundle",
+      "all_hits": [
+        {
+          "cath_code": "1.20.1070.10",
+          "parts": [
+            "1",
+            "20",
+            "1070",
+            "10"
+          ],
+          "domain": "2z73A01",
+          "start": 10,
+          "end": 358,
+          "topology_name": "Rhopdopsin 7-helix transmembrane proteins",
+          "architecture_name": "Up-down Bundle",
+          "class_name": "Mainly Alpha"
+        }
+      ],
+      "fetch_error": null
+    },
+    {
+      "pdb_id": "1D0T",
+      "chain": "A",
+      "gene": "D0T",
+      "manifest_fold_class": "idr",
+      "fold_id": null,
+      "fold_id_tier": "unverified",
+      "status": "FOLD_UNVERIFIED",
+      "fetch_error": "HTTP 404"
+    },
+    {
+      "pdb_id": "1VII",
+      "chain": "A",
+      "gene": "VII",
+      "manifest_fold_class": "peptide",
+      "fold_id": null,
+      "fold_id_tier": "unverified",
+      "status": "FOLD_UNVERIFIED",
+      "fetch_error": "HTTP 404"
+    },
+    {
+      "pdb_id": "1E0L",
+      "chain": "A",
+      "gene": "E0L",
+      "manifest_fold_class": "peptide",
+      "fold_id": null,
+      "fold_id_tier": "unverified",
+      "status": "FOLD_UNVERIFIED",
+      "fetch_error": "HTTP 404"
+    }
+  ]
+}

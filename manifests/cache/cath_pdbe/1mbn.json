@@ -1,0 +1,33 @@
+{
+  "1mbn": {
+    "CATH": {
+      "1.10.490.10": {
+        "name": "Myoglobin. Chain: a. Engineered: yes",
+        "class": "Mainly Alpha",
+        "architecture": "Orthogonal Bundle",
+        "topology": "Globin-like",
+        "homology": "Globins",
+        "mappings": [
+          {
+            "domain": "1mbnA00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 1,
+              "author_insertion_code": "",
+              "residue_number": 1
+            },
+            "end": {
+              "author_residue_number": 153,
+              "author_insertion_code": "",
+              "residue_number": 153
+            }
+          }
+        ],
+        "identifier": "Globin-like"
+      }
+    }
+  }
+}

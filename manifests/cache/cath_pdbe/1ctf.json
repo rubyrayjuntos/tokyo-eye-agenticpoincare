@@ -1,0 +1,33 @@
+{
+  "1ctf": {
+    "CATH": {
+      "3.30.1390.10": {
+        "name": "Ribosomal protein l7/l12. Chain: a. Engineered: yes",
+        "class": "Alpha Beta",
+        "architecture": "2-Layer Sandwich",
+        "topology": "Ribosomal Protein L30; Chain: A,",
+        "homology": "Ribosomal Protein L30; Chain: A,",
+        "mappings": [
+          {
+            "domain": "1ctfA00",
+            "segment_id": 1,
+            "entity_id": 1,
+            "chain_id": "A",
+            "struct_asym_id": "A",
+            "start": {
+              "author_residue_number": 53,
+              "author_insertion_code": "",
+              "residue_number": 7
+            },
+            "end": {
+              "author_residue_number": 120,
+              "author_insertion_code": "",
+              "residue_number": 74
+            }
+          }
+        ],
+        "identifier": "Ribosomal Protein L30; Chain: A,"
+      }
+    }
+  }
+}
