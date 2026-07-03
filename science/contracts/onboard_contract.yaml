@@ -1,0 +1,694 @@
+version: '1.6'
+pipeline: onboard_v1
+last_updated: '2026-06-29'
+owners:
+- science
+- data
+- agent
+geometric_constraints:
+  default_space: hyperbolic
+  policy: 'All geometric computations (GNN inference, source-leak detection, hyperbolic motifs, witness embedding, strain
+    vulnerability, topological lift) MUST run in hyperbolic space unless explicitly marked as euclidean, mixed, or none. Euclidean
+    GNN outputs
+
+    '
+  hyperbolic_jobs:
+  - gnn_inference
+  - source_leak_detection
+  - hyperbolic_motifs
+  - witness_embedding
+  - strain_vulnerability_scan
+  - topological_lift
+  allowed_euclidean_exceptions:
+  - ingest_dims
+  - assign_computation_scope
+  - alignment_sidecar
+  - graph_topology
+  - binding_site_scan
+  - md_validate_top_n
+  - pocket_pharmacophore_map
+  - pharmacophore_identification
+  - fragment_screen
+  - drug_candidate_ranking
+  - resistance_pathway_map
+  - allosteric_site_detection
+  - allele_selectivity_assessment
+  enforcement:
+    level: warning
+    level_env: GEOMETRIC_ENFORCEMENT_LEVEL
+    error_jobs_env: GEOMETRIC_ENFORCEMENT_ERROR_JOBS
+    locations:
+    - runner_dispatch
+    - validation
+    - preconditions
+artifacts:
+  dims:
+    canonical_key: dims
+    aliases: []
+    tier: 1
+    discovery_act: foundation
+    geometric_space: none
+    representation: Canonical structural identifiers and dimension records (chains, residues, atoms). Not a geometric embedding.
+    probe: dim_residue_exists
+    label: Structure dimensions ingested (chains, residues, atoms)
+    producing_jobs:
+    - ingest_dims
+    governed_tables:
+    - dim_structure
+    - dim_chain
+    - dim_residue
+    - dim_atom
+  scope:
+    canonical_key: scope
+    aliases: []
+    tier: 1
+    discovery_act: foundation
+    geometric_space: none
+    representation: Computation scope metadata (chain selection, normalization protocol). Governs downstream jobs but is not
+      geometric data.
+    probe: structure_computation_scope_exists
+    label: Computation scope assigned
+    producing_jobs:
+    - assign_computation_scope
+    governed_tables:
+    - structure_computation_scope
+  gnn_hyp:
+    canonical_key: gnn_hyp
+    aliases: []
+    tier: 1
+    discovery_act: foundation
+    geometric_space: hyperbolic
+    representation: "Per-residue coordinates in the Poincar\xE9 ball (hyperbolic embedding space). Primary geometric substrate\
+      \ for downstream discovery."
+    curvature:
+      source: learned_at_inference
+      passthrough: required_for_downstream
+      persisted_in:
+      - embedding_space.curvature
+      - JobRunResult.outputs.curvature
+    notes: "Curvature is learned by the GNN at inference \u2014 never hardcoded. Downstream hyperbolic jobs must consume embedding_space.curvature\
+      \ from this run."
+    probe: gnn_hyperbolic_embedding_exists
+    label: Hyperbolic GNN embeddings
+    producing_jobs:
+    - gnn_inference
+    governed_tables:
+    - fact_gnn_node_embedding
+    - embedding_space
+  gnn_euc:
+    canonical_key: gnn_euc
+    aliases: []
+    tier: null
+    discovery_act: foundation
+    geometric_space: euclidean
+    representation: Auxiliary Euclidean projection of GNN node embeddings. Secondary to gnn_hyp for discovery readiness.
+    probe: gnn_hyperbolic_embedding_exists
+    label: Euclidean GNN embeddings
+    producing_jobs:
+    - gnn_inference
+    governed_tables:
+    - fact_gnn_node_embedding
+    - embedding_space
+  graph:
+    canonical_key: graph
+    aliases: []
+    tier: 1
+    discovery_act: signal
+    geometric_space: euclidean
+    representation: "C\u03B1 graph topology metrics (degree, centrality, bridges) in Euclidean coordinate space. Complements\
+      \ but does not replace hyperbolic embeddings."
+    probe: graph_node_metrics_exists
+    label: Graph topology metrics
+    producing_jobs:
+    - graph_topology
+    governed_tables:
+    - fact_graph_node_metrics
+    - fact_graph_edge
+  source_leaks:
+    canonical_key: source_leaks
+    aliases:
+    - dtie_core
+    tier: 1
+    discovery_act: persistent_leak
+    geometric_space: hyperbolic
+    representation: Source-leak scores derived from hyperbolic GNN uncertainty and cone depth in the same embedding space
+      as gnn_hyp.
+    curvature:
+      source: inherited_from_gnn_hyp
+      passthrough_from: embedding_space.curvature
+    notes: Requires gnn_hyp and the learned curvature persisted at gnn_inference.
+    probe: source_leak_exists
+    label: Source-leak detection
+    producing_jobs:
+    - source_leak_detection
+    governed_tables:
+    - fact_source_leak
+  binding_scan:
+    canonical_key: binding_scan
+    aliases: []
+    tier: 1
+    discovery_act: cryptic_pocket
+    geometric_space: euclidean
+    representation: Cryptic pocket candidates from 3D structural coordinates and graph context. Not a hyperbolic embedding
+      artifact.
+    probe: binding_site_scan_complete
+    label: Binding site scan metadata
+    producing_jobs:
+    - binding_site_scan
+    governed_tables:
+    - fact_binding_site_scan
+    - fact_cryptic_site
+  alignment:
+    canonical_key: alignment
+    aliases: []
+    tier: 2
+    discovery_act: sidecar
+    geometric_space: euclidean
+    representation: UniProt residue mapping and optional structural superposition (3D rigid transforms). Non-hyperbolic metadata.
+    probe: residue_alignment_exists
+    label: UniProt residue alignment
+    producing_jobs:
+    - alignment_sidecar
+    governed_tables:
+    - fact_residue_alignment
+    - fact_structural_alignment
+  discovery_extended:
+    canonical_key: discovery_extended
+    aliases:
+    - dtie_phases
+    tier: 2
+    discovery_act: signal
+    geometric_space: hyperbolic
+    representation: Extended discovery phase outputs (strain/vulnerability) conditioned on hyperbolic GNN embeddings.
+    curvature:
+      source: inherited_from_gnn_hyp
+      passthrough_from: embedding_space.curvature
+    notes: Alias umbrella for phase-2+ features that require gnn_hyp and learned curvature.
+    probe: phase2_vulnerability_exists
+    label: Extended discovery outputs (strain, resistance, pharmacophore)
+    producing_jobs: []
+    governed_tables:
+    - fact_phase2_vulnerability
+  motifs:
+    canonical_key: motifs
+    aliases: []
+    tier: 2
+    discovery_act: persistent_leak
+    geometric_space: hyperbolic
+    representation: "Hyperbolic motif clusters from pairwise Poincar\xE9 disc distances on gnn_hyp coordinates."
+    curvature:
+      source: inherited_from_gnn_hyp
+      passthrough_from: embedding_space.curvature
+    notes: Clustering uses precomputed hyperbolic distance matrix at the learned curvature of the embedding run.
+    probe: hyperbolic_motif_exists
+    label: Hyperbolic motif analysis
+    producing_jobs:
+    - hyperbolic_motifs
+    governed_tables:
+    - fact_hyperbolic_motif
+  md_validation:
+    canonical_key: md_validation
+    aliases: []
+    tier: 2
+    discovery_act: cryptic_pocket
+    geometric_space: euclidean
+    representation: MD validation status for cryptic sites in Cartesian simulation space.
+    probe: md_validation_complete
+    label: MD validation for binding sites
+    producing_jobs:
+    - md_validate_top_n
+    governed_tables:
+    - fact_cryptic_site
+  strain_vulnerability:
+    canonical_key: strain_vulnerability
+    aliases: []
+    tier: extended
+    discovery_act: signal
+    geometric_space: hyperbolic
+    representation: Strain and vulnerability scan scores from hyperbolic GNN-derived features.
+    curvature:
+      source: inherited_from_gnn_hyp
+      passthrough_from: embedding_space.curvature
+    probe: phase2_vulnerability_exists
+    label: Strain / vulnerability scan (Act 01)
+    producing_jobs:
+    - strain_vulnerability_scan
+    governed_tables:
+    - fact_phase2_vulnerability
+  witness_embedding:
+    canonical_key: witness_embedding
+    aliases: []
+    tier: extended
+    discovery_act: signal
+    geometric_space: hyperbolic
+    representation: Persistence witness landmarks selected in hyperbolic embedding space (phase-1 witness embedding).
+    curvature:
+      source: inherited_from_gnn_hyp
+      passthrough_from: embedding_space.curvature
+    notes: Witness selection operates on governed hyperbolic GNN coordinates at learned curvature.
+    probe: witness_phase_output_exists
+    label: Persistence witness embedding (Act 01)
+    producing_jobs:
+    - witness_embedding
+    governed_tables:
+    - fact_phase_output
+  pocket_pharmacophore:
+    canonical_key: pocket_pharmacophore
+    aliases: []
+    tier: extended
+    discovery_act: cryptic_pocket
+    geometric_space: euclidean
+    representation: Pharmacophore features mapped to 3D pocket coordinates.
+    probe: pharmacophore_exists
+    label: Pocket pharmacophore map (Act 03)
+    producing_jobs:
+    - pocket_pharmacophore_map
+    governed_tables:
+    - fact_pharmacophore
+  pharmacophores:
+    canonical_key: pharmacophores
+    aliases: []
+    tier: extended
+    discovery_act: fragment
+    geometric_space: euclidean
+    representation: Identified pharmacophore models in structural (Cartesian) space.
+    probe: pharmacophore_exists
+    label: Pharmacophore identification (Act 04)
+    producing_jobs:
+    - pharmacophore_identification
+    governed_tables:
+    - fact_pharmacophore
+  drug_candidates:
+    canonical_key: drug_candidates
+    aliases: []
+    tier: extended
+    discovery_act: fragment
+    geometric_space: euclidean
+    representation: Ranked drug candidates with structural and ADMET descriptors.
+    probe: drug_candidate_exists
+    label: Drug candidate ranking (Act 04)
+    producing_jobs:
+    - drug_candidate_ranking
+    governed_tables:
+    - fact_drug_candidate
+  fragment_hits:
+    canonical_key: fragment_hits
+    aliases: []
+    tier: extended
+    discovery_act: fragment
+    geometric_space: euclidean
+    representation: Fragment screen hit records (planned). Structural docking outcomes.
+    probe: fragment_hits_exists
+    label: Fragment screen hits (Act 04, planned)
+    producing_jobs:
+    - fragment_screen
+    governed_tables:
+    - provenance_run
+  resistance_pathway:
+    canonical_key: resistance_pathway
+    aliases: []
+    tier: extended
+    discovery_act: verdict
+    geometric_space: mixed
+    representation: Resistance pathway coupling graph combining hyperbolic GNN context with Euclidean graph topology.
+    probe: resistance_pathway_exists
+    label: Resistance pathway map (Act 05)
+    producing_jobs:
+    - resistance_pathway_map
+    governed_tables:
+    - fact_resistance_pathway
+  buffering_atlas:
+    canonical_key: buffering_atlas
+    aliases: []
+    tier: extended
+    discovery_act: verdict
+    geometric_space: hyperbolic
+    representation: Buffering atlas from topological lift in hyperbolic embedding space.
+    curvature:
+      source: inherited_from_gnn_hyp
+      passthrough_from: embedding_space.curvature
+    probe: buffering_atlas_exists
+    label: Buffering atlas (Act 05)
+    producing_jobs:
+    - topological_lift
+    governed_tables:
+    - fact_phase_output
+  allosteric_sites:
+    canonical_key: allosteric_sites
+    aliases: []
+    tier: extended
+    discovery_act: verdict
+    geometric_space: mixed
+    representation: Allosteric site clusters from hyperbolic leak signals and resistance graph context.
+    probe: allosteric_site_exists
+    label: Allosteric site clusters (Act 05)
+    producing_jobs:
+    - allosteric_site_detection
+    governed_tables:
+    - fact_allosteric_site
+  allele_selectivity:
+    canonical_key: allele_selectivity
+    aliases: []
+    tier: extended
+    discovery_act: verdict
+    geometric_space: euclidean
+    representation: Allele selectivity ratios from ranked drug candidates.
+    probe: allele_selectivity_exists
+    label: Allele selectivity assessment (Act 05)
+    producing_jobs:
+    - allele_selectivity_assessment
+    governed_tables:
+    - fact_drug_candidate
+jobs:
+  gnn_inference:
+    geometric_space: hyperbolic
+    requires_hyperbolic: true
+    curvature:
+      source: learned_at_inference
+      produces_for_downstream: true
+    produces:
+    - gnn_hyp
+    - gnn_euc
+  source_leak_detection:
+    geometric_space: hyperbolic
+    requires_hyperbolic: true
+    curvature:
+      source: inherited_from_gnn_hyp
+      consumes_passthrough: true
+    produces:
+    - source_leaks
+  hyperbolic_motifs:
+    geometric_space: hyperbolic
+    requires_hyperbolic: true
+    curvature:
+      source: inherited_from_gnn_hyp
+      consumes_passthrough: true
+    produces:
+    - motifs
+  witness_embedding:
+    geometric_space: hyperbolic
+    requires_hyperbolic: true
+    curvature:
+      source: inherited_from_gnn_hyp
+      consumes_passthrough: true
+    produces:
+    - witness_embedding
+  strain_vulnerability_scan:
+    geometric_space: hyperbolic
+    requires_hyperbolic: true
+    curvature:
+      source: inherited_from_gnn_hyp
+      consumes_passthrough: true
+    produces:
+    - strain_vulnerability
+  topological_lift:
+    geometric_space: hyperbolic
+    requires_hyperbolic: true
+    curvature:
+      source: inherited_from_gnn_hyp
+      consumes_passthrough: true
+    produces:
+    - buffering_atlas
+  graph_topology:
+    geometric_space: euclidean
+    requires_hyperbolic: false
+    produces:
+    - graph
+  binding_site_scan:
+    geometric_space: euclidean
+    requires_hyperbolic: false
+    produces:
+    - binding_scan
+  resistance_pathway_map:
+    geometric_space: mixed
+    requires_hyperbolic: false
+    produces:
+    - resistance_pathway
+  allosteric_site_detection:
+    geometric_space: mixed
+    requires_hyperbolic: false
+    produces:
+    - allosteric_sites
+  md_validate_top_n:
+    geometric_space: euclidean
+    requires_hyperbolic: false
+    produces:
+    - md_validation
+  pocket_pharmacophore_map:
+    geometric_space: euclidean
+    requires_hyperbolic: false
+    produces:
+    - pocket_pharmacophore
+  pharmacophore_identification:
+    geometric_space: euclidean
+    requires_hyperbolic: false
+    produces:
+    - pharmacophores
+  fragment_screen:
+    geometric_space: euclidean
+    requires_hyperbolic: false
+    produces:
+    - fragment_hits
+  drug_candidate_ranking:
+    geometric_space: euclidean
+    requires_hyperbolic: false
+    produces:
+    - drug_candidates
+  allele_selectivity_assessment:
+    geometric_space: euclidean
+    requires_hyperbolic: false
+    produces:
+    - allele_selectivity
+readiness:
+  foundation:
+    required:
+    - dims
+    - scope
+    - gnn_hyp
+    optional:
+    - alignment
+    geometric_space: hyperbolic
+  global_status:
+    running:
+      pipeline_job_status:
+      - queued
+      - running
+    ready:
+      all_tiers:
+      - 1
+      - 2
+      requires_hyperbolic: true
+      required_hyperbolic_artifacts:
+      - gnn_hyp
+    degraded:
+      tier1_complete: true
+      tier2_incomplete: true
+    failed:
+      tier1_incomplete: true
+  act_order:
+  - signal
+  - persistent_leak
+  - cryptic_pocket
+  - fragment
+  - verdict
+  acts:
+    signal:
+      number: 1
+      title: Signal
+      question: Where is it strained?
+      color: '#5DDBC2'
+      geometric_space: mixed
+      required:
+      - graph
+      - gnn_hyp
+      optional:
+      - witness_embedding
+      - strain_vulnerability
+      - discovery_extended
+    persistent_leak:
+      number: 2
+      title: Persistent Leak
+      question: Which leaks hold?
+      color: '#DC5CE9'
+      geometric_space: hyperbolic
+      required:
+      - source_leaks
+      optional:
+      - motifs
+    cryptic_pocket:
+      number: 3
+      title: Cryptic Pocket
+      question: Where is the backdoor?
+      color: '#5DDBC2'
+      geometric_space: euclidean
+      required:
+      - binding_scan
+      optional:
+      - md_validation
+      - pocket_pharmacophore
+    fragment:
+      number: 4
+      title: Fragment
+      question: What fits the lock?
+      color: '#ECA53A'
+      geometric_space: euclidean
+      required: []
+      optional:
+      - pharmacophores
+      - drug_candidates
+      - fragment_hits
+    verdict:
+      number: 5
+      title: Verdict
+      question: Worth loading?
+      color: '#DC5CE9'
+      geometric_space: mixed
+      required: []
+      optional:
+      - buffering_atlas
+      - resistance_pathway
+      - allosteric_sites
+      - allele_selectivity
+gnn_models:
+  production_model_id: gospc_v6
+  models:
+    gospc_v6:
+      model_version: GOSPConeMapper-v6
+      api_alias: v6
+      status: production
+      runner_module: science.dtie.v6.gnn.runner
+      runner_class: V6GNNRunner
+      production_checkpoint_id: lever_a_clean_slate_v1
+    gospc_v5:
+      model_version: GOSPConeMapper-v5
+      api_alias: v5
+      status: legacy
+      runner_module: science.dtie.v5.gnn.runner
+      runner_class: V5GNNRunner
+      production_checkpoint_id: tokyo_eyes_v5
+  checkpoints:
+    lever_a_clean_slate_v1:
+      model_id: gospc_v6
+      path: checkpoints/v6/runs/lever_a_clean_slate_v1/v6_best_disc.pt
+      status: production
+    tokyo_eyes_v6:
+      model_id: gospc_v6
+      path: checkpoints/v6/tokyo_eyes_v6.pt
+      status: candidate
+    tokyo_eyes_v6_candidate:
+      model_id: gospc_v6
+      path: checkpoints/v6/tokyo_eyes_v6_candidate.pt
+      status: candidate
+    tokyo_eyes_v5:
+      model_id: gospc_v5
+      path: checkpoints/v5/tokyo_eyes_v5.pt
+      status: legacy
+api_surfaces:
+  ModelsResponse:
+    fields:
+    - contract_version
+    - production_model_id
+    - models
+    - checkpoints
+  IngestResponse:
+    coordinator:
+    - structure_id
+    - pdb_id
+    - residues
+    - residue_count
+    - chains
+    - chain_count
+    - atoms
+    - audit_only
+    - audit_run_id
+    - pipeline_status
+    - pipeline_job_id
+    - pipeline_status_url
+    - readiness_url
+    - source
+    - already_existed
+    science:
+    - structure_id
+    - chain_count
+    - residue_count
+    - atom_count
+    - computation_scope
+    - alignment_status
+    - already_existed
+    - audit_only
+    - audit_run_id
+    - onboard_geometric_notes
+    - audit_run_id
+  HydrateBundle:
+    fields:
+    - structure_id
+    - structure_snapshot
+    - embeddings
+    - graph_metrics
+    - allosteric_sites
+    - binding_scan
+    - source_leaks
+    - hypotheses
+    - provenance_runs
+    - annotations
+    - phase2_vulnerability
+    - phase4_resistance
+    - phase5_pharmacophore
+    - phase6_drug_candidates
+    - resistance_data
+    - persistence_status
+    - context_summary
+    - buffering_atlas
+    - artifact_availability
+    - hydrate_meta
+    excludes:
+    - readiness
+  ReadinessResponse:
+    fields:
+    - structure_id
+    - readiness_status
+    - computation_run_id
+    - pathway
+    - current_act
+    - foundation
+    - acts
+    - artifacts
+    - tier1
+    - tier2
+    - missing_artifacts
+    - degraded_reasons
+    - probe_errors
+    - pipeline_job
+    - geometric_readiness
+  PipelineJob:
+    fields:
+    - job_id
+    - structure_id
+    - status
+    - current_step
+    - progress
+    - modules
+    - error
+    - started_at
+    - completed_at
+    status_values:
+    - queued
+    - running
+    - complete
+    - failed
+    - timed_out
+    - skipped
+write_contracts:
+  IngestDimensionPayload:
+    source: science/dtie/common/ingest_payloads.py
+  AlignmentPayload:
+    source: science/dtie/common/ingest_payloads.py
+  ComputationScopePayload:
+    source: science/dtie/common/ingest_payloads.py
+  HyperbolicMotifPayload:
+    source: science/dtie/common/normalizer_payloads.py
+  PhaseOutputPayload:
+    source: science/dtie/common/normalizer_payloads.py
+deprecated:
+- path: data/governance/schemas/tokyoeyes_model_output.schema.json
+  replaced_by: artifacts.gnn_hyp

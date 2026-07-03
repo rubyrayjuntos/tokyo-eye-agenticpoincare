@@ -1,0 +1,81 @@
+name: Property Gates
+
+# Fast governance enforcement — no GPU, no training.
+# MLflow tracks experiments; this workflow gates code on every push/PR.
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+env:
+  DATABASE_URL: postgresql://tokyoeye:tokyoeye_test_ci@localhost:5432/tokyoeye_test
+  P_CURV_01_CHECKPOINT_PATH: tests/fixtures/checkpoints/lever_a_v6_best_disc.pt
+
+jobs:
+  property-gates:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: tokyoeye_test
+          POSTGRES_USER: tokyoeye
+          POSTGRES_PASSWORD: tokyoeye_test_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tokyoeye -d tokyoeye_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra agent --extra science --extra training
+
+      - name: Apply migrations
+        run: |
+          for f in data/aurora/migrations/*.sql; do
+            echo "Applying: $f"
+            uv run python -c "
+          import psycopg
+          with psycopg.connect('$DATABASE_URL') as conn:
+              with conn.cursor() as cur:
+                  cur.execute(open('$f').read())
+              conn.commit()
+          "
+          done
+
+      - name: Seed curvature SSOT fixture
+        run: |
+          uv run python -c "
+          import psycopg
+          with psycopg.connect('$DATABASE_URL') as conn:
+              with conn.cursor() as cur:
+                  cur.execute(open('tests/fixtures/seed_curvature_ssot.sql').read())
+              conn.commit()
+          "
+
+      - name: Property gate tests (P_CURV, P_MLFLOW, P_ROUTING, claim freshness)
+        run: |
+          uv run pytest \
+            tests/test_curvature_ssot_gate.py \
+            tests/test_curvature_loader.py \
+            tests/test_mlflow_governance.py \
+            tests/test_routing_metrics.py \
+            tests/test_enforcement_matrix_gate_claims.py \
+            -m "not integration" \
+            --tb=short -q
+
+      # feature/multiscale-experiment: add P_COUPLE_03 to this job when layers exist.

@@ -13,9 +13,17 @@ from science.dtie.common.curvature_loader import (
 )
 
 
-def test_curvature_hash_matches_migration_population():
-    expected = "c0c09c6e43aeb6e8ce097f4f301fbb7ff5884acdd754682699774d4f9967c6ca"
+def test_curvature_hash_matches_ieee754_canonical():
+    expected = "90383c360f60edddafebcb6c119b4b62366543eb733d7a9536bcb54d92c2e0e8"
     assert curvature_hash_for(CANONICAL_V6_CURVATURE) == expected
+
+
+def test_curvature_hash_differs_from_repr_digest():
+    """repr() hashes are not cross-Python stable — do not use for CI SSOT."""
+    import hashlib
+
+    repr_hash = hashlib.sha256(repr(CANONICAL_V6_CURVATURE).encode("ascii")).hexdigest()
+    assert curvature_hash_for(CANONICAL_V6_CURVATURE) != repr_hash
 
 
 def test_normalize_space_key():

@@ -7,6 +7,7 @@ Secrets Manager cross-check is Phase 1b — not implemented here.
 from __future__ import annotations
 
 import hashlib
+import struct
 from typing import Any
 
 from data.db import DBAdapter, get_connection
@@ -32,8 +33,8 @@ def normalize_space_key(space: str) -> str:
 
 
 def curvature_hash_for(c: float) -> str:
-    """SHA256 hex digest matching migration 051 population (Python repr)."""
-    return hashlib.sha256(repr(float(c)).encode("ascii")).hexdigest()
+    """SHA256 hex of big-endian IEEE754 float64 bytes (stable across Python versions)."""
+    return hashlib.sha256(struct.pack(">d", float(c))).hexdigest()
 
 
 def _verify_hash(curvature: float, stored_hash: str | None) -> None:

@@ -11,6 +11,7 @@ dependencies = [
     "psycopg[binary]>=3.2,<4",
     "psycopg-pool>=3.2,<4",
     "python-dotenv>=1.0,<2",
+    "pyyaml>=6.0,<7",
 ]
 
 [project.optional-dependencies]
@@ -20,6 +21,10 @@ agent = [
     "python-jose[cryptography]>=3.3,<4",
     "bcrypt>=4.2,<5",
     "matplotlib>=3.8,<4",
+]
+training = [
+    "mlflow>=2.14,<3",
+    "optuna>=3.6,<5",
 ]
 science = [
     "torch>=2.3,<3",
@@ -52,9 +57,6 @@ dev = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.uv.workspace]
-members = ["science", "agent", "visualizer/server"]
-
 [tool.ruff]
 line-length = 100
 target-version = "py311"
@@ -67,7 +69,8 @@ ignore = ["E501"]  # Line length conflicts with formatter
 testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
-    "integration: tests that require a real database connection",
+    "integration: tests that require a real database connection or large checkpoints",
+    "governance: property-gate tests enforced in .github/workflows/gates.yml",
 ]
 addopts = "--strict-markers --tb=short"
 

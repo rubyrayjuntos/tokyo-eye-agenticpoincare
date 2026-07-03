@@ -72,6 +72,13 @@ cache/
 results/
 *.sdf
 *.pdb
+!science/dtie/assets/benchmark_pdbs/
+!science/dtie/assets/benchmark_pdbs/*.pdb
+!science/dtie/v3/checkpoints/
+!science/dtie/v3/checkpoints/*.pt
+!tests/fixtures/checkpoints/
+!tests/fixtures/checkpoints/*.pt
+!tests/fixtures/checkpoints/README.md
 
 # OS
 .DS_Store

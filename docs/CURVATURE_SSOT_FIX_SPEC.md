@@ -121,7 +121,7 @@ def get_curvature(space_name: str) -> float:
 
 1. Query `embedding_space` by `name = space_name` (not `space_id`).
 2. **Fail loud** (`CurvatureSSOTError`) if row missing, or `curvature IS NULL`.
-3. If `curvature_hash` column present and non-null: verify `SHA256(repr(c))` matches stored hash (Python `repr` of float — same rule used in migration population script).
+3. If `curvature_hash` column present and non-null: verify `SHA256(struct.pack('>d', c))` matches stored hash (IEEE 754 big-endian float64 — stable across Python versions; migration 052).
 4. Return `float` at full precision.
 5. **No fallback constants.** No silent warnings.
 6. **No Secrets Manager** in 1a.
@@ -147,7 +147,7 @@ WHERE name = 'gospconemapper_v6_hyp128'
   AND curvature IS NOT NULL;
 ```
 
-**Note:** Migration SQL uses `CAST(curvature AS TEXT)` for population; `curvature_loader` verification must use the **same stringification** as migration (document and test in `test_curvature_loader.py`). If Python `repr(c)` ≠ SQL `CAST`, align both to one canonical string format in Commit 1.
+**Note:** Migration 051 used `CAST(curvature AS TEXT)` (repr-like, not cross-Python stable). **Migration 052** repopulates with `SHA256(IEEE754 float64 BE bytes)` — canonical rule in `curvature_loader.curvature_hash_for()`. CI seed fixture uses the 052 hash.
 
 Non-breaking: existing reads of `embedding_space.curvature` unchanged.
 
@@ -247,6 +247,8 @@ Also run: `make test` (full unit suite).
 ## 6. Phase 1b — Secrets Manager (Deferred)
 
 **Not required to fix the current bug.** Implement after Phase 1a is stable in dev/staging.
+
+**Hash format (done in 1a/CI):** `curvature_hash_for()` uses `SHA256(struct.pack('>d', c))` (migration 052) — required before cross-environment CI, not deferred to 1b.
 
 - Write `0.7026273608207703` to AWS Secrets Manager: `dtie/curvature/gospconemapper_v6_hyp128`
 - Extend `get_curvature()` with SM read + Aurora `curvature_hash` cross-check
