@@ -176,6 +176,12 @@ GATE_CLAIMS: tuple[GateClaim, ...] = (
         ("audit_event_type_literals",),
     ),
     GateClaim(
+        "corpus_redundancy_gate",
+        "tests/test_corpus_redundancy_gate.py",
+        ("validate_p_corpus_01", "test_p_corpus_01_locked_stage_a_manifest_passes"),
+        "Locked Stage A manifest vs frozen TM-align report (P_CORPUS_01)",
+    ),
+    GateClaim(
         "enforcement_meta_gate",
         "tests/test_enforcement_matrix_gate_claims.py",
         ("audit_gate_claims", "GATE_CLAIMS"),

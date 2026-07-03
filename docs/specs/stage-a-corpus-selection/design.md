@@ -321,7 +321,7 @@ Update `docs/TRAINING_GOVERNANCE_AND_MLFLOW_SCHEMA.md` §3.2, §5 gate definitio
 1. Load committed `manifests/v6_corpus_stage_a.json` (locked — never the `_draft` file).
 2. Load committed `manifests/corpus_redundancy_report.json` with pinned `report_sha256` in test (or hash file alongside report).
 3. Assert locked manifest `proteins` list matches report `stage_a_locked.train` entries (same pdb_id:chain set).
-4. Assert report `pass is True` and `structural_metric == "tm_align"`.
+4. Assert report `pass is True`, `status == "locked"`, and `structural_metric` is TM-align-backed (`tm_align`, `tm_align_binary`, or `tm_align_tmtools` — **not** `biotite_ca_proxy`).
 5. Assert every train entry has `fold_id` + `fold_id_tier` (topology or corpus-uniform architecture).
 6. Assert no train pair violates flags in report (identity / cross-fold TM / per-fold cap).
 7. Assert `max_sequence_identity_pct` from manifest honored.
@@ -350,7 +350,7 @@ Update `docs/TRAINING_GOVERNANCE_AND_MLFLOW_SCHEMA.md` §3.2, §5 gate definitio
 |------|------------------------|
 | Define Stage A corpus (family balance) | **Superseded** → fold-topology selection via script |
 | `max_sequence_identity_pct` enforcement | **P_CORPUS_01** + redundancy script |
-| `per_family_loss` imbalance gate | **Blocked** until step 2 rename |
+| `per_family_loss` imbalance gate | **Superseded** → `per_fold_loss` (CATH fold_id) |
 | Stage A training | **Blocked** until steps 1–2 + P_CORPUS_01 green |
 
 ---

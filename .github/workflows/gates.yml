@@ -67,13 +67,14 @@ jobs:
               conn.commit()
           "
 
-      - name: Property gate tests (P_CURV, P_MLFLOW, P_ROUTING, claim freshness)
+      - name: Property gate tests (P_CURV, P_MLFLOW, P_ROUTING, P_CORPUS, claim freshness)
         run: |
           uv run pytest \
             tests/test_curvature_ssot_gate.py \
             tests/test_curvature_loader.py \
             tests/test_mlflow_governance.py \
             tests/test_routing_metrics.py \
+            tests/test_corpus_redundancy_gate.py \
             tests/test_enforcement_matrix_gate_claims.py \
             -m "not integration" \
             --tb=short -q

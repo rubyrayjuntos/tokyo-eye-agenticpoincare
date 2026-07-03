@@ -178,9 +178,9 @@ def test_run_logs_mandatory_schema(finished_run):
     assert required_params <= set(finished_run.params)
     assert required_metrics <= set(finished_run.metrics)
     assert required_artifacts <= set(finished_run.artifacts)
-    # per-family loss present for every family in the corpus manifest
-    for fam in corpus_families(finished_run.params['corpus_manifest_hash']):
-        assert f'per_family_loss.{fam}' in finished_run.metrics
+    # per-fold loss present for every fold_id in the corpus manifest
+    for fid in corpus_fold_ids(finished_run.params['corpus_manifest_hash']):
+        assert f'per_fold_loss.{fold_id_to_mlflow_key(fid)}' in finished_run.metrics
 ```
 
 ### P_MLFLOW_02 — lineage integrity
@@ -328,9 +328,9 @@ Layer 3 — Comparison tooling (when both branches have runs)
 | `curvature_hash` IEEE754 format (migration 052) | **[EMITTED]** replaces repr for CI cross-env | False-red guard risk |
 | P_CURV_01 fixture checkpoint in git (`lever_a_v6_best_disc.pt`) | **[EMITTED]** MVP; migrate to LFS/S3 if refreshed >2× | Repo size / binary rot |
 | Step 0 δ-hyperbolicity analysis (defines experimental branch) | Pending | Multiscale branch spec |
-| Define Stage A corpus (fold-topology selection via redundancy script) | Pending — see `docs/specs/stage-a-corpus-selection/design.md` | Stage A start |
+| Define Stage A corpus (fold-topology selection via redundancy script) | **[EMITTED]** locked `v6_corpus_stage_a.json` (25 train, TM-align) | Stage A start |
 | `per_fold_loss` rename (CATH `fold_id` vocabulary) | **[EMITTED]** | Wrong imbalance metric corrected |
-| P_CORPUS_01 corpus redundancy gate in CI | Pending — enforces `max_sequence_identity_pct` | Corpus drift |
+| P_CORPUS_01 corpus redundancy gate in CI | **[EMITTED]** frozen TM-align report vs locked manifest | Corpus drift |
 | Staging/prod `embedding_space.curvature` check | Pending | Phase 2 re-ingest |
 
 ---
