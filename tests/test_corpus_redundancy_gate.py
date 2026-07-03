@@ -75,6 +75,50 @@ def test_p_corpus_01_fails_on_train_set_drift() -> None:
     assert any("train set mismatch" in e for e in errors)
 
 
+def test_p_corpus_01_fails_on_pin_desync_loudly() -> None:
+    """JSON committed without updating pin constant must fail with regeneration message."""
+    report, manifest = _load_locked_artifacts()
+    errors = validate_p_corpus_01(
+        report,
+        manifest,
+        expected_report_sha256="0" * 64,
+        expected_manifest_sha256=None,
+    )
+    assert len(errors) == 1
+    msg = errors[0]
+    assert "pinned SHA256 does not match" in msg
+    assert "regeneration incomplete" in msg
+    assert "corpus_governance.py" in msg
+
+
+def test_p_corpus_01_third_gtpase_not_identity_exempt() -> None:
+    """Swapping 5VQ2 for 3CON must not get blanket GTPase-fold identity exemption."""
+    report, manifest = _load_locked_artifacts()
+    bad = copy.deepcopy(report)
+    bad["review_dispositions"]["holdout_to_train"]["5VQ2:A"] = (
+        "GTPase cap-2 biological-centrality override: fake third slot"
+    )
+    del bad["review_dispositions"]["holdout_to_train"]["3CON:A"]
+    train = [r for r in bad["stage_a_locked"]["train"] if r["structure_key"] != "3CON:A"]
+    vq = next(r for r in bad["stage_a_locked"]["eval_holdout"] if r["structure_key"] == "5VQ2:A")
+    bad["stage_a_locked"]["eval_holdout"] = [
+        r for r in bad["stage_a_locked"]["eval_holdout"] if r["structure_key"] != "5VQ2:A"
+    ]
+    vq = dict(vq)
+    vq["role"] = "train"
+    vq["disposition_rule"] = bad["review_dispositions"]["holdout_to_train"]["5VQ2:A"]
+    train.append(vq)
+    bad["stage_a_locked"]["train"] = train
+
+    errors = validate_p_corpus_01(
+        bad,
+        manifest,
+        expected_report_sha256=None,
+        expected_manifest_sha256=None,
+    )
+    assert any("WITHIN_FOLD_HIGH_IDENTITY among train: 4OBE:A vs 5VQ2:A" in e for e in errors)
+
+
 def test_p_corpus_01_fails_on_cross_fold_train_leak() -> None:
     """Train pair with CROSS_FOLD_HIGH_TM in frozen report must fail validation."""
     report, manifest = _load_locked_artifacts()

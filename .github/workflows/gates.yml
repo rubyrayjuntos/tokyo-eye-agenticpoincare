@@ -75,6 +75,7 @@ jobs:
             tests/test_mlflow_governance.py \
             tests/test_routing_metrics.py \
             tests/test_corpus_redundancy_gate.py \
+            tests/test_stage_a_integration_smoke.py \
             tests/test_enforcement_matrix_gate_claims.py \
             -m "not integration" \
             --tb=short -q

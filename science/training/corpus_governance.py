@@ -17,6 +17,54 @@ LOCKED_MANIFEST_SHA256 = "e35bac9955d774fd7824ededb8e0d1dab9e21be4b365b66fbfc97c
 TM_ALIGN_METRICS = frozenset({"tm_align", "tm_align_binary", "tm_align_tmtools"})
 FORBIDDEN_STRUCTURAL_METRICS = frozenset({"biotite_ca_proxy"})
 
+# Structure-specific identity exemption (GTPase cap-2) — not fold-wide.
+GTPASE_CAP2_PROMOTED = "3CON:A"
+GTPASE_CAP2_ANCHOR = "4OBE:A"
+GTPASE_CAP2_FOLD = "3.40.50.300"
+GTPASE_CAP2_REASON_PREFIX = "GTPase cap-2 biological-centrality override"
+
+
+def _pin_mismatch_message(
+    *,
+    artifact_label: str,
+    path: Path,
+    expected: str,
+    actual: str,
+) -> str:
+    return (
+        f"P_CORPUS_01: pinned SHA256 does not match committed {artifact_label} — "
+        f"regeneration incomplete. "
+        f"File {path.relative_to(_REPO)} digest is {actual}, but "
+        f"science/training/corpus_governance.py expects {expected}. "
+        f"Update FROZEN_REPORT_SHA256 / LOCKED_MANIFEST_SHA256 in the same commit as the JSON artifacts."
+    )
+
+
+def _is_documented_identity_exemption(a: str, b: str, report: dict[str, Any]) -> bool:
+    """Only the locked 3CON+4OBE cap-2 pair — not any GTPase-fold promotion."""
+    pair = frozenset({a, b})
+    if pair != frozenset({GTPASE_CAP2_PROMOTED, GTPASE_CAP2_ANCHOR}):
+        return False
+    review = report.get("review_dispositions") or {}
+    promotions = review.get("holdout_to_train") or {}
+    reason = promotions.get(GTPASE_CAP2_PROMOTED, "")
+    if not str(reason).startswith(GTPASE_CAP2_REASON_PREFIX):
+        return False
+    override = (review.get("fold_cap_overrides") or {}).get(GTPASE_CAP2_FOLD)
+    if not isinstance(override, dict):
+        return False
+    if override.get("rule") != "biological_centrality_override":
+        return False
+    if int(override.get("max_train", 0)) != 2:
+        return False
+    locked = report.get("stage_a_locked") or {}
+    train_keys = {
+        structure_key(p["pdb_id"], p["chain"]) for p in locked.get("train", [])
+    }
+    if GTPASE_CAP2_PROMOTED not in train_keys or GTPASE_CAP2_ANCHOR not in train_keys:
+        return False
+    return True
+
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -42,19 +90,33 @@ def validate_p_corpus_01(
         digest = _sha256(report_path)
         if digest != expected_report_sha256:
             errors.append(
-                f"frozen report SHA256 drift: expected {expected_report_sha256}, got {digest}"
+                _pin_mismatch_message(
+                    artifact_label="corpus redundancy report",
+                    path=report_path,
+                    expected=expected_report_sha256,
+                    actual=digest,
+                )
             )
 
     if expected_manifest_sha256 and manifest_path.is_file():
         digest = _sha256(manifest_path)
         if digest != expected_manifest_sha256:
             errors.append(
-                f"locked manifest SHA256 drift: expected {expected_manifest_sha256}, got {digest}"
+                _pin_mismatch_message(
+                    artifact_label="Stage A locked manifest",
+                    path=manifest_path,
+                    expected=expected_manifest_sha256,
+                    actual=digest,
+                )
             )
 
     metric = str(report.get("structural_metric", ""))
     if metric in FORBIDDEN_STRUCTURAL_METRICS:
-        errors.append(f"structural_metric must not be proxy ({metric})")
+        errors.append(
+            f"P_CORPUS_01: structural_metric must not be proxy ({metric}) — "
+            "a biotite_ca_proxy report cannot back the locked manifest; "
+            "regenerate with TM-align (tmtools) and re-lock."
+        )
     elif metric not in TM_ALIGN_METRICS:
         errors.append(f"structural_metric not TM-align-backed: {metric}")
 
@@ -134,17 +196,14 @@ def validate_p_corpus_01(
                 f"CROSS_FOLD_HIGH_TM among train: {a} vs {b} tm={pair.get('tm_score')}"
             )
 
-    review = report.get("review_dispositions") or {}
-    promoted_train = set((review.get("holdout_to_train") or {}).keys())
-
     for pair in report.get("pairs", []):
         if pair.get("decision") != "WITHIN_FOLD_HIGH_IDENTITY":
             continue
         a, b = pair.get("a"), pair.get("b")
         if a not in train_keys or b not in train_keys:
             continue
-        if a in promoted_train or b in promoted_train:
-            continue  # documented review override (e.g. GTPase cap-2)
+        if _is_documented_identity_exemption(a, b, report):
+            continue
         errors.append(
             f"WITHIN_FOLD_HIGH_IDENTITY among train: {a} vs {b} "
             f"identity={pair.get('sequence_identity_pct')}%"

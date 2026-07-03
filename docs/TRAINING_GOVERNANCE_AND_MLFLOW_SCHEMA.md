@@ -315,6 +315,34 @@ Layer 3 — Comparison tooling (when both branches have runs)
 
 ---
 
+### P_CORPUS_01 — locked corpus vs frozen TM-align report
+
+See `docs/specs/stage-a-corpus-selection/design.md` §6. CI: `tests/test_corpus_redundancy_gate.py` — frozen JSON only, SHA256 pins in `corpus_governance.py`, proxy metric regression fails explicitly.
+
+### P_STAGE_A_SMOKE — one-epoch assembled stack (before full Stage A curriculum)
+
+**Purpose:** Prove corpus lock + MLflow schema + `per_fold_loss` + routing metrics compose on the **locked** manifest — not full curriculum.
+
+```bash
+make train-v6-stage-a-smoke          # 1 epoch, v6_corpus_stage_a.json, lever_a resume, CPU ok
+STAGE_A_SMOKE_RUN_ID=<id> make test-stage-a-smoke
+```
+
+**Asserts (via `science/training/stage_a_smoke.py`):**
+
+| Check | Required |
+|-------|----------|
+| `corpus_manifest_hash` | Matches locked `v6_corpus_stage_a.json` |
+| `per_fold_loss.{fold_id}` | ≥2 keys, underscores not dots; **no** `per_family_loss.*` |
+| Routing gate live | `effective_experts`, `effective_experts_min`, `min_routing_fraction`, `stage_gate_passed` logged |
+| P_MLFLOW_01 core | Params, mandatory metrics, governance artifacts |
+
+`stage_gate_passed` value may be 0 on a 1-epoch subset — smoke verifies the gate is **wired**, not that training has converged.
+
+**Regeneration pins:** `make sync-corpus-pins` → update `corpus_governance.py` in the **same commit** as report/manifest JSON.
+
+---
+
 ## 9. Open Items Before Corpus Expansion
 
 | Item | Status | Blocks |

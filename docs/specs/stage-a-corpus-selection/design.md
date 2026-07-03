@@ -319,7 +319,7 @@ Update `docs/TRAINING_GOVERNANCE_AND_MLFLOW_SCHEMA.md` §3.2, §5 gate definitio
 **Behavior (frozen report — no recompute in CI):**
 
 1. Load committed `manifests/v6_corpus_stage_a.json` (locked — never the `_draft` file).
-2. Load committed `manifests/corpus_redundancy_report.json` with pinned `report_sha256` in test (or hash file alongside report).
+2. Load committed `manifests/corpus_redundancy_report.json`; SHA256 pins in `science/training/corpus_governance.py` must match (fail-closed with explicit regeneration message if desynced).
 3. Assert locked manifest `proteins` list matches report `stage_a_locked.train` entries (same pdb_id:chain set).
 4. Assert report `pass is True`, `status == "locked"`, and `structural_metric` is TM-align-backed (`tm_align`, `tm_align_binary`, or `tm_align_tmtools` — **not** `biotite_ca_proxy`).
 5. Assert every train entry has `fold_id` + `fold_id_tier` (topology or corpus-uniform architecture).
