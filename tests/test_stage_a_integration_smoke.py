@@ -9,6 +9,7 @@ import pytest
 from science.training.mlflow_governance import corpus_manifest_hash
 from science.training.stage_a_smoke import (
     LOCKED_CORPUS_MANIFEST,
+    collect_run_artifact_names,
     smoke_assertions_doc,
     validate_stage_a_smoke_run,
 )
@@ -98,13 +99,7 @@ def test_stage_a_smoke_mlflow_run_from_env() -> None:
     metric_keys = set(run.data.metrics.keys())
 
     client = mlflow.tracking.MlflowClient(tracking_uri=tracking_uri)
-    artifact_names: set[str] = set()
-    for art in client.list_artifacts(run_id):
-        artifact_names.add(Path(art.path).name)
-    for art in client.list_artifacts(run_id, path="governance"):
-        artifact_names.add(Path(art.path).name)
-    for art in client.list_artifacts(run_id, path="governance/flat"):
-        artifact_names.add(Path(art.path).name)
+    artifact_names = collect_run_artifact_names(run_id, tracking_uri=tracking_uri)
 
     errors = validate_stage_a_smoke_run(params, metric_keys, dict(run.data.metrics), artifact_names)
     assert errors == [], "P_STAGE_A_SMOKE failed:\n" + "\n".join(errors)

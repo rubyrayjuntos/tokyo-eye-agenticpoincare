@@ -15,6 +15,33 @@ from science.training.mlflow_governance import (
 LOCKED_CORPUS_MANIFEST = LOCKED_MANIFEST
 
 
+def collect_run_artifact_names(run_id: str, *, tracking_uri: str = "file:./mlruns") -> set[str]:
+    """Collect artifact basenames from MLflow API, with file-store filesystem fallback."""
+    import mlflow
+
+    names: set[str] = set()
+    client = mlflow.tracking.MlflowClient(tracking_uri=tracking_uri)
+    for prefix in ("", "governance", "governance/flat"):
+        try:
+            for art in client.list_artifacts(run_id, path=prefix):
+                names.add(Path(art.path).name)
+        except (OSError, mlflow.MlflowException):
+            continue
+    if names:
+        return names
+
+    store_root = Path(tracking_uri.removeprefix("file:"))
+    for meta in store_root.glob(f"*/{run_id}/meta.yaml"):
+        art_dir = meta.parent / "artifacts"
+        if not art_dir.is_dir():
+            continue
+        for path in art_dir.rglob("*"):
+            if path.is_file():
+                names.add(path.name)
+        break
+    return names
+
+
 def validate_stage_a_smoke_run(
     params: dict[str, str],
     metric_keys: set[str],
