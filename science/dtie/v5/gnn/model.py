@@ -72,6 +72,8 @@ from e3nn import o3
 from e3nn.o3 import FullyConnectedTensorProduct, Irreps
 from typing import Any, Dict, List, Tuple, Optional
 
+from science.dtie.common.poincare_conventions import rescale_tangent_before_expmap
+
 
 # ==================== 0. DIAGNOSTIC UTILITIES ====================
 
@@ -521,6 +523,7 @@ class GOSPConeMapper(nn.Module):
 
         # Recombine into tangent vector
         tangent_vector = radial_depth * angular_direction  # [N, hidden]
+        tangent_vector = rescale_tangent_before_expmap(tangent_vector, c)
 
         # Lift to Poincaré ball
         x_hyp = pmath.expmap0(tangent_vector, k=k)
@@ -541,6 +544,7 @@ class GOSPConeMapper(nn.Module):
 
         # Weighted combination in tangent space
         x_routed_tangent = torch.einsum("ne,neh->nh", scores, expert_outputs)
+        x_routed_tangent = rescale_tangent_before_expmap(x_routed_tangent, c)
 
         # Re-lift to Poincaré ball
         x_routed_hyp = pmath.expmap0(x_routed_tangent, k=k)
@@ -558,13 +562,19 @@ class GOSPConeMapper(nn.Module):
         hyp_proj_2d = self.hyp_proj_head_2d(x_routed_hyp, c=c)
         hyp_proj_2d = pmath.project(hyp_proj_2d, k=k)
         hyp_norms_2d = hyp_proj_2d.norm(dim=-1, keepdim=True)
-        hyp_proj_2d = hyp_proj_2d * torch.clamp(0.99 / (hyp_norms_2d + 1e-8), max=1.0)
+        r_ball = torch.rsqrt(torch.clamp(c, min=1e-8))
+        disc_clamp_ceiling = 0.99 * r_ball
+        hyp_proj_2d = hyp_proj_2d * torch.clamp(
+            disc_clamp_ceiling / (hyp_norms_2d + 1e-8), max=1.0
+        )
 
         # 3D ball projection (v5 NEW)
         hyp_proj_3d = self.hyp_proj_head_3d(x_routed_hyp, c=c)
         hyp_proj_3d = pmath.project(hyp_proj_3d, k=k)
         hyp_norms_3d = hyp_proj_3d.norm(dim=-1, keepdim=True)
-        hyp_proj_3d = hyp_proj_3d * torch.clamp(0.99 / (hyp_norms_3d + 1e-8), max=1.0)
+        hyp_proj_3d = hyp_proj_3d * torch.clamp(
+            disc_clamp_ceiling / (hyp_norms_3d + 1e-8), max=1.0
+        )
 
         # Euclidean scrubber projection (backward compat)
         projections = self.projection_head(x_routed_tangent_out)

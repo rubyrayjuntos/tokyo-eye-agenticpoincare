@@ -1,8 +1,8 @@
 """
 _data.py — Standalone data-loading utilities for v6 retraining.
 
-Copied from experiments/training/v4/train_v4.py (lines 64–301) without the
-Gnnv4 import that breaks in the current repo structure.
+Corpus manifest (preferred): manifests/v6_corpus_120.json via experiments.training.v6.corpus
+TRAINING_TARGETS below is retained for backward compatibility with retrain_v6.py.
 """
 
 from __future__ import annotations
@@ -53,10 +53,10 @@ EDGE_CUTOFF = 8.0
 
 
 def _download_pdb(pdb_id: str, pdb_dir: Path) -> Path:
-    import urllib.request
     local = pdb_dir / f"{pdb_id}.pdb"
     if local.exists():
         return local
+    import urllib.request
     url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
     logger.info("Downloading %s from RCSB...", pdb_id)
     with urllib.request.urlopen(url, timeout=60) as resp:
@@ -64,14 +64,26 @@ def _download_pdb(pdb_id: str, pdb_dir: Path) -> Path:
     return local
 
 
-def _extract_chain(pdb_path: Path, chain_id: str) -> Path:
+def _chain_cache_dir(pdb_dir: Path) -> Path:
+    candidate = pdb_dir / ".chain_cache"
+    try:
+        candidate.mkdir(parents=True, exist_ok=True)
+        return candidate
+    except OSError:
+        fallback = Path("/tmp/dtie_pdb_cache/chain_cache")
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
+def _extract_chain(pdb_path: Path, chain_id: str, cache_dir: Path | None = None) -> Path:
     from Bio.PDB import PDBParser, PDBIO, Select
 
     class ChainSelect(Select):
         def accept_chain(self, chain):
             return chain.id == chain_id
 
-    out_path = pdb_path.parent / f"{pdb_path.stem}_{chain_id}.pdb"
+    work_dir = cache_dir or pdb_path.parent
+    out_path = work_dir / f"{pdb_path.stem}_{chain_id}.pdb"
     if out_path.exists():
         return out_path
     parser = PDBParser(QUIET=True)
@@ -141,7 +153,7 @@ def load_protein_graph(pdb_id: str, chain: str, pdb_dir: Path) -> Optional[Dict]
     from scipy.spatial.distance import cdist
 
     pdb_path = _download_pdb(pdb_id, pdb_dir)
-    chain_path = _extract_chain(pdb_path, chain)
+    chain_path = _extract_chain(pdb_path, chain, _chain_cache_dir(pdb_dir))
 
     parser = PDBParser(QUIET=True)
     structure = parser.get_structure(pdb_id, str(chain_path))
@@ -153,13 +165,18 @@ def load_protein_graph(pdb_id: str, chain: str, pdb_dir: Path) -> Optional[Dict]
 
     all_atoms = [a for r in residues for a in r.get_atoms()]
 
-    rho_list, ca_list, res_ids = [], [], []
+    rho_list, ca_list, bf_list, bf_present, res_ids = [], [], [], [], []
     for res in residues:
         rho = _compute_rho(res, all_atoms)
         if rho < 0 or "CA" not in res:
             continue
+        ca = res["CA"]
+        bf = float(ca.get_bfactor())
+        has_bf = np.isfinite(bf)
         rho_list.append(rho)
-        ca_list.append(res["CA"].get_coord())
+        ca_list.append(ca.get_coord())
+        bf_list.append(bf if has_bf else float("nan"))
+        bf_present.append(has_bf)
         res_ids.append(f"{chain}:{res.get_id()[1]}:")
 
     if len(rho_list) < 10:
@@ -195,6 +212,8 @@ def load_protein_graph(pdb_id: str, chain: str, pdb_dir: Path) -> Optional[Dict]
 
     # SASA as direct training target for cone_depth (surface = disc periphery)
     target_sasa = torch.tensor(sasa, dtype=torch.float32).unsqueeze(1)
+    b_factor_ca = torch.tensor(bf_list, dtype=torch.float32).unsqueeze(1)
+    b_factor_present = torch.tensor(bf_present, dtype=torch.bool)
 
     domain_labels = torch.full((n,), -1, dtype=torch.long)
     # RAS-family domain annotations (P-loop, Switch-I/II, α3, α4, C-term)
@@ -214,6 +233,8 @@ def load_protein_graph(pdb_id: str, chain: str, pdb_dir: Path) -> Optional[Dict]
         "target_rho": target_rho,
         "target_dehydron": target_dehydron,
         "target_sasa": target_sasa,
+        "b_factor_ca": b_factor_ca,
+        "b_factor_present": b_factor_present,
         "ca_coords": ca_tensor,
         "domain_labels": domain_labels if (domain_labels >= 0).any() else None,
         "residue_ids": res_ids,

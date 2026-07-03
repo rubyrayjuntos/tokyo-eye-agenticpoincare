@@ -1,10 +1,13 @@
 import type {
   AllostericSitesData,
+  BindingScanData,
   DrugCandidateData,
   EmbeddingData,
   GraphMetricsData,
   HydrationResponse,
+  Hypothesis,
   PharmacophoreData,
+  ProvenanceRun,
   ResistanceData,
   SourceLeakData,
   StructureAnalysisSnapshot,
@@ -20,8 +23,11 @@ export interface HydrationView {
   resistanceData: ResistanceData | null;
   pharmacophorePockets: PharmacophoreData | null;
   drugCandidates: DrugCandidateData | null;
+  bindingScan: BindingScanData | null;
   phase4Resistance: ResistanceData | null;
   persistenceStatus: StructureSnapshotStatus | null;
+  hypotheses: Hypothesis[] | null;
+  provenanceRuns: ProvenanceRun[] | null;
 }
 
 function normalizeSourceLeaks(
@@ -119,6 +125,65 @@ function normalizeDrugCandidates(
   };
 }
 
+function normalizeBindingScan(
+  bindingScan:
+    | StructureAnalysisSnapshot["findings"]["binding_scan"]
+    | HydrationResponse["binding_scan"]
+    | BindingScanData
+    | null
+    | undefined,
+  structureId: string,
+): BindingScanData | null {
+  if (!bindingScan) {
+    return null;
+  }
+  const sites = bindingScan.sites ?? [];
+  return {
+    structure_id: bindingScan.structure_id ?? structureId,
+    run_id: bindingScan.run_id,
+    status: bindingScan.status,
+    sites_found: bindingScan.sites_found,
+    heuristic_version: bindingScan.heuristic_version,
+    model_version: bindingScan.model_version,
+    sites,
+    count: bindingScan.count ?? sites.length,
+  };
+}
+
+/** Unwrap hydrate tool payloads (`{ hypotheses: [...] }`) or accept a bare array. */
+export function normalizeHypotheses(
+  hypotheses: HydrationResponse["hypotheses"] | Hypothesis[] | null | undefined,
+): Hypothesis[] | null {
+  if (hypotheses == null) {
+    return null;
+  }
+  if (Array.isArray(hypotheses)) {
+    return hypotheses;
+  }
+  if (typeof hypotheses === "object" && "hypotheses" in hypotheses) {
+    const rows = (hypotheses as { hypotheses?: unknown }).hypotheses;
+    return Array.isArray(rows) ? (rows as Hypothesis[]) : null;
+  }
+  return null;
+}
+
+/** Unwrap hydrate tool payloads (`{ runs: [...] }`) or accept a bare array. */
+export function normalizeProvenanceRuns(
+  provenanceRuns: HydrationResponse["provenance_runs"] | ProvenanceRun[] | null | undefined,
+): ProvenanceRun[] | null {
+  if (provenanceRuns == null) {
+    return null;
+  }
+  if (Array.isArray(provenanceRuns)) {
+    return provenanceRuns;
+  }
+  if (typeof provenanceRuns === "object" && "runs" in provenanceRuns) {
+    const rows = (provenanceRuns as { runs?: unknown }).runs;
+    return Array.isArray(rows) ? (rows as ProvenanceRun[]) : null;
+  }
+  return null;
+}
+
 export function buildHydrationView(
   hydration: HydrationResponse | null,
   activeStructureId?: string | null,
@@ -159,6 +224,10 @@ export function buildHydrationView(
       snapshot?.findings.drug_candidates ?? hydration?.phase6_drug_candidates ?? hydration?.drug_candidates,
       structureId,
     ),
+    bindingScan: normalizeBindingScan(
+      snapshot?.findings.binding_scan ?? hydration?.binding_scan,
+      structureId,
+    ),
     phase4Resistance:
       snapshot?.findings.resistance ??
       hydration?.phase4_resistance ??
@@ -170,5 +239,7 @@ export function buildHydrationView(
           resistance_data_available: snapshot.findings.resistance != null,
         }
       : (hydration?.persistence_status ?? null),
+    hypotheses: normalizeHypotheses(hydration?.hypotheses),
+    provenanceRuns: normalizeProvenanceRuns(hydration?.provenance_runs),
   };
 }

@@ -4,6 +4,7 @@ SHELL := /bin/bash -o pipefail
 # Map container UID/GID to host so bind mounts (mlruns, checkpoints) are writable
 DOCKER_USER := $(shell id -u):$(shell id -g)
 SCIENCE_RUN := docker compose run --rm --user $(DOCKER_USER)
+STAGE_A_MAX_RESIDUES := $(shell uv run python -c "from science.training.corpus_governance import STAGE_A_MAX_RESIDUES; print(STAGE_A_MAX_RESIDUES)")
 # Host-mapped UID often has no writable $HOME in the container; install test deps to /tmp.
 TEST_DEPS_DIR := /tmp/tokyoeye-pytest-deps
 TEST_RUN_PREFIX := pip install --quiet --target $(TEST_DEPS_DIR) pytest pytest-asyncio hypothesis httpx && PYTHONPATH=$(TEST_DEPS_DIR):$$PYTHONPATH PYTEST_CACHE_DIR=/tmp/tokyoeye-pytest-cache python -m pytest
@@ -546,7 +547,7 @@ train-v6-stage-a-smoke: ## 1-epoch locked Stage A corpus + MLflow (P_STAGE_A_SMO
 		--phase 1 \
 		--epochs 1 \
 		--max-proteins $(or $(MAX_PROTEINS),8) \
-		--max-residues $(or $(MAX_RESIDUES),600) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
 		--mlflow-uri file:/app/mlruns \
 		--resume /app/$(or $(RESUME),checkpoints/v6/runs/lever_a_clean_slate_v1/v6_best_disc.pt)
 	@echo "Smoke complete. Verify with: STAGE_A_SMOKE_RUN_ID=<run_id> make test-stage-a-smoke"
@@ -554,7 +555,9 @@ train-v6-stage-a-smoke: ## 1-epoch locked Stage A corpus + MLflow (P_STAGE_A_SMO
 test-stage-a-smoke: ## Assert P_STAGE_A_SMOKE on STAGE_A_SMOKE_RUN_ID MLflow run
 	@test -n "$$STAGE_A_SMOKE_RUN_ID" || (echo "Set STAGE_A_SMOKE_RUN_ID to the smoke run id" && exit 1)
 	MLFLOW_TRACKING_URI=$(or $(MLFLOW_TRACKING_URI),file:./mlruns) \
-		uv run pytest tests/test_stage_a_integration_smoke.py::test_stage_a_smoke_mlflow_run_from_env -v
+	MLFLOW_ALLOW_FILE_STORE=true \
+	STAGE_A_SMOKE_FULL=$${STAGE_A_SMOKE_FULL:-0} \
+	uv run pytest tests/test_stage_a_integration_smoke.py::test_stage_a_smoke_mlflow_run_from_env -v
 
 sync-corpus-pins: ## Print SHA256 constants for corpus_governance.py (same commit as JSON)
 	uv run python experiments/training/v6/sync_corpus_pins.py

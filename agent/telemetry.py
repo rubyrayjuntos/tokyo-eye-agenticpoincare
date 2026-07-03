@@ -193,11 +193,6 @@ def _extract_ground_truth(tool_name: str, result: dict[str, Any]) -> dict[str, A
                 if key in metadata:
                     facts[key] = metadata[key]
 
-    elif tool_name == "run_full_pipeline":
-        for key in ("status", "structure_id", "phases_completed"):
-            if key in result:
-                facts[key] = result[key]
-
     elif tool_name in ("get_source_leaks", "get_high_uncertainty_residues"):
         if "count" in result:
             facts[f"{tool_name}_count"] = result["count"]

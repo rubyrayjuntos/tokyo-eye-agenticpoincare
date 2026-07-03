@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { ChevronDown } from "lucide-react";
 import MolecularViewer from "../MolecularViewer";
 import type { StructureColorModeType, SelectedResidueInfo } from "../../lib/types";
+import { VIEWPORT_COLOR_MODE_OPTIONS } from "../../lib/viewportColorMetrics";
 
 /**
  * MolecularPanel — Discovery Cockpit panel chrome wrapping MolecularViewer
@@ -11,14 +12,7 @@ import type { StructureColorModeType, SelectedResidueInfo } from "../../lib/type
  * Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6
  */
 
-export type MolecularColorMode =
-  | "spectrum"
-  | "cone_depth"
-  | "epistemic"
-  | "aleatoric"
-  | "plasticity"
-  | "allosteric"
-  | "resistance";
+export type MolecularColorMode = StructureColorModeType;
 
 export interface MolecularPanelProps {
   structureId: string | null;
@@ -29,15 +23,7 @@ export interface MolecularPanelProps {
   onColorModeChange: (mode: MolecularColorMode) => void;
 }
 
-const COLOR_MODES: { value: MolecularColorMode; label: string }[] = [
-  { value: "spectrum", label: "Spectrum" },
-  { value: "cone_depth", label: "Cone Depth" },
-  { value: "epistemic", label: "Epistemic" },
-  { value: "aleatoric", label: "Aleatoric" },
-  { value: "plasticity", label: "Plasticity" },
-  { value: "allosteric", label: "Allosteric" },
-  { value: "resistance", label: "Resistance" },
-];
+const COLOR_MODES = VIEWPORT_COLOR_MODE_OPTIONS;
 
 export function MolecularPanel({
   structureId,

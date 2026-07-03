@@ -35,6 +35,8 @@ import type {
   HydrationResponse,
   DisplacementResult,
   CompareGraphDiffResult,
+  StructureReadiness,
+  StructureAuditResponse,
 } from "./types";
 
 // In development, use relative paths so requests go through Vite's proxy.
@@ -65,10 +67,16 @@ class ApiClient {
     });
 
     if (!res.ok) {
-      const err: ApiError = await res.json().catch(() => ({
-        error: "unknown",
-        message: res.statusText,
-      }));
+      const body = await res.json().catch(() => ({} as Record<string, unknown>));
+      const detail = body.detail;
+      const message =
+        (typeof detail === "string" ? detail : null) ||
+        (typeof body.message === "string" ? body.message : null) ||
+        res.statusText;
+      const err: ApiError = {
+        error: typeof body.error === "string" ? body.error : "unknown",
+        message,
+      };
       throw err;
     }
 
@@ -102,6 +110,25 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify(body),
     });
+  }
+
+  async getStructureReadiness(structureId: string): Promise<StructureReadiness> {
+    return this.request<StructureReadiness>(
+      `/api/structures/${structureId}/readiness`
+    );
+  }
+
+  async getStructureAudit(
+    structureId: string,
+    options?: { limit?: number; severity?: "info" | "warning" | "error" },
+  ): Promise<StructureAuditResponse> {
+    const params = new URLSearchParams();
+    if (options?.limit) params.set("limit", String(options.limit));
+    if (options?.severity) params.set("severity", options.severity);
+    const qs = params.toString();
+    return this.request<StructureAuditResponse>(
+      `/api/structures/${structureId}/audit${qs ? `?${qs}` : ""}`,
+    );
   }
 
   // --- Pipeline ---
@@ -146,24 +173,47 @@ class ApiClient {
 
   // --- RCSB Search ---
 
-  async rcsbSearch(req: RCSBSearchRequest): Promise<RCSBSearchResult[]> {
-    return this.request<RCSBSearchResult[]>("/api/rcsb/search", {
+  private async rcsbPost(
+    path: string,
+    body: Record<string, unknown>,
+  ): Promise<RCSBSearchResult[]> {
+    const res = await this.request<{
+      results?: RCSBSearchResult[];
+      count?: number;
+    }>(path, {
       method: "POST",
-      body: JSON.stringify(req),
+      body: JSON.stringify(body),
+    });
+    return Array.isArray(res.results) ? res.results : [];
+  }
+
+  async rcsbSearch(req: RCSBSearchRequest): Promise<RCSBSearchResult[]> {
+    return this.rcsbPost("/api/rcsb/search", {
+      query: req.query,
+      organism: req.organism,
+      max_resolution: req.max_resolution,
+      max_results: req.max_results ?? 10,
     });
   }
 
   async rcsbSequenceSearch(req: RCSBSearchRequest): Promise<RCSBSearchResult[]> {
-    return this.request<RCSBSearchResult[]>("/api/rcsb/sequence-search", {
-      method: "POST",
-      body: JSON.stringify(req),
+    return this.rcsbPost("/api/rcsb/sequence-search", {
+      sequence: req.query,
+      evalue_cutoff: req.evalue_cutoff ?? 0.1,
+      min_identity:
+        req.min_identity != null
+          ? req.min_identity > 1
+            ? req.min_identity / 100
+            : req.min_identity
+          : 0,
+      max_results: req.max_results ?? 10,
     });
   }
 
   async rcsbStructureSearch(req: RCSBSearchRequest): Promise<RCSBSearchResult[]> {
-    return this.request<RCSBSearchResult[]>("/api/rcsb/structure-search", {
-      method: "POST",
-      body: JSON.stringify(req),
+    return this.rcsbPost("/api/rcsb/structure-search", {
+      pdb_id: req.query.trim().toUpperCase().slice(0, 4),
+      max_results: req.max_results ?? 10,
     });
   }
 
@@ -367,6 +417,46 @@ class ApiClient {
     return this.request<CompareGraphDiffResult>(
       `/api/compare/graphs/${idA}/${idB}`
     );
+  }
+
+  // --- Workbench session ---
+
+  async getOrchestrationSnapshot(sessionId: string): Promise<Record<string, unknown>> {
+    return this.request(`/api/session/${sessionId}/orchestration`);
+  }
+
+  async postOrchestrationEvent(
+    sessionId: string,
+    event: { type: string; phase?: string; tool?: string },
+  ): Promise<Record<string, unknown>> {
+    return this.request(`/api/session/${sessionId}/orchestration/event`, {
+      method: "POST",
+      body: JSON.stringify(event),
+    });
+  }
+
+  async getWorkspaceLayout(sessionId: string): Promise<{
+    session_id: string;
+    workspace_id: string;
+    layout_json: Record<string, unknown>;
+    active_phase_group: string;
+    updated_at: string | null;
+  }> {
+    return this.request(`/api/session/${sessionId}/workspace-layout`);
+  }
+
+  async putWorkspaceLayout(
+    sessionId: string,
+    payload: {
+      workspace_id?: string;
+      layout_json: Record<string, unknown>;
+      active_phase_group: string;
+    },
+  ): Promise<Record<string, unknown>> {
+    return this.request(`/api/session/${sessionId}/workspace-layout`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
   }
 }
 

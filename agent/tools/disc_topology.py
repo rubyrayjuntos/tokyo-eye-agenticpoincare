@@ -179,7 +179,7 @@ def compute_disc_neighborhood(
     target_residue_id: str,
     coordinates: list[tuple[str, float, float]],
     topology: DiscTopologyResult,
-    curvature_c: float = 1.0,
+    curvature_c: float,
     k: int = 8,
 ) -> DiscNeighborhood:
     """Get k-nearest neighbors on the disc for a specific residue.
@@ -287,7 +287,7 @@ def compute_disc_neighborhood(
 
 def compute_disc_topology(
     coordinates: list[tuple[str, float, float]],
-    curvature_c: float = 1.0,
+    curvature_c: float,
     min_cluster_size: int = 5,
     structure_id: str = "",
     run_id: str = "",

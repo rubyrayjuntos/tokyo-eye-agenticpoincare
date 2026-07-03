@@ -5,10 +5,11 @@ import { useDashboard } from "../lib/context";
 import { useHydration } from "../context/HydrationProvider";
 import { useState as useReactState } from "react"; // if needed for local, but we'll pull from dashboard
 import { api } from "../lib/api";
+import { buildLegacyViewportContext } from "../lib/legacyViewportContext";
+import { selectAgentViewportContext } from "../lib/selectAgentViewportContext";
 import type {
   AgentChatRequest,
   AgentChatResponse,
-  ViewportState,
   ViewportStateProps,
 } from "../lib/types";
 
@@ -70,6 +71,7 @@ export default function AgentChat(props: Partial<ViewportStateProps>) {
     compareState,
     selectedPocketId,
     isRadarActive,
+    structureScope,
     setLatestAgentTelemetry,
     setAgentSessionId,
   } =
@@ -109,202 +111,63 @@ export default function AgentChat(props: Partial<ViewportStateProps>) {
     }
   }, [chatOpen]);
 
-  const buildDataInspectorContext = useCallback(() => {
-    const phasesComputed: string[] = [];
-    const phaseCounts: Record<string, number> = {};
-
-    if (embeddings?.residues?.length) {
-      phasesComputed.push("embeddings");
-      phaseCounts.embeddings = embeddings.residues.length;
-    }
-    if (sourceLeaks?.leaks?.length) {
-      phasesComputed.push("source_leaks");
-      phaseCounts.source_leaks = sourceLeaks.leaks.length;
-    }
-    if (resistanceData?.residues?.length) {
-      phasesComputed.push("resistance");
-      phaseCounts.resistance = resistanceData.residues.length;
-    }
-    if (pharmacophorePockets?.pockets?.length) {
-      phasesComputed.push("phase5");
-      phaseCounts.phase5 = pharmacophorePockets.pockets.length;
-    }
-    if (drugCandidates?.candidates?.length) {
-      phasesComputed.push("phase6");
-      phaseCounts.phase6 = drugCandidates.candidates.length;
-    }
-
-    // Top druggability pocket score
-    const topDruggabilityPocket = pharmacophorePockets?.pockets?.length
-      ? Math.max(...pharmacophorePockets.pockets.map((p) => p.druggability_score))
-      : null;
-
-    // Top drug candidate score
-    const topDrugCandidateScore = drugCandidates?.candidates?.length
-      ? Math.max(...drugCandidates.candidates.map((c) => c.combined_druggability))
-      : null;
-
-    // ADMET pass rate
-    let admetPassRate: number | null = null;
-    if (drugCandidates?.candidates?.length) {
-      const passed = drugCandidates.candidates.filter((c) => c.admet_pass).length;
-      admetPassRate = passed / drugCandidates.candidates.length;
-    }
-
-    return {
-      phases_computed: phasesComputed,
-      phase_counts: phaseCounts,
-      top_druggability_pocket: topDruggabilityPocket,
-      top_drug_candidate_score: topDrugCandidateScore,
-      admet_pass_rate: admetPassRate,
-    };
-  }, [embeddings, sourceLeaks, resistanceData, pharmacophorePockets, drugCandidates]);
-
-  const buildContext = useCallback((): ViewportState => {
-    // Build top uncertainty residues from embeddings
-    const topUncertaintyResidues = embeddings?.residues
-      ? [...embeddings.residues]
-          .sort((a, b) => b.epistemic_uncertainty - a.epistemic_uncertainty)
-          .slice(0, 5)
-          .map((r) => ({
-            residue_id: r.residue_id,
-            epistemic_uncertainty: r.epistemic_uncertainty,
-          }))
-      : [];
-
-    // Build hypothesis status distribution
-    let hypothesisStatusDistribution: Record<string, number> | null = null;
-    if (hypotheses && hypotheses.length > 0) {
-      hypothesisStatusDistribution = {};
-      for (const h of hypotheses) {
-        hypothesisStatusDistribution[h.status] =
-          (hypothesisStatusDistribution[h.status] || 0) + 1;
-      }
-    }
-
-    // Build resistance summary
-    let resistanceSummary: ViewportState["data_summary"] extends { resistance_summary: infer R } ? R : never = null;
-    if (resistanceData) {
-      resistanceSummary = {
-        lambda_2: resistanceData.spectral.lambda_2,
-        hinge_count: resistanceData.spectral.hinge_count,
-        high_sensitivity_count: resistanceData.residues.filter(
-          (r) => r.classification === "high_sensitivity"
-        ).length,
-        moderate_count: resistanceData.residues.filter(
-          (r) => r.classification === "moderate"
-        ).length,
-        stable_count: resistanceData.residues.filter(
-          (r) => r.classification === "stable"
-        ).length,
-      };
-    }
-
-    // Build persistence status from hydration
-    const persistenceStatusMap: Record<string, boolean> = persistenceStatus
-      ? {
-          embeddings: persistenceStatus.embeddings_persisted,
-          graph: persistenceStatus.graph_persisted,
-          sites: persistenceStatus.sites_persisted,
-          resistance: resistanceData != null,
-        }
-      : {};
-
-    // Build data_summary (null when hydration hasn't loaded)
-    const dataSummary: ViewportState["data_summary"] = hydration
-      ? {
-          residue_count: embeddings?.residues?.length ?? 0,
-          source_leak_count: sourceLeaks?.leaks?.length ?? 0,
-          hypothesis_count: hypotheses?.length ?? 0,
-          hypothesis_status_distribution: hypothesisStatusDistribution,
-          provenance_run_count: provenanceRuns?.length ?? 0,
-          annotation_count: annotations?.length ?? 0,
-          top_uncertainty_residues: topUncertaintyResidues,
-          persistence_status: persistenceStatusMap,
-          resistance_summary: resistanceSummary,
-        }
-      : null;
-
-    return {
-      structure_id: activeStructure?.structure_id ?? null,
-      structure_title: activeStructure?.title ?? null,
-      is_radar_active: isRadarActive ?? false,
-      selected_pocket_id: selectedPocketId ?? null,
-
-      poincare: {
-        color_mode: poincareColorMode,
-        mobius_focus_enabled: mobiusFocus,
-        mobius_focus_residue: mobiusFocus && poincareSelectedResidue
-          ? poincareSelectedResidue.residue_id
-          : null,
-        selected_residue: poincareSelectedResidue,
-        brush_selected_ids: brushSelection,
-      },
-
-      viewer_3d: {
-        color_mode: viewerColorMode,
-        risk_threshold: riskThreshold,
-        highlighted_residue_ids: highlightedResidues,
-      },
-
-      data_summary: dataSummary,
-
-      active_panel: activePanel,
-
-      pipeline: {
-        status: activeStructure?.last_run_id
-          ? "complete"
-          : activeStructure?.has_embeddings
-            ? "complete"
-            : "never_run",
-        current_step: null,
-        progress: null,
-      },
-
-      compare: compareState.active && compareState.secondaryStructure
-        ? {
-            secondary_structure_id: compareState.secondaryStructure.structure_id,
-            top_movers: compareState.displacements
-              ? compareState.displacements.displacements
-                  .slice(0, 10)
-                  .map((d) => ({ residue_id: d.residue_id, displacement: d.displacement }))
-              : [],
-            edge_diff: compareState.graphDiff
-              ? {
-                  gained: compareState.graphDiff.edge_diff.gained_count,
-                  lost: compareState.graphDiff.edge_diff.lost_count,
-                  changed: compareState.graphDiff.edge_diff.changed_count,
-                }
-              : { gained: 0, lost: 0, changed: 0 },
-          }
-        : null,
-
-      data_inspector: activePanel === "data_inspector"
-        ? buildDataInspectorContext()
-        : null,
-    };
-  }, [
-    activeStructure,
-    poincareColorMode,
-    poincareSelectedResidue,
-    mobiusFocus,
-    brushSelection,
-    viewerColorMode,
-    riskThreshold,
-    activePanel,
-    highlightedResidues,
-    hydration,
-    embeddings,
-    sourceLeaks,
-    hypotheses,
-    provenanceRuns,
-    annotations,
-    resistanceData,
-    persistenceStatus,
-    compareState,
-    pharmacophorePockets,
-    drugCandidates,
-  ]);
+  const buildContext = useCallback(
+    () =>
+      selectAgentViewportContext({
+        activeStructure,
+        viewport: buildLegacyViewportContext({
+          poincareColorMode,
+          poincareSelectedResidue,
+          mobiusFocus,
+          brushSelection,
+          viewerColorMode,
+          riskThreshold,
+          activePanel,
+          highlightedResidues,
+          isRadarActive,
+          selectedPocketId,
+        }),
+        hydrationSlice: {
+          hydration,
+          embeddings,
+          sourceLeaks,
+          resistanceData,
+          hypotheses,
+          provenanceRuns,
+          annotations,
+          pharmacophorePockets,
+          drugCandidates,
+          persistenceStatus,
+        },
+        structureScope,
+        compareState,
+      }),
+    [
+      activeStructure,
+      activePanel,
+      annotations,
+      brushSelection,
+      compareState,
+      drugCandidates,
+      embeddings,
+      highlightedResidues,
+      hydration,
+      hypotheses,
+      isRadarActive,
+      mobiusFocus,
+      persistenceStatus,
+      pharmacophorePockets,
+      poincareColorMode,
+      poincareSelectedResidue,
+      provenanceRuns,
+      resistanceData,
+      selectedPocketId,
+      sourceLeaks,
+      structureScope,
+      viewerColorMode,
+      riskThreshold,
+    ],
+  );
 
   const sendMessage = useCallback(async () => {
     const trimmed = input.trim();

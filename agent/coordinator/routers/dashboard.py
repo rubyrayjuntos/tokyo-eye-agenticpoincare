@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 import uuid
 from datetime import datetime, timezone
@@ -20,6 +21,7 @@ from pydantic import BaseModel, Field
 
 from agent.coordinator.auth import get_current_user
 from agent.coordinator.deps import get_db
+from agent.coordinator.rate_limit import chat_rate_limiter
 from agent.coordinator.routers.ingest import (
     _authorize_ingest_request,
     _resolve_request_subject,
@@ -27,6 +29,8 @@ from agent.coordinator.routers.ingest import (
 from shared.logging import get_logger
 
 logger = get_logger(__name__)
+
+ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
 
@@ -216,7 +220,6 @@ def _get_job(job_id: str) -> dict[str, Any] | None:
 class IngestRequest(BaseModel):
     pdb_id: str = Field(..., min_length=4, max_length=4, description="4-character PDB ID")
     force_reingest: bool = False
-    run_pipeline: bool = True
 
 
 class PipelineRunRequest(BaseModel):
@@ -261,12 +264,26 @@ async def ingest(
         pipeline_status = "skipped"
         pipeline_job_id: str | None = None
         pipeline_status_url: str | None = None
-        if request.run_pipeline and not ingest_result.get("audit_only", False):
-            pipeline_job_id = await _create_job_db(ingest_result["structure_id"])
+        structure_id = ingest_result.get("structure_id")
+        queue_pipeline = not ingest_result.get("audit_only", False)
+
+        if ingest_result.get("audit_only", False) and structure_id:
+            from data.db import DBAdapter, get_connection
+            from data.readiness import should_requeue_discovery_after_audit_ingest
+
+            async with get_connection() as conn:
+                db = DBAdapter(conn)
+                queue_pipeline = await should_requeue_discovery_after_audit_ingest(
+                    structure_id,
+                    db,
+                )
+
+        if queue_pipeline and structure_id:
+            pipeline_job_id = await _create_job_db(structure_id)
             background_tasks.add_task(
                 _run_pipeline_background,
                 pipeline_job_id,
-                ingest_result["structure_id"],
+                structure_id,
             )
             pipeline_status = "queued"
             pipeline_status_url = f"/api/pipeline/status/{pipeline_job_id}"
@@ -284,6 +301,11 @@ async def ingest(
             "pipeline_status": pipeline_status,
             "pipeline_job_id": pipeline_job_id,
             "pipeline_status_url": pipeline_status_url,
+            "readiness_url": (
+                f"/api/structures/{ingest_result['structure_id']}/readiness"
+                if ingest_result.get("structure_id")
+                else None
+            ),
         }
     except ScienceTimeoutError as e:
         raise HTTPException(
@@ -367,68 +389,40 @@ async def list_structures():
 
 
 @router.get("/structures/{structure_id}/embeddings")
-async def get_embeddings(structure_id: str):
-    """Return per-residue Poincaré disc coordinates for a structure."""
-    from data.db import DBAdapter, get_connection
-
+async def get_embeddings(structure_id: str, db=Depends(get_db)):
+    """Return per-residue Poincaré disc coordinates for the latest hyperbolic run."""
     try:
-        async with get_connection() as conn:
-            db = DBAdapter(conn)
-            rows = await db.fetch_all(
-                """
-                SELECT r.residue_id, r.residue_index, r.residue_name,
-                       c.chain_label,
-                       e.hyp_projection_2d, e.hyp_projections,
-                       e.cone_depth, e.epistemic_uncertainty,
-                       e.aleatoric_uncertainty,
-                       es.curvature
-                FROM fact_gnn_node_embedding e
-                JOIN dim_residue r ON r.residue_id = e.residue_id
-                JOIN dim_chain c ON c.chain_id = r.chain_id
-                JOIN embedding_space es ON es.space_id = e.space_id
-                WHERE e.structure_id = :structure_id
-                  AND es.space_type = 'hyperbolic'
-                ORDER BY r.residue_index
-                """,
-                {"structure_id": structure_id},
-            )
-
-        if not rows:
+        run_meta = await _resolve_latest_hyperbolic_embedding_run(structure_id, db)
+        if not run_meta:
             return JSONResponse(
                 status_code=404,
-                content={"error": "not_found", "message": f"No embeddings for '{structure_id}'"},
+                content={
+                    "error": "not_found",
+                    "message": f"No hyperbolic embeddings for '{structure_id}'",
+                },
             )
 
-        curvature = rows[0].get("curvature", 1.0) if rows else 1.0
-        residues = []
-        for r in rows:
-            x, y = 0.0, 0.0
-            if r.get("hyp_projection_2d"):
-                coords = r["hyp_projection_2d"]
-                # pgvector returns a string like "[0.1,-0.2]" — parse it
-                if isinstance(coords, str):
-                    coords = [float(v) for v in coords.strip("[]").split(",")]
-                x, y = float(coords[0]), float(coords[1])
-            elif r.get("hyp_projections"):
-                proj = r["hyp_projections"]
-                if isinstance(proj, list) and len(proj) >= 2:
-                    x, y = float(proj[0]), float(proj[1])
-
-            residues.append({
-                "residue_id": r["residue_id"],
-                "residue_index": r["residue_index"],
-                "chain_label": r["chain_label"],
-                "x": x,
-                "y": y,
-                "cone_depth": r.get("cone_depth"),
-                "epistemic_uncertainty": r.get("epistemic_uncertainty"),
-                "aleatoric_uncertainty": r.get("aleatoric_uncertainty"),
-            })
+        embeddings = await _fetch_embeddings_for_hydration(
+            structure_id,
+            db,
+            run_id=run_meta["run_id"],
+        )
+        if not embeddings or not embeddings.get("residues"):
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "error": "not_found",
+                    "message": (
+                        f"No hyperbolic embedding residues for '{structure_id}' "
+                        f"(run_id={run_meta['run_id']})"
+                    ),
+                },
+            )
 
         return {
-            "structure_id": structure_id,
-            "curvature": curvature,
-            "residues": residues,
+            **embeddings,
+            "run_id": run_meta["run_id"],
+            "residue_count": len(embeddings["residues"]),
         }
 
     except Exception as e:
@@ -549,22 +543,92 @@ async def get_kpis():
 # ---------------------------------------------------------------------------
 
 
-async def _run_pipeline_background(job_id: str, structure_id: str) -> None:
-    """Background task: delegate the full DTIE pipeline to the science API.
+async def _append_job_module(job_id: str, module_entry: dict[str, Any]) -> None:
+    """Append a stage entry to pipeline_job.modules."""
+    from data.db import DBAdapter, get_connection
+    from psycopg.types.json import Json
 
-    The science container owns orchestration of GNN inference and downstream
-    phases. The agent router tracks job lifecycle only, instead of re-running
-    sub-stage orchestration itself.
-    """
-    from agent.tools.science_client import ScienceClient, ScienceComputeError, ScienceTimeoutError
-
-    _update_job(job_id, status="running", current_step="pipeline", progress=0)
-    await _update_job_db(job_id, status="running", current_step="pipeline", progress=0)
+    if job_id in _pipeline_jobs:
+        modules = list(_pipeline_jobs[job_id].get("modules") or [])
+        modules.append(module_entry)
+        _pipeline_jobs[job_id]["modules"] = modules
 
     try:
-        client = ScienceClient()
-        await client.run_pipeline(structure_id=structure_id)
+        async with get_connection() as conn:
+            db = DBAdapter(conn)
+            row = await db.fetch_one(
+                "SELECT modules FROM pipeline_job WHERE job_id = :job_id",
+                {"job_id": job_id},
+            )
+            modules = list(row.get("modules") or []) if row else []
+            modules.append(module_entry)
+            await db.execute(
+                """
+                UPDATE pipeline_job
+                SET modules = :modules, updated_at = now()
+                WHERE job_id = :job_id
+                """,
+                {"job_id": job_id, "modules": Json(modules)},
+            )
+    except Exception as e:
+        logger.warning("Failed to append job module in DB: %s", e)
 
+
+async def _run_pipeline_background(job_id: str, structure_id: str) -> None:
+    """Background task: run onboard compute pathway via the job scheduler."""
+    from science.dtie.ingest.orchestrator import job_module_entry, run_onboard_compute
+
+    _update_job(job_id, status="running", current_step="gnn_inference", progress=5)
+    await _update_job_db(
+        job_id,
+        status="running",
+        current_step="gnn_inference",
+        progress=5,
+    )
+
+    async def _on_stage(
+        registry_job_id: str,
+        status: str,
+        metadata: dict[str, Any] | None,
+    ) -> None:
+        progress_map = {
+            "running": 15,
+            "complete": 90,
+            "failed": 5,
+            "skipped": 90,
+        }
+        progress = progress_map.get(status, 10)
+        await _append_job_module(
+            job_id,
+            job_module_entry(registry_job_id, status, metadata=metadata),
+        )
+        await _update_job_db(
+            job_id,
+            status="running" if status not in ("failed",) else "failed",
+            current_step=registry_job_id,
+            progress=progress,
+        )
+
+    try:
+        result = await run_onboard_compute(
+            structure_id,
+            pipeline_job_id=job_id,
+            on_stage=_on_stage,
+        )
+
+        jobs_complete = result.get("jobs_complete", [])
+        await _append_job_module(
+            job_id,
+            job_module_entry(
+                "onboard_complete",
+                "complete",
+                metadata={
+                    "jobs_complete": jobs_complete,
+                    "pathway": result.get("pathway"),
+                    "run_id": result.get("run_id"),
+                },
+            ),
+        )
         _update_job(
             job_id,
             status="complete",
@@ -577,64 +641,67 @@ async def _run_pipeline_background(job_id: str, structure_id: str) -> None:
             status="complete",
             current_step="complete",
             progress=100,
-            completed_at=datetime.now(timezone.utc).isoformat(),
-        )
-
-    except ScienceTimeoutError as e:
-        _update_job(
-            job_id,
-            status="timed_out",
-            error=str(e),
-            completed_at=datetime.now(timezone.utc).isoformat(),
-        )
-        await _update_job_db(
-            job_id,
-            status="timed_out",
-            error=str(e),
-            completed_at=datetime.now(timezone.utc).isoformat(),
-        )
-
-    except ScienceComputeError as e:
-        _update_job(
-            job_id,
-            status="failed",
-            error=e.detail,
-            completed_at=datetime.now(timezone.utc).isoformat(),
-        )
-        await _update_job_db(
-            job_id,
-            status="failed",
-            error=e.detail,
             completed_at=datetime.now(timezone.utc).isoformat(),
         )
 
     except Exception as e:
+        from agent.tools.science_client import ScienceComputeError, ScienceTimeoutError
+
+        if isinstance(e, ScienceTimeoutError):
+            status = "timed_out"
+        elif isinstance(e, ScienceComputeError):
+            status = "failed"
+        else:
+            status = "failed"
+
+        error_msg = getattr(e, "detail", None) or str(e)
+        from data.db import DBAdapter, get_connection
+        from shared.audit.instrumentation import audit_pathway_failed
+
+        try:
+            async with get_connection() as conn:
+                await audit_pathway_failed(
+                    DBAdapter(conn),
+                    structure_id=structure_id,
+                    pipeline_job_id=job_id,
+                    error=error_msg,
+                )
+                await conn.commit()
+        except Exception as audit_exc:
+            logger.warning("Failed to persist pathway failure audit: %s", audit_exc)
         _update_job(
             job_id,
-            status="failed",
-            error=str(e),
+            status=status,
+            error=error_msg,
             completed_at=datetime.now(timezone.utc).isoformat(),
         )
         await _update_job_db(
             job_id,
-            status="failed",
-            error=str(e),
+            status=status,
+            error=error_msg,
             completed_at=datetime.now(timezone.utc).isoformat(),
+        )
+        await _append_job_module(
+            job_id,
+            job_module_entry("gnn_inference", "failed", metadata={"error": error_msg}),
         )
 
 
 @router.post("/pipeline/run")
-async def run_pipeline(request: PipelineRunRequest, background_tasks: BackgroundTasks):
-    """Dispatch the full DTIE pipeline to the science container."""
-    job_id = await _create_job_db(request.structure_id, request.modules)
-
-    background_tasks.add_task(_run_pipeline_background, job_id, request.structure_id)
-
-    return {
-        "job_id": job_id,
-        "status": "queued",
-        "status_url": f"/api/pipeline/status/{job_id}",
-    }
+async def run_pipeline(
+    request: PipelineRunRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    """Deprecated — compute is only triggered by POST /api/ingest."""
+    _ = (request, background_tasks, current_user)
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "Compute is only triggered by POST /api/ingest (governed ingest-full). "
+            "Re-ingest the structure to re-run the discovery pathway."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -699,6 +766,17 @@ async def hydrate_structure(structure_id: str, db=Depends(get_db)):
             return None if isinstance(r, BaseException) else r
 
         snapshot = _safe(results[0])
+        if snapshot and not snapshot.get("residues") and db:
+            fallback_embeddings = await _fetch_embeddings_for_hydration(
+                structure_id,
+                db,
+                run_id=None,
+            )
+            if fallback_embeddings and fallback_embeddings.get("residues"):
+                snapshot["residues"] = fallback_embeddings["residues"]
+                snapshot["curvature"] = fallback_embeddings.get("curvature")
+                snapshot.setdefault("status", {})["embeddings_persisted"] = True
+
         hypotheses_result = _safe(results[1])
         provenance_result = _safe(results[2])
         annotations_rows = _safe(results[3])
@@ -707,7 +785,7 @@ async def hydrate_structure(structure_id: str, db=Depends(get_db)):
         embeddings = (
             {
                 "structure_id": structure_id,
-                "curvature": snapshot.get("curvature", 1.0),
+                "curvature": snapshot.get("curvature"),
                 "residues": snapshot.get("residues", []),
             }
             if snapshot and snapshot.get("residues")
@@ -715,6 +793,7 @@ async def hydrate_structure(structure_id: str, db=Depends(get_db)):
         )
         graph_metrics = snapshot.get("graph_metrics") if snapshot else None
         allosteric_sites = findings.get("allosteric_sites")
+        binding_scan = findings.get("binding_scan")
         source_leaks = findings.get("source_leaks")
         phase2_vulnerability = findings.get("vulnerability_doorways")
         phase4_resistance = findings.get("resistance")
@@ -740,9 +819,14 @@ async def hydrate_structure(structure_id: str, db=Depends(get_db)):
                     residue_ids=sorted(residue_ids_set),
                 )
 
-        hypotheses = hypotheses_result.data if hypotheses_result and hasattr(hypotheses_result, 'success') and hypotheses_result.success and hypotheses_result.data.get("hypotheses") else None
-        provenance_runs = provenance_result.data if provenance_result and hasattr(provenance_result, 'success') and provenance_result.success and provenance_result.data.get("runs") else None
+        hypotheses = hypotheses_result.data if hypotheses_result and hasattr(hypotheses_result, 'success') and hypotheses_result.success and hypotheses_result.data.get("hypotheses") is not None else None
+        provenance_runs = provenance_result.data if provenance_result and hasattr(provenance_result, 'success') and provenance_result.success and provenance_result.data.get("runs") is not None else None
         annotations = annotations_rows if annotations_rows else None
+
+        if isinstance(hypotheses, dict):
+            hypotheses = hypotheses.get("hypotheses")
+        if isinstance(provenance_runs, dict):
+            provenance_runs = provenance_runs.get("runs")
 
         # Enrich pharmacophores with "connected allosteric locks" (the precision locks
         # from source_leak 90th-percentile + derived allosteric network) and the exact
@@ -818,7 +902,7 @@ async def hydrate_structure(structure_id: str, db=Depends(get_db)):
         # Build agent context summary (Requirement 1.4)
         residue_count = len(snapshot.get("residues", [])) if snapshot else len(embeddings.get("residues", [])) if embeddings else 0
         source_leak_count = source_leaks.get("count", 0) if source_leaks else 0
-        hypothesis_count = len(hypotheses.get("hypotheses", [])) if hypotheses else 0
+        hypothesis_count = len(hypotheses) if hypotheses else 0
 
         # Top uncertainty residues (top 5 by epistemic uncertainty)
         top_uncertainty_residues = []
@@ -849,12 +933,13 @@ async def hydrate_structure(structure_id: str, db=Depends(get_db)):
             ),
         }
 
-        return {
+        payload = {
             "structure_id": structure_id,
             "structure_snapshot": snapshot,
             "embeddings": embeddings,
             "graph_metrics": graph_metrics,
             "allosteric_sites": allosteric_sites,
+            "binding_scan": binding_scan,
             "source_leaks": source_leaks,
             "hypotheses": hypotheses,
             "provenance_runs": provenance_runs,
@@ -866,9 +951,21 @@ async def hydrate_structure(structure_id: str, db=Depends(get_db)):
             "resistance_data": resistance_data,
             "persistence_status": persistence_status,
             "context_summary": context_summary,
-            # New: live governed (X, Y) from Phase 7 Buffering Atlas (or derived)
             "buffering_atlas": await _fetch_buffering_atlas(structure_id, db) if db else None,
         }
+
+        from science.contracts.hydrate_availability import enrich_hydrate_bundle
+
+        payload = enrich_hydrate_bundle(payload)
+
+        import os
+        from science.contracts.validation import validate_hydrate_bundle
+
+        if os.getenv("ENVIRONMENT", "dev") == "dev":
+            for message in validate_hydrate_bundle(payload):
+                logger.warning("Hydrate contract drift for %s: %s", structure_id, message)
+
+        return payload
 
     except Exception as e:
         logger.exception("Hydration failed for %s", structure_id)
@@ -891,14 +988,15 @@ async def _fetch_embeddings_for_hydration(
     from agent.tools.dtie.tools import ToolDB
 
     tool_db = ToolDB(db)
-    params: dict[str, Any] = {"structure_id": structure_id}
-    run_filter = ""
-    if run_id:
-        run_filter = " AND e.run_id = :run_id"
-        params["run_id"] = run_id
 
-    rows = await tool_db.fetch_all(
-        f"""
+    async def _query(effective_run_id: str | None) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"structure_id": structure_id}
+        run_filter = ""
+        if effective_run_id:
+            run_filter = " AND e.run_id = :run_id"
+            params["run_id"] = effective_run_id
+        return await tool_db.fetch_all(
+            f"""
         SELECT r.residue_id, r.residue_index, r.residue_name,
                c.chain_label,
                e.hyp_projection_2d, e.hyp_projections,
@@ -914,27 +1012,46 @@ async def _fetch_embeddings_for_hydration(
           {run_filter}
         ORDER BY r.residue_index
         """,
-        params,
-    )
+            params,
+        )
+
+    rows = await _query(run_id)
+    if not rows and run_id:
+        rows = await _query(None)
 
     if not rows:
         return None
 
-    curvature = rows[0].get("curvature", 1.0)
-    residues = []
-    for r in rows:
-        x, y = 0.0, 0.0
-        if r.get("hyp_projection_2d"):
-            coords = r["hyp_projection_2d"]
-            # pgvector returns a string like "[0.1,-0.2]" — parse it
-            if isinstance(coords, str):
-                coords = [float(v) for v in coords.strip("[]").split(",")]
-            x, y = float(coords[0]), float(coords[1])
-        elif r.get("hyp_projections"):
-            proj = r["hyp_projections"]
-            if isinstance(proj, list) and len(proj) >= 2:
-                x, y = float(proj[0]), float(proj[1])
+    raw_curvature = rows[0].get("curvature")
+    if raw_curvature is None:
+        return {
+            "structure_id": structure_id,
+            "curvature": None,
+            "residues": [],
+            "projection_quarantined": [
+                {
+                    "residue_id": r["residue_id"],
+                    "reason": "missing learned curvature from embedding_space",
+                }
+                for r in rows
+            ],
+        }
+    curvature = float(raw_curvature)
+    residues: list[dict[str, Any]] = []
+    projection_quarantined: list[dict[str, str]] = []
+    from science.dtie.common.embedding_projection import (
+        MalformedHyperbolicCoordinateError,
+        parse_embedding_projection_xy,
+    )
 
+    for r in rows:
+        try:
+            x, y = parse_embedding_projection_xy(r, curvature=float(curvature))
+        except MalformedHyperbolicCoordinateError as exc:
+            projection_quarantined.append(
+                {"residue_id": r["residue_id"], "reason": str(exc)}
+            )
+            continue
         residues.append({
             "residue_id": r["residue_id"],
             "residue_index": r["residue_index"],
@@ -947,11 +1064,21 @@ async def _fetch_embeddings_for_hydration(
             "aleatoric_uncertainty": r.get("aleatoric_uncertainty"),
         })
 
-    return {
+    payload: dict[str, Any] = {
         "structure_id": structure_id,
         "curvature": curvature,
         "residues": residues,
     }
+    if projection_quarantined:
+        payload["projection_quarantined"] = projection_quarantined
+    return payload
+
+
+def _parse_embedding_projection_xy(row: dict[str, Any]) -> tuple[float, float]:
+    """Backward-compatible wrapper — prefer ``parse_embedding_projection_xy``."""
+    from science.dtie.common.embedding_projection import parse_embedding_projection_xy
+
+    return parse_embedding_projection_xy(row)
 
 
 async def _fetch_structure_analysis_snapshot(structure_id: str, db) -> dict[str, Any] | None:
@@ -1025,6 +1152,11 @@ async def _fetch_structure_analysis_snapshot(structure_id: str, db) -> dict[str,
             db,
             run_id=run_metadata.get("drug_candidates", {}).get("run_id"),
         ),
+        _fetch_binding_scan_for_hydration(
+            structure_id,
+            db,
+            run_id=run_metadata.get("binding_scan", {}).get("run_id"),
+        ),
         return_exceptions=True,
     )
 
@@ -1039,6 +1171,7 @@ async def _fetch_structure_analysis_snapshot(structure_id: str, db) -> dict[str,
     phase4_resistance = _safe(snapshot_results[5])
     pharmacophores = _safe(snapshot_results[6])
     drug_candidates = _safe(snapshot_results[7])
+    binding_scan = _safe(snapshot_results[8])
     graph_metrics = (
         graph_result.data
         if graph_result and hasattr(graph_result, "success")
@@ -1071,12 +1204,13 @@ async def _fetch_structure_analysis_snapshot(structure_id: str, db) -> dict[str,
             "latest_run_ids_by_pipeline": latest_run_ids_by_pipeline,
             "latest_model_versions": latest_model_versions,
         },
-        "curvature": embeddings.get("curvature", 1.0) if embeddings else 1.0,
+        "curvature": embeddings.get("curvature") if embeddings else None,
         "residues": embeddings.get("residues", []) if embeddings else [],
         "graph_metrics": graph_metrics,
         "findings": {
             "source_leaks": source_leaks,
             "allosteric_sites": allosteric_sites,
+            "binding_scan": binding_scan,
             "vulnerability_doorways": phase2_vulnerability,
             "resistance": phase4_resistance,
             "pharmacophores": pharmacophores,
@@ -1086,12 +1220,39 @@ async def _fetch_structure_analysis_snapshot(structure_id: str, db) -> dict[str,
             "embeddings_persisted": embeddings is not None,
             "graph_persisted": graph_metrics is not None,
             "sites_persisted": allosteric_sites is not None,
+            "binding_scan_persisted": binding_scan is not None
+            and bool(binding_scan.get("sites") or binding_scan.get("status")),
             "phase2_persisted": phase2_vulnerability is not None,
             "phase4_persisted": phase4_resistance is not None,
             "phase5_persisted": pharmacophores is not None,
             "phase6_persisted": drug_candidates is not None,
         },
     }
+
+
+async def _resolve_latest_hyperbolic_embedding_run(
+    structure_id: str,
+    db,
+) -> dict[str, Any] | None:
+    """Return metadata for the latest productive hyperbolic embedding run."""
+    from agent.tools.dtie.tools import ToolDB
+
+    tool_db = ToolDB(db)
+    return await tool_db.fetch_one(
+        """
+        SELECT f.run_id, p.pipeline_name, p.model_version,
+               COALESCE(p.completed_at, p.started_at) AS run_ts
+        FROM fact_gnn_node_embedding f
+        JOIN provenance_run p ON p.run_id = f.run_id
+        JOIN embedding_space es ON es.space_id = f.space_id
+        WHERE f.structure_id = :structure_id
+          AND es.space_type = 'hyperbolic'
+          AND COALESCE(p.parameters->>'audit_only', 'false') != 'true'
+        ORDER BY run_ts DESC, f.computed_at DESC
+        LIMIT 1
+        """,
+        {"structure_id": structure_id},
+    )
 
 
 async def _resolve_latest_productive_run_metadata(
@@ -1103,7 +1264,6 @@ async def _resolve_latest_productive_run_metadata(
 
     tool_db = ToolDB(db)
     table_map = {
-        "embeddings": "fact_gnn_node_embedding",
         "graph_metrics": "fact_graph_node_metrics",
         "source_leaks": "fact_source_leak",
         "allosteric_sites": "fact_allosteric_site",
@@ -1129,11 +1289,30 @@ async def _resolve_latest_productive_run_metadata(
         )
 
     rows = await asyncio.gather(*[_for_table(table_name) for table_name in table_map.values()])
-    return {
+    metadata = {
         key: row
         for key, row in zip(table_map.keys(), rows, strict=False)
         if row
     }
+    hyperbolic_run = await _resolve_latest_hyperbolic_embedding_run(structure_id, db)
+    if hyperbolic_run:
+        metadata["embeddings"] = hyperbolic_run
+    binding_scan_run = await tool_db.fetch_one(
+        """
+        SELECT f.run_id, p.pipeline_name, p.model_version,
+               COALESCE(p.completed_at, p.started_at) AS run_ts
+        FROM fact_binding_site_scan f
+        JOIN provenance_run p ON p.run_id = f.run_id
+        WHERE f.structure_id = :structure_id
+          AND COALESCE(p.parameters->>'audit_only', 'false') != 'true'
+        ORDER BY f.created_at DESC
+        LIMIT 1
+        """,
+        {"structure_id": structure_id},
+    )
+    if binding_scan_run:
+        metadata["binding_scan"] = binding_scan_run
+    return metadata
 
 
 async def _fetch_source_leaks_for_snapshot(
@@ -1228,6 +1407,95 @@ async def _fetch_allosteric_sites_for_snapshot(
         "sites": sites,
         "count": len(sites),
         "total_residues": sum(site["residue_count"] for site in sites),
+    }
+
+
+async def _fetch_binding_scan_for_hydration(
+    structure_id: str,
+    db,
+    run_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Fetch binding-site scan metadata and ranked cryptic sites for hydrate."""
+    from agent.tools.dtie.tools import ToolDB
+    from data.readiness import BINDING_SCAN_COMPLETE_STATUSES
+
+    tool_db = ToolDB(db)
+    params: dict[str, Any] = {"structure_id": structure_id}
+    run_filter = ""
+    if run_id:
+        run_filter = " AND run_id = :run_id"
+        params["run_id"] = run_id
+
+    scan_row = await tool_db.fetch_one(
+        f"""
+        SELECT run_id, status, sites_found, heuristic_version, model_version,
+               scan_parameters, duration_ms, created_at
+        FROM fact_binding_site_scan
+        WHERE structure_id = :structure_id
+          {run_filter}
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        params,
+    )
+    if not scan_row:
+        return None
+
+    scan_run_id = str(scan_row["run_id"])
+    status = str(scan_row.get("status") or "")
+    if status not in BINDING_SCAN_COMPLETE_STATUSES:
+        return {
+            "structure_id": structure_id,
+            "run_id": scan_run_id,
+            "status": status,
+            "sites_found": int(scan_row.get("sites_found") or 0),
+            "heuristic_version": scan_row.get("heuristic_version"),
+            "model_version": scan_row.get("model_version"),
+            "sites": [],
+            "count": 0,
+        }
+
+    site_rows = await tool_db.fetch_all(
+        """
+        SELECT site_id, site_type, residue_ids, druggability_score,
+               site_rank, discovery_method, md_validation_status,
+               composite_gnn_score, fpocket_druggability, volume_angstrom3,
+               centroid_x, centroid_y, centroid_z
+        FROM fact_cryptic_site
+        WHERE structure_id = :structure_id
+          AND scan_run_id = :scan_run_id
+        ORDER BY site_rank ASC NULLS LAST, druggability_score DESC
+        """,
+        {"structure_id": structure_id, "scan_run_id": scan_run_id},
+    )
+    if not site_rows:
+        site_rows = await tool_db.fetch_all(
+            """
+            SELECT site_id, site_type, residue_ids, druggability_score,
+                   site_rank, discovery_method, md_validation_status,
+                   composite_gnn_score, fpocket_druggability, volume_angstrom3,
+                   centroid_x, centroid_y, centroid_z
+            FROM fact_cryptic_site
+            WHERE structure_id = :structure_id
+              AND run_id = :scan_run_id
+            ORDER BY site_rank ASC NULLS LAST, druggability_score DESC
+            """,
+            {"structure_id": structure_id, "scan_run_id": scan_run_id},
+        )
+
+    sites = [dict(row) for row in site_rows]
+    return {
+        "structure_id": structure_id,
+        "run_id": scan_run_id,
+        "status": status,
+        "sites_found": int(scan_row.get("sites_found") or len(sites)),
+        "heuristic_version": scan_row.get("heuristic_version"),
+        "model_version": scan_row.get("model_version"),
+        "duration_ms": scan_row.get("duration_ms"),
+        "scan_parameters": scan_row.get("scan_parameters"),
+        "created_at": scan_row.get("created_at"),
+        "sites": sites,
+        "count": len(sites),
     }
 
 
@@ -1831,6 +2099,47 @@ def _build_context_block(context: dict[str, Any]) -> str:
             block = block[:1997] + "..."
         return block
 
+
+def _viewport_state_from_context(context: dict[str, Any]) -> Any | None:
+    """Build orchestrator viewport state from dashboard chat context."""
+    from agent.orchestration.orchestrator import ViewportState
+
+    if not context:
+        return None
+
+    poincare = context.get("poincare") if isinstance(context.get("poincare"), dict) else {}
+    viewer = context.get("viewer_3d") if isinstance(context.get("viewer_3d"), dict) else {}
+    pipeline = context.get("pipeline") if isinstance(context.get("pipeline"), dict) else {}
+    selected = poincare.get("selected_residue")
+    selected_residue = (
+        selected.get("residue_id")
+        if isinstance(selected, dict)
+        else selected
+    )
+
+    return ViewportState(
+        structure_id=context.get("structure_id") or context.get("active_structure_id"),
+        selected_residue=selected_residue,
+        poincare_color_mode=poincare.get("color_mode"),
+        viewer_3d_color_mode=viewer.get("color_mode"),
+        highlighted_residues=poincare.get("brush_selected_ids") or [],
+        active_panel=context.get("active_panel"),
+        pipeline_flags=pipeline if isinstance(pipeline, dict) else {},
+        risk_threshold=viewer.get("risk_threshold"),
+        brush_selection=poincare.get("brush_selected_ids") or [],
+    )
+
+
+def _agent_error_message(exc: Exception) -> str:
+    """Return a user-safe agent error message."""
+    if ENVIRONMENT == "prod":
+        return "An internal error occurred. Please try again."
+    error_type = type(exc).__name__
+    return (
+        f"Tool/agent error ({error_type}). Please try a simpler query or use "
+        f"record_partial_findings for long analyses. Details: {str(exc)[:200]}"
+    )
+
     # Enriched format
     sections: list[str] = []
     snapshot = context.get("structure_snapshot") or {}
@@ -1972,6 +2281,47 @@ def _build_context_block(context: dict[str, Any]) -> str:
     return block
 
 
+def _viewport_state_from_context(context: dict[str, Any]) -> Any | None:
+    """Build orchestrator viewport state from dashboard chat context."""
+    from agent.orchestration.orchestrator import ViewportState
+
+    if not context:
+        return None
+
+    poincare = context.get("poincare") if isinstance(context.get("poincare"), dict) else {}
+    viewer = context.get("viewer_3d") if isinstance(context.get("viewer_3d"), dict) else {}
+    pipeline = context.get("pipeline") if isinstance(context.get("pipeline"), dict) else {}
+    selected = poincare.get("selected_residue")
+    selected_residue = (
+        selected.get("residue_id")
+        if isinstance(selected, dict)
+        else selected
+    )
+
+    return ViewportState(
+        structure_id=context.get("structure_id") or context.get("active_structure_id"),
+        selected_residue=selected_residue,
+        poincare_color_mode=poincare.get("color_mode"),
+        viewer_3d_color_mode=viewer.get("color_mode"),
+        highlighted_residues=poincare.get("brush_selected_ids") or [],
+        active_panel=context.get("active_panel"),
+        pipeline_flags=pipeline if isinstance(pipeline, dict) else {},
+        risk_threshold=viewer.get("risk_threshold"),
+        brush_selection=poincare.get("brush_selected_ids") or [],
+    )
+
+
+def _agent_error_message(exc: Exception) -> str:
+    """Return a user-safe agent error message."""
+    if ENVIRONMENT == "prod":
+        return "An internal error occurred. Please try again."
+    error_type = type(exc).__name__
+    return (
+        f"Tool/agent error ({error_type}). Please try a simpler query or use "
+        f"record_partial_findings for long analyses. Details: {str(exc)[:200]}"
+    )
+
+
 def _build_history_block(history: list[dict[str, str]]) -> str:
     """Build a conversation history string from session history."""
     if not history:
@@ -2075,7 +2425,10 @@ def _store_trace_snapshot(session_id: str, trace: Any) -> None:
 
 
 @router.post("/agent/chat")
-async def agent_chat(request: AgentChatRequest):
+async def agent_chat(
+    request: AgentChatRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
     """Full-featured agent chat with DTIE, small-molecule, data, graph, hypothesis,
     therapeutic compiler, RCSB, visualization, and plotting tools.
 
@@ -2086,16 +2439,28 @@ async def agent_chat(request: AgentChatRequest):
     from agent.llm.agents import create_coordinator
     from agent.coordinator.viewport import viewport_manager
     from agent.llm.providers import get_provider
+    from agent.orchestration.context_builder import build_context_block as build_orchestration_context
+    from agent.orchestration.session_store import get_session_orchestrator
     from agent.telemetry import AgentTelemetry
     from data.db import DBAdapter, get_connection
 
-    session_id = request.session_id or str(uuid.uuid4())
+    session_id = request.session_id or current_user.get("session_id") or str(uuid.uuid4())
+    user_id = _resolve_request_subject(current_user)
+
+    chat_rate_limiter.check(session_id)
 
     # Create telemetry collector (outside agent's control)
     telemetry = AgentTelemetry(session_id=session_id)
     telemetry.record_request(user_message=request.message, context=request.context)
 
     context_block = _build_context_block(request.context)
+    orchestrator = await get_session_orchestrator(session_id, request.context)
+    orchestration_block = build_orchestration_context(
+        orchestrator,
+        _viewport_state_from_context(request.context),
+    )
+    if orchestration_block:
+        context_block = f"{context_block}\n\n{orchestration_block}" if context_block else orchestration_block
 
     try:
         async with get_connection() as conn:
@@ -2105,6 +2470,7 @@ async def agent_chat(request: AgentChatRequest):
                 session_id=session_id,
                 user_message=request.message,
                 context=request.context,
+                user_id=user_id,
             )
             fallback_history_block = ""
             if not memory_context.block:
@@ -2119,7 +2485,7 @@ async def agent_chat(request: AgentChatRequest):
                 )
 
             llm = get_provider()
-            coordinator = create_coordinator(llm=llm, db=db)
+            coordinator = create_coordinator(llm=llm, db=db, orchestrator=orchestrator)
             response = await coordinator.run(
                 user_message=full_message,
                 context=None,
@@ -2144,6 +2510,8 @@ async def agent_chat(request: AgentChatRequest):
                 context=request.context,
                 trace=trace,
                 retrieved_memory_block=memory_context.block,
+                user_id=user_id,
+                next_orchestration_state=orchestrator.get_state_snapshot(),
             )
 
         # Extract viewport directives from tool results
@@ -2173,10 +2541,7 @@ async def agent_chat(request: AgentChatRequest):
     except Exception as e:
         logger.exception("Agent chat failed")
         error_type = type(e).__name__
-        error_text = (
-            f"Tool/agent error ({error_type}). Please try a simpler query or use "
-            f"record_partial_findings for long analyses. Details: {str(e)[:200]}"
-        )
+        error_text = _agent_error_message(e)
         telemetry.record_response(error_text)
         trace = telemetry.finalize()
         _store_exchange(session_id, request.message, error_text)
@@ -2191,6 +2556,7 @@ async def agent_chat(request: AgentChatRequest):
                     context=request.context,
                     trace=trace,
                     retrieved_memory_block="",
+                    user_id=user_id,
                 )
         except Exception:
             logger.warning("Failed to persist error memory for session %s", session_id, exc_info=True)

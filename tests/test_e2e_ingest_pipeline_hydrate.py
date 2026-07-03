@@ -130,6 +130,24 @@ async def _mock_get_connection():
     yield mock_conn
 
 
+def _auth_override():
+    """Authenticated user for coordinator endpoints that require JWT."""
+    from agent.coordinator.auth import get_current_user
+
+    app = __import__("agent.coordinator.app", fromlist=["app"]).app
+    app.dependency_overrides[get_current_user] = lambda: {
+        "sub": "e2e-test-user",
+        "session_id": "e2e-session",
+    }
+    return app
+
+
+def _clear_auth_override(app):
+    from agent.coordinator.auth import get_current_user
+
+    app.dependency_overrides.pop(get_current_user, None)
+
+
 # ---------------------------------------------------------------------------
 # Test class: End-to-end ingest → pipeline → hydrate
 # ---------------------------------------------------------------------------
@@ -169,11 +187,14 @@ class TestE2EIngestPipelineHydrate:
             mock_diag.return_value = mock_report
 
             from httpx import ASGITransport, AsyncClient
-            from agent.coordinator.app import app
 
-            transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.post("/api/ingest", json={"pdb_id": "4obe"})
+            app = _auth_override()
+            try:
+                transport = ASGITransport(app=app)
+                async with AsyncClient(transport=transport, base_url="http://test") as client:
+                    resp = await client.post("/api/ingest", json={"pdb_id": "4obe"})
+            finally:
+                _clear_auth_override(app)
 
             assert resp.status_code == 200
             body = resp.json()
@@ -184,62 +205,56 @@ class TestE2EIngestPipelineHydrate:
             assert body["pipeline_job_id"] == "ingest-job-001"
 
     @pytest.mark.asyncio
-    async def test_pipeline_run_dispatches_job(self):
-        """POST /api/pipeline/run should create a job and return job_id."""
+    async def test_pipeline_run_returns_410(self):
+        """POST /api/pipeline/run is disabled; ingest is the sole compute trigger."""
         with (
             patch("data.db.open_pool", new_callable=AsyncMock),
             patch("data.db.close_pool", new_callable=AsyncMock),
             patch("agent.tools.diagnostics.run_startup_diagnostics") as mock_diag,
-            patch(
-                "agent.coordinator.routers.dashboard._create_job_db",
-                new_callable=AsyncMock,
-                return_value="test-job-id-001",
-            ),
-            patch(
-                "agent.coordinator.routers.dashboard._run_pipeline_background",
-                new_callable=AsyncMock,
-            ),
         ):
             mock_report = MagicMock()
             mock_report.all_passed = True
             mock_diag.return_value = mock_report
 
             from httpx import ASGITransport, AsyncClient
-            from agent.coordinator.app import app
 
-            transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.post(
-                    "/api/pipeline/run",
-                    json={"structure_id": STRUCTURE_ID},
-                )
+            app = _auth_override()
+            try:
+                transport = ASGITransport(app=app)
+                async with AsyncClient(transport=transport, base_url="http://test") as client:
+                    resp = await client.post(
+                        "/api/pipeline/run",
+                        json={"structure_id": STRUCTURE_ID},
+                    )
+            finally:
+                _clear_auth_override(app)
 
-            assert resp.status_code == 200
-            body = resp.json()
-            assert body["job_id"] == "test-job-id-001"
-            assert body["status"] == "queued"
-            assert "status_url" in body
+            assert resp.status_code == 410
+            assert "POST /api/ingest" in resp.json()["detail"]
 
     @pytest.mark.asyncio
-    async def test_pipeline_background_calls_science_client(self):
-        """The background task should call ScienceClient.run_pipeline()."""
+    async def test_pipeline_background_calls_onboard_compute(self):
+        """The background task should run the onboard compute pathway."""
         with (
             patch(
                 "agent.coordinator.routers.dashboard._update_job_db",
                 new_callable=AsyncMock,
             ),
             patch(
-                "agent.tools.science_client.ScienceClient.run_pipeline",
+                "science.dtie.ingest.orchestrator.run_onboard_compute",
                 new_callable=AsyncMock,
-                return_value=MOCK_PIPELINE_RESULT,
-            ) as mock_pipeline,
+                return_value={
+                    "jobs_complete": ["gnn_inference"],
+                    "pathway": "onboard",
+                    "run_id": "run-test-001",
+                },
+            ) as mock_onboard,
         ):
             from agent.coordinator.routers.dashboard import (
                 _pipeline_jobs,
                 _run_pipeline_background,
             )
 
-            # Set up in-memory job
             job_id = "test-job-bg-001"
             _pipeline_jobs[job_id] = {
                 "job_id": job_id,
@@ -255,11 +270,11 @@ class TestE2EIngestPipelineHydrate:
 
             await _run_pipeline_background(job_id, STRUCTURE_ID)
 
-            mock_pipeline.assert_called_once_with(structure_id=STRUCTURE_ID)
+            mock_onboard.assert_called_once()
+            assert mock_onboard.call_args.args[0] == STRUCTURE_ID
             assert _pipeline_jobs[job_id]["status"] == "complete"
             assert _pipeline_jobs[job_id]["progress"] == 100
 
-            # Cleanup
             del _pipeline_jobs[job_id]
 
     @pytest.mark.asyncio
@@ -432,9 +447,14 @@ class TestE2EIngestPipelineHydrate:
 
             from agent.coordinator.app import app
             from agent.coordinator.deps import get_db
+            from agent.coordinator.auth import get_current_user
             from httpx import ASGITransport, AsyncClient
 
             app.dependency_overrides[get_db] = _override_get_db
+            app.dependency_overrides[get_current_user] = lambda: {
+                "sub": "e2e-test-user",
+                "session_id": "e2e-session",
+            }
 
             try:
                 transport = ASGITransport(app=app)
@@ -452,17 +472,7 @@ class TestE2EIngestPipelineHydrate:
                     assert ingest_body["pipeline_status"] == "queued"
                     assert ingest_body["pipeline_job_id"] == "full-flow-job-001"
 
-                    # Step 2: Trigger pipeline
-                    pipeline_resp = await client.post(
-                        "/api/pipeline/run",
-                        json={"structure_id": structure_id},
-                    )
-                    assert pipeline_resp.status_code == 200
-                    pipeline_body = pipeline_resp.json()
-                    assert pipeline_body["status"] == "queued"
-                    assert pipeline_body["job_id"] == "full-flow-job-001"
-
-                    # Step 3: Hydrate (simulates after pipeline completes)
+                    # Step 2: Hydrate (simulates after pipeline completes)
                     hydrate_resp = await client.get(
                         f"/api/structures/{structure_id}/hydrate"
                     )

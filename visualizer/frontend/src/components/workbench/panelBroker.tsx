@@ -21,6 +21,23 @@ import type {
   WorkbenchTrigger,
 } from "./panelContract";
 import { validatePanelPortPayload } from "./panelContract";
+import type { WorkbenchBus } from "../../workbench/WorkbenchBus";
+import type { WorkbenchPhaseGroup } from "../../workbench/phaseGroups";
+
+function triggerToTopic(type: WorkbenchTrigger): string | null {
+  switch (type) {
+    case "selection.changed":
+      return "ui:selection_changed";
+    case "directive.emitted":
+      return "data:directive_emitted";
+    case "layout.changed":
+      return "layout:changed";
+    case "panel.activated":
+      return "ui:panel_activated";
+    default:
+      return null;
+  }
+}
 
 export interface PanelTriggerEvent {
   type: WorkbenchTrigger;
@@ -41,16 +58,58 @@ interface PanelBrokerDependencies {
   sendViewport: (event: any) => void;
   emitDirective: (directive: ViewportDirective) => void;
   mergeLayoutModel: (partialLayout: Record<string, unknown>) => void;
+  workbenchBus?: WorkbenchBus;
+  activePhaseGroup?: WorkbenchPhaseGroup;
 }
 
 function createPanelBroker({
   sendViewport,
   emitDirective,
   mergeLayoutModel,
+  workbenchBus,
+  activePhaseGroup = "exploration",
 }: PanelBrokerDependencies): PanelBroker {
-  const publishTrigger = (_event: PanelTriggerEvent) => {
-    // The broker intentionally keeps trigger publication lightweight for now.
-    // Future panel subscriptions can layer on top of this stable event shape.
+  const publishTrigger = (event: PanelTriggerEvent) => {
+    if (!workbenchBus) return;
+    const topic = triggerToTopic(event.type);
+    if (!topic) return;
+
+    if (topic === "ui:selection_changed") {
+      const payload = event.payload as SelectionPortPayload;
+      workbenchBus.publish("ui:selection_changed", {
+        residueIds: payload.residueIds,
+        sourcePanelId: event.sourcePanelId,
+      });
+      return;
+    }
+
+    if (topic === "data:directive_emitted") {
+      const payload = event.payload as DirectivePortPayload | MetricPortPayload;
+      const directive: Record<string, unknown> =
+        "directive" in payload
+          ? (payload.directive as unknown as Record<string, unknown>)
+          : { metric: (payload as MetricPortPayload).metric };
+      workbenchBus.publish("data:directive_emitted", { directive });
+      return;
+    }
+
+    if (topic === "layout:changed") {
+      const payload = event.payload as LayoutPortPayload;
+      workbenchBus.publish("layout:changed", {
+        workspaceId: "tokyo-eye-default",
+        layout: payload.partialLayout,
+        activePhaseGroup,
+      });
+      return;
+    }
+
+    if (topic === "ui:panel_activated") {
+      const payload = event.payload as OpenPanelPortPayload;
+      workbenchBus.publish("ui:panel_activated", {
+        panelId: payload.panelId ?? "unknown",
+        open: payload.open,
+      });
+    }
   };
 
   return {
@@ -180,6 +239,8 @@ interface PanelBrokerProviderProps extends PropsWithChildren {
   sendViewport: (event: any) => void;
   emitDirective: (directive: ViewportDirective) => void;
   mergeLayoutModel: (partialLayout: Record<string, unknown>) => void;
+  workbenchBus?: WorkbenchBus;
+  activePhaseGroup?: WorkbenchPhaseGroup;
 }
 
 export function PanelBrokerProvider({
@@ -187,6 +248,8 @@ export function PanelBrokerProvider({
   sendViewport,
   emitDirective,
   mergeLayoutModel,
+  workbenchBus,
+  activePhaseGroup,
 }: PanelBrokerProviderProps) {
   const broker = useMemo(
     () =>
@@ -194,8 +257,10 @@ export function PanelBrokerProvider({
         sendViewport,
         emitDirective,
         mergeLayoutModel,
+        workbenchBus,
+        activePhaseGroup,
       }),
-    [emitDirective, mergeLayoutModel, sendViewport],
+    [activePhaseGroup, emitDirective, mergeLayoutModel, sendViewport, workbenchBus],
   );
 
   return (

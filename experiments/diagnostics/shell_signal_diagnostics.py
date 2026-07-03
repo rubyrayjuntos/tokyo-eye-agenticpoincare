@@ -488,6 +488,8 @@ def run_v5_inference(
     with torch.no_grad():
         raw = model(data)
 
+    curvature = float(model.curvature.detach().cpu().item()) if hasattr(model, "curvature") else 1.0
+
     # Log audit trail immediately — projection_applied_fraction is the key number
     # confirming boundary-saturation hypothesis (expect ~0.97 if hypothesis is correct).
     if "audit_trail" in raw:
@@ -521,7 +523,9 @@ def run_v5_inference(
         "epistemic":    _flat(raw["uncertainty"]["epistemic"]),
         "aleatoric":    _flat(raw["uncertainty"]["aleatoric"]),
         "hyp_proj_2d":  raw["hyp_projections_2d"].cpu().numpy(),   # keep [N, 2]
+        "ball_3d":      raw["hyp_projections_3d"].cpu().numpy(),   # [N, 3]
         "x_routed_hyp": raw["x_routed_hyp"].cpu().numpy(),
+        "curvature":    curvature,
         "sasa":         _flat(data.x[:, 3]),
         "rho":          _flat(data.x[:, 0]),
         "residue_ids":  prot["residue_ids"],
@@ -965,6 +969,14 @@ def main() -> None:
         "--top_n", type=int, default=30,
         help="Number of top peripheral residues to inspect in Probe 3",
     )
+    parser.add_argument(
+        "--export-npz", type=str, default=None,
+        help="Export inference arrays for poincare_property_suite (--npz)",
+    )
+    parser.add_argument(
+        "--run-property-suite", action="store_true",
+        help="After inference, run the Poincaré property suite (invariant 3 path)",
+    )
     args = parser.parse_args()
 
     print(f"\n{'#' * 72}")
@@ -1001,6 +1013,48 @@ def main() -> None:
         ("Probe 4 — radial gradient intact in Poincaré disc",   v4),
     ])
     print()
+
+    if args.export_npz and not args.precomputed_json:
+        export_inference_npz(out, Path(args.export_npz), args.structure_id)
+
+    if args.run_property_suite and not args.precomputed_json:
+        run_inference_property_suite(out, args.structure_id)
+
+
+def export_inference_npz(out: dict, path: Path, structure_id: str) -> None:
+    """Write arrays for experiments.diagnostics.poincare_property_suite --npz."""
+    arrays = {
+        "disc_2d": out["hyp_proj_2d"],
+        "cone_depth": out["cone_depth"],
+        "curvature": np.array([out.get("curvature", 1.0)]),
+        "ball_3d": out["ball_3d"],
+        "x_routed_hyp": out["x_routed_hyp"],
+        "rho": out.get("rho"),
+        "sasa": out.get("sasa"),
+        "epistemic": out.get("epistemic"),
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(path, **{k: v for k, v in arrays.items() if v is not None})
+    print(f"Exported inference arrays → {path}")
+
+
+def run_inference_property_suite(out: dict, structure_id: str) -> None:
+    from experiments.diagnostics.poincare_property_suite import print_report
+    from science.dtie.common.poincare_properties import run_property_suite
+
+    result = run_property_suite(
+        structure_id=structure_id.strip().lower(),
+        curvature=float(out.get("curvature", 1.0)),
+        source="inference",
+        disc_2d=out["hyp_proj_2d"],
+        cone_depth=out["cone_depth"],
+        ball_3d=out.get("ball_3d"),
+        x_routed_hyp=out.get("x_routed_hyp"),
+        rho=out.get("rho"),
+        sasa=out.get("sasa"),
+        epistemic=out.get("epistemic"),
+    )
+    print_report(result)
 
 
 if __name__ == "__main__":

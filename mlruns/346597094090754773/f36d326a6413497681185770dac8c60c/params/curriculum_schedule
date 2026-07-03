@@ -1,0 +1,1 @@
+[{"epochs": 1, "freeze_angular": true, "freeze_gate": false, "freeze_radial": false, "lr": 0.0005, "name": "Phase 1: Representation stabilization", "phase": 1}]

@@ -1,0 +1,15 @@
+artifact_uri: file:///app/mlruns/346597094090754773/1406d4f3526f4d87a985a551fbcbfa5f/artifacts
+end_time: 1782766995091
+entry_point_name: ''
+experiment_id: '346597094090754773'
+lifecycle_stage: active
+run_id: 1406d4f3526f4d87a985a551fbcbfa5f
+run_name: disc_arch_retrain_v1
+run_uuid: 1406d4f3526f4d87a985a551fbcbfa5f
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1782766945997
+status: 3
+tags: []
+user_id: unknown

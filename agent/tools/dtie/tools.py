@@ -1,15 +1,8 @@
-# Migrated from: new (written fresh per MIGRATION_MAP.md) on 2026-05-27
-"""DTIE tool implementations for the agent.
+"""Discovery signal tools for the agent coordinator.
 
-These are the concrete tools the agent coordinator calls to drive
-scientific workflows. Each tool:
-1. Accepts structured parameters
-2. Queries the governed data layer or calls science code
-3. Returns structured results suitable for agent reasoning
-4. Generates ViewportDirectives for visualization
-
-The tools use the production views (v_agent_*, v_viz_*) for reads
-and the Normalizer for writes. They never access fact tables directly.
+Concrete tools the coordinator calls for read-only analysis of governed
+pathway artifacts. Each tool queries production views and returns
+structured results plus optional viewport directives.
 """
 
 from __future__ import annotations
@@ -40,65 +33,13 @@ class ToolDB:
 
 @dataclass
 class ToolResult:
-    """Standard result from any DTIE tool."""
+    """Standard result from any agent tool."""
 
     success: bool
     data: dict[str, Any] = field(default_factory=dict)
     message: str = ""
     viewport_directives: list[ViewportDirective] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
-
-
-async def run_gnn_inference(
-    structure_id: str,
-    model_version: str = "v5",
-    checkpoint_path: str | None = None,
-    db: Any = None,
-) -> ToolResult:
-    """Run GNN inference on a structure via the Science Container API.
-
-    Dispatches to the science container's POST /compute/gnn endpoint.
-    The science container handles graph building, GNN execution,
-    Normalizer persistence, and view refresh internally.
-    """
-    if db is None:
-        return ToolResult(success=False, message="No database connection provided")
-
-    from agent.tools.science_client import ScienceClient, ScienceComputeError, ScienceTimeoutError
-
-    client = ScienceClient()
-    kwargs: dict[str, Any] = {"model_version": model_version}
-    if checkpoint_path:
-        kwargs["checkpoint_path"] = checkpoint_path
-
-    try:
-        result = await client.run_gnn(structure_id=structure_id, **kwargs)
-    except ScienceTimeoutError as e:
-        return ToolResult(success=False, message=f"GNN inference timed out: {e}")
-    except ScienceComputeError as e:
-        return ToolResult(success=False, message=f"GNN inference failed: {e.detail}")
-
-    # Generate viewport directive
-    directive = ViewportDirective(
-        action=DirectiveAction.SET_METRIC,
-        structure_id=structure_id,
-        metric="cone_depth",
-        message=f"GNN {model_version} inference complete — {result.get('node_count', 0)} embeddings written",
-    )
-
-    return ToolResult(
-        success=True,
-        data={
-            "structure_id": structure_id,
-            "model_version": model_version,
-            "run_id": result.get("run_id"),
-            "node_count": result.get("node_count", 0),
-            "checkpoint_version_hash": result.get("checkpoint_version_hash"),
-            "duration_ms": result.get("duration_ms"),
-        },
-        message=f"GNN {model_version} inference complete for {structure_id}",
-        viewport_directives=[directive],
-    )
 
 
 async def run_phase(
@@ -108,7 +49,7 @@ async def run_phase(
     parameters: dict[str, Any] | None = None,
     db: Any = None,
 ) -> ToolResult:
-    """Run a specific DTIE phase on a structure.
+    """Run a specific discovery pathway phase on a structure.
 
     Requires GNN embeddings to already exist in the governed layer.
     """

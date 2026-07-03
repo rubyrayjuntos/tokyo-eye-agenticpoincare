@@ -71,7 +71,7 @@ export async function sendChat(
     body.viewport_state = {
       structure_id: viewportState.structure_id ?? null,
       current_metric: viewportState.current_metric ?? "cone_depth",
-      curvature: viewportState.curvature ?? 1.0,
+      curvature: viewportState.curvature ?? null,
     };
   }
 
@@ -130,7 +130,7 @@ export interface PoincareResidue {
 export interface PoincareDataResponse {
   structure_id: string;
   pdb_id: string;
-  curvature_c: number;
+  curvature_c: number | null;
   residues: PoincareResidue[];
 }
 
@@ -158,7 +158,7 @@ export async function fetchPoincareData(pdbId: string): Promise<PoincareDataResp
   return {
     structure_id: data.structure_id ?? pdbId,
     pdb_id: pdbId,
-    curvature_c: data.curvature ?? 1.0,
+    curvature_c: data.curvature ?? null,
     residues: (data.residues ?? []).map((r: Record<string, unknown>) => ({
       residue_id: String(r.residue_id ?? ""),
       chain_label: String(r.chain_label ?? ""),

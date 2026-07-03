@@ -1,0 +1,57 @@
+{
+  "demo": "9est_cryptic_pipeline",
+  "generated_utc": "2026-07-02T15:05:40.929089+00:00",
+  "note": "Exploratory pipeline demo \u2014 separate from inference-only prereg (REFUTE). Does not amend frozen S1/S2 score definition.",
+  "structure_id": "9est",
+  "checkpoint": "checkpoints/v6/runs/lever_a_clean_slate_v1/v6_best_disc.pt",
+  "n_gold": 26,
+  "n_fpocket_pockets": 0,
+  "geometry_best_druggability_gold_hits": [],
+  "profiles": {
+    "v5_legacy": {
+      "profile": "v5_legacy",
+      "thresholds": {
+        "epistemic": 9.5,
+        "shell": 6.0,
+        "shell_field": "cone_depth"
+      },
+      "n_qualifying": 0,
+      "n_sites": 0,
+      "best_site": null,
+      "top3_gold_recall": 0.0,
+      "warnings": [
+        "No geometry pockets (fpocket unavailable or empty)."
+      ]
+    },
+    "v6_lever_a": {
+      "profile": "v6_lever_a",
+      "thresholds": {
+        "epistemic": 1.5862102210521698,
+        "shell": 0.4032529294490814,
+        "shell_field": "disc_r"
+      },
+      "n_qualifying": 60,
+      "n_sites": 6,
+      "best_site": {
+        "site_rank": 1,
+        "site_type": "cryptic_wedge",
+        "discovery_method": "gnn_strain",
+        "n_residues": 4,
+        "n_gold_hit": 0,
+        "recall_on_gold": 0.0,
+        "precision_in_site": 0.0,
+        "gold_resnums_hit": []
+      },
+      "top3_gold_recall": 0.0,
+      "warnings": [
+        "No geometry pockets (fpocket unavailable or empty)."
+      ]
+    }
+  },
+  "diagnosis": {
+    "v5_legacy_usable_on_v6_checkpoint": false,
+    "v6_profile_produces_sites": true,
+    "recommended_ingest_profile": "v6_lever_a",
+    "summary": "v5_legacy: 0 qualifying residues, 0 sites; v6_lever_a: 60 qualifying, 6 sites; top-site gold recall v6=0.00"
+  }
+}

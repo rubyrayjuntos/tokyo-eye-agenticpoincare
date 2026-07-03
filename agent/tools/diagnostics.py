@@ -84,6 +84,9 @@ async def run_startup_diagnostics() -> DiagnosticReport:
     # 5. Check tool handler wiring
     _check_tool_handlers(report)
 
+    # 6. Onboard contract / geometric consistency
+    _check_onboard_contract(report)
+
     # Log summary
     if report.all_passed:
         logger.info(
@@ -103,7 +106,7 @@ async def run_startup_diagnostics() -> DiagnosticReport:
 def _check_tool_imports(report: DiagnosticReport) -> None:
     """Verify all tool modules can be imported."""
     tool_modules = [
-        ("agent.tools.dtie.tools", "DTIE tools"),
+        ("agent.tools.dtie.tools", "Discovery signal tools"),
         ("agent.tools.data_tools", "Data tools"),
         ("agent.tools.plotting.tools", "Plotting tools"),
         ("agent.tools.graph_tools", "Graph tools"),
@@ -266,7 +269,7 @@ def _check_tool_handlers(report: DiagnosticReport) -> None:
     """Verify that all registered tools have callable handlers after wiring."""
     from agent.llm.agents import (
         DATA_TOOLS,
-        DTIE_TOOLS,
+        DISCOVERY_TOOLS,
         GRAPH_TOOLS,
         HYPOTHESIS_TOOLS,
         PLOTTING_TOOLS,
@@ -274,7 +277,7 @@ def _check_tool_handlers(report: DiagnosticReport) -> None:
     )
 
     all_tool_defs = [
-        ("DTIE", DTIE_TOOLS),
+        ("Discovery", DISCOVERY_TOOLS),
         ("Visualization", VISUALIZATION_TOOLS),
         ("Plotting", PLOTTING_TOOLS),
         ("Data", DATA_TOOLS),
@@ -308,3 +311,37 @@ def _check_tool_handlers(report: DiagnosticReport) -> None:
                     name=f"tools:schema:{tool_def.name}",
                     passed=True,
                 ))
+
+
+def _check_onboard_contract(report: DiagnosticReport) -> None:
+    """Validate onboard contract against job registry at startup."""
+    try:
+        from science.contracts.onboard_contract import validate_contract_against_registry
+
+        messages = validate_contract_against_registry()
+        if messages:
+            report.add(
+                DiagnosticResult(
+                    name="contract:registry",
+                    passed=False,
+                    message="; ".join(messages[:5]),
+                    severity="warning",
+                )
+            )
+        else:
+            report.add(
+                DiagnosticResult(
+                    name="contract:registry",
+                    passed=True,
+                    message="Contract matches job registry",
+                )
+            )
+    except Exception as exc:
+        report.add(
+            DiagnosticResult(
+                name="contract:registry",
+                passed=False,
+                message=str(exc),
+                severity="warning",
+            )
+        )

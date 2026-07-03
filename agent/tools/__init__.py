@@ -1,2 +1,1 @@
-# Agent tools — clean @tool wrappers for DTIE v3/v4
-"""Tool interfaces that the agent coordinator uses to drive science workflows."""
+"""Agent tools — discovery signal, data, graph, and visualization wrappers."""

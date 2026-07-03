@@ -1,5 +1,15 @@
 /** API response types matching the backend design */
 
+export type {
+  ActReadiness,
+  ArtifactAvailabilityEntry,
+  HydrateMeta,
+  HydrationResponse,
+  IngestResponse,
+  PipelineJob,
+  StructureReadiness,
+} from './generated/onboard';
+
 export interface Structure {
   structure_id: string;
   pdb_id: string;
@@ -14,21 +24,11 @@ export interface Structure {
   ingested_at: string;
 }
 
-export interface PipelineJob {
-  job_id: string;
-  structure_id: string;
-  status: "queued" | "running" | "complete" | "failed";
-  current_step: string;
-  progress: number;
-  started_at: string;
-  completed_at: string | null;
-  error: string | null;
-}
-
 export interface ResidueEmbedding {
   residue_id: string;
   residue_index: number;
   chain_label: string;
+  residue_name?: string | null;
   x: number;
   y: number;
   cone_depth: number;
@@ -65,19 +65,6 @@ export interface KPIs {
 
 export interface IngestRequest {
   pdb_id: string;
-}
-
-export interface IngestResponse {
-  structure_id: string;
-  pdb_id: string;
-  title: string;
-  residue_count: number;
-  chains: string[];
-  audit_only?: boolean;
-  audit_run_id?: string | null;
-  pipeline_status?: "queued" | "running" | "complete" | "failed" | "skipped";
-  pipeline_job_id?: string | null;
-  pipeline_status_url?: string | null;
 }
 
 export interface PipelineRunRequest {
@@ -511,6 +498,27 @@ export interface ViewportDirective {
 
 // --- Hydration ---
 
+export interface BindingScanSite {
+  site_id: string;
+  site_type: string;
+  druggability_score: number;
+  site_rank?: number | null;
+  discovery_method?: string | null;
+  md_validation_status?: string | null;
+  residue_ids?: string[];
+}
+
+export interface BindingScanData {
+  structure_id: string;
+  run_id?: string | null;
+  status: string;
+  sites_found?: number;
+  heuristic_version?: string | null;
+  model_version?: string | null;
+  sites: BindingScanSite[];
+  count?: number;
+}
+
 export interface SourceLeakData {
   structure_id: string;
   leaks?: Array<{
@@ -597,6 +605,7 @@ export interface StructureSnapshotFindings {
     admet_passed_count?: number;
     state_selective_count?: number;
   } | null;
+  binding_scan: BindingScanData | null;
 }
 
 export interface StructureSnapshotStatus {
@@ -607,6 +616,7 @@ export interface StructureSnapshotStatus {
   phase4_persisted?: boolean;
   phase5_persisted?: boolean;
   phase6_persisted?: boolean;
+  binding_scan_persisted?: boolean;
   resistance_data_available?: boolean;
 }
 
@@ -629,50 +639,6 @@ export interface StructureAnalysisSnapshot {
   graph_metrics: GraphMetricsData | null;
   findings: StructureSnapshotFindings;
   status: StructureSnapshotStatus;
-}
-
-export interface HydrationResponse {
-  structure_id: string;
-  structure_snapshot?: StructureAnalysisSnapshot | null;
-  embeddings: EmbeddingData | null;
-  graph_metrics: GraphMetricsData | null;
-  allosteric_sites: AllostericSitesData | null;
-  source_leaks: SourceLeakData | null;
-  resistance_data: ResistanceData | null;
-  hypotheses: Hypothesis[] | null;
-  provenance_runs: ProvenanceRun[] | null;
-  annotations: Annotation[] | null;
-  pharmacophore_pockets: PharmacophoreData | null;
-  drug_candidates: DrugCandidateData | null;
-  phase5_pharmacophore?: {
-    structure_id: string;
-    pockets?: PharmacophoreRow[];
-    pharmacophores?: PharmacophoreRow[];
-    count?: number;
-  } | null;
-  phase6_drug_candidates?: {
-    structure_id: string;
-    candidates?: DrugCandidateRow[];
-    drug_candidates?: DrugCandidateRow[];
-    count?: number;
-    admet_passed_count?: number;
-    state_selective_count?: number;
-  } | null;
-  phase4_resistance?: ResistanceData | null;
-  buffering_atlas?: Record<string, unknown> | null;
-  persistence_status: StructureSnapshotStatus;
-  context_summary?: {
-    residue_count: number;
-    source_leak_count: number;
-    hypothesis_count: number;
-    top_uncertainty_residues: Array<{
-      residue_id: string;
-      chain_label?: string | null;
-      residue_index?: number | null;
-      epistemic_uncertainty?: number | null;
-    }>;
-    latest_run_ids_by_pipeline?: Record<string, string>;
-  };
 }
 
 // --- Phase 5: Pharmacophore Pockets ---
@@ -826,6 +792,26 @@ export interface ViewportStateProps {
   viewerColorMode: StructureColorModeType;
   riskThreshold: number;
   activePanel: ActivePanelName;
+}
+
+export interface AuditEventRecord {
+  event_id: string;
+  timestamp: string;
+  event_type: string;
+  severity: "info" | "warning" | "error";
+  structure_id?: string | null;
+  pipeline_job_id?: string | null;
+  job_name?: string | null;
+  contract_version?: string | null;
+  details?: Record<string, unknown>;
+  correlation_id?: string | null;
+  enforcement_level?: string | null;
+}
+
+export interface StructureAuditResponse {
+  structure_id: string;
+  count: number;
+  events: AuditEventRecord[];
 }
 
 // --- Export ---

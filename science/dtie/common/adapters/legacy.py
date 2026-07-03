@@ -22,6 +22,7 @@ from typing import Any
 
 import numpy as np
 
+from science.dtie.common.curvature_values import require_learned_curvature
 from science.dtie.common.interfaces import GNNInferenceResult, GNNNodeOutput, PhaseResult
 from science.dtie.common.keys import make_residue_id
 from science.dtie.common.normalizer_payloads import (
@@ -194,7 +195,7 @@ class GNNOutputAdapter:
             space_type=SpaceType.HYPERBOLIC,
             space_name=f"{result.model_version.lower().replace('-', '_')}_hyp{hyp_dim}",
             dimensionality=hyp_dim,
-            curvature=result.curvature or 1.0,
+            curvature=require_learned_curvature(result.curvature, context="legacy hyperbolic gnn adapter"),
             nodes=nodes,
         )
 

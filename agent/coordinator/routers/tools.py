@@ -1,4 +1,4 @@
-"""Tool endpoints — direct API access to DTIE tools."""
+"""Tool endpoints — direct API access to discovery signal tools."""
 
 from __future__ import annotations
 
@@ -14,22 +14,10 @@ from agent.tools.dtie.tools import (
     get_high_uncertainty_residues,
     get_residue_state,
     get_source_leaks,
-    run_gnn_inference,
     run_phase,
 )
 
 router = APIRouter(prefix="/api/tools", tags=["tools"])
-
-
-# ---------------------------------------------------------------------------
-# Request Models
-# ---------------------------------------------------------------------------
-
-
-class GNNInferenceRequest(BaseModel):
-    structure_id: str
-    model_version: str = "v5"
-    checkpoint_path: str | None = None
 
 
 class PhaseRequest(BaseModel):
@@ -37,11 +25,6 @@ class PhaseRequest(BaseModel):
     phase: str
     model_version: str = "v5"
     parameters: dict[str, Any] | None = None
-
-
-class PipelineRequest(BaseModel):
-    structure_id: str
-    checkpoint_path: str | None = None
 
 
 class SourceLeakRequest(BaseModel):
@@ -65,52 +48,6 @@ class CompareRequest(BaseModel):
     wt_structure_id: str
     mutant_structure_id: str
     focus_residues: list[str] | None = None
-
-
-# ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
-
-
-@router.post("/run-pipeline")
-async def api_run_pipeline(req: PipelineRequest, user: dict = Depends(get_current_user)):
-    """Run the full DTIE v5 pipeline on a structure via Science Container API."""
-    from agent.tools.science_client import ScienceClient, ScienceComputeError, ScienceTimeoutError
-
-    client = ScienceClient()
-    try:
-        result = await client.run_pipeline(
-            structure_id=req.structure_id,
-            checkpoint_path=req.checkpoint_path,
-        )
-        return {
-            "success": True,
-            "run_id": result.get("run_id"),
-            "phases_run": result.get("phases_run", []),
-            "assets_created": result.get("assets_created", 0),
-            "duration_ms": result.get("duration_ms"),
-            "warnings": result.get("warnings", []),
-        }
-    except ScienceTimeoutError as e:
-        return {"success": False, "error": str(e)}
-    except ScienceComputeError as e:
-        return {"success": False, "error": e.detail, "status": e.status}
-
-
-@router.post("/gnn-inference")
-async def api_run_gnn(req: GNNInferenceRequest, user: dict = Depends(get_current_user)):
-    """Run GNN inference only."""
-    from data.db import DBAdapter, get_connection
-
-    async with get_connection() as conn:
-        db = DBAdapter(conn)
-        result = await run_gnn_inference(
-            structure_id=req.structure_id,
-            model_version=req.model_version,
-            checkpoint_path=req.checkpoint_path,
-            db=db,
-        )
-    return _result_to_dict(result)
 
 
 @router.post("/source-leaks")
@@ -174,11 +111,6 @@ async def api_compare(req: CompareRequest, user: dict = Depends(get_current_user
             db=db,
         )
     return _result_to_dict(result)
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 def _result_to_dict(result: ToolResult) -> dict:

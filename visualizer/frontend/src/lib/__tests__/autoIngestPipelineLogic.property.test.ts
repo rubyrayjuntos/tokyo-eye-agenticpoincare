@@ -1,8 +1,5 @@
 /**
  * Property-based tests for autoIngestPipelineLogic.
- *
- * Feature: structure-onboarding-panel, Property 2: Auto-pipeline job exists after successful ingest
- * Feature: structure-onboarding-panel, Property 3: Pipeline completion activates structure and refreshes dashboard
  */
 import { describe, it, expect } from "vitest";
 import * as fc from "fast-check";
@@ -12,8 +9,6 @@ import {
   type PipelineApiAdapter,
 } from "../autoIngestPipelineLogic";
 import type { IngestResponse, PipelineJob, Structure } from "../types";
-
-// --- Arbitraries ---
 
 const arbPdbId = fc
   .array(fc.constantFrom("A", "B", "C", "D", "1", "2", "3", "4"), { minLength: 4, maxLength: 4 })
@@ -58,104 +53,125 @@ const arbStructure: fc.Arbitrary<Structure> = fc.record({
   ingested_at: arbIsoDate,
 });
 
-// --- Property 2: Auto-pipeline job exists after successful ingest ---
-
-describe("Feature: structure-onboarding-panel, Property 2: Auto-pipeline job exists after successful ingest", () => {
-  it("For any ingest response without a queued job, runPipeline is called with that structure_id", async () => {
+describe("Feature: structure-onboarding-panel, Property 2: Pipeline job comes from ingest only", () => {
+  it("throws when ingest succeeds without pipeline_job_id and not audit_only", async () => {
     await fc.assert(
-      fc.asyncProperty(
-        arbPdbId,
-        arbIngestResponse.map((resp) => ({ ...resp, pipeline_job_id: undefined })),
-        arbPipelineJob,
-        async (pdbId, ingestResponse, pipelineJobTemplate) => {
-          const runPipelineCalls: Array<{ structure_id: string }> = [];
+      fc.asyncProperty(arbPdbId, arbIngestResponse, async (pdbId, ingestResponse) => {
+        const adapter: PipelineApiAdapter = {
+          ingest: async () => ({ ...ingestResponse, audit_only: false }),
+          getPipelineStatus: async () => ({
+            job_id: "unused",
+            structure_id: ingestResponse.structure_id,
+            status: "queued",
+            current_step: "pipeline",
+            progress: 0,
+            started_at: new Date().toISOString(),
+            completed_at: null,
+            error: null,
+          }),
+        };
 
-          const adapter: PipelineApiAdapter = {
-            ingest: async () => ingestResponse,
-            runPipeline: async (req) => {
-              runPipelineCalls.push(req);
-              return { ...pipelineJobTemplate, structure_id: req.structure_id };
-            },
-            getPipelineStatus: async () => pipelineJobTemplate,
-          };
-
-          const result = await ingestAndTriggerPipeline(pdbId, adapter);
-
-          // runPipeline MUST have been called exactly once
-          expect(runPipelineCalls).toHaveLength(1);
-          // runPipeline MUST have been called with the structure_id from ingest
-          expect(runPipelineCalls[0].structure_id).toBe(ingestResponse.structure_id);
-          // The returned structure must have the same structure_id
-          expect(result.structure.structure_id).toBe(ingestResponse.structure_id);
-        }
-      ),
+        await expect(ingestAndTriggerPipeline(pdbId, adapter)).rejects.toThrow(
+          /did not queue a pipeline job/i
+        );
+      }),
       { numRuns: 100 }
     );
   });
 
-  it("For any ingest response with a queued job, runPipeline is not called again", async () => {
+  it("uses coordinator pipeline_job_id when present", async () => {
     await fc.assert(
-      fc.asyncProperty(
-        arbPdbId,
-        arbIngestResponse,
-        fc.uuid(),
-        async (pdbId, ingestResponse, queuedJobId) => {
-          const runPipelineCalls: Array<{ structure_id: string }> = [];
+      fc.asyncProperty(arbPdbId, arbIngestResponse, fc.uuid(), async (pdbId, ingestResponse, queuedJobId) => {
+        const adapter: PipelineApiAdapter = {
+          ingest: async () => ({
+            ...ingestResponse,
+            pipeline_job_id: queuedJobId,
+            pipeline_status: "queued",
+          }),
+          getPipelineStatus: async () => ({
+            job_id: queuedJobId,
+            structure_id: ingestResponse.structure_id,
+            status: "queued",
+            current_step: "pipeline",
+            progress: 0,
+            started_at: new Date().toISOString(),
+            completed_at: null,
+            error: null,
+          }),
+        };
 
-          const adapter: PipelineApiAdapter = {
-            ingest: async () => ({
-              ...ingestResponse,
-              pipeline_job_id: queuedJobId,
-              pipeline_status: "queued",
-            }),
-            runPipeline: async (req) => {
-              runPipelineCalls.push(req);
-              return {
-                job_id: queuedJobId,
-                structure_id: req.structure_id,
-                status: "queued",
-                current_step: "pipeline",
-                progress: 0,
-                started_at: new Date().toISOString(),
-                completed_at: null,
-                error: null,
-              };
-            },
-            getPipelineStatus: async () => ({
-              job_id: queuedJobId,
-              structure_id: ingestResponse.structure_id,
-              status: "queued",
-              current_step: "pipeline",
-              progress: 0,
-              started_at: new Date().toISOString(),
-              completed_at: null,
-              error: null,
-            }),
-          };
+        const result = await ingestAndTriggerPipeline(pdbId, adapter);
 
-          const result = await ingestAndTriggerPipeline(pdbId, adapter);
+        expect(result.pipelineJob?.job_id).toBe(queuedJobId);
+        expect(result.pipelineJob?.structure_id).toBe(ingestResponse.structure_id);
+      }),
+      { numRuns: 100 }
+    );
+  });
 
-          expect(runPipelineCalls).toHaveLength(0);
-          expect(result.pipelineJob.job_id).toBe(queuedJobId);
-          expect(result.pipelineJob.structure_id).toBe(ingestResponse.structure_id);
-        }
-      ),
+  it("returns pipeline job for audit-only ingest when coordinator re-queued compute", async () => {
+    await fc.assert(
+      fc.asyncProperty(arbPdbId, arbIngestResponse, fc.uuid(), async (pdbId, ingestResponse, queuedJobId) => {
+        const adapter: PipelineApiAdapter = {
+          ingest: async () => ({
+            ...ingestResponse,
+            audit_only: true,
+            already_existed: true,
+            pipeline_job_id: queuedJobId,
+            pipeline_status: "queued",
+          }),
+          getPipelineStatus: async () => ({
+            job_id: queuedJobId,
+            structure_id: ingestResponse.structure_id,
+            status: "queued",
+            current_step: "pipeline",
+            progress: 0,
+            started_at: new Date().toISOString(),
+            completed_at: null,
+            error: null,
+          }),
+        };
+
+        const result = await ingestAndTriggerPipeline(pdbId, adapter);
+        expect(result.pipelineJob?.job_id).toBe(queuedJobId);
+      }),
+      { numRuns: 100 }
+    );
+  });
+
+  it("returns null pipeline job for audit-only duplicate ingests without re-queue", async () => {
+    await fc.assert(
+      fc.asyncProperty(arbPdbId, arbIngestResponse, async (pdbId, ingestResponse) => {
+        const adapter: PipelineApiAdapter = {
+          ingest: async () => ({ ...ingestResponse, audit_only: true }),
+          getPipelineStatus: async () => ({
+            job_id: "unused",
+            structure_id: ingestResponse.structure_id,
+            status: "queued",
+            current_step: "pipeline",
+            progress: 0,
+            started_at: new Date().toISOString(),
+            completed_at: null,
+            error: null,
+          }),
+        };
+
+        const result = await ingestAndTriggerPipeline(pdbId, adapter);
+        expect(result.pipelineJob).toBeNull();
+      }),
       { numRuns: 100 }
     );
   });
 });
 
-// --- Property 3: Pipeline completion activates structure and refreshes dashboard ---
-
-describe("Feature: structure-onboarding-panel, Property 3: Pipeline completion activates structure and refreshes dashboard", () => {
-  it("For any pipeline job with status 'complete', evaluatePipelineStatus returns a 'complete' action with the ingested structure", () => {
+describe("Feature: structure-onboarding-panel, Property 3: Pipeline completion activates structure", () => {
+  it("For any pipeline job with status 'complete', evaluatePipelineStatus returns a 'complete' action", () => {
     fc.assert(
       fc.property(
         arbPipelineJob.map((j) => ({ ...j, status: "complete" as const })),
         arbStructure,
         (completedJob, structure) => {
           const action = evaluatePipelineStatus(completedJob, structure);
-
           expect(action.type).toBe("complete");
           if (action.type === "complete") {
             expect(action.structure).toBe(structure);
@@ -173,7 +189,6 @@ describe("Feature: structure-onboarding-panel, Property 3: Pipeline completion a
         arbStructure,
         (failedJob, structure) => {
           const action = evaluatePipelineStatus(failedJob, structure);
-
           expect(action.type).toBe("failed");
           if (action.type === "failed") {
             expect(action.error).toBeTruthy();

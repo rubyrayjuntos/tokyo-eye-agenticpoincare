@@ -43,7 +43,30 @@ def sample_residue_ids(sample_structure_id: str) -> list[str]:
 
 def _get_test_db_url() -> str | None:
     """Get the test database URL, or None if not configured."""
-    return os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
+    url = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
+    if not url:
+        return None
+    stripped = url.strip()
+    # Reject doc-placeholder values copied literally from README snippets.
+    if stripped in {"...", "…"} or "..." in stripped and "://" not in stripped:
+        return None
+    if not stripped.startswith(("postgresql://", "postgres://")):
+        return None
+    return stripped
+
+
+def _integration_db_skip_reason() -> str | None:
+    raw = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
+    if not raw:
+        return "No TEST_DATABASE_URL or DATABASE_URL — skipping integration test"
+    if raw.strip() in {"...", "…"} or ("..." in raw and "postgresql" not in raw):
+        return (
+            "TEST_DATABASE_URL looks like a placeholder (e.g. '...'). "
+            "Use a real URL, e.g. postgresql://tokyoeye:tokyoeye_dev_local@localhost:5432/tokyoeye_dev"
+        )
+    if not _get_test_db_url():
+        return f"Invalid TEST_DATABASE_URL/DATABASE_URL: {raw!r}"
+    return None
 
 
 @pytest.fixture
@@ -56,7 +79,8 @@ async def integration_db():
     """
     url = _get_test_db_url()
     if not url:
-        pytest.skip("No TEST_DATABASE_URL configured — skipping integration test")
+        reason = _integration_db_skip_reason() or "No TEST_DATABASE_URL configured"
+        pytest.skip(f"{reason} — skipping integration test")
 
     import psycopg
 

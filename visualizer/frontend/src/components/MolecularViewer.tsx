@@ -402,12 +402,12 @@ export default function MolecularViewer({ highlightResidues = [], onColorModeCha
             );
           }
         }
-      } else if (colorMode === "allosteric" && graphMetrics && graphMetrics.metrics.length > 0) {
+      } else if (colorMode === "allosteric" && (graphMetrics?.metrics?.length ?? 0) > 0) {
         // Local Allosteric Potential: betweenness × uncertainty
         // High betweenness = controls domain communication
         // High uncertainty = conformationally dynamic
         // Combined = residues that are both structurally critical AND plastic
-        const metricsMap = new Map(graphMetrics.metrics.map((m) => [m.residue_id, m]));
+        const metricsMap = new Map((graphMetrics?.metrics ?? []).map((m) => [m.residue_id, m]));
         const scores: number[] = [];
         for (const residue of embeddings.residues) {
           const gm = metricsMap.get(residue.residue_id);
@@ -446,10 +446,10 @@ export default function MolecularViewer({ highlightResidues = [], onColorModeCha
             );
           }
         }
-      } else if (colorMode === "resistance" && resistanceData && resistanceData.residues.length > 0) {
+      } else if (colorMode === "resistance" && (resistanceData?.residues?.length ?? 0) > 0) {
         // Resistance sensitivity mode: color by per-residue sensitivity score
         const resistanceMap = new Map(
-          resistanceData.residues.map((r) => [r.residue_id, r])
+          (resistanceData?.residues ?? []).map((r) => [r.residue_id, r])
         );
         viewer.setStyle({}, { cartoon: { color: "0x1a1a2e" } });
         viewer.removeAllShapes();
@@ -477,7 +477,7 @@ export default function MolecularViewer({ highlightResidues = [], onColorModeCha
             );
           }
         }
-      } else if (colorMode === "pockets" && pharmacophorePockets && pharmacophorePockets.pockets.length > 0) {
+      } else if (colorMode === "pockets" && (pharmacophorePockets?.pockets?.length ?? 0) > 0) {
         // Pockets color mode: color residues by pocket membership
         // Non-pocket residues = gray. Pocket residues colored by druggability (green → yellow → red)
         // Centroid spheres rendered for each pocket.
@@ -525,7 +525,7 @@ export default function MolecularViewer({ highlightResidues = [], onColorModeCha
             backgroundColor: "0x333333",
           });
         }
-      } else if (colorMode === "drug_candidates" && drugCandidates && drugCandidates.candidates.length > 0) {
+      } else if (colorMode === "drug_candidates" && (drugCandidates?.candidates?.length ?? 0) > 0) {
         // Drug candidates mode: color pocket residues by combined_druggability
         // ADMET-passed pockets get brighter coloring. Non-candidate residues muted.
         viewer.setStyle({}, { cartoon: { color: "0x1a1a2e", opacity: 0.35 } });
@@ -541,7 +541,7 @@ export default function MolecularViewer({ highlightResidues = [], onColorModeCha
         }
 
         // Color residues by candidate pocket membership
-        if (pharmacophorePockets) {
+        if (pharmacophorePockets?.pockets) {
           for (const pocket of pharmacophorePockets.pockets) {
             const candidate = candidateByPocket.get(pocket.pocket_index);
             if (!candidate) continue;
@@ -793,9 +793,9 @@ export default function MolecularViewer({ highlightResidues = [], onColorModeCha
             <option value="aleatoric">Aleatoric</option>
             <option value="plasticity">Plasticity Risk</option>
             <option value="allosteric">Allosteric Potential</option>
-            <option value="resistance" disabled={!resistanceData}>Resistance</option>
-            <option value="pockets" disabled={!pharmacophorePockets}>Pockets</option>
-            <option value="drug_candidates" disabled={!drugCandidates}>Drug Candidates</option>
+            <option value="resistance" disabled={!(resistanceData?.residues?.length)}>Resistance</option>
+            <option value="pockets" disabled={!(pharmacophorePockets?.pockets?.length)}>Pockets</option>
+            <option value="drug_candidates" disabled={!(drugCandidates?.candidates?.length)}>Drug Candidates</option>
           </select>
           <span className="text-[10px] text-zinc-600">
             {activeStructure.pdb_id.toUpperCase()}
@@ -901,7 +901,7 @@ export default function MolecularViewer({ highlightResidues = [], onColorModeCha
             )}
 
             {/* Resistance sensitivity tooltip enrichment */}
-            {resistanceData && (() => {
+            {resistanceData?.residues && (() => {
               const rd = resistanceData.residues.find(
                 (r) => r.residue_id === hoveredResidue.residue_id
               );

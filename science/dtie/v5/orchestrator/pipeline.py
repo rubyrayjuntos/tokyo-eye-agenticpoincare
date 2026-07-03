@@ -118,6 +118,7 @@ class PipelineConfig:
     # Legacy execution toggles retained for compatibility with tests, the API,
     # and older callers that still construct partial pipelines explicitly.
     run_gnn: bool = True
+    run_graph_topology: bool = True
     run_phase1: bool = True
     run_phase2: bool = True
     run_phase3: bool = True
@@ -127,6 +128,8 @@ class PipelineConfig:
     run_phase6: bool = True
     detect_source_leaks: bool = True
     identify_allosteric_sites: bool = True
+    run_binding_site_scan: bool = True
+    run_buffering_atlas: bool = True
 
     # Thresholds
     uncertainty_threshold: float = 0.3
@@ -155,7 +158,12 @@ class PipelineConfig:
         # Canonical storage key used by ingestion is lowercase.
         self.structure_id = self.structure_id.strip().lower()
 
+        from science.dtie.common.provenance_runtime import resolve_code_version
+
+        self.code_version = resolve_code_version(self.code_version)
+
         if self.source_leak_only:
+            self.run_graph_topology = False
             self.run_phase1 = False
             self.run_phase2 = False
             self.run_phase35 = False
@@ -163,6 +171,8 @@ class PipelineConfig:
             self.run_phase5 = False
             self.run_phase6 = False
             self.identify_allosteric_sites = False
+            self.run_binding_site_scan = False
+            self.run_buffering_atlas = False
 
     @property
     def is_full_pipeline(self) -> bool:
@@ -186,16 +196,23 @@ class DTIEOrchestrator:
 
     async def run(self, config: PipelineConfig) -> PipelineResult:
         """Execute the DTIE pipeline."""
-        run_id = f"dtie_{uuid.uuid4().hex[:12]}"
+        run_id = f"onboard_{uuid.uuid4().hex[:12]}"
         phase_results: dict[str, PhaseResult] = {}
         gnn_result: GNNInferenceResult | None = None
         gnn_run_id: str | None = config.parent_run_id
         warnings: list[str] = []
 
         logger.info(
-            "Starting DTIE pipeline for %s (run_id=%s)",
+            "Starting discovery pathway compute for %s (run_id=%s)",
             config.structure_id,
             run_id,
+        )
+
+        from psycopg.types.json import Json
+
+        from science.compute.provenance import (
+            monolith_orchestrator_parameters,
+            pathway_pipeline_name,
         )
 
         # Register orchestrator run in provenance.
@@ -204,21 +221,27 @@ class DTIEOrchestrator:
                 """
                 INSERT INTO provenance_run (
                     run_id, structure_id, model_version, pipeline_name,
-                    run_type, source_type, started_at
+                    run_type, source_type, started_at, parameters, code_version
                 )
                 VALUES (
                     :run_id, :structure_id, :model_version, :pipeline_name,
-                    :run_type, :source_type, NOW()
+                    :run_type, :source_type, NOW(), :parameters, :code_version
                 )
                 ON CONFLICT (run_id) DO NOTHING
                 """,
                 {
                     "run_id": run_id,
                     "structure_id": config.structure_id,
-                    "model_version": "DTIE-v5",
-                    "pipeline_name": "dtie_v5",
+                    "model_version": "discovery-compute-v1",
+                    "pipeline_name": pathway_pipeline_name(),
                     "run_type": "pipeline",
                     "source_type": "orchestrator",
+                    "parameters": Json(
+                        monolith_orchestrator_parameters(
+                            computation_run_id=config.parent_run_id,
+                        )
+                    ),
+                    "code_version": config.code_version,
                 },
             )
             await self._db.commit()
@@ -242,7 +265,9 @@ class DTIEOrchestrator:
                     success=True,
                     outputs={
                         "node_count": len(gnn_result.nodes),
-                        "architecture": "decoupled_radial_angular",
+                        "architecture": gnn_result.metadata.get(
+                            "architecture", "hyperbolic_prototype_moe"
+                        ),
                         "gnn_model_version": getattr(gnn_result, "model_version", "GOSPConeMapper-v6"),
                     },
                 )
@@ -255,6 +280,33 @@ class DTIEOrchestrator:
                     success=False,
                     phase_results=phase_results,
                     warnings=[f"GNN inference failed: {e}"],
+                )
+
+        # Load GNN from DB when peeled inference ran before monolith tail phases.
+        if gnn_result is None and not config.run_gnn:
+            from science.compute.gnn_loader import load_gnn_inference_result
+            from science.compute.runners.common import resolve_gnn_parent_run_id
+
+            resolved_gnn_run = config.parent_run_id or await resolve_gnn_parent_run_id(
+                self._db, config.structure_id
+            )
+            gnn_result = await load_gnn_inference_result(
+                self._db,
+                config.structure_id,
+                gnn_run_id=resolved_gnn_run,
+            )
+            if gnn_result is not None:
+                gnn_run_id = resolved_gnn_run or gnn_result.metadata.get("run_id")
+                phase_results["gnn_inference"] = PhaseResult(
+                    phase_name="gnn_inference",
+                    structure_id=config.structure_id,
+                    model_version=gnn_result.model_version,
+                    success=True,
+                    outputs={
+                        "node_count": len(gnn_result.nodes),
+                        "loaded_from_db": True,
+                        "gnn_run_id": gnn_run_id,
+                    },
                 )
 
         # ── Post-GNN: Hyperbolic Distance Materialization (new for Lorentz manifold support) ──
@@ -313,6 +365,23 @@ class DTIEOrchestrator:
                         success=False,
                         warnings=[str(e)],
                     )
+
+        # ── Binding site scan (requires GNN + graph from _run_gnn) ───────────
+        gnn_phase = phase_results.get("gnn_inference")
+        if config.run_binding_site_scan and gnn_phase is not None and gnn_phase.success:
+            try:
+                scan_result = await self._run_binding_site_scan(config, run_id)
+                phase_results["binding_site_scan"] = scan_result
+            except Exception as e:
+                logger.warning("Binding site scan failed (non-fatal): %s", e)
+                warnings.append(f"Binding site scan failed: {e}")
+                phase_results["binding_site_scan"] = PhaseResult(
+                    phase_name="binding_site_scan",
+                    structure_id=config.structure_id,
+                    model_version="binding-scan-v1",
+                    success=False,
+                    outputs={"error": str(e)},
+                )
 
         # ── Step 2: Phase 2 — Vulnerability Scan ──────────────────────────
         if config.run_phase2 and gnn_result is not None:
@@ -498,7 +567,7 @@ class DTIEOrchestrator:
         # topological lift + resistance mapping (Y=Relay Flux).
         # Produces structure-level (X, Y) governed coordinates for the
         # KRAS Buffering Atlas / ASAR model.
-        if gnn_result is not None:
+        if gnn_result is not None and config.run_buffering_atlas:
             try:
                 buffering_result = await self._compute_buffering_atlas(
                     config,
@@ -617,11 +686,13 @@ class DTIEOrchestrator:
         if phase_result.outputs:
             phase_result.outputs = self._json_safe(phase_result.outputs)
 
+        from science.compute.provenance import pathway_pipeline_name
+
         provenance = ProvenanceContext(
             run_id=f"{run_id}_{canonical_phase_name}",
             structure_id=phase_result.structure_id,
             model_version=phase_result.model_version,
-            pipeline_name="dtie_v5",
+            pipeline_name=pathway_pipeline_name(),
             parent_run_id=gnn_run_id or config.parent_run_id,
             code_version=config.code_version,
         )
@@ -689,6 +760,20 @@ class DTIEOrchestrator:
         return any(r.success for r in phase_results.values())
 
     # ------------------------------------------------------------------
+    # Internal: Binding site scan
+    # ------------------------------------------------------------------
+
+    async def _run_binding_site_scan(
+        self,
+        config: PipelineConfig,
+        run_id: str,
+    ) -> PhaseResult:
+        """Run full-structure binding site scan after GNN + graph topology."""
+        from science.compute.jobs.binding_site_scan import run_binding_site_scan
+
+        return await run_binding_site_scan(self._db, config, pipeline_run_id=run_id)
+
+    # ------------------------------------------------------------------
     # Internal: GNN
     # ------------------------------------------------------------------
 
@@ -696,91 +781,18 @@ class DTIEOrchestrator:
         self, config: PipelineConfig, run_id: str
     ) -> GNNInferenceResult:
         """Run GNN inference and write through Normalizer."""
-        from data.normalizer.core import Normalizer
-        from science.dtie.common.adapters import GNNOutputAdapter
-        from science.dtie.common.graph_builder import GraphBuilder
+        from science.compute.jobs.gnn_inference import run_gnn_inference
+        from science.compute.provenance import pathway_pipeline_name
 
-        builder = GraphBuilder(db=self._db)
-        graph = await builder.build_graph(config.structure_id)
-        pyg_data = builder.to_pyg(graph)
-
-        # Use v6 runner (current production inference engine).
-        from science.dtie.v6.gnn.runner import V6GNNRunner
-
-        runner = V6GNNRunner(
-            checkpoint_path=config.checkpoint_path,
-            curvature_override=config.curvature_override,
-        )
-
-        result = await runner.run_inference(config.structure_id, pyg_data)
-
-        normalizer = Normalizer(db=self._db, caller_identity="dtie_orchestrator")
-        adapter = GNNOutputAdapter(normalizer=normalizer)
-        await adapter.normalize(
-            result,
+        phase_result, result = await run_gnn_inference(
+            self._db,
+            config,
             run_id=run_id,
-            code_version=config.code_version,
-            parent_run_id=config.parent_run_id,
+            pipeline_name=pathway_pipeline_name(),
+            caller_identity="dtie_orchestrator",
         )
-
-        # Persist graph topology (edges + metrics) using builder helper (fixed from dead hasattr).
-        try:
-            from science.dtie.common.normalizer_payloads import (
-                GraphEdge,
-                GraphTopologyPayload,
-                ProvenanceContext,
-            )
-
-            edges = []
-            if hasattr(builder, "extract_edges_for_persistence"):
-                edges = builder.extract_edges_for_persistence(graph)
-            elif hasattr(pyg_data, "edge_index") and pyg_data.edge_index is not None:
-                # Fallback (improved to include distance when possible)
-                edge_index = pyg_data.edge_index
-                residue_ids = getattr(pyg_data, "residue_ids", None)
-                edge_attr = getattr(pyg_data, "edge_attr", None)
-                if residue_ids and edge_index.shape[1] > 0:
-                    for i in range(edge_index.shape[1]):
-                        src_idx = int(edge_index[0, i])
-                        tgt_idx = int(edge_index[1, i])
-                        if src_idx < len(residue_ids) and tgt_idx < len(residue_ids):
-                            dist = None
-                            if edge_attr is not None and i < len(edge_attr):
-                                dist = float(edge_attr[i, 3]) if edge_attr.shape[1] > 3 else None
-                            edges.append(
-                                GraphEdge(
-                                    source_residue_id=str(residue_ids[src_idx]),
-                                    target_residue_id=str(residue_ids[tgt_idx]),
-                                    edge_type="contact",
-                                    distance_angstrom=dist,
-                                    weight=1.0,
-                                )
-                            )
-
-            if edges:
-                graph_payload = GraphTopologyPayload(
-                    structure_id=config.structure_id,
-                    provenance=ProvenanceContext(
-                        run_id=run_id,
-                        structure_id=config.structure_id,
-                        model_version="DTIE-v6",  # aligned with GNNv6
-                        pipeline_name="dtie_v5",
-                        parent_run_id=run_id,
-                        source_type="deterministic",
-                    ),
-                    edges=edges,
-                )
-                await normalizer.normalize_graph_topology(graph_payload)
-                logger.info(
-                    "Persisted %d graph edges + metrics for %s",
-                    len(edges),
-                    config.structure_id,
-                )
-        except Exception as e:
-            if config.enforce_governed_outputs:
-                raise RuntimeError(f"Graph topology persistence failed: {e}") from e
-            logger.warning("Graph topology persistence failed (non-fatal): %s", e)
-
+        if not phase_result.success or result is None:
+            raise RuntimeError(phase_result.outputs.get("error", "GNN inference failed"))
         return result
 
     # Legacy dispatch helpers removed (per orchestrator cleanup 2026).
@@ -790,115 +802,104 @@ class DTIEOrchestrator:
     async def _detect_source_leaks(
         self, config: PipelineConfig, gnn_result: GNNInferenceResult
     ) -> PhaseResult:
-        """Identify source-leak candidates directly from in-memory GNNv6 outputs.
+        """Delegate to the atomic source-leak job module."""
+        from science.compute.jobs.source_leak_detection import detect_source_leaks
 
-        This replaces the previous DB re-query (which had no run-scoping and
-        used obsolete absolute thresholds against v6 scales, causing every
-        residue in historical data to qualify as a leak).
+        return await detect_source_leaks(self._db, config, gnn_result)
 
-        Uses the exact nodes from this pipeline run only. Thresholds are
-        applied to the current embedding distribution; consider making
-        them relative (e.g. 90th percentile of epistemic_uncertainty for
-        the run) for even better future-proofing.
-        """
-        # Compatibility path for older callers/tests that invoke this helper
-        # before GNN results are materialized and expect a DB-backed query.
-        if gnn_result is not None and not hasattr(gnn_result, "nodes"):
-            rows = await self._db.fetch_all(
-                """
-                SELECT residue_id, cone_depth, epistemic_uncertainty
-                FROM fact_gnn_node_embedding
-                WHERE structure_id = :structure_id
-                  AND epistemic_uncertainty >= :uncertainty_threshold
-                  AND cone_depth >= :depth_threshold
-                """,
-                {
-                    "structure_id": config.structure_id,
-                    "uncertainty_threshold": config.uncertainty_threshold,
-                    "depth_threshold": config.depth_threshold,
-                },
-            )
+    async def _load_source_leak_phase_result(
+        self, config: PipelineConfig
+    ) -> PhaseResult | None:
+        """Load persisted source leaks for post-peel facade phases."""
+        rows = await self._db.fetch_all(
+            """
+            SELECT residue_id, epistemic_uncertainty, cone_depth, leak_score
+            FROM fact_source_leak
+            WHERE structure_id = :structure_id
+            """,
+            {"structure_id": config.structure_id},
+        )
+        if not rows:
+            return None
 
-            leak_residues = [str(row["residue_id"]) for row in rows]
-            cone_depths = {
-                str(row["residue_id"]): float(row["cone_depth"])
-                for row in rows
-                if row.get("cone_depth") is not None
-            }
-            leak_scores = {
-                str(row["residue_id"]): float(row["epistemic_uncertainty"]) * float(row["cone_depth"])
-                for row in rows
-                if row.get("epistemic_uncertainty") is not None and row.get("cone_depth") is not None
-            }
-
-            return PhaseResult(
-                phase_name="source_leak_detection",
-                structure_id=config.structure_id,
-                model_version="DTIE-v5-source-leak",
-                success=True,
-                outputs={
-                    "source_leak_count": len(leak_residues),
-                    "source_leak_residues": leak_residues,
-                    "cone_depths": cone_depths,
-                    "leak_scores": leak_scores,
-                },
-            )
-
-        nodes = gnn_result.nodes if gnn_result else []
-        if not nodes:
-            return PhaseResult(
-                phase_name="source_leak_detection",
-                structure_id=config.structure_id,
-                model_version="DTIE-v5-source-leak",
-                success=False,
-                outputs={"error": "No GNN nodes available"},
-            )
-
-        # Relative thresholding for resilience (90th percentile of *this run's* epistemic uncertainty).
-        # This guarantees a small, localized set of leaks even if absolute model scales shift.
-        # Config thresholds are respected as a floor (stricter if set higher).
-        import numpy as np
-        epistemics = np.array([n.epistemic_uncertainty or 0.0 for n in nodes])
-        relative_unc = float(np.percentile(epistemics, 90))
-        effective_unc_threshold = max(config.uncertainty_threshold, relative_unc)
-
-        threshold = effective_unc_threshold
-        min_depth = config.depth_threshold
-
-        leak_nodes = [
-            n for n in nodes
-            if (n.epistemic_uncertainty or 0.0) >= threshold and n.cone_depth >= min_depth
-        ]
-
-        # Build canonical residue_ids consistent with GNN persistence
-        # (structure:chain:index)
-        leak_residues: list[str] = []
-        cone_depths: dict[str, float] = {}
-        leak_scores: dict[str, float] = {}
-        residue_contributions: dict[str, float] = {}
-
-        for n in leak_nodes:
-            rid = f"{config.structure_id}:{n.chain_label}:{n.residue_index}"
-            leak_residues.append(rid)
-            cone_depths[rid] = float(n.cone_depth)
-            unc = float(n.epistemic_uncertainty or 0.0)
-            depth = float(n.cone_depth)
-            leak_scores[rid] = unc * depth
-            residue_contributions[rid] = unc
-
+        leak_residues = [str(row["residue_id"]) for row in rows]
+        residue_contributions = {
+            str(row["residue_id"]): float(row.get("epistemic_uncertainty") or 0.0)
+            for row in rows
+        }
         return PhaseResult(
             phase_name="source_leak_detection",
             structure_id=config.structure_id,
-            model_version="DTIE-v5-source-leak",
+            model_version="discovery-source-leak-v1",
             success=True,
             outputs={
                 "source_leak_count": len(leak_residues),
                 "source_leak_residues": leak_residues,
-                "cone_depths": cone_depths,
-                "leak_scores": leak_scores,
+                "cone_depths": {
+                    str(row["residue_id"]): float(row.get("cone_depth") or 0.0) for row in rows
+                },
+                "leak_scores": {
+                    str(row["residue_id"]): float(row.get("leak_score") or 0.0) for row in rows
+                },
             },
             residue_contributions=residue_contributions,
         )
+
+    async def run_post_source_leak_phases(
+        self,
+        config: PipelineConfig,
+        *,
+        run_id: str,
+        gnn_run_id: str | None,
+        gnn_result: GNNInferenceResult | None,
+        phase_results: dict[str, PhaseResult] | None = None,
+    ) -> dict[str, PhaseResult]:
+        """Run allosteric + buffering phases after peeled source_leak_detection."""
+        phase_results = dict(phase_results or {})
+        warnings: list[str] = []
+        source_leak_result = await self._load_source_leak_phase_result(config)
+
+        if config.identify_allosteric_sites:
+            try:
+                site_result = await self._identify_allosteric_sites(
+                    config,
+                    run_id,
+                    phase35_result=phase_results.get("phase35"),
+                    phase4_result=phase_results.get("phase4"),
+                    source_leak_result=source_leak_result,
+                )
+                phase_results["allosteric_sites"] = site_result
+                if site_result.success:
+                    await self._persist_phase_result(
+                        site_result, run_id, gnn_run_id, config
+                    )
+            except Exception as exc:
+                warnings.append(f"Allosteric site identification failed: {exc}")
+
+        if config.run_buffering_atlas and gnn_result is not None:
+            try:
+                buffering_result = await self._compute_buffering_atlas(
+                    config,
+                    gnn_result=gnn_result,
+                    source_leak_result=source_leak_result,
+                    phase35_result=phase_results.get("phase35"),
+                    phase4_result=phase_results.get("phase4"),
+                )
+                phase_results["buffering_atlas"] = buffering_result
+                if buffering_result.success:
+                    await self._persist_phase_result(
+                        buffering_result, run_id, gnn_run_id, config
+                    )
+            except Exception as exc:
+                warnings.append(f"Buffering atlas computation failed: {exc}")
+
+        if warnings:
+            logger.warning(
+                "Post-source-leak phases for %s: %s",
+                config.structure_id,
+                "; ".join(warnings),
+            )
+        return phase_results
 
     async def _identify_allosteric_sites(
         self, config: PipelineConfig, run_id: str,

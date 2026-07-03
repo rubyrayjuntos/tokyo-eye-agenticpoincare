@@ -76,6 +76,19 @@ class ProvenanceContext(BaseModel):
     parameters: dict[str, Any] | None = Field(default=None)
     parent_run_id: str | None = Field(default=None)
 
+    def validate_for_governed_write(self, *, strict: bool | None = None) -> None:
+        """Raise ValueError when provenance is incomplete for a governed write."""
+        from science.dtie.common.provenance_runtime import validate_provenance_fields
+
+        errors = validate_provenance_fields(
+            run_type=self.run_type,
+            code_version=self.code_version,
+            checkpoint_sha256=self.checkpoint_sha256,
+            strict=strict,
+        )
+        if errors:
+            raise ValueError("; ".join(errors))
+
 
 # ---------------------------------------------------------------------------
 # Path 1: GNN Node Output Payload
@@ -297,6 +310,64 @@ class SourceLeakPayload(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Path 2b2: Binding Site Scan Payload
+# ---------------------------------------------------------------------------
+
+
+class CrypticSiteRecord(BaseModel):
+    """A single binding site candidate from exhaustive structure scan."""
+
+    site_id: str
+    residue_ids: list[str] = Field(..., min_length=1)
+    centroid_x: float
+    centroid_y: float
+    centroid_z: float
+    site_type: str
+    discovery_method: str = "gnn_strain"
+    druggability_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    site_rank: int | None = None
+    composite_gnn_score: float | None = None
+    fpocket_druggability: float | None = None
+    volume_angstrom3: float | None = None
+    provenance_gate: str | None = None
+    heuristic_version: str | None = None
+    md_validation_status: str = "pending"
+    scan_run_id: str | None = None
+
+    @field_validator("residue_ids")
+    @classmethod
+    def all_residue_ids_valid(cls, v: list[str]) -> list[str]:
+        from science.dtie.common.keys import validate_residue_id
+
+        for rid in v:
+            if not validate_residue_id(rid):
+                raise ValueError(f"Invalid residue_id: '{rid}'")
+        return v
+
+
+class BindingSiteScanMetadata(BaseModel):
+    """Scan run metadata for fact_binding_site_scan."""
+
+    heuristic_version: str
+    model_version: str
+    scan_parameters: dict[str, Any]
+    sites_found: int
+    duration_ms: int
+    status: str
+
+
+class BindingSiteScanPayload(BaseModel):
+    """Complete binding-site scan output for one structure."""
+
+    provenance: ProvenanceContext
+    structure_id: str
+    sites: list[CrypticSiteRecord] = Field(default_factory=list)
+    scan_metadata: BindingSiteScanMetadata
+    replace_previous: bool = True
+    computed_at: datetime = Field(default_factory=_utcnow)
+
+
+# ---------------------------------------------------------------------------
 # Path 2c: Allosteric Site Payload
 # ---------------------------------------------------------------------------
 
@@ -449,6 +520,24 @@ class EvidencePayload(BaseModel):
     description: str = Field(..., description="Human-readable description of the evidence")
 
 
+class AnnotationPayload(BaseModel):
+    """Payload for user/agent structure or residue annotations."""
+
+    provenance: ProvenanceContext
+    annotation_id: str = Field(..., description="Unique annotation identifier")
+    structure_id: str = Field(..., description="Canonical structure_id")
+    annotation_type: str = Field(
+        ...,
+        description="Annotation category: finding, hypothesis, note, or warning",
+    )
+    text: str = Field(..., description="Annotation body text")
+    residue_ids: list[str] = Field(
+        default_factory=list,
+        description="Optional residue scope; empty means structure-level",
+    )
+    created_by: str = Field(default="agent")
+
+
 # ---------------------------------------------------------------------------
 # Path 5: Phase 2 Vulnerability Payload
 # ---------------------------------------------------------------------------
@@ -535,7 +624,10 @@ class ResistancePathwayPayload(BaseModel):
     pathways: list[ResistancePathway] = Field(
         ..., description="Resistance pathways through the contact graph"
     )
-    lambda_2: float = Field(..., description="Second eigenvalue (algebraic connectivity)")
+    lambda_2: float = Field(
+        ...,
+        description="Second eigenvalue of the normalized conductance Laplacian (algebraic connectivity, in [0, 2])",
+    )
     hinge_residues: list[int] = Field(
         default_factory=list, description="Residue indices identified as hinges"
     )
@@ -612,6 +704,51 @@ class DrugCandidatePayload(BaseModel):
     admet_passed_count: int = Field(..., description="Number of candidates passing ADMET")
     state_selective_count: int = Field(..., description="Number of state-selective candidates")
     computed_at: datetime = Field(default_factory=_utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Hyperbolic motifs + generic phase output
+# ---------------------------------------------------------------------------
+
+
+class HyperbolicMotifRecord(BaseModel):
+    """Single hyperbolic motif cluster for fact_hyperbolic_motif."""
+
+    motif_id: str
+    cluster_id: int
+    residue_ids: list[str]
+    medoid_residue_id: str
+    centroid_angle_deg: float
+    centroid_radius: float
+    motif_size: int
+    angular_sector: str
+    classification: str | None = None
+
+
+class HyperbolicMotifPayload(BaseModel):
+    """Motif analysis output for normalize_hyperbolic_motifs."""
+
+    provenance: ProvenanceContext
+    structure_id: str
+    motifs: list[HyperbolicMotifRecord]
+
+
+class PhaseOutputRecord(BaseModel):
+    """Generic phase output row for fact_phase_output."""
+
+    phase: str
+    phase_name: str
+    output_data: dict[str, Any]
+    source_type: str = "derived"
+    model_version: str
+
+
+class PhaseOutputPayload(BaseModel):
+    """Witness embedding and other phase outputs via normalize_phase_output."""
+
+    provenance: ProvenanceContext
+    structure_id: str
+    output: PhaseOutputRecord
 
 
 # ---------------------------------------------------------------------------

@@ -298,42 +298,6 @@ async def run_science_command(
         return {"success": False, "error": f"{type(e).__name__}: {e}"}
 
 
-async def run_gnn_inference_via_container(
-    structure_id: str,
-    model_version: str = "v5",
-    checkpoint_path: str | None = None,
-) -> dict[str, Any]:
-    """Run GNN inference in the science container.
-
-    The science container has torch, torch_geometric, geoopt, e3nn.
-    It reads from the same database and writes results through the Normalizer.
-    """
-    canonical_structure_id = _normalize_structure_id(structure_id)
-    args = ["--structure", canonical_structure_id, "--model-version", model_version]
-    if checkpoint_path:
-        args.extend(["--checkpoint", checkpoint_path])
-
-    return await run_science_command(
-        module="science.dtie.v5.gnn.runner",  # NOTE: this module's CLI uses V5GNNRunner; full pipeline uses modern v6 runner internally. Consider unifying on v6 runner CLI for direct GNN calls.
-        args=args,
-        timeout=300,
-    )
-
-
-async def run_full_pipeline_via_container(
-    structure_id: str,
-) -> dict[str, Any]:
-    """Run the full DTIE pipeline in the science container."""
-    canonical_structure_id = _normalize_structure_id(structure_id)
-    args = ["--structure", canonical_structure_id]
-
-    return await run_science_command(
-        module="science.dtie.v5.orchestrator.pipeline",
-        args=args,
-        timeout=600,
-    )
-
-
 def _flag(enabled: bool, name: str) -> list[str]:
     return [name] if enabled else []
 

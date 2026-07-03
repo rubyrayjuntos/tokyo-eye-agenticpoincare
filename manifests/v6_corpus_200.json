@@ -1,0 +1,1393 @@
+{
+  "version": "1.1",
+  "description": "V6 MoE training corpus \u2014 merged manifest (~120 proteins, MAX_PROTEINS=200 loads all)",
+  "max_sequence_identity_pct": 30,
+  "proteins": [
+    {
+      "pdb_id": "4OBE",
+      "chain": "A",
+      "gene": "KRAS",
+      "fold_class": "alpha_beta",
+      "desc": "WT GDP",
+      "stage0": true,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1A0I",
+      "chain": "A",
+      "gene": "A0I",
+      "fold_class": "membrane",
+      "desc": "bacteriorhodopsin",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1A2P",
+      "chain": "A",
+      "gene": "A2P",
+      "fold_class": "all_beta",
+      "desc": "pepsinogen",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1A6M",
+      "chain": "A",
+      "gene": "1A6M",
+      "fold_class": "all_alpha",
+      "desc": "all_alpha (151 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1AF6",
+      "chain": "A",
+      "gene": "1AF6",
+      "fold_class": "membrane",
+      "desc": "membrane (163 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1AHO",
+      "chain": "A",
+      "gene": "1AHO",
+      "fold_class": "alpha_plus_beta",
+      "desc": "alpha_plus_beta (64 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1AKE",
+      "chain": "A",
+      "gene": "ADK",
+      "fold_class": "alpha_beta",
+      "desc": "adenylate kinase",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1AKY",
+      "chain": "A",
+      "gene": "1AKY",
+      "fold_class": "alpha_beta",
+      "desc": "alpha_beta (220 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1ALD",
+      "chain": "A",
+      "gene": "1ALD",
+      "fold_class": "alpha_beta",
+      "desc": "alpha_beta (363 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1ANF",
+      "chain": "A",
+      "gene": "1ANF",
+      "fold_class": "multi_domain",
+      "desc": "multi_domain (370 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1AON",
+      "chain": "A",
+      "gene": "AON",
+      "fold_class": "multi_domain",
+      "desc": "GroEL apical domain",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1APS",
+      "chain": "A",
+      "gene": "1APS",
+      "fold_class": "alpha_plus_beta",
+      "desc": "alpha_plus_beta (98 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1ATP",
+      "chain": "E",
+      "gene": "1ATP",
+      "fold_class": "multi_domain",
+      "desc": "multi_domain (350 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1AVP",
+      "chain": "A",
+      "gene": "1AVP",
+      "fold_class": "all_beta",
+      "desc": "all_beta (69 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1BCF",
+      "chain": "A",
+      "gene": "1BCF",
+      "fold_class": "all_alpha",
+      "desc": "all_alpha (174 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1BDD",
+      "chain": "A",
+      "gene": "1BDD",
+      "fold_class": "peptide",
+      "desc": "peptide (60 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1BEN",
+      "chain": "A",
+      "gene": "BEN",
+      "fold_class": "all_beta",
+      "desc": "benzyl esterase",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1BG1",
+      "chain": "A",
+      "gene": "STAT3",
+      "fold_class": "all_alpha",
+      "desc": "SH2 domain",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1BGL",
+      "chain": "A",
+      "gene": "1BGL",
+      "fold_class": "all_beta",
+      "desc": "all_beta (332 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1BJ4",
+      "chain": "A",
+      "gene": "1BJ4",
+      "fold_class": "idr",
+      "desc": "idr (107 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1BL8",
+      "chain": "A",
+      "gene": "1BL8",
+      "fold_class": "membrane",
+      "desc": "membrane (401 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1BLF",
+      "chain": "A",
+      "gene": "1BLF",
+      "fold_class": "all_beta",
+      "desc": "all_beta (689 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1BRD",
+      "chain": "A",
+      "gene": "1BRD",
+      "fold_class": "membrane",
+      "desc": "membrane (248 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1BRS",
+      "chain": "A",
+      "gene": "BRS",
+      "fold_class": "multi_domain",
+      "desc": "barnase",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1BTA",
+      "chain": "A",
+      "gene": "1BTA",
+      "fold_class": "alpha_plus_beta",
+      "desc": "alpha_plus_beta (89 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1BYI",
+      "chain": "A",
+      "gene": "1BYI",
+      "fold_class": "all_alpha",
+      "desc": "all_alpha (224 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1CD3",
+      "chain": "A",
+      "gene": "1CD3",
+      "fold_class": "idr",
+      "desc": "idr (55 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1CD8",
+      "chain": "A",
+      "gene": "1CD8",
+      "fold_class": "all_beta",
+      "desc": "all_beta (114 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1CDK",
+      "chain": "A",
+      "gene": "1CDK",
+      "fold_class": "multi_domain",
+      "desc": "multi_domain (350 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1CEW",
+      "chain": "A",
+      "gene": "CEW",
+      "fold_class": "alpha_plus_beta",
+      "desc": "cutinase",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1CHD",
+      "chain": "A",
+      "gene": "1CHD",
+      "fold_class": "alpha_plus_beta",
+      "desc": "alpha_plus_beta (198 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1CHO",
+      "chain": "A",
+      "gene": "CHO",
+      "fold_class": "multi_domain",
+      "desc": "chymotrypsin",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1CIS",
+      "chain": "A",
+      "gene": "1CIS",
+      "fold_class": "alpha_plus_beta",
+      "desc": "alpha_plus_beta (66 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1COL",
+      "chain": "A",
+      "gene": "1COL",
+      "fold_class": "all_alpha",
+      "desc": "all_alpha (40 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1CRN",
+      "chain": "A",
+      "gene": "CRN",
+      "fold_class": "all_alpha",
+      "desc": "crambin mini",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1CSE",
+      "chain": "E",
+      "gene": "1CSE",
+      "fold_class": "alpha_beta",
+      "desc": "alpha_beta (274 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1CSP",
+      "chain": "A",
+      "gene": "1CSP",
+      "fold_class": "alpha_plus_beta",
+      "desc": "alpha_plus_beta (67 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1CTF",
+      "chain": "A",
+      "gene": "CTF",
+      "fold_class": "alpha_plus_beta",
+      "desc": "C-terminal domain",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1CYO",
+      "chain": "A",
+      "gene": "1CYO",
+      "fold_class": "all_alpha",
+      "desc": "all_alpha (88 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1D0T",
+      "chain": "A",
+      "gene": "D0T",
+      "fold_class": "idr",
+      "desc": "p53 TAD peptide complex",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1D7Q",
+      "chain": "A",
+      "gene": "1D7Q",
+      "fold_class": "idr",
+      "desc": "idr (85 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1DKG",
+      "chain": "A",
+      "gene": "1DKG",
+      "fold_class": "multi_domain",
+      "desc": "multi_domain (277 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1E0G",
+      "chain": "A",
+      "gene": "1E0G",
+      "fold_class": "peptide",
+      "desc": "peptide (48 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1E0L",
+      "chain": "A",
+      "gene": "E0L",
+      "fold_class": "peptide",
+      "desc": "trp-cage miniprotein",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1ECA",
+      "chain": "A",
+      "gene": "1ECA",
+      "fold_class": "all_alpha",
+      "desc": "all_alpha (136 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1ENH",
+      "chain": "A",
+      "gene": "1ENH",
+      "fold_class": "alpha_beta",
+      "desc": "alpha_beta (54 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1F88",
+      "chain": "A",
+      "gene": "F88",
+      "fold_class": "membrane",
+      "desc": "rhodopsin",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1FDX",
+      "chain": "A",
+      "gene": "1FDX",
+      "fold_class": "alpha_plus_beta",
+      "desc": "alpha_plus_beta (54 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1FEP",
+      "chain": "A",
+      "gene": "1FEP",
+      "fold_class": "membrane",
+      "desc": "membrane (723 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1FKB",
+      "chain": "A",
+      "gene": "FKBP",
+      "fold_class": "all_beta",
+      "desc": "FK506 binding protein",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1FLP",
+      "chain": "A",
+      "gene": "1FLP",
+      "fold_class": "all_alpha",
+      "desc": "all_alpha (142 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1FNF",
+      "chain": "A",
+      "gene": "1FNF",
+      "fold_class": "all_beta",
+      "desc": "all_beta (94 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1FXA",
+      "chain": "A",
+      "gene": "1FXA",
+      "fold_class": "alpha_beta",
+      "desc": "alpha_beta (138 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1G6U",
+      "chain": "A",
+      "gene": "1G6U",
+      "fold_class": "idr",
+      "desc": "idr (96 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1GD1",
+      "chain": "O",
+      "gene": "1GD1",
+      "fold_class": "alpha_beta",
+      "desc": "alpha_beta (334 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1GDI",
+      "chain": "A",
+      "gene": "1GDI",
+      "fold_class": "all_alpha",
+      "desc": "all_alpha (314 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1GGG",
+      "chain": "A",
+      "gene": "1GGG",
+      "fold_class": "multi_domain",
+      "desc": "multi_domain (496 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1GJZ",
+      "chain": "A",
+      "gene": "1GJZ",
+      "fold_class": "idr",
+      "desc": "idr (42 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1GOF",
+      "chain": "A",
+      "gene": "1GOF",
+      "fold_class": "all_beta",
+      "desc": "all_beta (252 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1GPB",
+      "chain": "A",
+      "gene": "1GPB",
+      "fold_class": "alpha_beta",
+      "desc": "alpha_beta (842 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1HHP",
+      "chain": "A",
+      "gene": "HHP",
+      "fold_class": "all_beta",
+      "desc": "HIV protease",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1HKA",
+      "chain": "A",
+      "gene": "1HKA",
+      "fold_class": "multi_domain",
+      "desc": "multi_domain (417 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1HRC",
+      "chain": "A",
+      "gene": "1HRC",
+      "fold_class": "all_alpha",
+      "desc": "all_alpha (104 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1HSC",
+      "chain": "A",
+      "gene": "1HSC",
+      "fold_class": "multi_domain",
+      "desc": "multi_domain (554 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1IGD",
+      "chain": "A",
+      "gene": "1IGD",
+      "fold_class": "alpha_plus_beta",
+      "desc": "alpha_plus_beta (61 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1IQD",
+      "chain": "A",
+      "gene": "1IQD",
+      "fold_class": "idr",
+      "desc": "idr (86 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1IVO",
+      "chain": "A",
+      "gene": "EGFR",
+      "fold_class": "alpha_beta",
+      "desc": "WT kinase",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1JMQ",
+      "chain": "A",
+      "gene": "1JMQ",
+      "fold_class": "idr",
+      "desc": "idr (58 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1L2Y",
+      "chain": "A",
+      "gene": "1L2Y",
+      "fold_class": "peptide",
+      "desc": "peptide (20 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1LDM",
+      "chain": "A",
+      "gene": "1LDM",
+      "fold_class": "alpha_beta",
+      "desc": "alpha_beta (329 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1LE1",
+      "chain": "A",
+      "gene": "1LE1",
+      "fold_class": "peptide",
+      "desc": "peptide (37 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1LFB",
+      "chain": "A",
+      "gene": "1LFB",
+      "fold_class": "multi_domain",
+      "desc": "multi_domain (692 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1LMB",
+      "chain": "3",
+      "gene": "1LMB",
+      "fold_class": "all_alpha",
+      "desc": "all_alpha (87 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1LPE",
+      "chain": "A",
+      "gene": "1LPE",
+      "fold_class": "all_alpha",
+      "desc": "all_alpha (164 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1LYZ",
+      "chain": "A",
+      "gene": "LYZ",
+      "fold_class": "alpha_beta",
+      "desc": "lysozyme",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1MAL",
+      "chain": "A",
+      "gene": "1MAL",
+      "fold_class": "membrane",
+      "desc": "membrane (421 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1MBN",
+      "chain": "A",
+      "gene": "MBN",
+      "fold_class": "all_alpha",
+      "desc": "myoglobin",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1MBO",
+      "chain": "A",
+      "gene": "1MBO",
+      "fold_class": "all_alpha",
+      "desc": "all_alpha (153 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1MSL",
+      "chain": "A",
+      "gene": "1MSL",
+      "fold_class": "membrane",
+      "desc": "membrane (25 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1N0Q",
+      "chain": "A",
+      "gene": "1N0Q",
+      "fold_class": "idr",
+      "desc": "idr (73 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1NCO",
+      "chain": "A",
+      "gene": "1NCO",
+      "fold_class": "all_beta",
+      "desc": "all_beta (113 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1NLS",
+      "chain": "A",
+      "gene": "1NLS",
+      "fold_class": "all_beta",
+      "desc": "all_beta (238 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1NSO",
+      "chain": "A",
+      "gene": "1NSO",
+      "fold_class": "all_beta",
+      "desc": "all_beta (390 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1NTI",
+      "chain": "A",
+      "gene": "1NTI",
+      "fold_class": "idr",
+      "desc": "idr (66 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1OCC",
+      "chain": "A",
+      "gene": "1OCC",
+      "fold_class": "membrane",
+      "desc": "membrane (514 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1OMP",
+      "chain": "A",
+      "gene": "1OMP",
+      "fold_class": "all_beta",
+      "desc": "all_beta (325 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1PFK",
+      "chain": "A",
+      "gene": "1PFK",
+      "fold_class": "alpha_beta",
+      "desc": "alpha_beta (320 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1PGB",
+      "chain": "A",
+      "gene": "GB1",
+      "fold_class": "all_beta",
+      "desc": "protein G B1 domain",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1PHH",
+      "chain": "A",
+      "gene": "1PHH",
+      "fold_class": "alpha_beta",
+      "desc": "alpha_beta (394 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1PII",
+      "chain": "A",
+      "gene": "1PII",
+      "fold_class": "alpha_beta",
+      "desc": "alpha_beta (325 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1PIN",
+      "chain": "A",
+      "gene": "PIN",
+      "fold_class": "alpha_plus_beta",
+      "desc": "serpin",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1PRB",
+      "chain": "A",
+      "gene": "1PRB",
+      "fold_class": "peptide",
+      "desc": "peptide (53 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1PRC",
+      "chain": "L",
+      "gene": "1PRC",
+      "fold_class": "membrane",
+      "desc": "membrane (273 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1QLE",
+      "chain": "A",
+      "gene": "1QLE",
+      "fold_class": "membrane",
+      "desc": "membrane (238 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1QRE",
+      "chain": "A",
+      "gene": "1QRE",
+      "fold_class": "all_beta",
+      "desc": "all_beta (233 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1R69",
+      "chain": "A",
+      "gene": "R69",
+      "fold_class": "alpha_plus_beta",
+      "desc": "434 repressor",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1RBP",
+      "chain": "A",
+      "gene": "1RBP",
+      "fold_class": "alpha_beta",
+      "desc": "alpha_beta (182 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1REI",
+      "chain": "A",
+      "gene": "1REI",
+      "fold_class": "all_beta",
+      "desc": "all_beta (107 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1RHD",
+      "chain": "A",
+      "gene": "1RHD",
+      "fold_class": "all_alpha",
+      "desc": "all_alpha (293 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1RIJ",
+      "chain": "A",
+      "gene": "1RIJ",
+      "fold_class": "peptide",
+      "desc": "peptide (36 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1RNH",
+      "chain": "A",
+      "gene": "1RNH",
+      "fold_class": "alpha_plus_beta",
+      "desc": "alpha_plus_beta (155 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1SHF",
+      "chain": "A",
+      "gene": "1SHF",
+      "fold_class": "alpha_plus_beta",
+      "desc": "alpha_plus_beta (59 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1SHG",
+      "chain": "A",
+      "gene": "1SHG",
+      "fold_class": "all_beta",
+      "desc": "all_beta (57 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1SN3",
+      "chain": "A",
+      "gene": "1SN3",
+      "fold_class": "alpha_plus_beta",
+      "desc": "alpha_plus_beta (65 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1SSU",
+      "chain": "A",
+      "gene": "1SSU",
+      "fold_class": "idr",
+      "desc": "idr (71 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1STN",
+      "chain": "A",
+      "gene": "1STN",
+      "fold_class": "alpha_plus_beta",
+      "desc": "alpha_plus_beta (136 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1SUP",
+      "chain": "A",
+      "gene": "SUP",
+      "fold_class": "all_beta",
+      "desc": "superoxide dismutase",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1TEN",
+      "chain": "A",
+      "gene": "TEN",
+      "fold_class": "all_beta",
+      "desc": "tenascin FNIII",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1THG",
+      "chain": "A",
+      "gene": "1THG",
+      "fold_class": "alpha_beta",
+      "desc": "alpha_beta (268 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1TIM",
+      "chain": "A",
+      "gene": "TIM",
+      "fold_class": "alpha_beta",
+      "desc": "triose phosphate isomerase",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1TIT",
+      "chain": "A",
+      "gene": "1TIT",
+      "fold_class": "all_beta",
+      "desc": "all_beta (89 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1TPH",
+      "chain": "A",
+      "gene": "1TPH",
+      "fold_class": "alpha_beta",
+      "desc": "alpha_beta (278 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1UBQ",
+      "chain": "A",
+      "gene": "UBQ",
+      "fold_class": "alpha_beta",
+      "desc": "ubiquitin",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1URK",
+      "chain": "A",
+      "gene": "1URK",
+      "fold_class": "multi_domain",
+      "desc": "multi_domain (153 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1UTG",
+      "chain": "A",
+      "gene": "1UTG",
+      "fold_class": "all_alpha",
+      "desc": "all_alpha (70 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1VII",
+      "chain": "A",
+      "gene": "VII",
+      "fold_class": "peptide",
+      "desc": "villin headpiece",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1WBA",
+      "chain": "A",
+      "gene": "1WBA",
+      "fold_class": "all_beta",
+      "desc": "all_beta (303 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1WIT",
+      "chain": "A",
+      "gene": "1WIT",
+      "fold_class": "all_beta",
+      "desc": "all_beta (93 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1WQC",
+      "chain": "A",
+      "gene": "1WQC",
+      "fold_class": "peptide",
+      "desc": "peptide (28 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "1XIS",
+      "chain": "A",
+      "gene": "1XIS",
+      "fold_class": "alpha_beta",
+      "desc": "alpha_beta (388 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "256B",
+      "chain": "A",
+      "gene": "256B",
+      "fold_class": "all_alpha",
+      "desc": "all_alpha (106 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "2ABD",
+      "chain": "A",
+      "gene": "ABD",
+      "fold_class": "all_alpha",
+      "desc": "acyl carrier protein",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "2ACT",
+      "chain": "A",
+      "gene": "2ACT",
+      "fold_class": "alpha_plus_beta",
+      "desc": "alpha_plus_beta (218 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "2CCY",
+      "chain": "A",
+      "gene": "2CCY",
+      "fold_class": "all_alpha",
+      "desc": "all_alpha (128 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "2CRO",
+      "chain": "A",
+      "gene": "CRO",
+      "fold_class": "alpha_plus_beta",
+      "desc": "cro repressor",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "2DRI",
+      "chain": "A",
+      "gene": "2DRI",
+      "fold_class": "multi_domain",
+      "desc": "multi_domain (271 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "2HHB",
+      "chain": "B",
+      "gene": "HBB",
+      "fold_class": "all_alpha",
+      "desc": "deoxy haemoglobin",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "2I9M",
+      "chain": "A",
+      "gene": "2I9M",
+      "fold_class": "peptide",
+      "desc": "peptide (46 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "2IG2",
+      "chain": "A",
+      "gene": "2IG2",
+      "fold_class": "all_beta",
+      "desc": "all_beta (116 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "2ITV",
+      "chain": "A",
+      "gene": "EGFR",
+      "fold_class": "alpha_beta",
+      "desc": "L858R",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "2K39",
+      "chain": "A",
+      "gene": "K39",
+      "fold_class": "idr",
+      "desc": "alpha-synuclein micelle",
+      "stage0": false,
+      "enabled": false
+    },
+    {
+      "pdb_id": "2LAO",
+      "chain": "A",
+      "gene": "2LAO",
+      "fold_class": "multi_domain",
+      "desc": "multi_domain (238 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "2MHR",
+      "chain": "A",
+      "gene": "2MHR",
+      "fold_class": "all_alpha",
+      "desc": "all_alpha (118 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "2MNR",
+      "chain": "A",
+      "gene": "2MNR",
+      "fold_class": "alpha_beta",
+      "desc": "alpha_beta (357 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "2OIQ",
+      "chain": "A",
+      "gene": "ABL1",
+      "fold_class": "alpha_beta",
+      "desc": "imatinib-bound",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "2POR",
+      "chain": "A",
+      "gene": "2POR",
+      "fold_class": "membrane",
+      "desc": "membrane (301 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "2SHP",
+      "chain": "A",
+      "gene": "SHP2",
+      "fold_class": "alpha_beta",
+      "desc": "WT phosphatase",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "2VIK",
+      "chain": "A",
+      "gene": "VIK",
+      "fold_class": "all_beta",
+      "desc": "cold shock protein",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "2Z6H",
+      "chain": "A",
+      "gene": "CTNNB1",
+      "fold_class": "alpha_beta",
+      "desc": "ARM repeats",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "2Z73",
+      "chain": "A",
+      "gene": "Z73",
+      "fold_class": "membrane",
+      "desc": "beta2 adrenergic receptor",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "3CLN",
+      "chain": "A",
+      "gene": "3CLN",
+      "fold_class": "multi_domain",
+      "desc": "multi_domain (148 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "3CON",
+      "chain": "A",
+      "gene": "NRAS",
+      "fold_class": "alpha_beta",
+      "desc": "Q61R GDP",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "3PFK",
+      "chain": "A",
+      "gene": "3PFK",
+      "fold_class": "alpha_beta",
+      "desc": "alpha_beta (319 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "3PP0",
+      "chain": "A",
+      "gene": "SRC",
+      "fold_class": "alpha_beta",
+      "desc": "active kinase",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "4AKE",
+      "chain": "A",
+      "gene": "4AKE",
+      "fold_class": "multi_domain",
+      "desc": "multi_domain (214 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "4DSO",
+      "chain": "A",
+      "gene": "KRAS",
+      "fold_class": "alpha_beta",
+      "desc": "G12D GDP",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "4G0N",
+      "chain": "A",
+      "gene": "HRAS",
+      "fold_class": "alpha_beta",
+      "desc": "WT GppNHp",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "4GQB",
+      "chain": "A",
+      "gene": "PRMT5",
+      "fold_class": "alpha_beta",
+      "desc": "methyltransferase",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "4MNE",
+      "chain": "A",
+      "gene": "BRAF",
+      "fold_class": "alpha_beta",
+      "desc": "V600E",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "4NST",
+      "chain": "A",
+      "gene": "CDK12",
+      "fold_class": "alpha_beta",
+      "desc": "cyclin binding",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "5VQ2",
+      "chain": "A",
+      "gene": "KRAS",
+      "fold_class": "alpha_beta",
+      "desc": "G12V GppNHp",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "6LDH",
+      "chain": "A",
+      "gene": "6LDH",
+      "fold_class": "alpha_beta",
+      "desc": "alpha_beta (331 res)",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "6OIM",
+      "chain": "A",
+      "gene": "KRAS",
+      "fold_class": "alpha_beta",
+      "desc": "G12C GDP",
+      "stage0": false,
+      "enabled": true
+    },
+    {
+      "pdb_id": "8TIM",
+      "chain": "A",
+      "gene": "8TIM",
+      "fold_class": "alpha_beta",
+      "desc": "alpha_beta (247 res)",
+      "stage0": false,
+      "enabled": true
+    }
+  ]
+}

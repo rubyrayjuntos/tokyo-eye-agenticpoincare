@@ -28,6 +28,7 @@ export interface ChatRailProps {
   discoveryPhase: DiscoveryPhase;
   hypothesisLifecycle: HypothesisLifecycleState;
   viewportStateBuilder: () => ViewportState;
+  sessionId?: string | null;
   onDirective?: (directive: ViewportDirective) => void;
   onSessionId?: (sessionId: string) => void;
 }
@@ -70,20 +71,31 @@ export function ChatRail({
   discoveryPhase,
   hypothesisLifecycle,
   viewportStateBuilder,
+  sessionId: externalSessionId,
   onDirective,
   onSessionId,
 }: ChatRailProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [sessionId] = useState(() => crypto.randomUUID());
+  const fallbackSessionIdRef = useRef(crypto.randomUUID());
+  const sessionId = externalSessionId ?? fallbackSessionIdRef.current;
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Expose session ID to parent
+  const publishSessionId = useCallback(
+    (nextSessionId: string) => {
+      onSessionId?.(nextSessionId);
+    },
+    [onSessionId],
+  );
+
+  // Bootstrap parent session only when the parent does not already own one.
   useEffect(() => {
-    onSessionId?.(sessionId);
-  }, [sessionId, onSessionId]);
+    if (externalSessionId == null) {
+      publishSessionId(sessionId);
+    }
+  }, [externalSessionId, publishSessionId, sessionId]);
 
   // Auto-scroll
   useEffect(() => {
@@ -107,7 +119,7 @@ export function ChatRail({
       };
 
       const res: AgentChatResponse = await api.chat(req);
-      onSessionId?.(res.session_id ?? sessionId);
+      publishSessionId(res.session_id ?? sessionId);
 
       const assistantMsg: ChatMessage = {
         role: "assistant",
@@ -130,7 +142,7 @@ export function ChatRail({
     } finally {
       setLoading(false);
     }
-  }, [input, loading, sessionId, viewportStateBuilder, onDirective, onSessionId]);
+  }, [input, loading, sessionId, viewportStateBuilder, onDirective, publishSessionId]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {

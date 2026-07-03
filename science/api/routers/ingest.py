@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from psycopg.types.json import Json
 
 from data.db import DBAdapter, get_connection
@@ -48,6 +48,7 @@ class IngestResponse(BaseModel):
     already_existed: bool
     audit_only: bool = False
     audit_run_id: str | None = None
+    onboard_geometric_notes: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -139,8 +140,11 @@ async def ingest_full(
     from science.dtie.common.ingest_payloads import (
         AtomDimension,
         ChainDimension,
+        ComputationScopePayload,
+        ComputationScopeRecord,
         CovalentBondFact,
         IngestDimensionPayload,
+        QualityFiltersPayload,
         ResidueDimension,
         StructureDimension,
     )
@@ -346,8 +350,46 @@ async def ingest_full(
                 detail=f"Normalizer write failed: {e}",
             )
 
-        # Step 9: Store computation scope (direct upsert, not via Normalizer)
-        await _upsert_computation_scope(db, structure_id, scope)
+        scope_provenance = ProvenanceContext(
+            run_id=f"scope_{uuid.uuid4().hex[:12]}",
+            structure_id=structure_id,
+            model_version="chain_scorer_v1",
+            pipeline_name="structure_ingestion",
+            run_type=RunType.ANALYSIS,
+            source_type=SourceType.DETERMINISTIC,
+            parent_run_id=run_id,
+            parameters={
+                "job_id": "assign_computation_scope",
+                "scope_source": scope.scope_source,
+                "normalization_protocol": scope.normalization_protocol,
+            },
+        )
+        quality_filters = None
+        if scope.quality_filters is not None:
+            quality_filters = QualityFiltersPayload(
+                max_b_factor_threshold=scope.quality_filters.max_b_factor_threshold,
+                min_resolution=scope.quality_filters.min_resolution,
+            )
+        scope_payload = ComputationScopePayload(
+            provenance=scope_provenance,
+            scope=ComputationScopeRecord(
+                structure_id=structure_id,
+                primary_chain_ids=scope.primary_chain_ids,
+                reference_chain=scope.reference_chain,
+                exclude_chain_ids=scope.exclude_chain_ids,
+                scope_source=scope.scope_source,
+                selection_reason=scope.selection_reason,
+                normalization_protocol=scope.normalization_protocol,
+                quality_filters=quality_filters,
+            ),
+        )
+        try:
+            await normalizer.normalize_computation_scope(scope_payload)
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Computation scope write failed: {e}",
+            )
 
     # Step 10: Fire alignment sidecar (background, non-blocking)
     alignment_status = "pending"
@@ -385,6 +427,30 @@ async def ingest_full(
         "normalization_protocol": scope.normalization_protocol,
     }
 
+    from science.contracts.geometric_runtime import check_onboard_hyperbolic_prerequisites
+
+    onboard_geometric_notes: list[str] = []
+    async with get_connection() as conn:
+        geo_db = DBAdapter(conn)
+        onboard_geometric_notes = await check_onboard_hyperbolic_prerequisites(
+            geo_db,
+            structure_id,
+            residue_count=len(residue_dims),
+            primary_chain_ids=scope.primary_chain_ids,
+        )
+    for note in onboard_geometric_notes:
+        logger.info("Onboard geometric note for %s: %s", structure_id, note)
+
+    from shared.audit.instrumentation import audit_onboard_geometric_notes
+
+    async with get_connection() as conn:
+        audit_db = DBAdapter(conn)
+        await audit_onboard_geometric_notes(
+            audit_db,
+            structure_id=structure_id,
+            notes=onboard_geometric_notes,
+        )
+
     return IngestResponse(
         structure_id=structure_id,
         chain_count=len(chain_dims),
@@ -395,6 +461,7 @@ async def ingest_full(
         already_existed=False,
         audit_only=False,
         audit_run_id=None,
+        onboard_geometric_notes=onboard_geometric_notes,
     )
 
 
@@ -512,53 +579,6 @@ async def _record_duplicate_ingest_audit(
         },
     )
     return audit_run_id
-
-
-async def _upsert_computation_scope(
-    db: Any, structure_id: str, scope: Any
-) -> None:
-    """Upsert computation scope (configuration, direct write not via Normalizer)."""
-    import json as _json
-
-    quality_filters = None
-    if scope.quality_filters:
-        quality_filters = _json.dumps({
-            "max_b_factor_threshold": scope.quality_filters.max_b_factor_threshold,
-            "min_resolution": scope.quality_filters.min_resolution,
-        })
-
-    await db.execute(
-        """
-        INSERT INTO structure_computation_scope (
-            structure_id, primary_chain_ids, reference_chain,
-            exclude_chain_ids, scope_source, selection_reason,
-            normalization_protocol, quality_filters
-        ) VALUES (
-            :structure_id, :primary_chain_ids, :reference_chain,
-            :exclude_chain_ids, :scope_source, :selection_reason,
-            :normalization_protocol, :quality_filters
-        )
-        ON CONFLICT (structure_id) DO UPDATE SET
-            primary_chain_ids = EXCLUDED.primary_chain_ids,
-            reference_chain = EXCLUDED.reference_chain,
-            exclude_chain_ids = EXCLUDED.exclude_chain_ids,
-            scope_source = EXCLUDED.scope_source,
-            selection_reason = EXCLUDED.selection_reason,
-            normalization_protocol = EXCLUDED.normalization_protocol,
-            quality_filters = EXCLUDED.quality_filters,
-            updated_at = NOW()
-        """,
-        {
-            "structure_id": structure_id,
-            "primary_chain_ids": scope.primary_chain_ids,
-            "reference_chain": scope.reference_chain,
-            "exclude_chain_ids": scope.exclude_chain_ids,
-            "scope_source": scope.scope_source,
-            "selection_reason": scope.selection_reason,
-            "normalization_protocol": scope.normalization_protocol,
-            "quality_filters": quality_filters,
-        },
-    )
 
 
 async def _run_alignment_sidecar(

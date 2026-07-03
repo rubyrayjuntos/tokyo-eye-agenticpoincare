@@ -1,0 +1,15 @@
+artifact_uri: file:///app/mlruns/346597094090754773/e6a611e21f384fd8967f25e76201a5bd/artifacts
+end_time: 1782943499579
+entry_point_name: ''
+experiment_id: '346597094090754773'
+lifecycle_stage: active
+run_id: e6a611e21f384fd8967f25e76201a5bd
+run_name: disc_proj_recovery_v4
+run_uuid: e6a611e21f384fd8967f25e76201a5bd
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1782943452464
+status: 3
+tags: []
+user_id: unknown

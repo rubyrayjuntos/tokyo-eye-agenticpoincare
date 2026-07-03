@@ -11,8 +11,8 @@ LOCKED_MANIFEST = _REPO / "manifests" / "v6_corpus_stage_a.json"
 FROZEN_REPORT = _REPO / "manifests" / "corpus_redundancy_report.json"
 
 # Pinned at lock commit — any report/manifest edit must update these deliberately.
-FROZEN_REPORT_SHA256 = "17ca829315964393ec9d4654254523eff1104c46edc86b7ebd2ac36c2741e1ea"
-LOCKED_MANIFEST_SHA256 = "e35bac9955d774fd7824ededb8e0d1dab9e21be4b365b66fbfc97cafcd976e92"
+FROZEN_REPORT_SHA256 = "0ffc74d4a954ded3dbc022b7cc4865e10c153ac45437425abef43eabf573932d"
+LOCKED_MANIFEST_SHA256 = "d5d7e128f69dabb7be5f940e80d845badcfe60f291eaf3a6c7895cdc2586b96e"
 
 TM_ALIGN_METRICS = frozenset({"tm_align", "tm_align_binary", "tm_align_tmtools"})
 FORBIDDEN_STRUCTURAL_METRICS = frozenset({"biotite_ca_proxy"})
@@ -22,6 +22,11 @@ GTPASE_CAP2_PROMOTED = "3CON:A"
 GTPASE_CAP2_ANCHOR = "4OBE:A"
 GTPASE_CAP2_FOLD = "3.40.50.300"
 GTPASE_CAP2_REASON_PREFIX = "GTPase cap-2 biological-centrality override"
+
+# Stage A train ceiling — smoke, curriculum, and P_CORPUS_01 loadability share this value.
+# 4GQB (PRMT5) is 625 residues; 650 is the pinned floor with margin.
+STAGE_A_MAX_RESIDUES = 650
+STAGE_A_TRAIN_STRUCTURE_COUNT = 25
 
 
 def _pin_mismatch_message(
@@ -72,6 +77,92 @@ def _sha256(path: Path) -> str:
 
 def structure_key(pdb_id: str, chain: str) -> str:
     return f"{str(pdb_id).upper()}:{str(chain).upper()}"
+
+
+def is_locked_stage_a_manifest_path(path: Path) -> bool:
+    try:
+        return path.resolve() == LOCKED_MANIFEST.resolve()
+    except OSError:
+        return path.name == LOCKED_MANIFEST.name
+
+
+def stage_a_train_fold_count(manifest: dict[str, Any]) -> int:
+    """Distinct CATH fold_ids among enabled train structures (cap-2 pair shares one fold)."""
+    folds: set[str] = set()
+    for entry in manifest.get("proteins", []):
+        if not entry.get("enabled", True) or entry.get("role") != "train":
+            continue
+        fold_id = str(entry.get("fold_id", "")).strip()
+        if fold_id:
+            folds.add(fold_id)
+    return len(folds)
+
+
+def validate_corpus_loadability(
+    manifest: dict[str, Any],
+    report: dict[str, Any],
+    *,
+    max_residues: int = STAGE_A_MAX_RESIDUES,
+    pdb_dir: Path | None = None,
+) -> list[str]:
+    """Assert locked train structures are loader-resolvable and within STAGE_A_MAX_RESIDUES."""
+    from experiments.training.v6.cath_coverage_probe import author_chain_from_cache
+
+    errors: list[str] = []
+    locked = report.get("stage_a_locked") or {}
+    train_by_key = {
+        structure_key(row["pdb_id"], row["chain"]): row for row in locked.get("train", [])
+    }
+    train_entries = [
+        entry
+        for entry in manifest.get("proteins", [])
+        if entry.get("enabled", True) and entry.get("role") == "train"
+    ]
+
+    for entry in train_entries:
+        pdb_id = str(entry["pdb_id"]).upper()
+        chain = str(entry.get("chain", "A"))
+        key = structure_key(pdb_id, chain)
+        author = author_chain_from_cache(pdb_id, chain)
+        if author is not None and author.upper() != chain.upper():
+            errors.append(
+                f"P_CORPUS_01 loadability: {key} manifest chain {chain!r} != author chain "
+                f"{author!r} from PDBe cache — locked manifest must store the loader-resolvable "
+                f"author chain_id, not struct_asym_id alone."
+            )
+            continue
+
+        report_row = train_by_key.get(key)
+        if not report_row:
+            errors.append(f"P_CORPUS_01 loadability: {key} missing from stage_a_locked.train")
+            continue
+        seq_len = int(report_row.get("sequence_length") or 0)
+        if seq_len <= 0:
+            errors.append(f"P_CORPUS_01 loadability: {key} missing sequence_length in frozen report")
+        elif seq_len > max_residues:
+            errors.append(
+                f"P_CORPUS_01 loadability: {key} sequence_length={seq_len} > "
+                f"STAGE_A_MAX_RESIDUES={max_residues} — locked structure would be excluded "
+                f"by residue cap; raise STAGE_A_MAX_RESIDUES or demote the structure."
+            )
+
+        if pdb_dir is None or not Path(pdb_dir).is_dir():
+            continue
+        from experiments.training.v6._data import load_protein_graph
+
+        prot = load_protein_graph(pdb_id, chain, Path(pdb_dir))
+        n_res = int(prot.get("n_residues", 0)) if prot else 0
+        if n_res <= 0:
+            errors.append(
+                f"P_CORPUS_01 loadability: {key} loads to 0 residues under pdb_dir={pdb_dir}"
+            )
+        elif n_res > max_residues:
+            errors.append(
+                f"P_CORPUS_01 loadability: {key} loads {n_res} residues > "
+                f"STAGE_A_MAX_RESIDUES={max_residues}"
+            )
+
+    return errors
 
 
 def validate_p_corpus_01(
@@ -208,5 +299,15 @@ def validate_p_corpus_01(
             f"WITHIN_FOLD_HIGH_IDENTITY among train: {a} vs {b} "
             f"identity={pair.get('sequence_identity_pct')}%"
         )
+
+    pdb_dir = _REPO / "pdb_cache"
+    errors.extend(
+        validate_corpus_loadability(
+            manifest,
+            report,
+            max_residues=STAGE_A_MAX_RESIDUES,
+            pdb_dir=pdb_dir if pdb_dir.is_dir() else None,
+        )
+    )
 
     return errors

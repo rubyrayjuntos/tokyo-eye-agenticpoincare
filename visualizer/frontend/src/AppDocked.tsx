@@ -16,13 +16,9 @@ import { useViewportSocket } from "./lib/useViewportSocket";
 import { useActor } from "@xstate/react";
 import { viewportMachine } from "./lib/viewportMachine";
 import { useOrchestratorPolicy } from "./lib/useOrchestratorPolicy";
+import { useLegacyViewportBridge } from "./lib/useLegacyViewportBridge";
 import type {
   Structure,
-  ViewportDirective,
-  PoincareColorMode,
-  SelectedResidueInfo,
-  StructureColorModeType,
-  ActivePanelName,
   CompareState,
   AgentChatResponse,
 } from "./lib/types";
@@ -30,17 +26,7 @@ import type {
 export default function AppDocked() {
   const [activeStructure, setActiveStructure] = useState<Structure | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
-  const [highlightedResidues, setHighlightedResidues] = useState<string[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [currentDirective, setCurrentDirective] = useState<ViewportDirective | null>(null);
-
-  const [poincareColorMode, setPoincareColorMode] = useState<PoincareColorMode>("cone_depth");
-  const [poincareSelectedResidue, setPoincareSelectedResidue] = useState<SelectedResidueInfo | null>(null);
-  const [mobiusFocus, setMobiusFocus] = useState(false);
-  const [brushSelection, setBrushSelection] = useState<string[]>([]);
-  const [viewerColorMode, setViewerColorMode] = useState<StructureColorModeType>("spectrum");
-  const [riskThreshold, setRiskThreshold] = useState(0);
-  const [activePanel, setActivePanel] = useState<ActivePanelName>(null);
 
   const [compareState, setCompareState] = useState<CompareState>({
     active: false,
@@ -52,7 +38,6 @@ export default function AppDocked() {
   });
 
   const [selectedPocketId, setSelectedPocketId] = useState<number | null>(null);
-  const [isRadarActive, setIsRadarActive] = useState<boolean>(false);
   const [therapeuticCompilerState, setTherapeuticCompilerState] = useState<any | null>(null);
   const [collapseSimulationState, setCollapseSimulationState] = useState({
     fraction: 0.0,
@@ -62,9 +47,9 @@ export default function AppDocked() {
   const [latestAgentTelemetry, setLatestAgentTelemetry] = useState<AgentChatResponse["telemetry"] | null>(null);
   const [agentSessionId, setAgentSessionId] = useState<string | null>(null);
 
-  // XState machines
   const [viewportState, sendViewport] = useActor(viewportMachine);
   const orchestrator = useOrchestratorPolicy(viewportState.context);
+  const viewport = useLegacyViewportBridge(viewportState, sendViewport);
 
   const enterCompareMode = useCallback(
     (secondary: Structure) => {
@@ -79,7 +64,7 @@ export default function AppDocked() {
         error: null,
       });
     },
-    [activeStructure]
+    [activeStructure],
   );
 
   const exitCompareMode = useCallback(() => {
@@ -97,39 +82,40 @@ export default function AppDocked() {
     setRefreshKey((prev) => prev + 1);
   }, []);
 
-  const emitDirective = useCallback(
-    (directive: ViewportDirective) => {
-      const normalizedDirective = directive;
-
-      setCurrentDirective(normalizedDirective);
-      if (normalizedDirective.action === "highlight" || normalizedDirective.action === "focus") {
-        const residues = normalizedDirective.highlight_groups?.flatMap((g) => g.residue_ids) ?? [];
-        if (residues.length > 0) setHighlightedResidues(residues);
-      } else if (normalizedDirective.action === "clear") {
-        setHighlightedResidues([]);
-        setIsRadarActive(false);
-      }
-    },
-    []
-  );
-
-  useViewportSocket({ onDirective: emitDirective, enabled: true, sessionId: agentSessionId });
+  useViewportSocket({
+    onDirective: viewport.emitDirective,
+    enabled: true,
+    sessionId: agentSessionId,
+  });
 
   return (
     <DashboardContext.Provider
       value={{
-        activeStructure, setActiveStructure,
-        chatOpen, setChatOpen,
-        highlightedResidues, setHighlightedResidues,
-        refreshKey, triggerRefresh,
-        emitDirective, currentDirective,
-        compareState, enterCompareMode, exitCompareMode,
-        selectedPocketId, setSelectedPocketId,
-        isRadarActive, setIsRadarActive,
-        therapeuticCompilerState, setTherapeuticCompilerState,
-        collapseSimulationState, setCollapseSimulationState,
-        latestAgentTelemetry, setLatestAgentTelemetry,
-        agentSessionId, setAgentSessionId,
+        activeStructure,
+        setActiveStructure,
+        chatOpen,
+        setChatOpen,
+        highlightedResidues: viewport.highlightedResidues,
+        setHighlightedResidues: viewport.setHighlightedResidues,
+        refreshKey,
+        triggerRefresh,
+        emitDirective: viewport.emitDirective,
+        currentDirective: viewport.currentDirective,
+        compareState,
+        enterCompareMode,
+        exitCompareMode,
+        selectedPocketId,
+        setSelectedPocketId,
+        isRadarActive: viewport.isRadarActive,
+        setIsRadarActive: viewport.setIsRadarActive,
+        therapeuticCompilerState,
+        setTherapeuticCompilerState,
+        collapseSimulationState,
+        setCollapseSimulationState,
+        latestAgentTelemetry,
+        setLatestAgentTelemetry,
+        agentSessionId,
+        setAgentSessionId,
         discoveryContext: orchestrator.discoveryContext,
         sendDiscovery: orchestrator.sendDiscovery,
         hypothesisContext: orchestrator.hypothesisContext,
@@ -139,16 +125,16 @@ export default function AppDocked() {
         setSessionMode: orchestrator.setSessionMode,
         structureScope: orchestrator.structureScope,
         setStructureScope: orchestrator.setStructureScope,
-        poincareColorMode,
-        viewerColorMode,
-        riskThreshold,
-        activePanel,
+        poincareColorMode: viewport.poincareColorMode,
+        viewerColorMode: viewport.viewerColorMode,
+        riskThreshold: viewport.riskThreshold,
+        activePanel: viewport.activePanel,
         sidebarOpen: viewportState.context.sidebarOpen,
         activeEditorTab: viewportState.context.activeEditorTab,
         bottomPanelOpen: viewportState.context.bottomPanelOpen,
         activeBottomPanel: viewportState.context.activeBottomPanel,
         layoutModelJSON: null,
-        userSelectedResidue: null,
+        userSelectedResidue: viewportState.context.userSelectedResidue,
         sendViewport,
       }}
     >
@@ -157,40 +143,46 @@ export default function AppDocked() {
           <NavBar />
           <KPIBar />
           <div className="flex flex-col gap-2 px-3 py-2 bg-[#050810]/50 border-b border-cyan-900/20">
-            <VisualizationToolbar selectedResidues={highlightedResidues} onDirective={emitDirective} />
+            <VisualizationToolbar
+              selectedResidues={viewport.highlightedResidues}
+              onDirective={viewport.emitDirective}
+            />
             <CompareIndicatorBar />
           </div>
           <DockedLayout
             poincare={
               <div className="w-full h-full flex items-center justify-center p-4">
                 <PoincareScatter
-                  onColorModeChange={setPoincareColorMode}
-                  onSelectedResidueChange={setPoincareSelectedResidue}
-                  onMobiusFocusChange={setMobiusFocus}
-                  onBrushSelectionChange={setBrushSelection}
+                  onColorModeChange={viewport.setPoincareColorMode}
+                  onSelectedResidueChange={viewport.setPoincareSelectedResidue}
+                  onMobiusFocusChange={viewport.setMobiusFocus}
+                  onBrushSelectionChange={viewport.setBrushSelection}
                 />
               </div>
             }
             molecularViewer={
               <div className="w-full h-full flex items-center justify-center p-4">
-                <MolecularViewer onColorModeChange={setViewerColorMode} onRiskThresholdChange={setRiskThreshold} />
+                <MolecularViewer
+                  onColorModeChange={viewport.setViewerColorMode}
+                  onRiskThresholdChange={viewport.setRiskThreshold}
+                />
               </div>
             }
             agentChat={
               <AgentChat
-                poincareColorMode={poincareColorMode}
-                poincareSelectedResidue={poincareSelectedResidue}
-                mobiusFocus={mobiusFocus}
-                brushSelection={brushSelection}
-                viewerColorMode={viewerColorMode}
-                riskThreshold={riskThreshold}
-                activePanel={activePanel}
+                poincareColorMode={viewport.poincareColorMode}
+                poincareSelectedResidue={viewport.poincareSelectedResidue}
+                mobiusFocus={viewport.mobiusFocus}
+                brushSelection={viewport.brushSelection}
+                viewerColorMode={viewport.viewerColorMode}
+                riskThreshold={viewport.riskThreshold}
+                activePanel={viewport.activePanel}
               />
             }
             sidebarLeft={
               <div className="flex flex-col gap-4">
                 <AgentTelemetryPanel />
-                <ToolPanelSidebar onActivePanelChange={setActivePanel} />
+                <ToolPanelSidebar onActivePanelChange={viewport.setActivePanel} />
               </div>
             }
           />

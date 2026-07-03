@@ -217,11 +217,17 @@ async def build_memory_prompt_context(
     session_id: str,
     user_message: str,
     context: dict[str, Any] | None,
+    user_id: str | None = None,
 ) -> MemoryPromptContext:
     """Load persistent summary + recall and render them into a prompt block."""
 
     structure_id = _extract_structure_id(context)
     run_id = _extract_run_id(context)
+    recall_user_filter = (
+        "(:user_id IS NOT NULL AND user_id = :user_id)"
+        if user_id
+        else "FALSE"
+    )
 
     try:
         summary_row = await db.fetch_one(
@@ -243,7 +249,7 @@ async def build_memory_prompt_context(
             {"session_id": session_id, "limit": _RECENT_EXCHANGE_LIMIT},
         )
         recalled_items = await db.fetch_all(
-            """
+            f"""
             WITH recall_candidates AS (
                 SELECT
                     'fact' AS memory_kind,
@@ -254,9 +260,12 @@ async def build_memory_prompt_context(
                         CASE WHEN :structure_id IS NOT NULL AND structure_id = :structure_id THEN 0.25 ELSE 0 END +
                         CASE WHEN :run_id IS NOT NULL AND run_id = :run_id THEN 0.25 ELSE 0 END AS score
                 FROM agent_memory_fact
-                WHERE search_document @@ websearch_to_tsquery('english', :query_text)
-                   OR (:structure_id IS NOT NULL AND structure_id = :structure_id)
-                   OR (:run_id IS NOT NULL AND run_id = :run_id)
+                WHERE {recall_user_filter}
+                  AND (
+                        search_document @@ websearch_to_tsquery('english', :query_text)
+                        OR (:structure_id IS NOT NULL AND structure_id = :structure_id)
+                        OR (:run_id IS NOT NULL AND run_id = :run_id)
+                  )
 
                 UNION ALL
 
@@ -269,9 +278,12 @@ async def build_memory_prompt_context(
                         CASE WHEN :structure_id IS NOT NULL AND structure_id = :structure_id THEN 0.25 ELSE 0 END +
                         CASE WHEN :run_id IS NOT NULL AND run_id = :run_id THEN 0.25 ELSE 0 END AS score
                 FROM agent_memory_note
-                WHERE search_document @@ websearch_to_tsquery('english', :query_text)
-                   OR (:structure_id IS NOT NULL AND structure_id = :structure_id)
-                   OR (:run_id IS NOT NULL AND run_id = :run_id)
+                WHERE {recall_user_filter}
+                  AND (
+                        search_document @@ websearch_to_tsquery('english', :query_text)
+                        OR (:structure_id IS NOT NULL AND structure_id = :structure_id)
+                        OR (:run_id IS NOT NULL AND run_id = :run_id)
+                  )
 
                 UNION ALL
 
@@ -284,9 +296,12 @@ async def build_memory_prompt_context(
                         CASE WHEN :structure_id IS NOT NULL AND structure_id = :structure_id THEN 0.25 ELSE 0 END +
                         CASE WHEN :run_id IS NOT NULL AND run_id = :run_id THEN 0.25 ELSE 0 END AS score
                 FROM agent_trace_summary
-                WHERE search_document @@ websearch_to_tsquery('english', :query_text)
-                   OR (:structure_id IS NOT NULL AND structure_id = :structure_id)
-                   OR (:run_id IS NOT NULL AND run_id = :run_id)
+                WHERE {recall_user_filter}
+                  AND (
+                        search_document @@ websearch_to_tsquery('english', :query_text)
+                        OR (:structure_id IS NOT NULL AND structure_id = :structure_id)
+                        OR (:run_id IS NOT NULL AND run_id = :run_id)
+                  )
 
                 UNION ALL
 
@@ -300,6 +315,7 @@ async def build_memory_prompt_context(
                         CASE WHEN :run_id IS NOT NULL AND run_id = :run_id THEN 0.25 ELSE 0 END AS score
                 FROM agent_chat_exchange
                 WHERE session_id != :session_id
+                  AND {recall_user_filter}
                   AND (
                         search_document @@ websearch_to_tsquery('english', :query_text)
                         OR (:structure_id IS NOT NULL AND structure_id = :structure_id)
@@ -317,9 +333,11 @@ async def build_memory_prompt_context(
                         CASE WHEN :structure_id IS NOT NULL AND structure_id = :structure_id THEN 0.25 ELSE 0 END +
                         CASE WHEN :run_id IS NOT NULL AND run_id = :run_id THEN 0.25 ELSE 0 END AS score
                 FROM agent_doc_chunk
-                WHERE search_document @@ websearch_to_tsquery('english', :query_text)
-                   OR (:structure_id IS NOT NULL AND structure_id = :structure_id)
-                   OR (:run_id IS NOT NULL AND run_id = :run_id)
+                WHERE (
+                        search_document @@ websearch_to_tsquery('english', :query_text)
+                        OR (:structure_id IS NOT NULL AND structure_id = :structure_id)
+                        OR (:run_id IS NOT NULL AND run_id = :run_id)
+                  )
             )
             SELECT memory_kind, memory_id, body_text, memory_ts, score
             FROM recall_candidates
@@ -332,6 +350,7 @@ async def build_memory_prompt_context(
                 "structure_id": structure_id,
                 "run_id": run_id,
                 "session_id": session_id,
+                "user_id": user_id,
                 "limit": _RECALL_LIMIT,
             },
         )
@@ -426,12 +445,14 @@ async def persist_memory_interaction(
     trace: AgentTrace,
     retrieved_memory_block: str,
     next_orchestration_state: dict[str, Any] | None = None,
+    user_id: str | None = None,
 ) -> None:
     """Persist durable chat memory without failing the user request."""
 
     structure_id = _extract_structure_id(context)
     run_id = _extract_run_id(context)
-    user_id = _extract_user_id(context)
+    if user_id is None:
+        user_id = _extract_user_id(context)
 
     try:
         summary_row = await db.fetch_one(

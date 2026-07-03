@@ -30,6 +30,17 @@ export function mobiusAdd2D(a: [number, number], x: [number, number], c: number 
   return [numX / den, numY / den];
 }
 
+/** Transport disc point so (ax, ay) maps to the origin — curvature-correct ⊕_c. */
+export function mobiusRecenter2D(
+  x: number,
+  y: number,
+  ax: number,
+  ay: number,
+  c: number = 1,
+): [number, number] {
+  return mobiusAdd2D([-ax, -ay], [x, y], c);
+}
+
 // Hyperbolic distance between two points in the Poincaré ball
 export function hyperbolicDistance(x: THREE.Vector3, y: THREE.Vector3, c: number = 1): number {
   const minusX = x.clone().multiplyScalar(-1);

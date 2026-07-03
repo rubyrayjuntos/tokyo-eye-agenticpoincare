@@ -101,6 +101,6 @@ class ViewportState(BaseModel):
     selected_residues: list[str] | None = None
     active_highlights: list[HighlightGroup] | None = None
     current_metric: str = "cone_depth"
-    curvature: float = 1.0
+    curvature: float | None = None
     zoom_level: float = 1.0
     camera_target: list[float] | None = None

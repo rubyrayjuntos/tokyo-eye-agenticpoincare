@@ -26,7 +26,7 @@
 - Frozen commit hash: `57f81d8988ce033cbba81500e521efc01a2f03ee`
 - Frozen UTC timestamp: `2026-07-02T13:58:31Z`
 - Tokyo Eye / DTIE model commit under test: `lever_a_clean_slate_v1/v6_best_disc.pt`
-- PeSTo version / webserver date under test: `__________` *(fill at Phase 2)*
+- PeSTo version / webserver date under test: `PeSTo i_v4_1 local (/tmp/PeSTo, 2026-07-02)`
 
 **Phase 1 completed (output-blind):** 2026-07-02 — chains verified, I_gold locked, τ_epi calibrated. No Tokyo Eye scores on 9EST viewed.
 
@@ -154,10 +154,10 @@ Verdict from `decide()` in harness — not by eye.
 
 - **Phase 0 — Freeze.** ✅ Lock boxes filled; commit harness + this file.
 - **Phase 1 — Data prep.** ✅ `evaluate_9est_prereg.py --phase1` → lock JSON.
-- **Phase 2 — Precondition.** Run PeSTo static 9EST; apply §7.
-- **Phase 3 — Test.** ⚠️ **Freeze trips here.** Run DTIE on 9EST; record S1/S2. No goalpost edits after.
-- **Phase 4 — Evaluate.** `evaluate_9est_prereg.py --run`.
-- **Phase 5 — Record.** Fill §12.
+- **Phase 2 — Precondition.** ✅ PeSTo i_v4_1 on static 9EST: `recovery@3=0`, AUC=0.404 — **PASS** (`data/benchmarks/9est_phase2_precondition.json`).
+- **Phase 3 — Test.** ✅ lever_a forward pass on static 9EST chain A; channels recorded in Phase 4 artifact. Freeze tripped 2026-07-02.
+- **Phase 4 — Evaluate.** ✅ `evaluate_9est_prereg.py --run` → **REFUTE** (`data/benchmarks/9est_phase34_results.json`).
+- **Phase 5 — Record.** ✅ §12 filled below (2026-07-02).
 
 ---
 
@@ -169,12 +169,30 @@ Verdict from `decide()` in harness — not by eye.
 
 ---
 
-## 12. Results (blank until Phase 4–5)
+## 12. Results (Phase 4–5 complete)
+
+**Run:** `make prereg-9est-run` (2026-07-02T14:18:58Z)  
+**Checkpoint:** `checkpoints/v6/runs/lever_a_clean_slate_v1/v6_best_disc.pt`  
+**Artifact:** `data/benchmarks/9est_phase34_results.json`  
+**SASA control:** freesasa, heavy atoms only (chain A)
 
 | Metric | PeSTo (static 9EST) | Tokyo Eye S1 | Tokyo Eye S2 | SASA baseline |
 |---|---|---|---|---|
-| recovery@3 | | | | |
-| ROC AUC | | | | |
+| recovery@3 | 0 | 0 | 0 | 0 |
+| ROC AUC | 0.404 | 0.560 | 0.546 | 0.603 |
 | \|I_gold\| | 26 | — | — | — |
-| SASA margin | | | | |
-| **Verdict (§8):** | | | | |
+| SASA margin | — | −0.043 | −0.058 | — |
+| **Verdict (§8):** | — | **REFUTE** | — | — |
+
+**`decide()` output:** REFUTE — static dehydron/shell signal does not carry this cryptic interface. Record the negative.
+
+### 12.1 Secondary endpoints
+
+S1 recovery@k sweep (k=1..10): **all 0** — no k recovers the full interface in the top-k set.
+
+### 12.2 Interpretation (post-hoc, exploratory)
+
+- **H1 refuted** on locked criteria: `recovery@3=0` and `ROC_AUC(S1)=0.560 < 0.65`.
+- **SASA margin negative** (−0.043): S1 ranks *below* raw solvent exposure — interface signal, if any, is confounded by or weaker than exposure geometry on this static structure.
+- **PeSTo precondition held** (static failure at k=3); Tokyo Eye S1 does not outperform PeSTo on AUC (0.560 vs 0.404) but fails the confirmatory bar and does not beat SASA.
+- **PPDB5/MaSIF benchmark not licensed.** Per §8, pick another PeSTo static-failure case from the MD set for a future discriminator test, or pursue exposure-controlled scoring amendments via §11 only as exploratory follow-up.

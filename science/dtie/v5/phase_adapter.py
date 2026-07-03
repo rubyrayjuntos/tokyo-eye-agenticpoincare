@@ -23,6 +23,7 @@ from typing import Any
 
 import numpy as np
 
+from science.dtie.common.curvature_values import require_learned_curvature
 from science.dtie.common.interfaces import GNNInferenceResult
 
 
@@ -87,7 +88,7 @@ def v5_result_to_phase_dict(
     # Build the dict
     gnn_output: dict[str, Any] = {
         # Curvature (scalar)
-        "curvature_c": result.curvature or 1.0,
+        "curvature_c": require_learned_curvature(result.curvature, context="v5 phase adapter"),
 
         # Per-residue arrays with prefix
         f"{prefix}_residue_ids": np.array(residue_id_strings),
@@ -139,7 +140,10 @@ def merge_dual_state(
 
     # Merge — gdp keys + gtp keys + shared metadata
     merged = {**gdp_dict, **gtp_dict}
-    merged["curvature_c"] = gdp_result.curvature or 1.0
+    merged["curvature_c"] = require_learned_curvature(
+        gdp_result.curvature,
+        context="v5 dual-state phase adapter",
+    )
     merged["model_version"] = gdp_result.model_version
 
     return merged

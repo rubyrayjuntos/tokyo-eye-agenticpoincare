@@ -1,0 +1,1310 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tokyo-eye/compute-job-catalog",
+  "title": "Tokyo Eye Compute Job Catalog",
+  "version": "1.0.0",
+  "description": "Field-level metadata for all discovery pathway jobs: preconditions, execution triggers, job outputs, and governed write destinations.",
+  "canonical_dispatch": "POST /compute/jobs/{job_id}",
+  "onboard_trigger": "POST /api/ingest \u2192 run_onboard_compute \u2192 execute_pathway",
+  "pathways": {
+    "discovery_story": [
+      "alignment_sidecar",
+      "allele_selectivity_assessment",
+      "allosteric_site_detection",
+      "assign_computation_scope",
+      "binding_site_scan",
+      "drug_candidate_ranking",
+      "fragment_screen",
+      "gnn_inference",
+      "graph_topology",
+      "hyperbolic_motifs",
+      "ingest_dims",
+      "md_validate_top_n",
+      "pharmacophore_identification",
+      "pocket_pharmacophore_map",
+      "resistance_pathway_map",
+      "source_leak_detection",
+      "strain_vulnerability_scan",
+      "topological_lift",
+      "witness_embedding"
+    ],
+    "viewport_explore": [
+      "alignment_sidecar",
+      "assign_computation_scope",
+      "gnn_inference",
+      "graph_topology",
+      "hyperbolic_motifs",
+      "ingest_dims",
+      "source_leak_detection",
+      "strain_vulnerability_scan",
+      "witness_embedding"
+    ]
+  },
+  "acts": {
+    "signal": [
+      "graph_topology",
+      "witness_embedding",
+      "strain_vulnerability_scan"
+    ],
+    "persistent_leak": [
+      "source_leak_detection",
+      "hyperbolic_motifs"
+    ],
+    "cryptic_pocket": [
+      "binding_site_scan",
+      "pocket_pharmacophore_map",
+      "md_validate_top_n"
+    ],
+    "fragment": [
+      "pharmacophore_identification",
+      "fragment_screen",
+      "drug_candidate_ranking"
+    ],
+    "verdict": [
+      "topological_lift",
+      "resistance_pathway_map",
+      "allosteric_site_detection",
+      "allele_selectivity_assessment"
+    ]
+  },
+  "jobs": {
+    "ingest_dims": {
+      "job_id": "ingest_dims",
+      "requires": [],
+      "produces": [
+        "dims"
+      ],
+      "preconditions": [
+        {
+          "check": "pdb_download",
+          "description": "Valid PDB ID and RCSB availability"
+        }
+      ],
+      "execution": {
+        "triggers": [
+          "POST /compute/ingest-full"
+        ],
+        "runner": "science/api/routers/ingest.py",
+        "job_module": null,
+        "resource_class": "cpu_light",
+        "discovery_act": "foundation",
+        "tier": 1,
+        "status": "implemented",
+        "priority_group": 0,
+        "legacy_alias": null
+      },
+      "output_fields": [
+        {
+          "name": "structure_id",
+          "type": "string",
+          "role": "response"
+        },
+        {
+          "name": "chain_count",
+          "type": "integer",
+          "role": "response"
+        },
+        {
+          "name": "residue_count",
+          "type": "integer",
+          "role": "response"
+        },
+        {
+          "name": "atom_count",
+          "type": "integer",
+          "role": "response"
+        }
+      ],
+      "destinations": [
+        {
+          "table": "dim_structure",
+          "normalizer_path": "normalize_ingest_dimensions",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        },
+        {
+          "table": "dim_chain",
+          "normalizer_path": "normalize_ingest_dimensions",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        },
+        {
+          "table": "dim_residue",
+          "normalizer_path": "normalize_ingest_dimensions",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        },
+        {
+          "table": "dim_atom",
+          "normalizer_path": "normalize_ingest_dimensions",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        },
+        {
+          "table": "fact_covalent_bond",
+          "normalizer_path": "normalize_ingest_dimensions",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        }
+      ]
+    },
+    "assign_computation_scope": {
+      "job_id": "assign_computation_scope",
+      "requires": [
+        "ingest_dims"
+      ],
+      "produces": [
+        "scope"
+      ],
+      "preconditions": [
+        {
+          "check": "artifact:dims",
+          "description": "dim_residue populated"
+        }
+      ],
+      "execution": {
+        "triggers": [
+          "POST /compute/ingest-full"
+        ],
+        "runner": null,
+        "job_module": null,
+        "resource_class": "cpu_light",
+        "discovery_act": "foundation",
+        "tier": 1,
+        "status": "implemented",
+        "priority_group": 0,
+        "legacy_alias": null
+      },
+      "output_fields": [
+        {
+          "name": "computation_scope",
+          "type": "object",
+          "role": "response"
+        }
+      ],
+      "destinations": [
+        {
+          "table": "structure_computation_scope",
+          "normalizer_path": "normalize_computation_scope",
+          "write_mode": "upsert",
+          "key_columns": [
+            "structure_id"
+          ],
+          "fields": []
+        }
+      ]
+    },
+    "alignment_sidecar": {
+      "job_id": "alignment_sidecar",
+      "requires": [
+        "ingest_dims"
+      ],
+      "produces": [
+        "alignment"
+      ],
+      "preconditions": [
+        {
+          "check": "artifact:dims",
+          "description": "Chains present in dim_chain"
+        }
+      ],
+      "execution": {
+        "triggers": [
+          "POST /compute/ingest-full"
+        ],
+        "runner": null,
+        "job_module": null,
+        "resource_class": "cpu_light",
+        "discovery_act": "sidecar",
+        "tier": 2,
+        "status": "implemented",
+        "priority_group": 0,
+        "legacy_alias": null
+      },
+      "output_fields": [
+        {
+          "name": "alignment_status",
+          "type": "string",
+          "role": "response"
+        }
+      ],
+      "destinations": [
+        {
+          "table": "fact_residue_alignment",
+          "normalizer_path": "normalize_alignment",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        },
+        {
+          "table": "fact_structural_alignment",
+          "normalizer_path": "normalize_alignment",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        }
+      ]
+    },
+    "gnn_inference": {
+      "job_id": "gnn_inference",
+      "requires": [
+        "assign_computation_scope"
+      ],
+      "produces": [
+        "gnn_hyp",
+        "gnn_euc"
+      ],
+      "preconditions": [
+        {
+          "check": "artifact:dims",
+          "description": "Residue coordinates in dim_residue"
+        },
+        {
+          "check": "artifact:scope",
+          "description": "structure_computation_scope assigned"
+        },
+        {
+          "check": "checkpoint",
+          "description": "V6 checkpoint file present on disk"
+        }
+      ],
+      "execution": {
+        "triggers": [
+          "scheduler",
+          "POST /compute/jobs/gnn_inference",
+          "POST /compute/gnn"
+        ],
+        "runner": "science/compute/runners/gnn_inference.py",
+        "job_module": "science/compute/jobs/gnn_inference.py",
+        "resource_class": "gpu",
+        "discovery_act": "foundation",
+        "tier": 1,
+        "status": "implemented",
+        "priority_group": 0,
+        "legacy_alias": "gnn_inference_v6"
+      },
+      "output_fields": [
+        {
+          "name": "node_count",
+          "type": "integer",
+          "role": "job_output"
+        },
+        {
+          "name": "embedding_run_id",
+          "type": "string",
+          "role": "provenance"
+        },
+        {
+          "name": "gnn_run_id",
+          "type": "string",
+          "role": "provenance"
+        },
+        {
+          "name": "curvature",
+          "type": "float",
+          "role": "job_output"
+        },
+        {
+          "name": "hyperbolic_distances",
+          "type": "object",
+          "role": "job_output",
+          "nullable": true
+        }
+      ],
+      "destinations": [
+        {
+          "table": "fact_gnn_node_embedding",
+          "normalizer_path": "normalize_gnn_output",
+          "write_mode": "upsert",
+          "key_columns": [
+            "run_id",
+            "residue_id",
+            "space_id"
+          ],
+          "fields": [
+            {
+              "name": "residue_id",
+              "type": "string",
+              "description": "Canonical residue identifier (chain:index:name)",
+              "nullable": false
+            },
+            {
+              "name": "run_id",
+              "type": "string",
+              "description": "Provenance run for this embedding write",
+              "nullable": false
+            },
+            {
+              "name": "space_id",
+              "type": "uuid",
+              "description": "FK to embedding_space",
+              "nullable": false
+            },
+            {
+              "name": "coordinates",
+              "type": "jsonb",
+              "description": "Hyperbolic (Poincar\u00e9) or Euclidean coordinates per residue",
+              "nullable": false
+            },
+            {
+              "name": "uncertainty",
+              "type": "float",
+              "description": "Model uncertainty score",
+              "nullable": true
+            },
+            {
+              "name": "cone_depth",
+              "type": "float",
+              "description": "Radial cone depth in embedding space",
+              "nullable": true
+            }
+          ]
+        },
+        {
+          "table": "embedding_space",
+          "normalizer_path": "normalize_gnn_output",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        },
+        {
+          "table": "provenance_run",
+          "normalizer_path": "_ensure_provenance_run",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        },
+        {
+          "table": "fact_hyperbolic_distance",
+          "normalizer_path": "hyperbolic_distance_populator",
+          "write_mode": "upsert",
+          "key_columns": [
+            "residue_id_a",
+            "residue_id_b",
+            "run_id"
+          ],
+          "fields": [],
+          "bypass": true
+        }
+      ]
+    },
+    "graph_topology": {
+      "job_id": "graph_topology",
+      "requires": [
+        "gnn_inference"
+      ],
+      "produces": [
+        "graph"
+      ],
+      "preconditions": [
+        {
+          "check": "artifact:gnn_hyp",
+          "description": "Hyperbolic embeddings exist"
+        }
+      ],
+      "execution": {
+        "triggers": [
+          "scheduler",
+          "POST /compute/jobs/graph_topology",
+          "POST /compute/graph-topology"
+        ],
+        "runner": "science/compute/runners/graph_topology.py",
+        "job_module": "science/compute/jobs/graph_topology.py",
+        "resource_class": "cpu_heavy",
+        "discovery_act": "signal",
+        "tier": 1,
+        "status": "implemented",
+        "priority_group": 1,
+        "legacy_alias": null
+      },
+      "job_params": [
+        {
+          "name": "contact_cutoff_angstrom",
+          "type": "float",
+          "default": 8.0
+        },
+        {
+          "name": "chain_filter",
+          "type": "string",
+          "nullable": true
+        }
+      ],
+      "output_fields": [
+        {
+          "name": "node_count",
+          "type": "integer",
+          "role": "job_output"
+        },
+        {
+          "name": "edge_count",
+          "type": "integer",
+          "role": "job_output"
+        },
+        {
+          "name": "bridge_count",
+          "type": "integer",
+          "role": "job_output"
+        },
+        {
+          "name": "metrics_computed",
+          "type": "array",
+          "role": "job_output"
+        },
+        {
+          "name": "run_id",
+          "type": "string",
+          "role": "provenance"
+        }
+      ],
+      "destinations": [
+        {
+          "table": "fact_graph_edge",
+          "normalizer_path": "normalize_graph_topology",
+          "write_mode": "upsert",
+          "key_columns": [
+            "run_id",
+            "source_residue_id",
+            "target_residue_id",
+            "edge_type"
+          ],
+          "fields": []
+        },
+        {
+          "table": "fact_graph_node_metrics",
+          "normalizer_path": "normalize_graph_topology",
+          "write_mode": "upsert",
+          "key_columns": [
+            "run_id",
+            "residue_id"
+          ],
+          "fields": [
+            {
+              "name": "residue_id",
+              "type": "string",
+              "description": "Node residue id",
+              "nullable": false
+            },
+            {
+              "name": "degree",
+              "type": "integer",
+              "description": "Graph degree",
+              "nullable": false
+            },
+            {
+              "name": "betweenness",
+              "type": "float",
+              "description": "Betweenness centrality",
+              "nullable": false
+            },
+            {
+              "name": "clustering_coefficient",
+              "type": "float",
+              "description": "Local clustering coefficient",
+              "nullable": false
+            },
+            {
+              "name": "closeness",
+              "type": "float",
+              "description": "Closeness centrality",
+              "nullable": false
+            },
+            {
+              "name": "eigenvector_centrality",
+              "type": "float",
+              "description": "Eigenvector centrality",
+              "nullable": false
+            },
+            {
+              "name": "is_bridge",
+              "type": "boolean",
+              "description": "Articulation point flag",
+              "nullable": false
+            },
+            {
+              "name": "conductance",
+              "type": "float",
+              "description": "Fiedler-based conductance proxy",
+              "nullable": false
+            }
+          ]
+        }
+      ]
+    },
+    "witness_embedding": {
+      "job_id": "witness_embedding",
+      "requires": [
+        "gnn_inference"
+      ],
+      "produces": [
+        "witness_embedding"
+      ],
+      "preconditions": [
+        {
+          "check": "artifact:gnn_hyp",
+          "description": "Hyperbolic embeddings exist"
+        }
+      ],
+      "execution": {
+        "triggers": [
+          "scheduler",
+          "POST /compute/jobs/witness_embedding"
+        ],
+        "runner": "science/compute/runners/witness_embedding.py",
+        "job_module": "science/compute/jobs/witness_embedding.py",
+        "resource_class": "cpu_heavy",
+        "discovery_act": "signal",
+        "tier": 1,
+        "status": "implemented",
+        "priority_group": 1,
+        "legacy_alias": "phase1_witness_embedding"
+      },
+      "output_fields": [
+        {
+          "name": "n_witnesses",
+          "type": "integer",
+          "role": "job_output"
+        },
+        {
+          "name": "n_landmarks",
+          "type": "integer",
+          "role": "job_output"
+        }
+      ],
+      "destinations": [
+        {
+          "table": "fact_phase_output",
+          "normalizer_path": "normalize_phase_output",
+          "write_mode": "upsert",
+          "key_columns": [
+            "run_id"
+          ],
+          "fields": []
+        }
+      ]
+    },
+    "strain_vulnerability_scan": {
+      "job_id": "strain_vulnerability_scan",
+      "requires": [
+        "gnn_inference"
+      ],
+      "produces": [
+        "strain_vulnerability"
+      ],
+      "preconditions": [
+        {
+          "check": "artifact:gnn_hyp",
+          "description": "Hyperbolic embeddings exist"
+        }
+      ],
+      "execution": {
+        "triggers": [
+          "scheduler",
+          "POST /compute/jobs/strain_vulnerability_scan"
+        ],
+        "runner": "science/compute/runners/strain_vulnerability_scan.py",
+        "job_module": "science/compute/jobs/strain_vulnerability_scan.py",
+        "resource_class": "cpu_heavy",
+        "discovery_act": "signal",
+        "tier": 1,
+        "status": "implemented",
+        "priority_group": 1,
+        "legacy_alias": "phase2_vulnerability_scan"
+      },
+      "output_fields": [
+        {
+          "name": "doorway_count",
+          "type": "integer",
+          "role": "job_output"
+        }
+      ],
+      "destinations": [
+        {
+          "table": "fact_phase2_vulnerability",
+          "normalizer_path": "normalize_phase2_vulnerability",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        }
+      ]
+    },
+    "source_leak_detection": {
+      "job_id": "source_leak_detection",
+      "requires": [
+        "gnn_inference"
+      ],
+      "produces": [
+        "source_leaks"
+      ],
+      "preconditions": [
+        {
+          "check": "artifact:gnn_hyp",
+          "description": "Hyperbolic embeddings exist"
+        }
+      ],
+      "execution": {
+        "triggers": [
+          "scheduler",
+          "POST /compute/jobs/source_leak_detection"
+        ],
+        "runner": "science/compute/runners/source_leak_detection.py",
+        "job_module": "science/compute/jobs/source_leak_detection.py",
+        "resource_class": "cpu_light",
+        "discovery_act": "persistent_leak",
+        "tier": 1,
+        "status": "implemented",
+        "priority_group": 2,
+        "legacy_alias": "dtie_core"
+      },
+      "output_fields": [
+        {
+          "name": "source_leak_count",
+          "type": "integer",
+          "role": "job_output"
+        },
+        {
+          "name": "source_leak_residues",
+          "type": "array",
+          "role": "job_output"
+        }
+      ],
+      "destinations": [
+        {
+          "table": "fact_source_leak",
+          "normalizer_path": "normalize_source_leaks",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        }
+      ]
+    },
+    "hyperbolic_motifs": {
+      "job_id": "hyperbolic_motifs",
+      "requires": [
+        "gnn_inference"
+      ],
+      "produces": [
+        "motifs"
+      ],
+      "preconditions": [
+        {
+          "check": "artifact:gnn_hyp",
+          "description": "Hyperbolic embeddings exist"
+        }
+      ],
+      "execution": {
+        "triggers": [
+          "scheduler",
+          "POST /compute/jobs/hyperbolic_motifs",
+          "POST /compute/motif-analysis"
+        ],
+        "runner": "science/compute/runners/hyperbolic_motifs.py",
+        "job_module": "science/compute/jobs/hyperbolic_motifs.py",
+        "resource_class": "cpu_heavy",
+        "discovery_act": "persistent_leak",
+        "tier": 2,
+        "status": "implemented",
+        "priority_group": 2,
+        "legacy_alias": null
+      },
+      "job_params": [
+        {
+          "name": "min_cluster_size",
+          "type": "integer",
+          "default": 5
+        },
+        {
+          "name": "min_samples",
+          "type": "integer",
+          "default": 3
+        }
+      ],
+      "output_fields": [
+        {
+          "name": "motif_count",
+          "type": "integer",
+          "role": "job_output"
+        },
+        {
+          "name": "motifs",
+          "type": "array",
+          "role": "job_output"
+        }
+      ],
+      "destinations": [
+        {
+          "table": "fact_hyperbolic_motif",
+          "normalizer_path": "normalize_hyperbolic_motifs",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        }
+      ]
+    },
+    "binding_site_scan": {
+      "job_id": "binding_site_scan",
+      "requires": [
+        "gnn_inference",
+        "graph_topology"
+      ],
+      "produces": [
+        "binding_scan"
+      ],
+      "preconditions": [
+        {
+          "check": "artifact:gnn_hyp",
+          "description": "Hyperbolic embeddings exist"
+        },
+        {
+          "check": "artifact:graph",
+          "description": "Graph node metrics exist"
+        }
+      ],
+      "execution": {
+        "triggers": [
+          "scheduler",
+          "POST /compute/jobs/binding_site_scan",
+          "POST /compute/cryptic-scan"
+        ],
+        "runner": "agent/tools/cryptic/scan_phase.run_full_structure_scan",
+        "job_module": "science/compute/jobs/binding_site_scan.py",
+        "resource_class": "cpu_heavy",
+        "discovery_act": "cryptic_pocket",
+        "tier": 1,
+        "status": "implemented",
+        "priority_group": 3,
+        "legacy_alias": "Scan_Phase"
+      },
+      "job_params": [
+        {
+          "name": "cluster_distance_angstrom",
+          "type": "float",
+          "default": 8.0
+        },
+        {
+          "name": "min_cluster_size",
+          "type": "integer",
+          "default": 3
+        },
+        {
+          "name": "max_pockets",
+          "type": "integer",
+          "default": 25
+        }
+      ],
+      "output_fields": [
+        {
+          "name": "sites_found",
+          "type": "integer",
+          "role": "job_output"
+        },
+        {
+          "name": "scan_run_id",
+          "type": "string",
+          "role": "provenance"
+        },
+        {
+          "name": "scan_status",
+          "type": "string",
+          "role": "job_output"
+        }
+      ],
+      "destinations": [
+        {
+          "table": "fact_cryptic_site",
+          "normalizer_path": "normalize_binding_site_scan",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        },
+        {
+          "table": "fact_binding_site_scan",
+          "normalizer_path": "normalize_binding_site_scan",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        }
+      ]
+    },
+    "pocket_pharmacophore_map": {
+      "job_id": "pocket_pharmacophore_map",
+      "requires": [
+        "binding_site_scan"
+      ],
+      "produces": [
+        "pocket_pharmacophore"
+      ],
+      "preconditions": [
+        {
+          "check": "artifact:binding_scan",
+          "description": "Binding scan complete"
+        }
+      ],
+      "execution": {
+        "triggers": [
+          "scheduler",
+          "POST /compute/jobs/pocket_pharmacophore_map"
+        ],
+        "runner": null,
+        "job_module": "science/compute/jobs/pocket_pharmacophore_map.py",
+        "resource_class": "cpu_light",
+        "discovery_act": "cryptic_pocket",
+        "tier": 2,
+        "status": "partial",
+        "priority_group": 3,
+        "legacy_alias": "phase5 subset"
+      },
+      "output_fields": [
+        {
+          "name": "pharmacophore_count",
+          "type": "integer",
+          "role": "job_output"
+        }
+      ],
+      "destinations": [
+        {
+          "table": "fact_pharmacophore",
+          "normalizer_path": "normalize_pharmacophores",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        }
+      ]
+    },
+    "md_validate_top_n": {
+      "job_id": "md_validate_top_n",
+      "requires": [
+        "binding_site_scan"
+      ],
+      "produces": [
+        "md_validation"
+      ],
+      "preconditions": [
+        {
+          "check": "artifact:binding_scan",
+          "description": "Cryptic sites persisted"
+        }
+      ],
+      "execution": {
+        "triggers": [
+          "scheduler",
+          "POST /compute/jobs/md_validate_top_n",
+          "POST /compute/md-validate"
+        ],
+        "runner": "science/dtie/cryptic/smd_runner",
+        "job_module": "science/compute/cryptic/md_validate.py",
+        "resource_class": "gpu",
+        "discovery_act": "cryptic_pocket",
+        "tier": 2,
+        "status": "partial",
+        "priority_group": 3,
+        "legacy_alias": null
+      },
+      "job_params": [
+        {
+          "name": "top_n",
+          "type": "integer",
+          "default": 5
+        },
+        {
+          "name": "site_id",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "dry_run",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "output_fields": [
+        {
+          "name": "validated",
+          "type": "integer",
+          "role": "job_output"
+        },
+        {
+          "name": "passed",
+          "type": "integer",
+          "role": "job_output"
+        },
+        {
+          "name": "results",
+          "type": "array",
+          "role": "job_output"
+        }
+      ],
+      "destinations": [
+        {
+          "table": "fact_cryptic_site",
+          "normalizer_path": "md_status_update",
+          "write_mode": "upsert",
+          "key_columns": [
+            "site_id"
+          ],
+          "fields": [],
+          "bypass": true
+        }
+      ]
+    },
+    "pharmacophore_identification": {
+      "job_id": "pharmacophore_identification",
+      "requires": [
+        "binding_site_scan"
+      ],
+      "produces": [
+        "pharmacophores"
+      ],
+      "preconditions": [
+        {
+          "check": "artifact:binding_scan",
+          "description": "Binding scan complete"
+        }
+      ],
+      "execution": {
+        "triggers": [
+          "scheduler",
+          "POST /compute/jobs/pharmacophore_identification"
+        ],
+        "runner": "science/dtie/v5/phases/phase5_pharmacophore",
+        "job_module": "science/compute/jobs/pharmacophore_identification.py",
+        "resource_class": "cpu_heavy",
+        "discovery_act": "fragment",
+        "tier": 2,
+        "status": "implemented",
+        "priority_group": 4,
+        "legacy_alias": "phase5_pharmacophore"
+      },
+      "output_fields": [
+        {
+          "name": "pharmacophore_count",
+          "type": "integer",
+          "role": "job_output"
+        }
+      ],
+      "destinations": [
+        {
+          "table": "fact_pharmacophore",
+          "normalizer_path": "normalize_pharmacophores",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        }
+      ]
+    },
+    "fragment_screen": {
+      "job_id": "fragment_screen",
+      "requires": [
+        "pharmacophore_identification"
+      ],
+      "produces": [
+        "fragment_hits"
+      ],
+      "preconditions": [
+        {
+          "check": "artifact:pharmacophores",
+          "description": "Pharmacophores identified"
+        }
+      ],
+      "execution": {
+        "triggers": [
+          "scheduler",
+          "POST /compute/jobs/fragment_screen"
+        ],
+        "runner": null,
+        "job_module": "science/compute/runners/fragment_screen.py",
+        "resource_class": "gpu",
+        "discovery_act": "fragment",
+        "tier": 2,
+        "status": "planned",
+        "priority_group": 4,
+        "legacy_alias": null
+      },
+      "output_fields": [
+        {
+          "name": "status",
+          "type": "string",
+          "role": "job_output"
+        }
+      ],
+      "destinations": [
+        {
+          "table": "provenance_run",
+          "normalizer_path": "_ensure_provenance_run",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        }
+      ]
+    },
+    "drug_candidate_ranking": {
+      "job_id": "drug_candidate_ranking",
+      "requires": [
+        "pharmacophore_identification"
+      ],
+      "produces": [
+        "drug_candidates"
+      ],
+      "preconditions": [
+        {
+          "check": "artifact:pharmacophores",
+          "description": "Pharmacophores identified"
+        }
+      ],
+      "execution": {
+        "triggers": [
+          "scheduler",
+          "POST /compute/jobs/drug_candidate_ranking"
+        ],
+        "runner": "science/dtie/v5/phases/phase6_drug_discovery",
+        "job_module": "science/compute/jobs/drug_candidate_ranking.py",
+        "resource_class": "cpu_heavy",
+        "discovery_act": "fragment",
+        "tier": 2,
+        "status": "partial",
+        "priority_group": 4,
+        "legacy_alias": "phase6a-6d"
+      },
+      "output_fields": [
+        {
+          "name": "candidate_count",
+          "type": "integer",
+          "role": "job_output"
+        }
+      ],
+      "destinations": [
+        {
+          "table": "fact_drug_candidate",
+          "normalizer_path": "normalize_drug_candidates",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        }
+      ]
+    },
+    "topological_lift": {
+      "job_id": "topological_lift",
+      "requires": [
+        "gnn_inference"
+      ],
+      "produces": [
+        "buffering_atlas"
+      ],
+      "preconditions": [
+        {
+          "check": "artifact:gnn_hyp",
+          "description": "Hyperbolic embeddings exist"
+        }
+      ],
+      "execution": {
+        "triggers": [
+          "scheduler",
+          "POST /compute/jobs/topological_lift"
+        ],
+        "runner": "science/dtie/v5/phases/phase35_topological_lift",
+        "job_module": "science/compute/jobs/topological_lift.py",
+        "resource_class": "cpu_heavy",
+        "discovery_act": "verdict",
+        "tier": 2,
+        "status": "implemented",
+        "priority_group": 5,
+        "legacy_alias": "phase35_topological_lift"
+      },
+      "output_fields": [
+        {
+          "name": "lifted_sites",
+          "type": "integer",
+          "role": "job_output"
+        }
+      ],
+      "destinations": [
+        {
+          "table": "fact_topological_lift",
+          "normalizer_path": "normalize_topological_lift",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        },
+        {
+          "table": "fact_phase_output",
+          "normalizer_path": "buffering_atlas",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": [],
+          "bypass": true
+        }
+      ]
+    },
+    "resistance_pathway_map": {
+      "job_id": "resistance_pathway_map",
+      "requires": [
+        "gnn_inference",
+        "graph_topology"
+      ],
+      "produces": [
+        "resistance_pathway"
+      ],
+      "preconditions": [
+        {
+          "check": "artifact:gnn_hyp",
+          "description": "Hyperbolic embeddings exist"
+        },
+        {
+          "check": "artifact:graph",
+          "description": "Graph metrics exist"
+        }
+      ],
+      "execution": {
+        "triggers": [
+          "scheduler",
+          "POST /compute/jobs/resistance_pathway_map"
+        ],
+        "runner": "science/dtie/v5/phases/phase4_resistance",
+        "job_module": "science/compute/jobs/resistance_pathway_map.py",
+        "resource_class": "cpu_heavy",
+        "discovery_act": "verdict",
+        "tier": 2,
+        "status": "implemented",
+        "priority_group": 5,
+        "legacy_alias": "phase4_resistance_mapping"
+      },
+      "output_fields": [
+        {
+          "name": "pathway_count",
+          "type": "integer",
+          "role": "job_output"
+        }
+      ],
+      "destinations": [
+        {
+          "table": "fact_resistance_pathway",
+          "normalizer_path": "normalize_resistance_pathways",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        },
+        {
+          "table": "fact_resistance_spectral",
+          "normalizer_path": "normalize_resistance_pathways",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        }
+      ]
+    },
+    "allosteric_site_detection": {
+      "job_id": "allosteric_site_detection",
+      "requires": [
+        "source_leak_detection",
+        "resistance_pathway_map"
+      ],
+      "produces": [
+        "allosteric_sites"
+      ],
+      "preconditions": [
+        {
+          "check": "artifact:source_leaks",
+          "description": "Source leaks detected"
+        },
+        {
+          "check": "artifact:resistance_pathway",
+          "description": "Resistance pathways mapped"
+        }
+      ],
+      "execution": {
+        "triggers": [
+          "scheduler",
+          "POST /compute/jobs/allosteric_site_detection"
+        ],
+        "runner": null,
+        "job_module": "science/compute/jobs/allosteric_site_detection.py",
+        "resource_class": "cpu_light",
+        "discovery_act": "verdict",
+        "tier": 2,
+        "status": "implemented",
+        "priority_group": 5,
+        "legacy_alias": null
+      },
+      "output_fields": [
+        {
+          "name": "site_count",
+          "type": "integer",
+          "role": "job_output"
+        }
+      ],
+      "destinations": [
+        {
+          "table": "fact_allosteric_site",
+          "normalizer_path": "normalize_allosteric_sites",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        },
+        {
+          "table": "fact_allosteric_site_residue",
+          "normalizer_path": "normalize_allosteric_sites",
+          "write_mode": "upsert",
+          "key_columns": [],
+          "fields": []
+        }
+      ]
+    },
+    "allele_selectivity_assessment": {
+      "job_id": "allele_selectivity_assessment",
+      "requires": [
+        "drug_candidate_ranking",
+        "resistance_pathway_map"
+      ],
+      "produces": [
+        "allele_selectivity"
+      ],
+      "preconditions": [
+        {
+          "check": "artifact:drug_candidates",
+          "description": "Drug candidates ranked"
+        },
+        {
+          "check": "artifact:resistance_pathway",
+          "description": "Resistance pathways mapped"
+        }
+      ],
+      "execution": {
+        "triggers": [
+          "scheduler",
+          "POST /compute/jobs/allele_selectivity_assessment"
+        ],
+        "runner": null,
+        "job_module": null,
+        "resource_class": "cpu_light",
+        "discovery_act": "verdict",
+        "tier": 2,
+        "status": "partial",
+        "priority_group": 5,
+        "legacy_alias": "phase6d / ASAR"
+      },
+      "output_fields": [
+        {
+          "name": "selectivity_ratio",
+          "type": "float",
+          "role": "job_output"
+        }
+      ],
+      "destinations": [
+        {
+          "table": "fact_drug_candidate",
+          "normalizer_path": "phase6d_selectivity",
+          "write_mode": "upsert",
+          "key_columns": [
+            "candidate_id"
+          ],
+          "fields": [],
+          "bypass": true
+        }
+      ]
+    }
+  }
+}

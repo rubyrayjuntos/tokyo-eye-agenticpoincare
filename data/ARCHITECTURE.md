@@ -140,6 +140,16 @@ We will maintain a strong **provenance spine**:
 - Runs are linked to `model_version`, `checkpoint`, `code_version`, and input assets
 - This forms a directed acyclic graph (DAG) that can be traversed for audit, reproduction, and explanation
 
+### 3.2.1 Operational audit trails (compute runtime)
+
+In addition to provenance on governed assets, the platform maintains **pipeline runtime audit** (`audit_pipeline_events`, migrations 049–050):
+
+- Records geometric contract enforcement, learned-curvature passthrough, precondition failures, and pathway lifecycle events
+- Queryable via `GET /api/structures/{id}/audit` and CLI (`make audit-structure`)
+- Retention: detailed events roll into `audit_pipeline_daily_summary` after 90 days (configurable)
+
+This is distinct from `normalization_audit` (governed writes). See `docs/audit/PIPELINE_AUDIT.md`.
+
 ### 3.3 Embedding & Graph Support
 
 The architecture explicitly models multiple representation types:

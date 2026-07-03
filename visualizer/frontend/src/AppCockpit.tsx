@@ -13,6 +13,7 @@ import {
 import { useActor } from "@xstate/react";
 
 import { CockpitNavBar, IdeShellLayout, ToolDock } from "./components/layout";
+import { StructurePickerModal } from "./components/structure/StructurePickerModal";
 import type { IdeShellLayoutModel, IdeShellPane } from "./components/layout";
 import { ChatRail } from "./components/chat";
 import { PoincarePanel, MolecularPanel } from "./components/viewers";
@@ -35,7 +36,8 @@ import {
 import { DashboardContext } from "./lib/context";
 import { HydrationProvider, useHydration } from "./context/HydrationProvider";
 import { api } from "./lib/api";
-import { buildViewportState } from "./lib/buildViewportState";
+import { selectAgentViewportContext } from "./lib/selectAgentViewportContext";
+import { selectedResidueFromId } from "./lib/residueId";
 import { useDirectives } from "./lib/useDirectives";
 import { useOrchestratorPolicy } from "./lib/useOrchestratorPolicy";
 import { useSelectionSync } from "./lib/useSelectionSync";
@@ -57,6 +59,17 @@ import type {
 } from "./lib/types";
 import type { DiscoveryPhase } from "./lib/discoveryPhaseMachine";
 import type { HypothesisLifecycleState } from "./lib/hypothesisLifecycleMachine";
+import {
+  WorkbenchProvider,
+  useWorkbench,
+  WorkbenchCockpitLayout,
+  applyBackendSnapshot,
+  snapshotFingerprint,
+  useWorkbenchPolicy,
+  useStructureScopeSync,
+  discoveryPhaseToGroup,
+} from "./workbench";
+import type { WorkbenchBus } from "./workbench/WorkbenchBus";
 
 const TOOL_ICONS: Record<string, ReactNode> = {
   briefing: <BookOpenText className="h-4 w-4" />,
@@ -74,7 +87,7 @@ const TOOL_ICONS: Record<string, ReactNode> = {
 const BOOTSTRAP_STRUCTURE: Structure = {
   structure_id: "4uj1",
   pdb_id: "4uj1",
-  title: "KRAS G12C GDP-bound structure",
+  title: "Structure 4UJ1",
   resolution: 1.768,
   method: "X-RAY DIFFRACTION",
   source: "rcsb",
@@ -91,80 +104,113 @@ function formatPanelLabel(panel: ActivePanelName) {
 
 interface CockpitShellProps {
   activeStructure: Structure | null;
-  activePanel: ActivePanelName;
-  highlightedResidues: string[];
-  setHighlightedResidues: (residues: string[]) => void;
-  agentSessionId: string | null;
-  setAgentSessionId: (sessionId: string | null) => void;
-  poincareColorMode: PanelPoincareColorMode;
-  setPoincareColorMode: (mode: PanelPoincareColorMode) => void;
-  mobiusFocusEnabled: boolean;
-  setMobiusFocusEnabled: (enabled: boolean) => void;
-  selectedResidue: SelectedResidueInfo | null;
-  setSelectedResidue: (residue: SelectedResidueInfo | null) => void;
-  brushSelection: string[];
-  setBrushSelection: (residues: string[]) => void;
-  molecularColorMode: MolecularColorMode;
-  setMolecularColorMode: (mode: MolecularColorMode) => void;
+  compareState: CompareState;
+  agentSessionId: string;
+  setAgentSessionId: (sessionId: string) => void;
+  onDiscoveryPhaseFromBackend?: (phase: DiscoveryPhase) => void;
   emitDirective: (directive: ViewportDirective) => void;
-  triggerRefresh: () => void;
   orchestrator: ReturnType<typeof useOrchestratorPolicy>;
-  viewportState: { context: any };
+  viewportState: { context: import("./lib/viewportMachine").ViewportContext };
   sendViewport: (event: any) => void;
   latestToast: string | null;
   connectionStatus: "connected" | "disconnected" | "reconnecting";
-  sidebarOpen: boolean;
-  activeEditorTab: EditorTabId;
-  bottomPanelOpen: boolean;
-  activeBottomPanel: BottomPanelId;
+  workbenchBus?: WorkbenchBus;
+  useWorkbenchLayout?: boolean;
+  onOpenStructurePicker: () => void;
 }
 
 function CockpitShell({
   activeStructure,
-  activePanel,
-  highlightedResidues,
-  setHighlightedResidues,
+  compareState,
+  agentSessionId,
   setAgentSessionId,
-  poincareColorMode,
-  setPoincareColorMode,
-  mobiusFocusEnabled,
-  setMobiusFocusEnabled,
-  selectedResidue,
-  setSelectedResidue,
-  brushSelection,
-  setBrushSelection,
-  molecularColorMode,
-  setMolecularColorMode,
+  onDiscoveryPhaseFromBackend,
   emitDirective,
   orchestrator,
   viewportState,
   sendViewport,
   latestToast,
   connectionStatus,
-  sidebarOpen,
-  activeEditorTab,
-  bottomPanelOpen,
-  activeBottomPanel,
+  workbenchBus,
+  useWorkbenchLayout = false,
+  onOpenStructurePicker,
 }: CockpitShellProps) {
+  const vp = viewportState.context;
+  const activePanel = vp.activePanel;
+  const sidebarOpen = vp.sidebarOpen;
+  const activeEditorTab = vp.activeEditorTab;
+  const bottomPanelOpen = vp.bottomPanelOpen;
+  const activeBottomPanel = vp.activeBottomPanel;
+  const highlightedResidues = vp.highlightedResidues;
+  const selectedResidue = vp.selectedResidue;
+  const brushSelection = vp.brushSelectedIds;
+  const mobiusFocusEnabled = vp.mobiusFocusEnabled;
+  const poincareColorMode = vp.poincareColorMode as PanelPoincareColorMode;
+  const molecularColorMode = vp.viewerColorMode as MolecularColorMode;
+
   const {
     hydration,
     embeddings,
     sourceLeaks,
+    resistanceData,
     hypotheses,
     provenanceRuns,
     annotations,
+    pharmacophorePockets,
+    drugCandidates,
+    persistenceStatus,
   } = useHydration();
   const panelBroker = usePanelBroker();
 
+  const setPoincareColorMode = useCallback(
+    (mode: PanelPoincareColorMode) => {
+      sendViewport({ type: "SET_POINCARE_COLOR_MODE", mode });
+    },
+    [sendViewport],
+  );
+
+  const setMolecularColorMode = useCallback(
+    (mode: MolecularColorMode) => {
+      sendViewport({ type: "SET_VIEWER_COLOR_MODE", mode });
+    },
+    [sendViewport],
+  );
+
+  const setBrushSelection = useCallback(
+    (residues: string[]) => {
+      sendViewport({ type: "SET_BRUSH_SELECTION", residues });
+    },
+    [sendViewport],
+  );
+
+  const setMobiusFocusEnabled = useCallback(
+    (enabled: boolean) => {
+      sendViewport({ type: "SET_MOBIUS_FOCUS", enabled });
+    },
+    [sendViewport],
+  );
+
+  useStructureScopeSync({
+    activeStructure,
+    hydration,
+    orchestrator,
+    workbenchBus,
+    enabled: Boolean(workbenchBus),
+  });
+
   const handlePanelSelect = useCallback(
     (panel: string | null) => {
+      if (panel === "rcsb_search") {
+        onOpenStructurePicker();
+        return;
+      }
       const nextPanel = panel as ActivePanelName;
       panelBroker.emitPort(TOOL_PANEL_REGISTRY.rcsb_search.manifest, "open-panel", {
         panelId: nextPanel,
         open: nextPanel !== null,
       });
     },
-    [panelBroker],
+    [onOpenStructurePicker, panelBroker],
   );
 
   const handleEditorTabSelect = useCallback(
@@ -223,51 +269,64 @@ function CockpitShell({
   );
 
   const viewportStateBuilder = useCallback((): ViewportState => {
-    return buildViewportState({
-      structureId: activeStructure?.structure_id ?? null,
-      structureTitle: activeStructure?.title ?? null,
-      poincareColorMode: viewportState.context.poincareColorMode,
-      mobiusFocusEnabled,
-      mobiusFocusResidue: selectedResidue?.residue_id ?? null,
-      selectedResidue,
-      brushSelectedIds: brushSelection,
-      viewerColorMode: viewportState.context.viewerColorMode,
-      riskThreshold: viewportState.context.riskThreshold,
-      highlightedResidueIds: viewportState.context.highlightedResidues,
-      residueCount: embeddings?.residues?.length ?? 0,
-      sourceLeakCount: sourceLeaks?.leaks?.length ?? 0,
-      hypothesisCount: hypotheses?.length ?? 0,
-      provenanceRunCount: provenanceRuns?.length ?? 0,
-      annotationCount: annotations?.length ?? 0,
-      activePanel,
-      pipelineStatus: activeStructure
-        ? hydration?.persistence_status?.embeddings_persisted
-          ? "complete"
-          : "running"
-        : "never_run",
-      pipelineCurrentStep: null,
-      pipelineProgress: null,
+    return selectAgentViewportContext({
+      activeStructure,
+      viewport: vp,
+      hydrationSlice: {
+        hydration,
+        embeddings,
+        sourceLeaks,
+        resistanceData,
+        hypotheses,
+        provenanceRuns,
+        annotations,
+        pharmacophorePockets,
+        drugCandidates,
+        persistenceStatus,
+      },
+      structureScope: orchestrator.structureScope,
+      compareState,
     });
   }, [
     activeStructure,
-    activePanel,
     annotations,
-    brushSelection,
+    compareState,
+    drugCandidates,
     embeddings,
     hydration,
     hypotheses,
-    mobiusFocusEnabled,
+    orchestrator.structureScope,
+    persistenceStatus,
+    pharmacophorePockets,
     provenanceRuns,
-    selectedResidue,
+    resistanceData,
     sourceLeaks,
-    viewportState.context,
+    vp,
   ]);
 
   const handleResidueClick = useCallback(
     (residueId: string) => {
-      setHighlightedResidues([residueId]);
+      const structureId = activeStructure?.structure_id ?? null;
+      const residues = embeddings?.residues ?? [];
+      const selection = selectedResidueFromId(residueId, structureId, residues);
+      const canonicalId = selection.residue_id;
+
+      sendViewport({
+        type: "SET_SELECTION",
+        highlightedResidues: [canonicalId],
+        brushSelectedIds: [canonicalId],
+        selectedResidue: selection,
+      });
     },
-    [setHighlightedResidues],
+    [activeStructure?.structure_id, embeddings?.residues, sendViewport],
+  );
+
+  const handleViewportColorModeChange = useCallback(
+    (mode: PanelPoincareColorMode) => {
+      sendViewport({ type: "SET_POINCARE_COLOR_MODE", mode });
+      sendViewport({ type: "SET_VIEWER_COLOR_MODE", mode });
+    },
+    [sendViewport],
   );
 
   const sidebarDefinition = sidebarOpen ? getToolPanelDefinition(activePanel) : null;
@@ -294,6 +353,7 @@ function CockpitShell({
               discoveryPhase={orchestrator.discoveryContext.phase}
               hypothesisLifecycle={orchestrator.hypothesisContext.stateLabel}
               viewportStateBuilder={viewportStateBuilder}
+              sessionId={agentSessionId}
               onDirective={emitDirective}
               onSessionId={setAgentSessionId}
             />
@@ -335,6 +395,48 @@ function CockpitShell({
           };
 
   const bottomPanelDefinition = getBottomPanelDefinition(activeBottomPanel);
+
+  if (useWorkbenchLayout) {
+    return (
+      <>
+        <WorkbenchCockpitLayout
+          activeStructureId={activeStructure?.structure_id ?? null}
+          pdbId={activeStructure?.pdb_id ?? null}
+          discoveryPhase={orchestrator.discoveryContext.phase}
+          hypothesisLifecycle={orchestrator.hypothesisContext.stateLabel}
+          highlightedResidues={highlightedResidues}
+          poincareColorMode={poincareColorMode}
+          molecularColorMode={molecularColorMode}
+          selectedResidue={selectedResidue}
+          mobiusFocusEnabled={mobiusFocusEnabled}
+          viewportStateBuilder={viewportStateBuilder}
+          onResidueClick={handleResidueClick}
+          onColorModeChange={handleViewportColorModeChange}
+          onBrushSelect={setBrushSelection}
+          onMobiusFocusToggle={setMobiusFocusEnabled}
+          onMolecularColorModeChange={setMolecularColorMode}
+          onDirective={emitDirective}
+          onSessionId={setAgentSessionId}
+          onDiscoveryPhase={onDiscoveryPhaseFromBackend ?? ((phase) =>
+            orchestrator.sendDiscovery({ type: "USER_SET_PHASE", phase })
+          )}
+          sessionId={agentSessionId}
+          connectionStatus={connectionStatus}
+          onPanelSelect={handlePanelSelect}
+          activePanel={activePanel}
+          allowedTools={orchestrator.plannerPolicy.allowedTools}
+          blockedTools={orchestrator.plannerPolicy.blockedTools}
+          toolIcons={TOOL_ICONS}
+          onOpenStructurePicker={onOpenStructurePicker}
+        />
+        {latestToast ? (
+          <div className="fixed bottom-4 right-4 z-50 rounded-lg border border-teal-dim/40 bg-bg-elevated px-4 py-2 text-sm text-teal shadow-lg">
+            {latestToast}
+          </div>
+        ) : null}
+      </>
+    );
+  }
 
   return (
     <>
@@ -448,7 +550,12 @@ function CockpitShell({
             <div className="flex items-center gap-3">
               <span>{connectionStatus}</span>
               <span>{activeStructure?.structure_id ?? "no structure loaded"}</span>
-              <span>{hydration?.structure_snapshot?.provenance.latest_run_ids_by_pipeline?.embeddings ? "snapshot live" : "legacy/snapshot mixed"}</span>
+              <span>
+                {(hydration?.structure_snapshot as import("./lib/types").StructureAnalysisSnapshot | null)
+                  ?.provenance.latest_run_ids_by_pipeline?.embeddings
+                  ? "snapshot live"
+                  : "legacy/snapshot mixed"}
+              </span>
             </div>
             <div className="flex items-center gap-3">
               <button onClick={toggleSidebar} className="hover:text-text-primary">
@@ -477,20 +584,42 @@ function CockpitShell({
 }
 
 export default function AppCockpit() {
+  const useLegacyShell = import.meta.env.VITE_USE_LEGACY_SHELL === "true";
+  if (useLegacyShell) {
+    return <AppCockpitCore />;
+  }
+  return (
+    <WorkbenchProvider>
+      <AppCockpitWithWorkbench />
+    </WorkbenchProvider>
+  );
+}
+
+function AppCockpitWithWorkbench() {
+  const { bus } = useWorkbench();
+  return <AppCockpitCore workbenchBus={bus} useWorkbenchLayout />;
+}
+
+function AppCockpitCore({
+  workbenchBus,
+  useWorkbenchLayout = false,
+}: {
+  workbenchBus?: WorkbenchBus;
+  useWorkbenchLayout?: boolean;
+} = {}) {
   const [activeStructure, setActiveStructure] = useState<Structure | null>(
     BOOTSTRAP_STRUCTURE,
   );
   const [chatOpen, setChatOpen] = useState(false);
-  const [highlightedResidues, setHighlightedResidues] = useState<string[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [currentDirective, setCurrentDirective] = useState<ViewportDirective | null>(null);
-  const [agentSessionId, setAgentSessionId] = useState<string | null>(null);
-  const [poincareColorMode, setPoincareColorMode] = useState<PanelPoincareColorMode>("cone_depth");
-  const [poincareSelectedResidue, setPoincareSelectedResidue] = useState<SelectedResidueInfo | null>(null);
-  const [mobiusFocus, setMobiusFocus] = useState(false);
-  const [brushSelection, setBrushSelection] = useState<string[]>([]);
-  const [viewerColorMode, setViewerColorMode] = useState<StructureColorModeType>("spectrum");
-  const [riskThreshold, setRiskThreshold] = useState(0);
+  const [agentSessionId, setAgentSessionId] = useState<string>(() => crypto.randomUUID());
+  const lastSnapshotFingerprintRef = useRef<string>("");
+
+  const handleAgentSessionId = useCallback((sessionId: string) => {
+    setAgentSessionId((current) => (current === sessionId ? current : sessionId));
+  }, []);
+
   const [compareState, setCompareState] = useState<CompareState>({
     active: false,
     secondaryStructure: null,
@@ -499,8 +628,7 @@ export default function AppCockpit() {
     loading: false,
     error: null,
   });
-  const [selectedPocketId, setSelectedPocketId] = useState<number | null>(null);
-  const [isRadarActive, setIsRadarActive] = useState(false);
+
   const [therapeuticCompilerState, setTherapeuticCompilerState] = useState<any | null>(null);
   const [collapseSimulationState, setCollapseSimulationState] = useState({
     fraction: 0.0,
@@ -514,12 +642,39 @@ export default function AppCockpit() {
   const activeEditorTab = viewportState.context.activeEditorTab;
   const bottomPanelOpen = viewportState.context.bottomPanelOpen;
   const activeBottomPanel = viewportState.context.activeBottomPanel;
-  const orchestrator = useOrchestratorPolicy(viewportState.context);
+  const orchestrator = useOrchestratorPolicy(viewportState.context, {
+    authority: workbenchBus ? "backend" : "local",
+  });
+  const activeOrchestrator = useWorkbenchPolicy(orchestrator, workbenchBus);
   const directiveState = useDirectives();
+
+  const handleDiscoveryPhaseFromBackend = useCallback(
+    (phase: DiscoveryPhase) => {
+      if (phase === orchestrator.discoveryContext.phase) return;
+      orchestrator.sendDiscovery({
+        type: "USER_SET_PHASE",
+        phase,
+        rationale: "backend_sync",
+      });
+    },
+    [orchestrator],
+  );
 
   const triggerRefresh = useCallback(() => {
     setRefreshKey((current) => current + 1);
   }, []);
+
+  const [structurePickerOpen, setStructurePickerOpen] = useState(false);
+
+  const handleStructureLoaded = useCallback(
+    (structure: Structure) => {
+      setActiveStructure(structure);
+      sendViewport({ type: "CLEAR" });
+      triggerRefresh();
+      setStructurePickerOpen(false);
+    },
+    [sendViewport, triggerRefresh],
+  );
 
   const emitDirective = useCallback(
     (directive: ViewportDirective) => {
@@ -527,14 +682,8 @@ export default function AppCockpit() {
       directiveState.applyDirective(directive);
       setCurrentDirective(directive);
 
-      if (directive.action === "highlight" || directive.action === "focus") {
-        const residues = directive.highlight_groups?.flatMap((group) => group.residue_ids) ?? [];
-        if (residues.length > 0) {
-          setHighlightedResidues(residues);
-        }
-      } else if (directive.action === "clear") {
-        setHighlightedResidues([]);
-        setIsRadarActive(false);
+      if (directive.action === "clear") {
+        sendViewport({ type: "TOGGLE_RADAR", active: false });
       }
     },
     [directiveState, sendViewport],
@@ -546,63 +695,62 @@ export default function AppCockpit() {
     },
     onSelectionApplied: (residueIds) => {
       sendViewport({ type: "USER_SELECT", residues: residueIds });
-      setHighlightedResidues(residueIds);
     },
     onSelectionCleared: () => {
       sendViewport({ type: "CLEAR" });
-      setHighlightedResidues([]);
     },
   });
 
   const handleStateSnapshot = useCallback(
     (snapshot: StateSnapshotPayload) => {
-      const phase = snapshot.discovery_phase as DiscoveryPhase;
-      if (phase && phase !== orchestrator.discoveryContext.phase) {
-        orchestrator.sendDiscovery({
-          type: "USER_SET_PHASE",
-          phase,
-          rationale: "backend_push",
-        });
+      const fingerprint = snapshotFingerprint(snapshot);
+      if (fingerprint === lastSnapshotFingerprintRef.current) {
+        return;
+      }
+      lastSnapshotFingerprintRef.current = fingerprint;
+
+      if (workbenchBus) {
+        applyBackendSnapshot(workbenchBus, snapshot, handleDiscoveryPhaseFromBackend);
+      } else {
+        const phase = snapshot.discovery_phase as DiscoveryPhase;
+        if (phase && phase !== orchestrator.discoveryContext.phase) {
+          orchestrator.sendDiscovery({
+            type: "USER_SET_PHASE",
+            phase,
+            rationale: "backend_push",
+          });
+        }
       }
 
       const lifecycle = snapshot.hypothesis_lifecycle as HypothesisLifecycleState;
-      if (lifecycle && lifecycle !== orchestrator.hypothesisContext.stateLabel) {
-        if (lifecycle === "framed") {
-          orchestrator.sendHypothesis({
-            type: "START_HYPOTHESIS",
-            hypothesisText: "",
-            source: "agent",
-          });
-        } else if (lifecycle === "supported") {
-          orchestrator.sendHypothesis({ type: "MARK_SUPPORTED" });
-        } else if (lifecycle === "synthesized") {
-          orchestrator.sendHypothesis({ type: "MARK_SYNTHESIZED" });
-        }
-      }
+      orchestrator.applyHypothesisFromBackend(lifecycle);
 
       if (snapshot.selected_residue) {
         const residueIds = [
           `${snapshot.selected_residue.chain_id}:${snapshot.selected_residue.residue_number}`,
         ];
         sendViewport({ type: "USER_SELECT", residues: residueIds });
-        setHighlightedResidues(residueIds);
       }
     },
-    [orchestrator, sendViewport],
+    [handleDiscoveryPhaseFromBackend, orchestrator, sendViewport, workbenchBus],
   );
 
   const handlePhaseTransition = useCallback(
     (payload: PhaseTransitionPayload) => {
       const phase = payload.phase as DiscoveryPhase;
-      if (phase) {
-        orchestrator.sendDiscovery({
-          type: "USER_SET_PHASE",
-          phase,
-          rationale: `backend:${payload.source}`,
+      if (!phase) return;
+
+      if (workbenchBus) {
+        workbenchBus.publish("system:phase_transition", {
+          group: discoveryPhaseToGroup(phase),
+          discoveryPhase: phase,
+          timestamp: new Date().toISOString(),
         });
       }
+
+      handleDiscoveryPhaseFromBackend(phase);
     },
-    [orchestrator],
+    [handleDiscoveryPhaseFromBackend, workbenchBus],
   );
 
   const { connected, reconnecting, sendEvent } = useViewportSocket({
@@ -672,8 +820,10 @@ export default function AppCockpit() {
         setActiveStructure,
         chatOpen,
         setChatOpen,
-        highlightedResidues,
-        setHighlightedResidues,
+        highlightedResidues: viewportState.context.highlightedResidues,
+        setHighlightedResidues: (residues: string[]) => {
+          sendViewport({ type: "USER_SELECT", residues });
+        },
         refreshKey,
         triggerRefresh,
         emitDirective,
@@ -681,10 +831,14 @@ export default function AppCockpit() {
         compareState,
         enterCompareMode,
         exitCompareMode,
-        selectedPocketId,
-        setSelectedPocketId,
-        isRadarActive,
-        setIsRadarActive,
+        selectedPocketId: viewportState.context.selectedPocketId,
+        setSelectedPocketId: (id: number | null) => {
+          sendViewport({ type: "SET_SELECTED_POCKET", pocketId: id });
+        },
+        isRadarActive: viewportState.context.isRadarActive,
+        setIsRadarActive: (active: boolean) => {
+          sendViewport({ type: "TOGGLE_RADAR", active });
+        },
         therapeuticCompilerState,
         setTherapeuticCompilerState,
         collapseSimulationState,
@@ -692,19 +846,19 @@ export default function AppCockpit() {
         latestAgentTelemetry,
         setLatestAgentTelemetry,
         agentSessionId,
-        setAgentSessionId,
-        discoveryContext: orchestrator.discoveryContext,
-        sendDiscovery: orchestrator.sendDiscovery,
-        hypothesisContext: orchestrator.hypothesisContext,
-        sendHypothesis: orchestrator.sendHypothesis,
-        plannerPolicy: orchestrator.plannerPolicy,
-        sessionMode: orchestrator.sessionMode,
-        setSessionMode: orchestrator.setSessionMode,
-        structureScope: orchestrator.structureScope,
-        setStructureScope: orchestrator.setStructureScope,
-        poincareColorMode: poincareColorMode as PoincareColorMode,
-        viewerColorMode,
-        riskThreshold,
+        setAgentSessionId: handleAgentSessionId,
+        discoveryContext: activeOrchestrator.discoveryContext,
+        sendDiscovery: activeOrchestrator.sendDiscovery,
+        hypothesisContext: activeOrchestrator.hypothesisContext,
+        sendHypothesis: activeOrchestrator.sendHypothesis,
+        plannerPolicy: activeOrchestrator.plannerPolicy,
+        sessionMode: activeOrchestrator.sessionMode,
+        setSessionMode: activeOrchestrator.setSessionMode,
+        structureScope: activeOrchestrator.structureScope,
+        setStructureScope: activeOrchestrator.setStructureScope,
+        poincareColorMode: viewportState.context.poincareColorMode,
+        viewerColorMode: viewportState.context.viewerColorMode,
+        riskThreshold: viewportState.context.riskThreshold,
         activePanel,
         sidebarOpen,
         activeEditorTab,
@@ -728,35 +882,32 @@ export default function AppCockpit() {
               },
             });
           }}
+          workbenchBus={workbenchBus}
+          activePhaseGroup={discoveryPhaseToGroup(
+            activeOrchestrator.discoveryContext.phase,
+          )}
         >
           <CockpitShell
             activeStructure={activeStructure}
-            activePanel={activePanel}
-            highlightedResidues={highlightedResidues}
-            setHighlightedResidues={setHighlightedResidues}
+            compareState={compareState}
             agentSessionId={agentSessionId}
-            setAgentSessionId={setAgentSessionId}
-            poincareColorMode={poincareColorMode}
-            setPoincareColorMode={setPoincareColorMode}
-            mobiusFocusEnabled={mobiusFocus}
-            setMobiusFocusEnabled={setMobiusFocus}
-            selectedResidue={poincareSelectedResidue}
-            setSelectedResidue={setPoincareSelectedResidue}
-            brushSelection={brushSelection}
-            setBrushSelection={setBrushSelection}
-            molecularColorMode={viewerColorMode as MolecularColorMode}
-            setMolecularColorMode={(mode) => setViewerColorMode(mode as StructureColorModeType)}
+            setAgentSessionId={handleAgentSessionId}
+            onDiscoveryPhaseFromBackend={handleDiscoveryPhaseFromBackend}
+            useWorkbenchLayout={useWorkbenchLayout}
             emitDirective={emitDirective}
-            triggerRefresh={triggerRefresh}
-            orchestrator={orchestrator}
+            orchestrator={activeOrchestrator}
             viewportState={viewportState}
             sendViewport={sendViewport}
             latestToast={latestToast}
             connectionStatus={connectionStatus}
-            sidebarOpen={sidebarOpen}
-            activeEditorTab={activeEditorTab}
-            bottomPanelOpen={bottomPanelOpen}
-            activeBottomPanel={activeBottomPanel}
+            workbenchBus={workbenchBus}
+            onOpenStructurePicker={() => setStructurePickerOpen(true)}
+          />
+          <StructurePickerModal
+            open={structurePickerOpen}
+            onClose={() => setStructurePickerOpen(false)}
+            onStructureLoaded={handleStructureLoaded}
+            initialTab="rcsb"
           />
         </PanelBrokerProvider>
       </HydrationProvider>

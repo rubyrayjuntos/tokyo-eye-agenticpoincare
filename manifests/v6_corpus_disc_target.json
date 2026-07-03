@@ -1,0 +1,9 @@
+{
+  "version": "1.0",
+  "description": "Disc occupancy v4 target structures — promotion gate proteins (11QE KRAS G12D, 4OBE KRAS WT, 1IVO EGFR)",
+  "proteins": [
+    {"pdb_id": "11QE", "chain": "A", "gene": "KRAS", "fold_class": "target", "stage0": true, "enabled": true},
+    {"pdb_id": "4OBE", "chain": "A", "gene": "KRAS", "fold_class": "target", "stage0": true, "enabled": true},
+    {"pdb_id": "1IVO", "chain": "A", "gene": "EGFR", "fold_class": "target", "enabled": true}
+  ]
+}

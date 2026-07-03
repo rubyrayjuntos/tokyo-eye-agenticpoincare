@@ -8,6 +8,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from science.training.corpus_governance import STAGE_A_MAX_RESIDUES
+
 
 class LossCoeffs(BaseModel):
     """Per-phase loss coefficients for gosp_loss_v6."""
@@ -141,7 +143,7 @@ class TrainingConfig(BaseModel):
     mlflow_experiment: str = "tokyo-eyes-v6"
     mlflow_tracking_uri: str = "file:/app/mlruns"
     max_proteins: int | None = None
-    max_residues: int = 600
+    max_residues: int = STAGE_A_MAX_RESIDUES
     topology_only_gate: bool = False
     hyperbolic_gate: bool = True
     hyperbolic_expert_mix: bool = False

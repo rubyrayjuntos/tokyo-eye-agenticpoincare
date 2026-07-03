@@ -1,4 +1,4 @@
-"""Tests for agent DTIE tools and viewport models."""
+"""Tests for agent discovery tools and viewport models."""
 
 from __future__ import annotations
 
@@ -19,7 +19,6 @@ from agent.tools.dtie.tools import (
     get_high_uncertainty_residues,
     get_residue_state,
     get_source_leaks,
-    run_gnn_inference,
     run_phase,
 )
 
@@ -134,13 +133,6 @@ class TestDTIETools:
             }
         ])
         return validating_mock_db
-
-    @pytest.mark.asyncio
-    async def test_run_gnn_inference_no_db(self):
-        """Without DB, tool returns failure gracefully."""
-        result = await run_gnn_inference(structure_id="4obe", model_version="v4")
-        assert result.success is False
-        assert "No database" in result.message
 
     @pytest.mark.asyncio
     async def test_run_phase(self, mock_db):

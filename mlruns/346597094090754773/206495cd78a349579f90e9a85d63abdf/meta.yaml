@@ -1,0 +1,15 @@
+artifact_uri: file:///app/mlruns/346597094090754773/206495cd78a349579f90e9a85d63abdf/artifacts
+end_time: 1782762567714
+entry_point_name: ''
+experiment_id: '346597094090754773'
+lifecycle_stage: active
+run_id: 206495cd78a349579f90e9a85d63abdf
+run_name: shell_p2_disc_occupancy_v3
+run_uuid: 206495cd78a349579f90e9a85d63abdf
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1782762520656
+status: 3
+tags: []
+user_id: unknown

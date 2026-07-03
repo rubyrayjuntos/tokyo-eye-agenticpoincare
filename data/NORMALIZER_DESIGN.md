@@ -50,7 +50,18 @@ class Normalizer:
 
 - All validation failures must be logged with full context and linked to the `run_id`.
 - Failed normalizations should not leave partial data in the governed layer.
-- A `normalization_audit` table (or use of `provenance_event`) will record every attempt.
+- A `normalization_audit` table records every Normalizer attempt (success, validation error, write error).
+
+### 5.1 Pipeline runtime audit (separate concern)
+
+**Governed write audit** (`normalization_audit`) and **pipeline runtime audit** (`audit_pipeline_events`) serve different purposes:
+
+| Table | Scope |
+|-------|--------|
+| `normalization_audit` | Normalizer only — did this payload persist? |
+| `audit_pipeline_events` | Compute orchestration — preconditions, geometric enforcement, curvature, pathway lifecycle |
+
+Pipeline audit is **not** a second write path for scientific facts. It is operational telemetry emitted from `shared/audit/` during job dispatch, ingest, and readiness checks. See `docs/audit/PIPELINE_AUDIT.md`.
 
 ## 6. Phasing
 

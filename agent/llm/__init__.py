@@ -2,7 +2,7 @@
 
 Architecture:
 - Coordinator agent: routes user requests to specialized sub-agents
-- DTIE sub-agent: runs pipelines, analyzes structures
+- Discovery sub-agent: interprets pre-computed pathway artifacts
 - Visualization sub-agent: generates viewport directives
 - Knowledge sub-agent: answers questions about findings and biology
 

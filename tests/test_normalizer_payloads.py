@@ -36,7 +36,7 @@ def provenance() -> ProvenanceContext:
         run_type=RunType.INFERENCE,
         source_type=SourceType.PROBABILISTIC,
         checkpoint_uri="s3://checkpoints/tokyo_eyes_v4.pt",
-        checkpoint_sha256="abc123def456",
+        checkpoint_sha256="a" * 64,
         code_version="a1b2c3d",
     )
 

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useDashboard } from "../lib/context";
+import { useHydration } from "../context/HydrationProvider";
 import { api } from "../lib/api";
+import { buildHydrationView } from "../lib/hydrationView";
+import { getArtifactSurfaceState } from "../lib/artifactAvailability";
 import type { EmbeddingData, ResidueEmbedding, SelectedResidueInfo, PoincareColorMode } from "../lib/types";
 import { THERAPEUTIC_GOALS } from "../lib/therapeuticCompiler";
 
@@ -85,16 +88,21 @@ export default function PoincareScatter({
 }: PoincareScatterProps = {}) {
   const {
     activeStructure,
-    refreshKey,
     currentDirective,
     compareState,
     therapeuticCompilerState: ctxCompilerState,
     setCollapseSimulationState,
     collapseSimulationState,
   } = useDashboard();
+  const {
+    embeddings,
+    isHydrating,
+    refresh,
+    artifactAvailability,
+  } = useHydration();
+  const data = embeddings;
+  const loading = isHydrating;
   const [colorMode, setColorMode] = useState<ColorMode>("cone_depth");
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<EmbeddingData | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -282,23 +290,6 @@ export default function PoincareScatter({
     setDirectiveHighlightColors({});
   }, [currentDirective]);
 
-  const fetchData = useCallback(async () => {
-    if (!activeStructure) return;
-    setLoading(true);
-    try {
-      const result = await api.getEmbeddings(activeStructure.structure_id);
-      setData(result);
-    } catch {
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [activeStructure]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData, refreshKey]);
-
   // Fetch secondary embeddings when compare mode is active and overlay enabled
   useEffect(() => {
     if (!compareState.active || !compareState.secondaryStructure || !overlayEnabled) {
@@ -307,8 +298,14 @@ export default function PoincareScatter({
     }
     setSecondaryLoading(true);
     api
-      .getEmbeddings(compareState.secondaryStructure.structure_id)
-      .then((result) => setSecondaryData(result))
+      .hydrate(compareState.secondaryStructure.structure_id)
+      .then((hydration) => {
+        const view = buildHydrationView(
+          hydration,
+          compareState.secondaryStructure?.structure_id,
+        );
+        setSecondaryData(view.embeddings);
+      })
       .catch(() => setSecondaryData(null))
       .finally(() => setSecondaryLoading(false));
   }, [compareState.active, compareState.secondaryStructure, overlayEnabled]);
@@ -520,6 +517,16 @@ export default function PoincareScatter({
     );
   }
 
+  const gnnState = getArtifactSurfaceState(artifactAvailability, "gnn_hyp");
+  if (!loading && gnnState === "tier1_empty") {
+    return (
+      <div className="h-full flex flex-col items-center justify-center gap-2 px-4 text-center text-zinc-500 text-xs">
+        <span className="text-warning">GNN embeddings unavailable</span>
+        <span>Tier-1 hyperbolic embeddings are not in the hydrate bundle yet.</span>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Controls */}
@@ -589,7 +596,7 @@ export default function PoincareScatter({
             </select>
           )}
           <button
-            onClick={fetchData}
+            onClick={refresh}
             disabled={loading}
             className="text-[10px] bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-300 hover:bg-zinc-700 disabled:opacity-50"
           >

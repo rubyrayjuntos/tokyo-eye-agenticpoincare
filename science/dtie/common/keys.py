@@ -164,3 +164,53 @@ def make_site_id(structure_id: str, site_type: str, index: int) -> str:
 def validate_residue_id(residue_id: str) -> bool:
     """Check if a residue_id matches the canonical format."""
     return bool(_RESIDUE_ID_PATTERN.match(residue_id))
+
+
+def coerce_residue_id(residue_id: str, structure_id: str) -> str:
+    """Normalize partial residue identifiers to canonical ``structure:chain:index`` form."""
+    raw = residue_id.strip()
+    structure_id = structure_id.strip()
+    if not raw:
+        return raw
+    if validate_residue_id(raw):
+        return raw
+
+    parts = raw.split(":")
+    if len(parts) == 2:
+        chain_label, index_str = parts
+        try:
+            residue_index = int(index_str)
+        except ValueError:
+            return raw
+        return make_residue_id(structure_id, chain_label, residue_index)
+
+    if len(parts) == 3:
+        chain_label, index_str, insertion_code = parts
+        try:
+            residue_index = int(index_str)
+        except ValueError:
+            return raw
+        if insertion_code.isalpha() and len(insertion_code) == 1:
+            return make_residue_id(
+                structure_id, chain_label, residue_index, insertion_code
+            )
+        return raw
+
+    return raw
+
+
+def coerce_residue_ids(residue_ids: list[str], structure_id: str) -> list[str]:
+    """Normalize a list of residue identifiers, preserving order and deduplicating."""
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for residue_id in residue_ids:
+        canonical = coerce_residue_id(residue_id, structure_id)
+        if canonical and canonical not in seen:
+            normalized.append(canonical)
+            seen.add(canonical)
+    return normalized
+
+
+def validate_structure_id(structure_id: str) -> bool:
+    """Check if a structure_id matches the canonical format."""
+    return bool(_STRUCTURE_ID_PATTERN.match(structure_id))

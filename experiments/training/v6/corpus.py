@@ -9,10 +9,19 @@ from typing import Any
 
 import torch
 
+from science.training.corpus_governance import (
+    STAGE_A_MAX_RESIDUES,
+    is_locked_stage_a_manifest_path,
+)
+
 logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_MANIFEST = _REPO_ROOT / "manifests" / "v6_corpus_120.json"
+
+
+class LockedCorpusLoadError(RuntimeError):
+    """Locked Stage A structure failed to load — manifest/loader split-brain."""
 
 
 def load_corpus_manifest(manifest_path: Path | None = None) -> dict[str, Any]:
@@ -52,13 +61,15 @@ def load_training_proteins(
     manifest_path: Path | None = None,
     *,
     max_proteins: int | None = None,
-    max_residues: int = 800,
+    max_residues: int | None = None,
     use_cache: bool = True,
 ) -> tuple[list[dict[str, Any]], int]:
     """
     Load protein graphs from corpus manifest.
 
-    Skips structures with more than ``max_residues`` (GPU memory guard).
+    Structures larger than ``max_residues`` are skipped for open corpora; for the
+    locked Stage A manifest any load failure or residue-cap exclusion is a hard error.
+
     Caches parsed graphs under ``pdb_dir/corpus_cache/`` to avoid re-parsing on restart.
 
     Returns (loaded_proteins, failed_count).
@@ -68,6 +79,9 @@ def load_training_proteins(
     from experiments.training.v6._data import load_protein_graph
 
     manifest = Path(manifest_path) if manifest_path else _DEFAULT_MANIFEST
+    locked_manifest = is_locked_stage_a_manifest_path(manifest)
+    if max_residues is None:
+        max_residues = STAGE_A_MAX_RESIDUES if locked_manifest else 800
     cache_parent = Path(pdb_dir)
     cache_dir = cache_parent / "corpus_cache"
     try:
@@ -102,19 +116,28 @@ def load_training_proteins(
         pdb_id = str(entry["pdb_id"]).upper()
         chain = str(entry.get("chain", "A"))
         prot = load_protein_graph(pdb_id, chain, pdb_dir)
-        if prot is None:
+        if prot is None or int(prot.get("n_residues", 0)) <= 0:
             failed += 1
-            logger.warning("Failed to load %s chain %s", pdb_id, chain)
+            msg = f"Failed to load {pdb_id} chain {chain}"
+            if locked_manifest:
+                raise LockedCorpusLoadError(
+                    f"{msg} — locked Stage A corpus load violation; fix manifest chain "
+                    f"or PDB availability, not a skippable warning."
+                )
+            logger.warning(msg)
             continue
         if prot["n_residues"] > max_residues:
             failed += 1
-            logger.warning(
-                "Skipping %s chain %s: %d residues > max_residues=%d",
-                pdb_id,
-                chain,
-                prot["n_residues"],
-                max_residues,
+            msg = (
+                f"{pdb_id} chain {chain}: {prot['n_residues']} residues > "
+                f"max_residues={max_residues}"
             )
+            if locked_manifest:
+                raise LockedCorpusLoadError(
+                    f"{msg} — locked Stage A structure excluded by residue cap; "
+                    f"raise STAGE_A_MAX_RESIDUES ({STAGE_A_MAX_RESIDUES}) or demote."
+                )
+            logger.warning("Skipping %s", msg)
             continue
         prot["fold_class"] = entry.get("fold_class", "unknown")
         prot["gene"] = entry.get("gene", "")
@@ -133,5 +156,10 @@ def load_training_proteins(
     if use_cache and proteins:
         torch.save({"proteins": proteins, "failed": failed, "max_residues": max_residues}, cache_path)
         logger.info("Wrote corpus cache %s", cache_path)
+
+    if locked_manifest and failed:
+        raise LockedCorpusLoadError(
+            f"{failed} locked Stage A structure(s) failed to load — corpus is not trainable."
+        )
 
     return proteins, failed

@@ -60,7 +60,7 @@ class DiscData(BaseModel):
 
     structure_id: str
     pdb_id: str | None
-    curvature: float
+    curvature: float | None = None
     space_name: str
     model_version: str
     nodes: list[DiscNode]
@@ -156,7 +156,7 @@ async def get_disc_data(structure_id: str) -> DiscData:
         return DiscData(
             structure_id=structure_id,
             pdb_id=None,
-            curvature=1.0,
+            curvature=None,
             space_name="none",
             model_version="none",
             nodes=[],
@@ -186,10 +186,12 @@ async def get_disc_data(structure_id: str) -> DiscData:
             epistemic_uncertainty=r.get("epistemic_uncertainty"),
         ))
 
+    from science.dtie.common.curvature_values import learned_curvature_from_row
+
     return DiscData(
         structure_id=structure_id,
         pdb_id=None,
-        curvature=rows[0].get("curvature") or 1.0,
+        curvature=learned_curvature_from_row(rows[0], context="visualizer disc-data"),
         space_name=rows[0].get("space_name") or "unknown",
         model_version=rows[0].get("model_version") or "unknown",
         nodes=nodes,

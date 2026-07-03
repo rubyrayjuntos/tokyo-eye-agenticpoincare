@@ -531,7 +531,7 @@ async def list_structures_with_atlas(db=Depends(get_db)):
         """
         SELECT DISTINCT structure_id, MAX(computed_at) as last
         FROM fact_phase_output
-        WHERE phase_name = 'buffering_atlas' OR phase = '7' OR phase_name LIKE '%buffering%'
+        WHERE phase_name = 'buffering_atlas' OR phase = '7' OR phase = 'buffering_atlas'
         GROUP BY structure_id
         ORDER BY last DESC
         LIMIT 50

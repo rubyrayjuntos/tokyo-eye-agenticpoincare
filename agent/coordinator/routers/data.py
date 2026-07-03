@@ -17,11 +17,34 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from agent.coordinator.deps import get_db
+from science.dtie.common.keys import validate_structure_id
 from shared.logging import get_logger
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/data", tags=["data"])
+
+
+def _reject_invalid_structure_id(structure_id: str) -> JSONResponse | None:
+    if not validate_structure_id(structure_id):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "invalid_structure_id",
+                "message": f"Invalid structure_id format: {structure_id}",
+            },
+        )
+    return None
+
+
+def _safe_export_path(export_dir: Path, filename: str) -> Path | None:
+    """Resolve an export path and ensure it stays within export_dir."""
+    file_path = (export_dir / filename).resolve()
+    try:
+        file_path.relative_to(export_dir.resolve())
+    except ValueError:
+        return None
+    return file_path
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +179,10 @@ async def export_endpoint(structure_id: str, request: ExportRequest, db=Depends(
 
     Returns the file path and download URL for the generated export.
     """
+    invalid = _reject_invalid_structure_id(structure_id)
+    if invalid:
+        return invalid
+
     from agent.tools.data_tools import export_structure_data
 
     result = await export_structure_data(
@@ -292,6 +319,10 @@ async def comprehensive_export(structure_id: str, format: str = "csv", db=Depend
 
     Requirements: 5.1, 5.2, 5.3, 5.4
     """
+    invalid = _reject_invalid_structure_id(structure_id)
+    if invalid:
+        return invalid
+
     from agent.tools.dtie.tools import ToolDB
 
     if format not in ("csv", "json"):
@@ -472,7 +503,12 @@ async def comprehensive_export(structure_id: str, format: str = "csv", db=Depend
     export_dir = Path(os.getenv("EXPORT_OUTPUT_DIR", "./data/local_objects/exports"))
     export_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{structure_id}_full_export_{uuid_mod.uuid4().hex[:8]}.{format}"
-    file_path = export_dir / filename
+    file_path = _safe_export_path(export_dir, filename)
+    if file_path is None:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "invalid_structure_id", "message": "Export path rejected"},
+        )
 
     if format == "json":
         output = {

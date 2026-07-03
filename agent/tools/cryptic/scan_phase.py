@@ -16,11 +16,9 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any
 
-from psycopg.types.json import Json
-
+from agent.tools.cryptic.gnn_channel_profile import profile_for_model_version
 from agent.tools.cryptic.pocket_detector import detect_surface_pockets
 from agent.tools.cryptic.seed_generator import (
     CandidateCluster,
@@ -40,7 +38,7 @@ logger = logging.getLogger(__name__)
 HEURISTIC_VERSION = "v1.0"
 
 # Model version (default, overridden by DB provenance if available)
-DEFAULT_MODEL_VERSION = "GOSPConeMapper-v5"
+DEFAULT_MODEL_VERSION = "GOSPConeMapper-v6"
 
 
 @dataclass
@@ -126,10 +124,14 @@ async def _fetch_gnn_nodes(structure_id: str, db: Any) -> list[GNNNodeOutput]:
     """Fetch GNN node outputs from fact_gnn_node_embedding for a structure.
 
     Returns the most recent run's embeddings (by computed_at descending).
+    Computes disc_r from hyp_projections when present (v6 lever_a path).
     """
+    import json
+    import math
+
     rows = await db.fetch_all(
         """
-        SELECT e.residue_id, e.epistemic_uncertainty, e.cone_depth
+        SELECT e.residue_id, e.epistemic_uncertainty, e.cone_depth, e.hyp_projections
         FROM fact_gnn_node_embedding e
         JOIN provenance_run p ON p.run_id = e.run_id
         WHERE e.structure_id = :structure_id
@@ -141,6 +143,24 @@ async def _fetch_gnn_nodes(structure_id: str, db: Any) -> list[GNNNodeOutput]:
 
     if not rows:
         return []
+
+    def _disc_r_from_hyp(hyp: Any) -> float | None:
+        if hyp is None:
+            return None
+        if isinstance(hyp, str):
+            try:
+                hyp = json.loads(hyp)
+            except json.JSONDecodeError:
+                return None
+        if isinstance(hyp, dict):
+            x = hyp.get("x")
+            y = hyp.get("y")
+            if x is not None and y is not None:
+                return float(math.hypot(float(x), float(y)))
+            return None
+        if isinstance(hyp, (list, tuple)) and len(hyp) >= 2:
+            return float(math.hypot(float(hyp[0]), float(hyp[1])))
+        return None
 
     # Deduplicate by residue_id (keep most recent via ORDER BY)
     seen: set[str] = set()
@@ -155,6 +175,7 @@ async def _fetch_gnn_nodes(structure_id: str, db: Any) -> list[GNNNodeOutput]:
                 residue_id=rid,
                 epistemic_uncertainty=float(row.get("epistemic_uncertainty") or 0.0),
                 cone_depth=float(row.get("cone_depth") or 0.0),
+                disc_r=_disc_r_from_hyp(row.get("hyp_projections")),
             )
         )
 
@@ -243,128 +264,33 @@ async def _fetch_model_version(structure_id: str, db: Any) -> str:
     return DEFAULT_MODEL_VERSION
 
 
-async def _persist_scan_candidates(
-    candidates: list[UnifiedCandidate],
-    structure_id: str,
-    run_id: str,
+async def _governed_persist_scan(
+    *,
     db: Any,
-) -> None:
-    """Persist all candidates to fact_cryptic_site via direct SQL upsert.
-
-    Follows the normalizer pattern: idempotent upsert on (site_id).
-    """
-    if not candidates:
-        return
-
-    params_list = [
-        {
-            "site_id": c.site_id,
-            "structure_id": structure_id,
-            "run_id": run_id,
-            "residue_ids": Json(c.residue_ids),
-            "centroid_x": c.centroid_xyz[0],
-            "centroid_y": c.centroid_xyz[1],
-            "centroid_z": c.centroid_xyz[2],
-            "site_type": c.site_type,
-            "discovery_method": c.discovery_method,
-            "druggability_score": c.druggability_score,
-            "site_rank": c.site_rank,
-            "composite_gnn_score": c.composite_gnn_score,
-            "fpocket_druggability": c.fpocket_druggability,
-            "volume_angstrom3": c.volume_angstrom3,
-            "provenance_gate": c.provenance_gate,
-            "heuristic_version": c.heuristic_version,
-            "md_validation_status": "pending",
-            "scan_run_id": run_id,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-        for c in candidates
-    ]
-
-    await db.execute_many(
-        """
-        INSERT INTO fact_cryptic_site (
-            site_id, structure_id, run_id, residue_ids,
-            centroid_x, centroid_y, centroid_z,
-            site_type, discovery_method, druggability_score, site_rank,
-            composite_gnn_score, fpocket_druggability, volume_angstrom3,
-            provenance_gate, heuristic_version, md_validation_status,
-            scan_run_id, created_at
-        ) VALUES (
-            :site_id, :structure_id, :run_id, :residue_ids,
-            :centroid_x, :centroid_y, :centroid_z,
-            :site_type, :discovery_method, :druggability_score, :site_rank,
-            :composite_gnn_score, :fpocket_druggability, :volume_angstrom3,
-            :provenance_gate, :heuristic_version, :md_validation_status,
-            :scan_run_id, :created_at
-        )
-        ON CONFLICT (site_id) DO UPDATE SET
-            site_type = EXCLUDED.site_type,
-            discovery_method = EXCLUDED.discovery_method,
-            druggability_score = EXCLUDED.druggability_score,
-            site_rank = EXCLUDED.site_rank,
-            composite_gnn_score = EXCLUDED.composite_gnn_score,
-            fpocket_druggability = EXCLUDED.fpocket_druggability,
-            volume_angstrom3 = EXCLUDED.volume_angstrom3,
-            provenance_gate = EXCLUDED.provenance_gate,
-            heuristic_version = EXCLUDED.heuristic_version,
-            scan_run_id = EXCLUDED.scan_run_id
-        """,
-        params_list,
-    )
-
-
-async def _persist_scan_metadata(
     structure_id: str,
     run_id: str,
-    heuristic_version: str,
-    model_version: str,
+    candidates: list[UnifiedCandidate],
     scan_parameters: dict[str, Any],
     sites_found: int,
     duration_ms: int,
     status: str,
-    db: Any,
+    model_version: str,
 ) -> None:
-    """Persist scan run metadata to fact_binding_site_scan."""
-    await db.execute(
-        """
-        INSERT INTO fact_binding_site_scan (
-            structure_id, run_id, heuristic_version, model_version,
-            scan_parameters, sites_found, duration_ms, status, created_at
-        ) VALUES (
-            :structure_id, :run_id, :heuristic_version, :model_version,
-            :scan_parameters, :sites_found, :duration_ms, :status, :created_at
-        )
-        ON CONFLICT (structure_id, run_id) DO UPDATE SET
-            heuristic_version = EXCLUDED.heuristic_version,
-            model_version = EXCLUDED.model_version,
-            scan_parameters = EXCLUDED.scan_parameters,
-            sites_found = EXCLUDED.sites_found,
-            duration_ms = EXCLUDED.duration_ms,
-            status = EXCLUDED.status
-        """,
-        {
-            "structure_id": structure_id,
-            "run_id": run_id,
-            "heuristic_version": heuristic_version,
-            "model_version": model_version,
-            "scan_parameters": Json(scan_parameters),
-            "sites_found": sites_found,
-            "duration_ms": duration_ms,
-            "status": status,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        },
-    )
+    """Persist binding-site scan output through the governed Normalizer path."""
+    from science.compute.persist_binding_scan import persist_binding_site_scan
 
-
-async def _delete_previous_scan_results(structure_id: str, db: Any) -> None:
-    """Delete previous scan results for a structure before re-scanning.
-
-    Requirement 4.5: Re-scan replaces previous results.
-    """
-    await db.execute(
-        "DELETE FROM fact_cryptic_site WHERE structure_id = :structure_id AND scan_run_id IS NOT NULL",
-        {"structure_id": structure_id},
+    await persist_binding_site_scan(
+        db,
+        run_id=run_id,
+        structure_id=structure_id,
+        candidates=candidates,
+        heuristic_version=HEURISTIC_VERSION,
+        model_version=model_version,
+        scan_parameters=scan_parameters,
+        sites_found=sites_found,
+        duration_ms=duration_ms,
+        status=status,
+        caller_identity="binding_site_scan_phase",
     )
 
 
@@ -377,6 +303,7 @@ async def run_full_structure_scan(
     min_cluster_size: int = 3,
     max_clusters: int = 25,
     overlap_threshold_angstrom: float = 5.0,
+    run_id: str | None = None,
 ) -> ScanResult:
     """Execute full-structure binding site scan.
 
@@ -402,7 +329,7 @@ async def run_full_structure_scan(
     """
     start_time = time.monotonic()
     warnings: list[str] = []
-    run_id = f"scan_{structure_id}_{uuid.uuid4().hex[:8]}"
+    run_id = run_id or f"scan_{structure_id}_{uuid.uuid4().hex[:8]}"
 
     scan_parameters = {
         "uncertainty_threshold": uncertainty_threshold,
@@ -419,20 +346,19 @@ async def run_full_structure_scan(
         logger.warning(
             "No GNN embeddings found for structure %s; scan phase skipped", structure_id
         )
-        warnings.append("No GNN embeddings found. Run DTIE pipeline first.")
+        warnings.append("No GNN embeddings found. Run discovery pathway compute first.")
         duration_ms = int((time.monotonic() - start_time) * 1000)
 
-        # Persist metadata indicating no data
-        await _persist_scan_metadata(
+        await _governed_persist_scan(
+            db=db,
             structure_id=structure_id,
             run_id=run_id,
-            heuristic_version=HEURISTIC_VERSION,
-            model_version=DEFAULT_MODEL_VERSION,
+            candidates=[],
             scan_parameters=scan_parameters,
             sites_found=0,
             duration_ms=duration_ms,
             status="no_gnn_data",
-            db=db,
+            model_version=DEFAULT_MODEL_VERSION,
         )
 
         return ScanResult(
@@ -455,16 +381,16 @@ async def run_full_structure_scan(
         warnings.append("No Cα coordinates found in dim_atom.")
         duration_ms = int((time.monotonic() - start_time) * 1000)
 
-        await _persist_scan_metadata(
+        await _governed_persist_scan(
+            db=db,
             structure_id=structure_id,
             run_id=run_id,
-            heuristic_version=HEURISTIC_VERSION,
-            model_version=DEFAULT_MODEL_VERSION,
+            candidates=[],
             scan_parameters=scan_parameters,
             sites_found=0,
             duration_ms=duration_ms,
             status="no_coordinates",
-            db=db,
+            model_version=DEFAULT_MODEL_VERSION,
         )
 
         return ScanResult(
@@ -478,16 +404,18 @@ async def run_full_structure_scan(
             warnings=warnings,
         )
 
-    # Step 3: Generate seed clusters via DBSCAN
+    # Step 3: Generate seed clusters via DBSCAN (model-aware channel profile)
+    model_version = await _fetch_model_version(structure_id, db)
+    channel_profile = profile_for_model_version(model_version)
     clusters = generate_seeds_from_gnn(
         gnn_nodes=gnn_nodes,
         ca_coords=ca_coords,
-        uncertainty_threshold=uncertainty_threshold,
-        cone_depth_threshold=cone_depth_threshold,
         eps_angstrom=eps_angstrom,
         min_cluster_size=min_cluster_size,
         max_clusters=max_clusters,
+        channel_profile=channel_profile,
     )
+    scan_parameters["channel_profile"] = channel_profile.name
 
     # Step 4: Fetch graph metrics for classification
     graph_metrics = await _fetch_graph_metrics(structure_id, db)
@@ -535,29 +463,20 @@ async def run_full_structure_scan(
     # Step 9: Re-rank after classification updates druggability scores
     merged = assign_ranks(merged)
 
-    # Fetch model version from provenance
-    model_version = await _fetch_model_version(structure_id, db)
-
-    # Step 10: Delete old scan results
-    await _delete_previous_scan_results(structure_id, db)
-
-    # Step 11: Persist candidates
-    await _persist_scan_candidates(merged, structure_id, run_id, db)
-
-    # Step 12: Persist scan metadata
+    # Step 10–12: Persist through Normalizer (replaces previous scan rows)
     duration_ms = int((time.monotonic() - start_time) * 1000)
     status = "no_sites_found" if not merged else "complete"
 
-    await _persist_scan_metadata(
+    await _governed_persist_scan(
+        db=db,
         structure_id=structure_id,
         run_id=run_id,
-        heuristic_version=HEURISTIC_VERSION,
-        model_version=model_version,
+        candidates=merged,
         scan_parameters=scan_parameters,
         sites_found=len(merged),
         duration_ms=duration_ms,
         status=status,
-        db=db,
+        model_version=model_version,
     )
 
     logger.info(

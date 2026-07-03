@@ -57,24 +57,34 @@ export function CockpitNavBar({
 
         {structureId ? (
           <button
+            type="button"
             onClick={onStructureSearch}
-            className="flex items-center gap-2 px-2.5 py-1 rounded-[var(--radius-badge)] bg-bg-elevated border border-slate-light hover:border-teal-dim"
+            className="flex items-center gap-2 rounded-[var(--radius-badge)] border border-slate-light bg-bg-elevated px-2.5 py-1 hover:border-teal-dim"
           >
-            <span className="text-xs font-mono text-teal-bright">
+            <span className="font-mono text-xs text-teal-bright">
               {pdbId?.toUpperCase() ?? "—"}
             </span>
-            <span className="text-[10px] text-text-muted truncate max-w-[120px]">
+            <span className="max-w-[120px] truncate text-[10px] text-text-muted">
               {structureId}
             </span>
           </button>
         ) : (
           <button
+            type="button"
             onClick={onStructureSearch}
-            className="text-xs text-text-muted hover:text-text-secondary px-2 py-1 rounded-[var(--radius-badge)] border border-dashed border-slate-light hover:border-teal-dim"
+            className="rounded-[var(--radius-badge)] border border-dashed border-slate-light px-2 py-1 text-xs text-text-muted hover:border-teal-dim hover:text-text-secondary"
           >
             Load structure…
           </button>
         )}
+
+        <button
+          type="button"
+          onClick={onStructureSearch}
+          className="rounded-[var(--radius-badge)] border border-teal-dim/40 bg-teal-dim/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-teal hover:bg-teal-dim/25"
+        >
+          Switch protein
+        </button>
       </div>
 
       {/* Center: Phase stepper */}

@@ -72,6 +72,10 @@ def _build_conductance_graph(
 def _spectral_analysis(G: nx.Graph) -> dict:
     """Compute spectral properties of the conductance graph.
 
+    Uses the normalized Laplacian so λ₂ is bounded in [0, 2] and comparable
+    across structures. Effective-resistance pathways still use the raw
+    conductance-weighted Laplacian separately.
+
     Handles disconnected graphs gracefully. Hinge residues are
     identified as nodes where |Fiedler_value| < epsilon (partition
     boundary), not by sign-change between sequential indices.
@@ -79,7 +83,9 @@ def _spectral_analysis(G: nx.Graph) -> dict:
     if G.number_of_nodes() < 3 or not nx.is_connected(G):
         return {"lambda_2": 0.0, "hinge_residues": [], "fiedler_vector": []}
 
-    L = nx.laplacian_matrix(G, weight="conductance").toarray().astype(np.float64)
+    L = nx.normalized_laplacian_matrix(G, weight="conductance").toarray().astype(
+        np.float64
+    )
     eigenvalues, eigenvectors = sla.eigh(L)
 
     lambda_2 = float(eigenvalues[1])

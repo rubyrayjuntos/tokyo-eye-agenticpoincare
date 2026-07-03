@@ -1,0 +1,142 @@
+{
+  "checkpoint_eligible": false,
+  "needs_work": [
+    {
+      "metric": "routing_entropy",
+      "value": 1.3841921885808308,
+      "priority": "critical",
+      "matters": true,
+      "status": "needs_work",
+      "target": "\u2264 1.35 (save ceiling this epoch)",
+      "note": "Blocks v6_best saves; MoE still too uniform vs current gate."
+    },
+    {
+      "metric": "probe_r_depth_sasa",
+      "value": -0.031552848402844204,
+      "priority": "critical",
+      "matters": true,
+      "status": "needs_work",
+      "target": "\u2265 0.65 (save gate)",
+      "note": "Core shell signal weak \u2014 depth not aligned with SASA."
+    },
+    {
+      "metric": "probe_r_proj_depth",
+      "value": 0.003233695225382721,
+      "priority": "critical",
+      "matters": true,
+      "status": "needs_work",
+      "target": "\u2265 0.30 (minimum)",
+      "note": "Disc collapsed or inverted vs depth."
+    },
+    {
+      "metric": "cone_range_mean",
+      "value": 5.960464477539062e-07,
+      "priority": "important",
+      "matters": true,
+      "status": "needs_work",
+      "target": "\u2265 0.85",
+      "note": "Depth spread across structure."
+    },
+    {
+      "metric": "expert_load_spread",
+      "value": 0.04130159318447113,
+      "priority": "important",
+      "matters": true,
+      "status": "needs_work",
+      "target": "\u2265 0.08 max\u2212min load",
+      "note": "Experts still sharing work evenly \u2014 increase MoE pressure gradually."
+    }
+  ],
+  "watch": [
+    {
+      "metric": "disc_r_std_mean",
+      "value": 0.019344219317038853,
+      "priority": "monitor",
+      "matters": false,
+      "status": "watch",
+      "target": "\u2265 0.10",
+      "note": "Disc spread; usually addressed in P1d \u2014 low leverage once shell strong."
+    },
+    {
+      "metric": "expert_0_r_depth_sasa",
+      "value": -0.25188294825353863,
+      "priority": "monitor",
+      "matters": false,
+      "status": "watch",
+      "target": "\u2265 0.45 per expert",
+      "note": "Expert 0 residues weak on depth\u2194SASA (often surface specialist)."
+    },
+    {
+      "metric": "expert_1_r_depth_sasa",
+      "value": -0.047577951076667624,
+      "priority": "monitor",
+      "matters": false,
+      "status": "watch",
+      "target": "\u2265 0.45 per expert",
+      "note": "Expert 1 residues weak on depth\u2194SASA (often surface specialist)."
+    },
+    {
+      "metric": "expert_2_r_depth_sasa",
+      "value": -0.011807611853829676,
+      "priority": "monitor",
+      "matters": false,
+      "status": "watch",
+      "target": "\u2265 0.45 per expert",
+      "note": "Expert 2 residues weak on depth\u2194SASA (often surface specialist)."
+    },
+    {
+      "metric": "expert_3_r_depth_sasa",
+      "value": 0.25,
+      "priority": "monitor",
+      "matters": false,
+      "status": "watch",
+      "target": "\u2265 0.45 per expert",
+      "note": "Expert 3 residues weak on depth\u2194SASA (often surface specialist)."
+    },
+    {
+      "metric": "total",
+      "value": 2.1841057936350503,
+      "priority": "monitor",
+      "matters": false,
+      "status": "watch",
+      "target": "\u2193 slowly",
+      "note": "Optimization loss \u2014 do not chase alone; use tier-1 probes instead."
+    }
+  ],
+  "healthy": [
+    {
+      "metric": "proj_frac_mean",
+      "value": 0.0,
+      "priority": "healthy",
+      "matters": true,
+      "status": "healthy",
+      "target": "\u2248 0",
+      "note": "Saturated \u2014 do not optimize further."
+    },
+    {
+      "metric": "probe_r_epi_sasa",
+      "value": 0.8150346698843952,
+      "priority": "healthy",
+      "matters": false,
+      "status": "healthy",
+      "target": "\u2265 0.70",
+      "note": "Saturated for ingest quality."
+    }
+  ],
+  "primary_focus": [
+    "routing_entropy",
+    "probe_r_depth_sasa",
+    "probe_r_proj_depth",
+    "cone_range_mean",
+    "expert_load_spread"
+  ],
+  "primary_focus_str": "routing_entropy, probe_r_depth_sasa, probe_r_proj_depth, cone_range_mean, expert_load_spread",
+  "counts": {
+    "critical": 3,
+    "needs_work": 5,
+    "watch": 6,
+    "healthy": 2,
+    "matters_needs_work": 5
+  },
+  "recommendation": "Train more on: routing_entropy, probe_r_depth_sasa, probe_r_proj_depth. These block saves or threaten shell/MoE quality."
+}

@@ -175,12 +175,14 @@ def _parse_fpocket_centroids(pockets_file: Path) -> dict[int, list[float]]:
     return centroids
 
 
-def _parse_fpocket_residues(pockets_dir: Path) -> dict[int, list[str]]:
+def _parse_fpocket_residues(pockets_dir: Path, structure_id: str) -> dict[int, list[str]]:
     """Extract residue IDs per pocket from individual pocket PDB files.
 
     fpocket writes pocket{N}_atm.pdb files containing the protein atoms
     lining each pocket. We extract unique residue identifiers from these.
     """
+    from science.dtie.common.keys import make_residue_id
+
     residue_map: dict[int, list[str]] = {}
 
     import re
@@ -198,7 +200,9 @@ def _parse_fpocket_residues(pockets_dir: Path) -> dict[int, list[str]]:
                     try:
                         chain = line[21:22].strip() or "A"
                         res_seq = int(line[22:26])
-                        residue_ids.add(f"{chain}:{res_seq}")
+                        residue_ids.add(
+                            make_residue_id(structure_id, chain, res_seq)
+                        )
                     except (ValueError, IndexError):
                         pass
 
@@ -209,6 +213,7 @@ def _parse_fpocket_residues(pockets_dir: Path) -> dict[int, list[str]]:
 
 def _run_fpocket_subprocess(
     pdb_path: Path,
+    structure_id: str,
     min_alpha: float = 3.0,
     max_alpha: float = 6.0,
 ) -> dict[str, Any]:
@@ -252,7 +257,7 @@ def _run_fpocket_subprocess(
         pockets_subdir = out_dir / "pockets"
         if not pockets_subdir.exists():
             pockets_subdir = out_dir
-        residue_map = _parse_fpocket_residues(pockets_subdir)
+        residue_map = _parse_fpocket_residues(pockets_subdir, structure_id)
 
         for p in pockets:
             pid = p["id"]
@@ -305,7 +310,7 @@ async def detect_surface_pockets(
             return []
 
         # Run fpocket
-        fpocket_result = _run_fpocket_subprocess(pdb_path)
+        fpocket_result = _run_fpocket_subprocess(pdb_path, structure_id)
 
         if fpocket_result["status"] == "fpocket_unavailable":
             logger.warning(

@@ -20,6 +20,7 @@ from typing import Any
 
 import numpy as np
 
+from science.dtie.common.curvature_values import require_learned_curvature
 from science.dtie.common.interfaces import GNNInferenceResult, GNNNodeOutput
 
 logger = logging.getLogger(__name__)
@@ -300,7 +301,7 @@ class V5GNNRunner:
             model_version=self.model_version,
             checkpoint_path=self._checkpoint_path,
             nodes=nodes,
-            curvature=curvature or 1.0,
+            curvature=require_learned_curvature(curvature, context="v5 gnn_inference"),
             embedding_dim=output["x_hyp"].shape[1],
             space_type="hyperbolic",
             metadata={

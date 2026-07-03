@@ -14,6 +14,35 @@ describe("viewportMachine workbench state", () => {
     expect(actor.getSnapshot().context.sidebarOpen).toBe(true);
   });
 
+  it("tracks selection, brush, and mobius focus in machine context", () => {
+    const actor = createActor(viewportMachine).start();
+
+    actor.send({
+      type: "SET_SELECTION",
+      highlightedResidues: ["A:42"],
+      brushSelectedIds: ["A:42"],
+      selectedResidue: {
+        residue_id: "A:42",
+        residue_name: "GLU",
+        chain_label: "A",
+        epistemic_uncertainty: 0.9,
+        cone_depth: 1.2,
+      },
+    });
+    actor.send({ type: "SET_MOBIUS_FOCUS", enabled: true });
+
+    const ctx = actor.getSnapshot().context;
+    expect(ctx.highlightedResidues).toEqual(["A:42"]);
+    expect(ctx.brushSelectedIds).toEqual(["A:42"]);
+    expect(ctx.selectedResidue?.residue_id).toBe("A:42");
+    expect(ctx.mobiusFocusEnabled).toBe(true);
+
+    actor.send({ type: "CLEAR" });
+    expect(actor.getSnapshot().context.highlightedResidues).toEqual([]);
+    expect(actor.getSnapshot().context.brushSelectedIds).toEqual([]);
+    expect(actor.getSnapshot().context.selectedResidue).toBeNull();
+  });
+
   it("tracks editor and bottom panel selection independently", () => {
     const actor = createActor(viewportMachine).start();
 

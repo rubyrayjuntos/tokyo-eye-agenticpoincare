@@ -66,6 +66,7 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
     6. Pushes directives over WebSocket to connected viewers
     """
     session_id = request.session_id or user.get("session_id", str(uuid.uuid4()))
+    user_id = str(user.get("sub") or user.get("user_id") or user.get("username") or "")
 
     # Rate limit per session
     chat_rate_limiter.check(session_id)
@@ -75,7 +76,7 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
 
     # Execute via LLM agent
     response_text, tool_results, directives = await _execute_agent(
-        agent_message, session_id, request
+        agent_message, session_id, request, user_id=user_id or None
     )
 
     # Auto-highlight referenced residues
@@ -115,11 +116,12 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
 
 
 async def _execute_agent(
-    message: str, session_id: str, request: ChatRequest
+    message: str, session_id: str, request: ChatRequest, user_id: str | None = None
 ) -> tuple[str, list[dict], list[ViewportDirective]]:
     """Execute the LLM agent — full tool-calling loop."""
     from agent.llm.agents import create_coordinator
     from agent.llm.providers import get_provider
+    from agent.orchestration.session_store import get_session_orchestrator
     from data.db import DBAdapter, get_connection
 
     directives: list[ViewportDirective] = []
@@ -133,12 +135,14 @@ async def _execute_agent(
             "current_metric": request.viewport_state.current_metric,
             "curvature": request.viewport_state.curvature,
         }
+        context["structure_id"] = request.viewport_state.structure_id
 
     try:
+        orchestrator = await get_session_orchestrator(session_id, context)
         async with get_connection() as conn:
             db = DBAdapter(conn)
             llm = get_provider()
-            coordinator = create_coordinator(llm=llm, db=db)
+            coordinator = create_coordinator(llm=llm, db=db, orchestrator=orchestrator)
             response = await coordinator.run(message, context=context)
 
         # Convert viewport directives from agent response

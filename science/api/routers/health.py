@@ -1,6 +1,7 @@
 """Health endpoint for the Science API.
 
-Reports GPU availability, checkpoint listing, and DB connectivity.
+Reports GPU availability, checkpoint listing, contract-driven production GNN
+metadata, job registry summary, and DB connectivity.
 """
 
 from __future__ import annotations
@@ -9,9 +10,18 @@ import logging
 import os
 from pathlib import Path
 
+from functools import lru_cache
+
 from fastapi import APIRouter
 
 from data.db import get_connection
+from science.compute.registry import JOB_REGISTRY
+from science.contracts.model_registry import (
+    checkpoint_status,
+    get_production_checkpoint_path,
+    get_production_model,
+)
+from science.contracts.onboard_contract import geometric_enforcement_level, load_contract
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +56,52 @@ def _list_checkpoints() -> list[str]:
     return sorted(str(p.relative_to(checkpoint_path)) for p in checkpoint_path.rglob("*.pt"))
 
 
+def _job_registry_summary() -> dict[str, int]:
+    counts = {"implemented": 0, "partial": 0, "planned": 0}
+    for job in JOB_REGISTRY.values():
+        if job.status in counts:
+            counts[job.status] += 1
+    return counts
+
+
+def _gnn_production_summary() -> dict:
+    model = get_production_model()
+    checkpoint_path = get_production_checkpoint_path()
+    status = checkpoint_status(checkpoint_path)
+    summary = {
+        "model_id": model.model_id,
+        "model_version": model.model_version,
+        "api_alias": model.api_alias,
+        "runner_module": model.runner_module,
+        "runner_class": model.runner_class,
+        "checkpoint_path": checkpoint_path,
+        "checkpoint_exists": status["exists"],
+        "checkpoint_sha256_prefix": status["sha256_prefix"],
+    }
+    if status["exists"]:
+        summary["architecture_compat"] = _verify_production_checkpoint_cached()
+    return summary
+
+
+@lru_cache(maxsize=1)
+def _verify_production_checkpoint_cached() -> dict:
+    """Load production weights once per process — catches code/checkpoint drift."""
+    try:
+        from science.dtie.v6.gnn.model import verify_v6_checkpoint
+
+        result = verify_v6_checkpoint()
+        return {
+            "ok": result["load_ok"],
+            "missing_keys": len(result["missing_keys"]),
+            "deep_hyperbolic_gate": result["deep_hyperbolic_gate"],
+            "gate_disc_scale": result["gate_disc_scale"],
+            "hyperbolic_expert_mix": result["hyperbolic_expert_mix"],
+        }
+    except Exception as exc:
+        logger.warning("GNN checkpoint architecture verification failed: %s", exc)
+        return {"ok": False, "error": str(exc)}
+
+
 async def _check_db() -> dict:
     """Test DB connectivity via the pool."""
     try:
@@ -65,11 +121,22 @@ async def health_check():
     gpu = _detect_gpu()
     checkpoints = _list_checkpoints()
     db = await _check_db()
+    contract = load_contract()
+    gnn_production = _gnn_production_summary()
 
     status = "healthy" if db.get("connected") else "degraded"
+    if status == "healthy" and not gnn_production["checkpoint_exists"]:
+        status = "degraded"
+    compat = gnn_production.get("architecture_compat") or {}
+    if status == "healthy" and compat and not compat.get("ok", True):
+        status = "degraded"
 
     return {
         "status": status,
+        "contract_version": str(contract.get("version", "")),
+        "geometric_enforcement_level": geometric_enforcement_level(),
+        "gnn_production": gnn_production,
+        "job_registry": _job_registry_summary(),
         "gpu": gpu,
         "checkpoints": checkpoints,
         "db": db,

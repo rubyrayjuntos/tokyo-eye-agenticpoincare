@@ -1,17 +1,20 @@
 /**
- * useAutoIngestPipeline — React hook wrapping the ingest → pipeline → poll → complete/error flow.
- * Requirements: 3.1, 4.1, 4.2, 4.3, 4.4
+ * useAutoIngestPipeline — ingest → readiness poll → complete/error flow.
  */
 import { useState, useRef, useCallback, useEffect } from "react";
 import { api } from "./api";
-import type { Structure, PipelineJob } from "./types";
+import type { Structure, PipelineJob, StructureReadiness } from "./types";
+import { ingestAndTriggerPipeline } from "./autoIngestPipelineLogic";
 import {
-  ingestAndTriggerPipeline,
-  evaluatePipelineStatus,
-} from "./autoIngestPipelineLogic";
+  actProgressLabel,
+  errorMessageFromUnknown,
+  MAX_READINESS_POLL_FAILURES,
+  READINESS_POLL_START_LABEL,
+  runReadinessPollCycle,
+} from "./readinessPollingLogic";
 
 export interface UseAutoIngestPipelineOptions {
-  onComplete: (structure: Structure) => void;
+  onComplete: (structure: Structure, readiness?: StructureReadiness) => void;
   onError: (error: string) => void;
 }
 
@@ -20,6 +23,8 @@ export interface UseAutoIngestPipelineReturn {
   isIngesting: boolean;
   isRunningPipeline: boolean;
   pipelineJob: PipelineJob | null;
+  readiness: StructureReadiness | null;
+  progressLabel: string | null;
   error: string | null;
   reset: () => void;
 }
@@ -32,15 +37,17 @@ export function useAutoIngestPipeline(
   const [isIngesting, setIsIngesting] = useState(false);
   const [isRunningPipeline, setIsRunningPipeline] = useState(false);
   const [pipelineJob, setPipelineJob] = useState<PipelineJob | null>(null);
+  const [readiness, setReadiness] = useState<StructureReadiness | null>(null);
+  const [progressLabel, setProgressLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const optionsRef = useRef(options);
   optionsRef.current = options;
-
   const ingestedStructureRef = useRef<Structure | null>(null);
+  const pipelineJobIdRef = useRef<string | null>(null);
+  const pollFailureCountRef = useRef(0);
 
-  // Cleanup polling on unmount
   useEffect(() => {
     return () => {
       if (pollRef.current) {
@@ -58,71 +65,120 @@ export function useAutoIngestPipeline(
     setIsIngesting(false);
     setIsRunningPipeline(false);
     setPipelineJob(null);
+    setReadiness(null);
+    setProgressLabel(null);
     setError(null);
     ingestedStructureRef.current = null;
+    pipelineJobIdRef.current = null;
+    pollFailureCountRef.current = 0;
   }, []);
 
-  const ingestAndRun = useCallback(async (pdbId: string) => {
-    reset();
-    setIsIngesting(true);
-
-    try {
-      const { structure, pipelineJob: job } = await ingestAndTriggerPipeline(
-        pdbId,
-        api
-      );
-      ingestedStructureRef.current = structure;
-
-      setIsIngesting(false);
-      setIsRunningPipeline(true);
-      setPipelineJob(job);
-
-      // Poll for pipeline status
-      pollRef.current = setInterval(async () => {
-        try {
-          const status = await api.getPipelineStatus(job.job_id);
-          setPipelineJob(status);
-
-          const action = evaluatePipelineStatus(status, ingestedStructureRef.current!);
-
-          if (action.type === "complete") {
-            if (pollRef.current) {
-              clearInterval(pollRef.current);
-              pollRef.current = null;
-            }
-            setIsRunningPipeline(false);
-            optionsRef.current.onComplete(action.structure);
-          } else if (action.type === "failed") {
-            if (pollRef.current) {
-              clearInterval(pollRef.current);
-              pollRef.current = null;
-            }
-            setIsRunningPipeline(false);
-            setError(action.error);
-            optionsRef.current.onError(action.error);
-          }
-          // "continue" — keep polling
-        } catch {
-          // Polling network error — keep trying (resilient)
-        }
-      }, POLL_INTERVAL_MS);
-    } catch (err: unknown) {
-      setIsIngesting(false);
-      setIsRunningPipeline(false);
-      const msg =
-        err && typeof err === "object" && "message" in err
-          ? (err as { message: string }).message
-          : "Ingestion failed";
-      setError(msg);
-      optionsRef.current.onError(msg);
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
     }
-  }, [reset]);
+  }, []);
+
+  const failPipeline = useCallback(
+    (message: string) => {
+      stopPolling();
+      setIsRunningPipeline(false);
+      setError(message);
+      optionsRef.current.onError(message);
+    },
+    [stopPolling]
+  );
+
+  const ingestAndRun = useCallback(
+    async (pdbId: string) => {
+      reset();
+      setIsIngesting(true);
+
+      try {
+        const { structure, pipelineJob: job } = await ingestAndTriggerPipeline(pdbId, api);
+        ingestedStructureRef.current = structure;
+        pipelineJobIdRef.current = job?.job_id ?? null;
+
+        setIsIngesting(false);
+        setIsRunningPipeline(true);
+        setPipelineJob(job);
+        setProgressLabel(READINESS_POLL_START_LABEL);
+
+        const pollReadiness = async () => {
+          const structureSnapshot = ingestedStructureRef.current;
+          if (!structureSnapshot) return;
+
+          try {
+            const result = await runReadinessPollCycle({
+              structure: structureSnapshot,
+              getReadiness: () => api.getStructureReadiness(structureSnapshot.structure_id),
+              getPipelineStatus: (jobId) => api.getPipelineStatus(jobId),
+              pipelineJobId: pipelineJobIdRef.current,
+            });
+
+            pollFailureCountRef.current = 0;
+
+            if (result.type === "continue") {
+              setReadiness(result.readiness);
+              setProgressLabel(
+                actProgressLabel(result.readiness) ?? "Discovery compute running…"
+              );
+              return;
+            }
+
+            if (result.type === "complete") {
+              stopPolling();
+              setIsRunningPipeline(false);
+              setReadiness(result.readiness);
+              setProgressLabel(actProgressLabel(result.readiness));
+              setPipelineJob((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      status: "complete",
+                      progress: 100,
+                      completed_at: new Date().toISOString(),
+                    }
+                  : prev
+              );
+              optionsRef.current.onComplete(result.structure, result.readiness);
+              return;
+            }
+
+            setReadiness(result.readiness);
+            failPipeline(result.error);
+          } catch (err: unknown) {
+            pollFailureCountRef.current += 1;
+            if (pollFailureCountRef.current >= MAX_READINESS_POLL_FAILURES) {
+              failPipeline(errorMessageFromUnknown(err));
+            }
+          }
+        };
+
+        pollRef.current = setInterval(() => {
+          void pollReadiness();
+        }, POLL_INTERVAL_MS);
+
+        await pollReadiness();
+      } catch (err: unknown) {
+        setIsIngesting(false);
+        setIsRunningPipeline(false);
+        const msg = errorMessageFromUnknown(err) || "Ingestion failed";
+        setError(msg);
+        optionsRef.current.onError(msg);
+      }
+    },
+    [failPipeline, reset, stopPolling]
+  );
 
   return {
     ingestAndRun,
     isIngesting,
     isRunningPipeline,
     pipelineJob,
+    readiness,
+    progressLabel,
     error,
     reset,
   };

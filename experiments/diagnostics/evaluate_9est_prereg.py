@@ -32,6 +32,14 @@ import numpy as np
 
 DEFAULT_PDB_DIR = Path("/tmp/dtie_pdb_cache")
 DEFAULT_LOCK_PATH = Path("data/benchmarks/9est_1fle_interface_lock.json")
+DEFAULT_PESTO_OUTPUT = Path("data/benchmarks/9est_pesto_scores.json")
+DEFAULT_PHASE2_OUTPUT = Path("data/benchmarks/9est_phase2_precondition.json")
+DEFAULT_PHASE34_OUTPUT = Path("data/benchmarks/9est_phase34_results.json")
+DEFAULT_CHECKPOINT = Path(
+    "checkpoints/v6/runs/lever_a_clean_slate_v1/v6_best_disc.pt"
+)
+# Epistemic-gated residues must rank last; finite sentinel (recovery@k uses argsort(-score)).
+_GATE_SENTINEL = -1e30
 
 # ===========================================================================
 # LOCKED CONSTANTS  (frozen at pre-registration — do not edit after Phase 3)
@@ -354,20 +362,170 @@ def run_phase1(
 
 
 # ===========================================================================
-# Phase 4 loaders (wire after Phase 3 — fail closed until connected)
+# Phase 2 — PeSTo precondition (before Tokyo Eye Phase 3)
 # ===========================================================================
-def load_pesto_scores(path: str) -> dict[int, float]:
-    raise NotImplementedError("Wire to PeSTo per-residue output on static 9EST")
+def load_lock(lock_path: Path = DEFAULT_LOCK_PATH) -> dict:
+    with open(lock_path, encoding="utf-8") as f:
+        return json.load(f)
 
 
-def load_tokyo_eye_channels(path: str) -> dict:
-    """Return per-residue {resid: {'dehydron','shell','epistemic','aleatoric'}}."""
-    raise NotImplementedError("Wire to DTIE per-residue channels on static 9EST")
+def load_pesto_scores(path: str | Path) -> dict[int, float]:
+    with open(path, encoding="utf-8") as f:
+        payload = json.load(f)
+    raw = payload.get("scores", payload)
+    return {int(k): float(v) for k, v in raw.items()}
 
 
-def s1_s2_scores(channels: dict) -> tuple[dict[int, float], dict[int, float]]:
+def _eval_scores_on_universe(
+    scores: dict[int, float],
+    eval_resnums: list[int],
+    gold_resnums: list[int],
+) -> Metrics:
+    eval_resnums = sorted(eval_resnums)
+    gold_set = set(gold_resnums)
+    sc = np.array([scores.get(r, 0.0) for r in eval_resnums], dtype=float)
+    gold_mask = np.array([r in gold_set for r in eval_resnums], dtype=bool)
+    rec = recovery_at_k(sc, gold_mask, K_PRIMARY)
+    auc = roc_auc(sc, gold_mask)
+    return Metrics(recovery_at_3=rec, auc=auc, sasa_margin=float("nan"))
+
+
+def run_phase2(
+    *,
+    pdb_dir: Path = DEFAULT_PDB_DIR,
+    lock_path: Path = DEFAULT_LOCK_PATH,
+    pesto_output: Path = DEFAULT_PESTO_OUTPUT,
+    phase2_output: Path = DEFAULT_PHASE2_OUTPUT,
+    pesto_root: Path | None = None,
+    device: str = "cpu",
+    scores_path: Path | None = None,
+) -> dict:
+    """Run PeSTo on static 9EST and evaluate §7 precondition gate."""
+    lock = load_lock(lock_path)
+    label = lock["interface_label"]
+    eval_resnums = label["eval_universe_9est_resnums"]
+    gold_resnums = label["gold_9est_resnums"]
+
+    if scores_path is not None:
+        scores = load_pesto_scores(scores_path)
+        meta = {"source": "imported", "path": str(scores_path)}
+    else:
+        from experiments.diagnostics.pesto_runner import (
+            DEFAULT_PESTO_ROOT,
+            run_pesto_pp_interface,
+        )
+
+        est = _download_pdb("9EST", pdb_dir)
+        root = pesto_root or DEFAULT_PESTO_ROOT
+        scores, meta = run_pesto_pp_interface(
+            est, chain=RECEPTOR_CHAIN_9EST, pesto_root=root, device=device
+        )
+        pesto_output.parent.mkdir(parents=True, exist_ok=True)
+        with open(pesto_output, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "generated_utc": datetime.now(UTC).isoformat(),
+                    "structure": "9EST",
+                    "chain": RECEPTOR_CHAIN_9EST,
+                    "model": "PeSTo i_v4_1 (protein-protein)",
+                    "scores": {str(k): v for k, v in sorted(scores.items())},
+                    "meta": meta,
+                },
+                f,
+                indent=2,
+            )
+
+    metrics = _eval_scores_on_universe(scores, eval_resnums, gold_resnums)
+    if metrics.recovery_at_3 == 1:
+        gate = "VOID"
+        interpretation = decide(metrics, pesto_recovery_at_3=1)
+    else:
+        gate = "PASS"
+        interpretation = (
+            "PeSTo does not recover interface on static 9EST at recovery@3 — "
+            "precondition satisfied; Phase 3 (Tokyo Eye) may proceed."
+        )
+
+    payload = {
+        "phase": 2,
+        "generated_utc": datetime.now(UTC).isoformat(),
+        "pesto_metrics": {
+            "recovery_at_3": metrics.recovery_at_3,
+            "roc_auc": metrics.auc,
+            "k_primary": K_PRIMARY,
+        },
+        "n_gold": len(gold_resnums),
+        "n_eval_universe": len(eval_resnums),
+        "precondition_gate": gate,
+        "interpretation": interpretation,
+        "pesto_meta": meta,
+        "scores_path": str(pesto_output if scores_path is None else scores_path),
+    }
+    phase2_output.parent.mkdir(parents=True, exist_ok=True)
+    with open(phase2_output, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+    return payload
+
+
+# ===========================================================================
+# Phase 3 — Tokyo Eye channels (forward pass; no stdout)
+# ===========================================================================
+def load_tokyo_eye_channels(
+    *,
+    checkpoint: Path = DEFAULT_CHECKPOINT,
+    pdb_dir: Path = DEFAULT_PDB_DIR,
+    structure_id: str = "9EST",
+    chain: str = RECEPTOR_CHAIN_9EST,
+    eval_resnums: list[int],
+    device: str = "cpu",
+) -> dict[int, dict[str, float]]:
+    """Per-residue physics channels from lever_a forward pass on static 9EST.
+
+    Returns {pdb_resnum: {dehydron, shell, epistemic, aleatoric}} for eval universe only.
+    """
+    from experiments.diagnostics.embedding_occupancy_audit import (
+        _forward_audit,
+        load_audit_model,
+    )
+    from experiments.training.v6._data import TAU, load_protein_graph
+
+    eval_set = set(eval_resnums)
+    prot = load_protein_graph(structure_id, chain, pdb_dir)
+    if prot is None:
+        raise RuntimeError(f"failed to build graph for {structure_id} chain {chain}")
+
+    model, version = load_audit_model(checkpoint, device)
+    out = _forward_audit(model, version, prot, device)
+
+    rho = prot["data"].x.detach().cpu().numpy()[:, 0]
+    xy = out["hyp_projections_2d"].detach().cpu().numpy()
+    disc_r = np.linalg.norm(xy, axis=1)
+    epi = out["uncertainty"]["epistemic"].detach().cpu().numpy().reshape(-1)
+    ale = out["uncertainty"]["aleatoric"].detach().cpu().numpy().reshape(-1)
+
+    res_ids = prot["residue_ids"]
+    channels: dict[int, dict[str, float]] = {}
+    for i, rid in enumerate(res_ids):
+        resnum = int(str(rid).split(":")[1])
+        if resnum not in eval_set:
+            continue
+        channels[resnum] = {
+            "dehydron": float(max(0.0, TAU - float(rho[i]))),
+            "shell": float(disc_r[i]),
+            "epistemic": float(epi[i]),
+            "aleatoric": float(ale[i]),
+        }
+    return channels
+
+
+def s1_s2_scores(
+    channels: dict[int, dict[str, float]],
+    eval_resnums: list[int],
+) -> tuple[dict[int, float], dict[int, float]]:
     """Build locked S1 (physics) and S2 (physics+aleatoric) with epistemic gate."""
-    resids = sorted(channels)
+    resids = sorted(r for r in eval_resnums if r in channels)
+    if not resids:
+        raise ValueError("no eval residues present in Tokyo Eye channels")
     deh = np.array([channels[r]["dehydron"] for r in resids], float)
     shl = np.array([channels[r]["shell"] for r in resids], float)
     epi = np.array([channels[r]["epistemic"] for r in resids], float)
@@ -376,9 +534,233 @@ def s1_s2_scores(channels: dict) -> tuple[dict[int, float], dict[int, float]]:
     s1 = W_DEHYDRON * z(deh) + W_SHELL * z(shl)
     s2 = s1 + W_ALEATORIC * z(ale)
     gate = epi > TAU_EPISTEMIC
-    s1[gate] = -np.inf
-    s2[gate] = -np.inf
+    s1[gate] = _GATE_SENTINEL
+    s2[gate] = _GATE_SENTINEL
     return (dict(zip(resids, s1)), dict(zip(resids, s2)))
+
+
+# ===========================================================================
+# Phase 4 — SASA baseline (freesasa, heavy atoms only)
+# ===========================================================================
+def compute_sasa_baseline_freesasa(
+    pdb_path: Path,
+    chain_id: str,
+    eval_resnums: list[int],
+) -> dict[int, float]:
+    """Per-residue heavy-atom SASA on static structure (higher = more exposed)."""
+    import freesasa
+    from Bio.PDB import PDBParser
+
+    _ELEMENT_RADII = {
+        "C": 1.70,
+        "N": 1.55,
+        "O": 1.52,
+        "S": 1.80,
+        "P": 1.80,
+    }
+    default_radius = 1.70
+
+    parser = PDBParser(QUIET=True)
+    structure = parser.get_structure("sasa", str(pdb_path))[0]
+    chain = structure[chain_id]
+
+    flat_coords: list[float] = []
+    radii: list[float] = []
+    atom_to_resnum: list[int] = []
+
+    for res in chain:
+        if res.id[0] != " ":
+            continue
+        resnum = int(res.id[1])
+        for atom in res:
+            element = (atom.element or "").upper()
+            if element == "H" or (atom.name or "").startswith("H"):
+                continue
+            flat_coords.extend(atom.coord.tolist())
+            radii.append(_ELEMENT_RADII.get(element, default_radius))
+            atom_to_resnum.append(resnum)
+
+    if not flat_coords:
+        raise RuntimeError(f"no heavy atoms on chain {chain_id} in {pdb_path}")
+
+    result = freesasa.calcCoord(flat_coords, radii)
+    per_res = {r: 0.0 for r in eval_resnums}
+    for i, resnum in enumerate(atom_to_resnum):
+        if resnum in per_res:
+            per_res[resnum] += float(result.atomArea(i))
+    return per_res
+
+
+def _metrics_with_sasa_margin(
+    scores: dict[int, float],
+    eval_resnums: list[int],
+    gold_resnums: list[int],
+    sasa_auc: float,
+) -> Metrics:
+    base = _eval_scores_on_universe(scores, eval_resnums, gold_resnums)
+    return Metrics(
+        recovery_at_3=base.recovery_at_3,
+        auc=base.auc,
+        sasa_margin=base.auc - sasa_auc,
+    )
+
+
+def _recovery_sweep(
+    scores: dict[int, float],
+    eval_resnums: list[int],
+    gold_resnums: list[int],
+    *,
+    k_max: int = 10,
+) -> dict[str, int]:
+    eval_sorted = sorted(eval_resnums)
+    gold_set = set(gold_resnums)
+    sc = np.array([scores.get(r, 0.0) for r in eval_sorted], dtype=float)
+    gold_mask = np.array([r in gold_set for r in eval_sorted], dtype=bool)
+    sweep: dict[str, int] = {}
+    for k in range(1, k_max + 1):
+        sweep[f"recovery_at_{k}"] = recovery_at_k(sc, gold_mask, k)
+    return sweep
+
+
+def _print_verdict_table(payload: dict) -> None:
+    """§12 verdict table — only stdout from blind Phase 4 run."""
+    t = payload["table"]
+    pesto = t["pesto"]
+    s1 = t["tokyo_eye_s1"]
+    s2 = t["tokyo_eye_s2"]
+    sasa = t["sasa_baseline"]
+    n_gold = payload["n_gold"]
+    verdict = payload["verdict"]
+
+    def _fmt_auc(v: float) -> str:
+        return f"{v:.3f}" if np.isfinite(v) else "nan"
+
+    print("## 12. Results (Phase 4 — blind evaluation)")
+    print()
+    print("| Metric | PeSTo (static 9EST) | Tokyo Eye S1 | Tokyo Eye S2 | SASA baseline |")
+    print("|---|---|---|---|---|")
+    print(
+        f"| recovery@3 | {pesto['recovery_at_3']} | {s1['recovery_at_3']} | "
+        f"{s2['recovery_at_3']} | {sasa['recovery_at_3']} |"
+    )
+    print(
+        f"| ROC AUC | {_fmt_auc(pesto['roc_auc'])} | {_fmt_auc(s1['roc_auc'])} | "
+        f"{_fmt_auc(s2['roc_auc'])} | {_fmt_auc(sasa['roc_auc'])} |"
+    )
+    print(f"| |I_gold| | {n_gold} | — | — | — |")
+    print(
+        f"| SASA margin | — | {_fmt_auc(s1['sasa_margin'])} | "
+        f"{_fmt_auc(s2['sasa_margin'])} | — |"
+    )
+    print(f"| **Verdict (§8):** | — | {verdict} | — | — |")
+
+
+def run_phase34(
+    *,
+    pdb_dir: Path = DEFAULT_PDB_DIR,
+    lock_path: Path = DEFAULT_LOCK_PATH,
+    phase2_output: Path = DEFAULT_PHASE2_OUTPUT,
+    pesto_scores_path: Path = DEFAULT_PESTO_OUTPUT,
+    checkpoint: Path = DEFAULT_CHECKPOINT,
+    output_path: Path = DEFAULT_PHASE34_OUTPUT,
+    device: str = "cpu",
+) -> dict:
+    """Phase 3+4 blind driver: channels → scores → decide(); no S1 stdout until table."""
+    with open(phase2_output, encoding="utf-8") as f:
+        phase2 = json.load(f)
+    if phase2.get("precondition_gate") != "PASS":
+        raise SystemExit(
+            f"Phase 2 precondition gate is {phase2.get('precondition_gate')!r} — abort."
+        )
+
+    lock = load_lock(lock_path)
+    label = lock["interface_label"]
+    eval_resnums: list[int] = label["eval_universe_9est_resnums"]
+    gold_resnums: list[int] = label["gold_9est_resnums"]
+
+    pesto_scores = load_pesto_scores(pesto_scores_path)
+    pesto_m = _eval_scores_on_universe(pesto_scores, eval_resnums, gold_resnums)
+
+    channels = load_tokyo_eye_channels(
+        checkpoint=checkpoint,
+        pdb_dir=pdb_dir,
+        eval_resnums=eval_resnums,
+        device=device,
+    )
+    missing = sorted(set(eval_resnums) - set(channels))
+    if missing:
+        raise SystemExit(
+            f"Tokyo Eye channels missing {len(missing)} eval-universe residues "
+            f"(first: {missing[:5]})"
+        )
+
+    s1_scores, s2_scores = s1_s2_scores(channels, eval_resnums)
+
+    est_pdb = _download_pdb("9EST", pdb_dir)
+    sasa_scores = compute_sasa_baseline_freesasa(
+        est_pdb, RECEPTOR_CHAIN_9EST, eval_resnums
+    )
+
+    sasa_m = _eval_scores_on_universe(sasa_scores, eval_resnums, gold_resnums)
+    te_m = _metrics_with_sasa_margin(s1_scores, eval_resnums, gold_resnums, sasa_m.auc)
+    s2_m = _metrics_with_sasa_margin(s2_scores, eval_resnums, gold_resnums, sasa_m.auc)
+
+    verdict = decide(te_m, pesto_m.recovery_at_3)
+    s1_sweep = _recovery_sweep(s1_scores, eval_resnums, gold_resnums)
+
+    payload = {
+        "phase": "3+4",
+        "generated_utc": datetime.now(UTC).isoformat(),
+        "checkpoint": str(checkpoint),
+        "n_gold": len(gold_resnums),
+        "n_eval_universe": len(eval_resnums),
+        "phase2_gate": phase2["precondition_gate"],
+        "verdict": verdict,
+        "table": {
+            "pesto": {
+                "recovery_at_3": pesto_m.recovery_at_3,
+                "roc_auc": pesto_m.auc,
+                "sasa_margin": None,
+            },
+            "tokyo_eye_s1": {
+                "recovery_at_3": te_m.recovery_at_3,
+                "roc_auc": te_m.auc,
+                "sasa_margin": te_m.sasa_margin,
+            },
+            "tokyo_eye_s2": {
+                "recovery_at_3": s2_m.recovery_at_3,
+                "roc_auc": s2_m.auc,
+                "sasa_margin": s2_m.sasa_margin,
+            },
+            "sasa_baseline": {
+                "recovery_at_3": sasa_m.recovery_at_3,
+                "roc_auc": sasa_m.auc,
+                "sasa_margin": None,
+            },
+        },
+        "s1_recovery_sweep": s1_sweep,
+        "locked_constants": {
+            "K_PRIMARY": K_PRIMARY,
+            "AUC_SUCCESS": AUC_SUCCESS,
+            "AUC_FLOOR": AUC_FLOOR,
+            "W_DEHYDRON": W_DEHYDRON,
+            "W_SHELL": W_SHELL,
+            "TAU_EPISTEMIC": TAU_EPISTEMIC,
+            "W_ALEATORIC": W_ALEATORIC,
+        },
+        "channels": {
+            str(k): v for k, v in sorted(channels.items())
+        },
+        "scores": {
+            "s1": {str(k): v for k, v in sorted(s1_scores.items())},
+            "s2": {str(k): v for k, v in sorted(s2_scores.items())},
+            "sasa": {str(k): v for k, v in sorted(sasa_scores.items())},
+        },
+    }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+    return payload
 
 
 # ===========================================================================
@@ -413,9 +795,17 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--phase1", action="store_true", help="Compute I_gold lock (output-blind)")
-    ap.add_argument("--run", action="store_true")
+    ap.add_argument("--phase2", action="store_true", help="PeSTo precondition on static 9EST")
+    ap.add_argument("--pesto-scores", type=Path, default=None, help="Import PeSTo scores JSON")
+    ap.add_argument("--pesto-root", type=Path, default=None)
+    ap.add_argument("--device", default="cpu")
+    ap.add_argument("--run", action="store_true", help="Phase 3+4 blind evaluation")
     ap.add_argument("--pdb-dir", type=Path, default=DEFAULT_PDB_DIR)
     ap.add_argument("--lock-path", type=Path, default=DEFAULT_LOCK_PATH)
+    ap.add_argument("--phase2-output", type=Path, default=DEFAULT_PHASE2_OUTPUT)
+    ap.add_argument("--pesto-output", type=Path, default=DEFAULT_PESTO_OUTPUT)
+    ap.add_argument("--checkpoint", type=Path, default=DEFAULT_CHECKPOINT)
+    ap.add_argument("--output", type=Path, default=DEFAULT_PHASE34_OUTPUT)
     args = ap.parse_args()
     if args.selftest:
         return _selftest()
@@ -424,11 +814,31 @@ def main() -> int:
         print(json.dumps(out, indent=2))
         print(f"Wrote → {args.lock_path}")
         return 0
-    if args.run:
-        raise SystemExit(
-            "Wire load_pesto_scores / load_tokyo_eye_channels, then implement "
-            "Phase 4 driver. Fails closed by design."
+    if args.phase2:
+        out = run_phase2(
+            pdb_dir=args.pdb_dir,
+            lock_path=args.lock_path,
+            phase2_output=args.phase2_output,
+            pesto_root=args.pesto_root,
+            device=args.device,
+            scores_path=args.pesto_scores,
         )
+        print(json.dumps(out, indent=2))
+        print(f"Wrote → {args.phase2_output}")
+        return 0 if out["precondition_gate"] == "PASS" else 2
+    if args.run:
+        payload = run_phase34(
+            pdb_dir=args.pdb_dir,
+            lock_path=args.lock_path,
+            phase2_output=args.phase2_output,
+            pesto_scores_path=args.pesto_output,
+            checkpoint=args.checkpoint,
+            output_path=args.output,
+            device=args.device,
+        )
+        _print_verdict_table(payload)
+        print(f"\nWrote → {args.output}")
+        return 0
     ap.print_help()
     return 0
 

@@ -25,10 +25,15 @@ import asyncio
 
 from psycopg.types.json import Json
 
-from science.dtie.common.ingest_payloads import AlignmentPayload, IngestDimensionPayload
+from science.dtie.common.ingest_payloads import (
+    AlignmentPayload,
+    ComputationScopePayload,
+    IngestDimensionPayload,
+)
 from science.dtie.common.keys import make_residue_id, validate_residue_id
 from science.dtie.common.normalizer_payloads import (
     AllostericSitePayload,
+    AnnotationPayload,
     DrugCandidatePayload,
     EvidencePayload,
     GNNNodeResult,
@@ -43,7 +48,12 @@ from science.dtie.common.normalizer_payloads import (
     ProvenanceContext,
     ResistancePathwayPayload,
     SourceLeakPayload,
+    BindingSiteScanPayload,
+    CrypticSiteRecord,
+    BindingSiteScanMetadata,
     TopologicalLiftPayload,
+    HyperbolicMotifPayload,
+    PhaseOutputPayload,
 )
 
 logger = logging.getLogger(__name__)
@@ -309,6 +319,7 @@ class Normalizer:
         try:
             await self._db.begin()
 
+            # dim_structure must exist before provenance_run (FK constraint).
             await self._db.execute(
                 """
                 INSERT INTO dim_structure (
@@ -357,6 +368,8 @@ class Normalizer:
                 },
             )
             asset_ids.append(payload.structure.structure_id)
+
+            await self._ensure_provenance_run(prov)
 
             if payload.chains:
                 await self._db.execute_many(
@@ -463,7 +476,6 @@ class Normalizer:
                 asset_ids.extend(residue.residue_id for residue in payload.residues)
 
             await self._db.commit()
-            await self._ensure_provenance_run(prov)
 
         except Exception as e:
             await self._db.rollback()
@@ -736,6 +748,244 @@ class Normalizer:
             assets_created=len(asset_ids),
             asset_ids=asset_ids,
             warnings=warnings,
+        )
+
+    async def normalize_computation_scope(
+        self, payload: ComputationScopePayload
+    ) -> NormalizerResult:
+        """Persist structure_computation_scope via the governed write path."""
+        start_time = time.monotonic()
+        prov = payload.provenance
+        scope = payload.scope
+        await self._ensure_provenance_run(prov)
+
+        quality_filters = None
+        if scope.quality_filters is not None:
+            quality_filters = Json(
+                {
+                    "max_b_factor_threshold": scope.quality_filters.max_b_factor_threshold,
+                    "min_resolution": scope.quality_filters.min_resolution,
+                }
+            )
+
+        try:
+            await self._db.begin()
+            await self._db.execute(
+                """
+                INSERT INTO structure_computation_scope (
+                    structure_id, primary_chain_ids, reference_chain,
+                    exclude_chain_ids, scope_source, selection_reason,
+                    normalization_protocol, quality_filters, model_index
+                ) VALUES (
+                    :structure_id, :primary_chain_ids, :reference_chain,
+                    :exclude_chain_ids, :scope_source, :selection_reason,
+                    :normalization_protocol, :quality_filters, :model_index
+                )
+                ON CONFLICT (structure_id) DO UPDATE SET
+                    primary_chain_ids = EXCLUDED.primary_chain_ids,
+                    reference_chain = EXCLUDED.reference_chain,
+                    exclude_chain_ids = EXCLUDED.exclude_chain_ids,
+                    scope_source = EXCLUDED.scope_source,
+                    selection_reason = EXCLUDED.selection_reason,
+                    normalization_protocol = EXCLUDED.normalization_protocol,
+                    quality_filters = EXCLUDED.quality_filters,
+                    model_index = EXCLUDED.model_index,
+                    updated_at = NOW()
+                """,
+                {
+                    "structure_id": scope.structure_id,
+                    "primary_chain_ids": scope.primary_chain_ids,
+                    "reference_chain": scope.reference_chain,
+                    "exclude_chain_ids": scope.exclude_chain_ids,
+                    "scope_source": scope.scope_source,
+                    "selection_reason": scope.selection_reason,
+                    "normalization_protocol": scope.normalization_protocol,
+                    "quality_filters": quality_filters,
+                    "model_index": scope.model_index,
+                },
+            )
+            asset_id = f"scope:{scope.structure_id}"
+            await self._register_governed_assets(
+                asset_ids=[asset_id],
+                asset_type="computation_scope",
+                prov=prov,
+            )
+            await self._db.commit()
+        except Exception as e:
+            await self._db.rollback()
+            await self._log_audit(
+                run_id=prov.run_id,
+                structure_id=prov.structure_id,
+                payload_type="computation_scope",
+                status="write_error",
+                error_message=str(e),
+                duration_ms=self._elapsed_ms(start_time),
+            )
+            raise NormalizerError(
+                f"Failed to write computation scope: {e}",
+                run_id=prov.run_id,
+                details=str(e),
+            ) from e
+
+        duration_ms = self._elapsed_ms(start_time)
+        await self._log_audit(
+            run_id=prov.run_id,
+            structure_id=prov.structure_id,
+            payload_type="computation_scope",
+            status="success",
+            assets_created=1,
+            duration_ms=duration_ms,
+            payload_summary={"structure_id": scope.structure_id},
+        )
+        return NormalizerResult(
+            success=True,
+            run_id=prov.run_id,
+            assets_created=1,
+            asset_ids=[asset_id],
+        )
+
+    async def normalize_hyperbolic_motifs(
+        self, payload: HyperbolicMotifPayload
+    ) -> NormalizerResult:
+        """Persist hyperbolic motif clusters to fact_hyperbolic_motif."""
+        start_time = time.monotonic()
+        prov = payload.provenance
+        await self._ensure_provenance_run(prov)
+        asset_ids: list[str] = []
+
+        try:
+            await self._db.begin()
+            for motif in payload.motifs:
+                await self._db.execute(
+                    """
+                    INSERT INTO fact_hyperbolic_motif (
+                        motif_id, structure_id, run_id, cluster_id,
+                        residue_ids, medoid_residue_id, centroid_angle_deg,
+                        centroid_radius, motif_size, angular_sector, classification
+                    ) VALUES (
+                        :motif_id, :structure_id, :run_id, :cluster_id,
+                        :residue_ids, :medoid_residue_id, :centroid_angle_deg,
+                        :centroid_radius, :motif_size, :angular_sector, :classification
+                    )
+                    ON CONFLICT (run_id, cluster_id) DO UPDATE SET
+                        motif_id = EXCLUDED.motif_id,
+                        residue_ids = EXCLUDED.residue_ids,
+                        medoid_residue_id = EXCLUDED.medoid_residue_id,
+                        centroid_angle_deg = EXCLUDED.centroid_angle_deg,
+                        centroid_radius = EXCLUDED.centroid_radius,
+                        motif_size = EXCLUDED.motif_size,
+                        angular_sector = EXCLUDED.angular_sector,
+                        classification = EXCLUDED.classification
+                    """,
+                    {
+                        "motif_id": motif.motif_id,
+                        "structure_id": payload.structure_id,
+                        "run_id": prov.run_id,
+                        "cluster_id": motif.cluster_id,
+                        "residue_ids": motif.residue_ids,
+                        "medoid_residue_id": motif.medoid_residue_id,
+                        "centroid_angle_deg": motif.centroid_angle_deg,
+                        "centroid_radius": motif.centroid_radius,
+                        "motif_size": motif.motif_size,
+                        "angular_sector": motif.angular_sector,
+                        "classification": motif.classification,
+                    },
+                )
+                asset_ids.append(motif.motif_id)
+
+            if asset_ids:
+                await self._register_governed_assets(
+                    asset_ids=asset_ids,
+                    asset_type="hyperbolic_motif",
+                    prov=prov,
+                )
+            await self._db.commit()
+        except Exception as e:
+            await self._db.rollback()
+            raise NormalizerError(
+                f"Failed to write hyperbolic motifs: {e}",
+                run_id=prov.run_id,
+                details=str(e),
+            ) from e
+
+        duration_ms = self._elapsed_ms(start_time)
+        await self._log_audit(
+            run_id=prov.run_id,
+            structure_id=prov.structure_id,
+            payload_type="hyperbolic_motifs",
+            status="success",
+            assets_created=len(asset_ids),
+            duration_ms=duration_ms,
+            payload_summary={"motif_count": len(payload.motifs)},
+        )
+        return NormalizerResult(
+            success=True,
+            run_id=prov.run_id,
+            assets_created=len(asset_ids),
+            asset_ids=asset_ids,
+        )
+
+    async def normalize_phase_output(self, payload: PhaseOutputPayload) -> NormalizerResult:
+        """Persist a generic phase output row to fact_phase_output."""
+        start_time = time.monotonic()
+        prov = payload.provenance
+        output = payload.output
+        await self._ensure_provenance_run(prov)
+
+        try:
+            await self._db.begin()
+            await self._db.execute(
+                """
+                INSERT INTO fact_phase_output (
+                    run_id, structure_id, phase, phase_name, output_data,
+                    source_type, model_version, computed_at
+                )
+                VALUES (
+                    :run_id, :structure_id, :phase, :phase_name, :output_data,
+                    :source_type, :model_version, NOW()
+                )
+                ON CONFLICT (phase_output_id) DO NOTHING
+                """,
+                {
+                    "run_id": prov.run_id,
+                    "structure_id": payload.structure_id,
+                    "phase": output.phase,
+                    "phase_name": output.phase_name,
+                    "output_data": Json(output.output_data),
+                    "source_type": output.source_type,
+                    "model_version": output.model_version,
+                },
+            )
+            asset_id = f"phase_output:{prov.run_id}:{output.phase_name}"
+            await self._register_governed_assets(
+                asset_ids=[asset_id],
+                asset_type="phase_output",
+                prov=prov,
+            )
+            await self._db.commit()
+        except Exception as e:
+            await self._db.rollback()
+            raise NormalizerError(
+                f"Failed to write phase output: {e}",
+                run_id=prov.run_id,
+                details=str(e),
+            ) from e
+
+        duration_ms = self._elapsed_ms(start_time)
+        await self._log_audit(
+            run_id=prov.run_id,
+            structure_id=prov.structure_id,
+            payload_type="phase_output",
+            status="success",
+            assets_created=1,
+            duration_ms=duration_ms,
+            payload_summary={"phase_name": output.phase_name},
+        )
+        return NormalizerResult(
+            success=True,
+            run_id=prov.run_id,
+            assets_created=1,
+            asset_ids=[asset_id],
         )
 
     # ------------------------------------------------------------------
@@ -1055,6 +1305,168 @@ class Normalizer:
             asset_ids=asset_ids,
             warnings=warnings,
             asset_metadata={"source_leak_count": len(payload.leak_residues)},
+        )
+
+    # ------------------------------------------------------------------
+    # Path 2b2: Binding Site Scan
+    # ------------------------------------------------------------------
+
+    async def normalize_binding_site_scan(
+        self, payload: BindingSiteScanPayload
+    ) -> NormalizerResult:
+        """Validate and write binding-site scan results (cryptic sites + scan metadata)."""
+        start_time = time.monotonic()
+        warnings: list[str] = []
+        prov = payload.provenance
+
+        await self._ensure_provenance_run(prov)
+
+        for site in payload.sites:
+            for residue_id in site.residue_ids:
+                if not validate_residue_id(residue_id):
+                    raise NormalizerError(
+                        f"Invalid residue_id format: '{residue_id}'",
+                        run_id=prov.run_id,
+                    )
+
+        asset_ids: list[str] = []
+        try:
+            await self._db.begin()
+
+            if payload.replace_previous:
+                await self._db.execute(
+                    """
+                    DELETE FROM fact_cryptic_site
+                    WHERE structure_id = :structure_id AND scan_run_id IS NOT NULL
+                    """,
+                    {"structure_id": payload.structure_id},
+                )
+
+            if payload.sites:
+                site_params = [
+                    {
+                        "site_id": site.site_id,
+                        "structure_id": payload.structure_id,
+                        "run_id": prov.run_id,
+                        "residue_ids": Json(site.residue_ids),
+                        "centroid_x": site.centroid_x,
+                        "centroid_y": site.centroid_y,
+                        "centroid_z": site.centroid_z,
+                        "site_type": site.site_type,
+                        "discovery_method": site.discovery_method,
+                        "druggability_score": site.druggability_score,
+                        "site_rank": site.site_rank,
+                        "composite_gnn_score": site.composite_gnn_score,
+                        "fpocket_druggability": site.fpocket_druggability,
+                        "volume_angstrom3": site.volume_angstrom3,
+                        "provenance_gate": site.provenance_gate,
+                        "heuristic_version": site.heuristic_version,
+                        "md_validation_status": site.md_validation_status,
+                        "scan_run_id": site.scan_run_id or prov.run_id,
+                        "created_at": payload.computed_at.isoformat(),
+                    }
+                    for site in payload.sites
+                ]
+                await self._db.execute_many(
+                    """
+                    INSERT INTO fact_cryptic_site (
+                        site_id, structure_id, run_id, residue_ids,
+                        centroid_x, centroid_y, centroid_z,
+                        site_type, discovery_method, druggability_score, site_rank,
+                        composite_gnn_score, fpocket_druggability, volume_angstrom3,
+                        provenance_gate, heuristic_version, md_validation_status,
+                        scan_run_id, created_at
+                    ) VALUES (
+                        :site_id, :structure_id, :run_id, :residue_ids,
+                        :centroid_x, :centroid_y, :centroid_z,
+                        :site_type, :discovery_method, :druggability_score, :site_rank,
+                        :composite_gnn_score, :fpocket_druggability, :volume_angstrom3,
+                        :provenance_gate, :heuristic_version, :md_validation_status,
+                        :scan_run_id, :created_at
+                    )
+                    ON CONFLICT (site_id) DO UPDATE SET
+                        site_type = EXCLUDED.site_type,
+                        discovery_method = EXCLUDED.discovery_method,
+                        druggability_score = EXCLUDED.druggability_score,
+                        site_rank = EXCLUDED.site_rank,
+                        composite_gnn_score = EXCLUDED.composite_gnn_score,
+                        fpocket_druggability = EXCLUDED.fpocket_druggability,
+                        volume_angstrom3 = EXCLUDED.volume_angstrom3,
+                        provenance_gate = EXCLUDED.provenance_gate,
+                        heuristic_version = EXCLUDED.heuristic_version,
+                        scan_run_id = EXCLUDED.scan_run_id
+                    """,
+                    site_params,
+                )
+                asset_ids.extend(site.site_id for site in payload.sites)
+
+            meta = payload.scan_metadata
+            await self._db.execute(
+                """
+                INSERT INTO fact_binding_site_scan (
+                    structure_id, run_id, heuristic_version, model_version,
+                    scan_parameters, sites_found, duration_ms, status, created_at
+                ) VALUES (
+                    :structure_id, :run_id, :heuristic_version, :model_version,
+                    :scan_parameters, :sites_found, :duration_ms, :status, :created_at
+                )
+                ON CONFLICT (structure_id, run_id) DO UPDATE SET
+                    heuristic_version = EXCLUDED.heuristic_version,
+                    model_version = EXCLUDED.model_version,
+                    scan_parameters = EXCLUDED.scan_parameters,
+                    sites_found = EXCLUDED.sites_found,
+                    duration_ms = EXCLUDED.duration_ms,
+                    status = EXCLUDED.status
+                """,
+                {
+                    "structure_id": payload.structure_id,
+                    "run_id": prov.run_id,
+                    "heuristic_version": meta.heuristic_version,
+                    "model_version": meta.model_version,
+                    "scan_parameters": Json(meta.scan_parameters),
+                    "sites_found": meta.sites_found,
+                    "duration_ms": meta.duration_ms,
+                    "status": meta.status,
+                    "created_at": payload.computed_at.isoformat(),
+                },
+            )
+            asset_ids.append(f"scan_{prov.run_id}")
+
+            await self._register_governed_assets(
+                asset_ids=asset_ids,
+                asset_type="cryptic_site",
+                prov=prov,
+            )
+            await self._db.commit()
+        except NormalizerError:
+            await self._db.rollback()
+            raise
+        except Exception as e:
+            await self._db.rollback()
+            raise NormalizerError(
+                f"Failed to write binding-site scan: {e}",
+                run_id=prov.run_id,
+                details=str(e),
+            ) from e
+
+        duration_ms = self._elapsed_ms(start_time)
+        await self._log_audit(
+            run_id=prov.run_id,
+            structure_id=prov.structure_id,
+            payload_type="binding_site_scan",
+            status="success",
+            assets_created=len(asset_ids),
+            duration_ms=duration_ms,
+            payload_summary={"sites_found": meta.sites_found},
+        )
+
+        return NormalizerResult(
+            success=True,
+            run_id=prov.run_id,
+            assets_created=len(asset_ids),
+            asset_ids=asset_ids,
+            warnings=warnings,
+            asset_metadata={"sites_found": meta.sites_found},
         )
 
     # ------------------------------------------------------------------
@@ -2493,6 +2905,116 @@ class Normalizer:
             warnings=warnings,
         )
 
+    async def normalize_annotation(
+        self, payload: AnnotationPayload
+    ) -> NormalizerResult:
+        """Validate and write a structure or residue annotation."""
+        start_time = time.monotonic()
+        warnings: list[str] = []
+        prov = payload.provenance
+
+        await self._ensure_provenance_run(prov)
+
+        asset_ids: list[str] = []
+        try:
+            await self._db.begin()
+
+            primary_residue_id = payload.residue_ids[0] if len(payload.residue_ids) == 1 else None
+            await self._db.execute(
+                """
+                INSERT INTO fact_generic_annotation (
+                    annotation_id, run_id, structure_id, residue_id,
+                    annotation_type, annotation_key, annotation_value, source_type
+                ) VALUES (
+                    :annotation_id, :run_id, :structure_id, :residue_id,
+                    :annotation_type, :annotation_key, :annotation_value, :source_type
+                )
+                ON CONFLICT (annotation_id) DO UPDATE SET
+                    annotation_type = EXCLUDED.annotation_type,
+                    annotation_key = EXCLUDED.annotation_key,
+                    annotation_value = EXCLUDED.annotation_value
+                """,
+                {
+                    "annotation_id": payload.annotation_id,
+                    "run_id": prov.run_id,
+                    "structure_id": payload.structure_id,
+                    "residue_id": primary_residue_id,
+                    "annotation_type": payload.annotation_type,
+                    "annotation_key": "agent_annotation",
+                    "annotation_value": Json(
+                        {
+                            "text": payload.text,
+                            "residue_ids": payload.residue_ids,
+                            "created_by": payload.created_by,
+                        }
+                    ),
+                    "source_type": prov.source_type.value,
+                },
+            )
+            asset_ids.append(payload.annotation_id)
+
+            await self._register_governed_assets(
+                asset_ids=asset_ids,
+                asset_type=f"annotation_{payload.annotation_type}",
+                prov=prov,
+            )
+
+            await self._db.commit()
+
+        except NormalizerError:
+            await self._db.rollback()
+            raise
+        except Exception as e:
+            await self._db.rollback()
+            await self._log_audit(
+                run_id=prov.run_id,
+                structure_id=prov.structure_id,
+                payload_type="annotation",
+                status="write_error",
+                error_message=str(e),
+                duration_ms=self._elapsed_ms(start_time),
+                payload_summary={
+                    "annotation_id": payload.annotation_id,
+                    "annotation_type": payload.annotation_type,
+                },
+            )
+            raise NormalizerError(
+                f"Failed to write annotation: {e}",
+                run_id=prov.run_id,
+                details=str(e),
+            ) from e
+
+        duration_ms = self._elapsed_ms(start_time)
+        await self._log_audit(
+            run_id=prov.run_id,
+            structure_id=prov.structure_id,
+            payload_type="annotation",
+            status="success",
+            assets_created=len(asset_ids),
+            duration_ms=duration_ms,
+            payload_summary={
+                "annotation_id": payload.annotation_id,
+                "annotation_type": payload.annotation_type,
+                "residue_count": len(payload.residue_ids),
+            },
+        )
+
+        logger.info(
+            "Normalized annotation: run_id=%s, annotation=%s, type=%s, duration=%dms",
+            prov.run_id,
+            payload.annotation_id,
+            payload.annotation_type,
+            duration_ms,
+        )
+
+        return NormalizerResult(
+            success=True,
+            run_id=prov.run_id,
+            assets_created=len(asset_ids),
+            asset_ids=asset_ids,
+            warnings=warnings,
+        )
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -2502,7 +3024,31 @@ class Normalizer:
 
         Uses ON CONFLICT DO NOTHING to handle concurrent inserts safely.
         Two callers with the same run_id will both succeed without error.
+
+        Raises:
+            NormalizerError: When provenance is missing or incomplete.
         """
+        run_id = (prov.run_id or "").strip()
+        structure_id = (prov.structure_id or "").strip()
+        if not run_id:
+            raise NormalizerError(
+                "provenance_run_id is required before governed writes",
+                run_id=prov.run_id,
+            )
+        if not structure_id:
+            raise NormalizerError(
+                "structure_id is required before governed writes",
+                run_id=run_id,
+            )
+
+        try:
+            prov.validate_for_governed_write()
+        except ValueError as exc:
+            raise NormalizerError(
+                f"Incomplete provenance for run_id={run_id}: {exc}",
+                run_id=run_id,
+            ) from exc
+
         await self._db.execute(
             """
             INSERT INTO provenance_run (
@@ -2531,6 +3077,19 @@ class Normalizer:
                 "started_at": datetime.now(timezone.utc).isoformat(),
             },
         )
+        await self._assert_provenance_run_active(run_id)
+
+    async def _assert_provenance_run_active(self, run_id: str) -> None:
+        """Verify provenance_run exists before persisting governed facts."""
+        row = await self._db.fetch_one(
+            "SELECT 1 AS ok FROM provenance_run WHERE run_id = :run_id",
+            {"run_id": run_id},
+        )
+        if row is None:
+            raise NormalizerError(
+                f"provenance_run not active for run_id={run_id}",
+                run_id=run_id,
+            )
 
     async def _ensure_embedding_space(
         self,
@@ -2554,7 +3113,11 @@ class Normalizer:
                 :space_id, :name, :space_type, :dimensionality, :curvature,
                 :model_name, TRUE
             )
-            ON CONFLICT (name) DO NOTHING
+            ON CONFLICT (name) DO UPDATE SET
+                curvature = EXCLUDED.curvature,
+                dimensionality = EXCLUDED.dimensionality,
+                model_name = EXCLUDED.model_name,
+                is_active = TRUE
             """,
             {
                 "space_id": space_id,
@@ -2674,6 +3237,43 @@ class Normalizer:
             ON CONFLICT (asset_id) DO NOTHING
             """,
             params_list,
+        )
+
+    async def register_file_asset(
+        self,
+        *,
+        asset_id: str,
+        asset_type: str,
+        prov: ProvenanceContext,
+        storage_uri: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Register a filesystem-backed governed asset (e.g. interactive HTML viewer)."""
+        prov.validate_for_governed_write()
+        await self._db.execute(
+            """
+            INSERT INTO governed_asset (
+                asset_id, asset_type, structure_id, run_id,
+                storage_uri, access_level, created_at, metadata
+            ) VALUES (
+                :asset_id, :asset_type, :structure_id, :run_id,
+                :storage_uri, :access_level, :created_at, :metadata
+            )
+            ON CONFLICT (asset_id) DO UPDATE SET
+                storage_uri = EXCLUDED.storage_uri,
+                metadata = EXCLUDED.metadata,
+                created_at = EXCLUDED.created_at
+            """,
+            {
+                "asset_id": asset_id,
+                "asset_type": asset_type,
+                "structure_id": prov.structure_id,
+                "run_id": prov.run_id,
+                "storage_uri": storage_uri,
+                "access_level": "internal",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "metadata": Json(metadata) if metadata else None,
+            },
         )
 
     # ------------------------------------------------------------------

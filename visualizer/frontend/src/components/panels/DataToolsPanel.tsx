@@ -765,7 +765,7 @@ export default function DataToolsPanel() {
                     } catch(e) { console.warn('Ingest sample failed, ensure backend running and run full pipeline on the PDB', e); }
                   }}
                   className="ml-0.5 text-[8px] px-1 border border-emerald-600 text-emerald-700 rounded hover:bg-emerald-100"
-                  title={`Ingest sample PDB ${SAMPLE_PDBS[p]} for ${p}; the full DTIE compute path is queued automatically`}
+                  title={`Ingest sample PDB ${SAMPLE_PDBS[p]} for ${p}; discovery pathway compute is queued automatically`}
                 >ingest {SAMPLE_PDBS[p]}</button>
               )}
             </label>
@@ -791,9 +791,9 @@ export default function DataToolsPanel() {
               }
             }}
             className="mt-1 w-full text-xs py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded"
-            title="For each selected pathway: ingest its sample PDB and let ingest queue the full DTIE compute path. Refreshes compiler state afterwards."
+            title="For each selected pathway: ingest its sample PDB and let onboard queue the discovery compute path. Refreshes compiler state afterwards."
           >
-            ▶ Run full DTIE pipeline on all selected samples
+            ▶ Run discovery pathway on all selected samples
           </button>
 
           {/* Collapse mechanics test button - targets adaptor GRB2 bridging the three pathways */}
@@ -855,7 +855,7 @@ export default function DataToolsPanel() {
           {/* Live Before/After slider for Poincaré collapse transition.
               0 = intact network (pre-GRB2), 1 = fully shattered (post-collapse).
               Calls real /collapse with fraction, gets interpolated hyperbolic + re-optimized beta.
-              Nodes without completed DTIE pipeline (no live DB metrics) fall back to static topological proxies
+              Nodes without completed discovery pathway artifacts fall back to static topological proxies
               but are grayed out (dashed, low opacity) in the Poincaré layer to enforce reliance on real runs. */}
           <div className="mt-2">
             <label className="text-[10px] block mb-0.5">Collapse Transition (Poincaré Before/After)</label>

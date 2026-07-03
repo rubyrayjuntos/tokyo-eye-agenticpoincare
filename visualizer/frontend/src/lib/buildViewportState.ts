@@ -1,10 +1,6 @@
 /**
- * buildViewportState — assembles the viewport_state payload sent with each chat message.
- *
- * This is a pure function that takes the current cockpit state and produces the
- * ViewportState payload matching the backend context_builder's expected shape.
- *
- * Requirements: 4.1, 8.4
+ * buildViewportState — thin adapter for tests and legacy callers.
+ * Production paths should use selectAgentViewportContext directly.
  */
 
 import type {
@@ -14,6 +10,8 @@ import type {
   StructureColorModeType,
   ActivePanelName,
 } from "./types";
+import type { ViewportContext } from "./viewportMachine";
+import { selectAgentViewportContext } from "./selectAgentViewportContext";
 
 export interface BuildViewportStateInputs {
   structureId: string | null;
@@ -40,31 +38,105 @@ export interface BuildViewportStateInputs {
   pipelineStatus: string;
   pipelineCurrentStep: string | null;
   pipelineProgress: number | null;
+
+  /** When true, emit a synthetic data_summary from count fields (property tests). */
+  simulateHydration?: boolean;
 }
 
-/**
- * Builds the ViewportState payload from current cockpit state.
- * All required fields are always present (nullable fields may be null).
- */
-export function buildViewportState(inputs: BuildViewportStateInputs): ViewportState {
+function inputsToViewportContext(inputs: BuildViewportStateInputs): ViewportContext {
   return {
-    structure_id: inputs.structureId,
-    structure_title: inputs.structureTitle,
+    highlightedResidues: inputs.highlightedResidueIds,
+    brushSelectedIds: inputs.brushSelectedIds,
+    selectedResidue: inputs.selectedResidue,
+    userSelectedResidue: inputs.selectedResidue?.residue_id ?? null,
+    mobiusFocusEnabled: inputs.mobiusFocusEnabled,
+    currentDirective: null,
+    activeMetric: "cone_depth",
+    isRadarActive: false,
+    poincareColorMode: inputs.poincareColorMode,
+    viewerColorMode: inputs.viewerColorMode,
+    riskThreshold: inputs.riskThreshold,
+    selectedPocketId: null,
+    activePanel: inputs.activePanel,
+    sidebarOpen: true,
+    activeEditorTab: "structure",
+    bottomPanelOpen: true,
+    activeBottomPanel: "summary",
+    layoutModelJSON: null,
+  };
+}
 
-    poincare: {
-      color_mode: inputs.poincareColorMode,
-      mobius_focus_enabled: inputs.mobiusFocusEnabled,
-      mobius_focus_residue: inputs.mobiusFocusResidue,
-      selected_residue: inputs.selectedResidue,
-      brush_selected_ids: inputs.brushSelectedIds,
-    },
+export function buildViewportState(inputs: BuildViewportStateInputs): ViewportState {
+  const viewport = inputsToViewportContext(inputs);
+  const simulateHydration = inputs.simulateHydration ?? true;
 
-    viewer_3d: {
-      color_mode: inputs.viewerColorMode,
-      risk_threshold: inputs.riskThreshold,
-      highlighted_residue_ids: inputs.highlightedResidueIds,
-    },
+  const state = selectAgentViewportContext({
+    activeStructure: inputs.structureId
+      ? {
+          structure_id: inputs.structureId,
+          pdb_id: inputs.structureId,
+          title: inputs.structureTitle ?? inputs.structureId,
+          has_embeddings: inputs.residueCount > 0,
+          last_run_id: inputs.pipelineStatus === "complete" ? "test-run" : null,
+        } as import("./types").Structure
+      : null,
+    viewport,
+    hydrationSlice: simulateHydration
+      ? {
+          hydration: { structure_id: inputs.structureId ?? "" },
+          embeddings:
+            inputs.residueCount > 0
+              ? {
+                  structure_id: inputs.structureId ?? "test",
+                  curvature: -1,
+                  residues: Array.from({ length: inputs.residueCount }, (_, i) => ({
+                    residue_id: `A:${i + 1}`,
+                    x: 0,
+                    y: 0,
+                    z: 0,
+                    epistemic_uncertainty: 0.1,
+                    aleatoric_uncertainty: 0.1,
+                    cone_depth: 0.5,
+                    plasticity: 0,
+                    hyperbolic_radius: 0.1,
+                    hyperbolic_angle: 0,
+                  })),
+                }
+              : null,
+          sourceLeaks:
+            inputs.sourceLeakCount > 0
+              ? { leaks: Array.from({ length: inputs.sourceLeakCount }, () => ({} as never)) }
+              : null,
+          resistanceData: null,
+          hypotheses: null,
+          provenanceRuns: null,
+          annotations: null,
+          pharmacophorePockets: null,
+          drugCandidates: null,
+          persistenceStatus: { embeddings_persisted: true },
+        }
+      : {
+          hydration: null,
+          embeddings: null,
+          sourceLeaks: null,
+          resistanceData: null,
+          hypotheses: null,
+          provenanceRuns: null,
+          annotations: null,
+          pharmacophorePockets: null,
+          drugCandidates: null,
+          persistenceStatus: null,
+        },
+    structureScope: null,
+    compareState: null,
+  });
 
+  if (!simulateHydration) {
+    return state;
+  }
+
+  return {
+    ...state,
     data_summary: {
       residue_count: inputs.residueCount,
       source_leak_count: inputs.sourceLeakCount,
@@ -76,9 +148,6 @@ export function buildViewportState(inputs: BuildViewportStateInputs): ViewportSt
       persistence_status: {},
       resistance_summary: null,
     },
-
-    active_panel: inputs.activePanel,
-
     pipeline: {
       status: inputs.pipelineStatus,
       current_step: inputs.pipelineCurrentStep,

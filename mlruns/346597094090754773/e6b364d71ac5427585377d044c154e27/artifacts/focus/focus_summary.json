@@ -1,0 +1,123 @@
+{
+  "checkpoint_eligible": false,
+  "needs_work": [
+    {
+      "metric": "routing_entropy",
+      "value": 1.3841092586517334,
+      "priority": "critical",
+      "matters": true,
+      "status": "needs_work",
+      "target": "\u2264 1.35 (save ceiling this epoch)",
+      "note": "Blocks v6_best saves; MoE still too uniform vs current gate."
+    },
+    {
+      "metric": "probe_r_depth_sasa",
+      "value": -0.043409037704495314,
+      "priority": "critical",
+      "matters": true,
+      "status": "needs_work",
+      "target": "\u2265 0.65 (save gate)",
+      "note": "Core shell signal weak \u2014 depth not aligned with SASA."
+    },
+    {
+      "metric": "probe_r_proj_depth",
+      "value": 0.15763693347741892,
+      "priority": "critical",
+      "matters": true,
+      "status": "needs_work",
+      "target": "\u2265 0.30 (minimum)",
+      "note": "Disc collapsed or inverted vs depth."
+    },
+    {
+      "metric": "expert_load_spread",
+      "value": 0.042434558272361755,
+      "priority": "important",
+      "matters": true,
+      "status": "needs_work",
+      "target": "\u2265 0.08 max\u2212min load",
+      "note": "Experts still sharing work evenly \u2014 increase MoE pressure gradually."
+    }
+  ],
+  "watch": [
+    {
+      "metric": "probe_r_epi_sasa",
+      "value": 0.3558284628463066,
+      "priority": "monitor",
+      "matters": false,
+      "status": "watch",
+      "target": "\u2265 0.70",
+      "note": "Secondary shell probe; often already strong in your runs."
+    },
+    {
+      "metric": "disc_r_std_mean",
+      "value": 0.01782810315489769,
+      "priority": "monitor",
+      "matters": false,
+      "status": "watch",
+      "target": "\u2265 0.10",
+      "note": "Disc spread; usually addressed in P1d \u2014 low leverage once shell strong."
+    },
+    {
+      "metric": "expert_0_r_depth_sasa",
+      "value": -0.3268929478124119,
+      "priority": "monitor",
+      "matters": false,
+      "status": "watch",
+      "target": "\u2265 0.45 per expert",
+      "note": "Expert 0 residues weak on depth\u2194SASA (often surface specialist)."
+    },
+    {
+      "metric": "expert_1_r_depth_sasa",
+      "value": -0.050277903601146645,
+      "priority": "monitor",
+      "matters": false,
+      "status": "watch",
+      "target": "\u2265 0.45 per expert",
+      "note": "Expert 1 residues weak on depth\u2194SASA (often surface specialist)."
+    },
+    {
+      "metric": "expert_2_r_depth_sasa",
+      "value": 0.20112242141203826,
+      "priority": "monitor",
+      "matters": false,
+      "status": "watch",
+      "target": "\u2265 0.45 per expert",
+      "note": "Expert 2 residues weak on depth\u2194SASA (often surface specialist)."
+    },
+    {
+      "metric": "total",
+      "value": 1.051182230313619,
+      "priority": "monitor",
+      "matters": false,
+      "status": "watch",
+      "target": "\u2193 slowly",
+      "note": "Optimization loss \u2014 do not chase alone; use tier-1 probes instead."
+    }
+  ],
+  "healthy": [
+    {
+      "metric": "proj_frac_mean",
+      "value": 0.0,
+      "priority": "healthy",
+      "matters": true,
+      "status": "healthy",
+      "target": "\u2248 0",
+      "note": "Saturated \u2014 do not optimize further."
+    }
+  ],
+  "primary_focus": [
+    "routing_entropy",
+    "probe_r_depth_sasa",
+    "probe_r_proj_depth",
+    "expert_load_spread"
+  ],
+  "primary_focus_str": "routing_entropy, probe_r_depth_sasa, probe_r_proj_depth, expert_load_spread",
+  "counts": {
+    "critical": 3,
+    "needs_work": 4,
+    "watch": 6,
+    "healthy": 1,
+    "matters_needs_work": 4
+  },
+  "recommendation": "Train more on: routing_entropy, probe_r_depth_sasa, probe_r_proj_depth. These block saves or threaten shell/MoE quality."
+}

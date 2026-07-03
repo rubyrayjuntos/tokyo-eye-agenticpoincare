@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 import AgentTelemetryPanel from "../AgentTelemetryPanel";
 import ResultsTable from "../ResultsTable";
-import PrototypeBriefingPanel from "../panels/PrototypeBriefingPanel";
+import StructureBriefingPanel from "../panels/StructureBriefingPanel";
 import PrototypeControlConsolePanel from "../panels/PrototypeControlConsolePanel";
 import PrototypeFragmentsPanel from "../panels/PrototypeFragmentsPanel";
 import PrototypeHypothesesDockPanel from "../panels/PrototypeHypothesesDockPanel";
@@ -107,7 +107,7 @@ export const TOOL_PANEL_REGISTRY: Record<ToolPanelId, WorkbenchPanelDefinition<T
     title: "Briefing",
     region: "activity-sidebar",
     manifest: BRIEFING_PANEL_MANIFEST,
-    render: () => <PrototypeBriefingPanel manifest={BRIEFING_PANEL_MANIFEST} />,
+    render: () => <StructureBriefingPanel manifest={BRIEFING_PANEL_MANIFEST} />,
   },
   control_console: {
     id: "control_console",

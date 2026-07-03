@@ -1,0 +1,15 @@
+artifact_uri: file:///app/mlruns/346597094090754773/800c67936419411a91eaa5bf6a49e99a/artifacts
+end_time: 1782776947773
+entry_point_name: ''
+experiment_id: '346597094090754773'
+lifecycle_stage: active
+run_id: 800c67936419411a91eaa5bf6a49e99a
+run_name: disc_path_align_v3
+run_uuid: 800c67936419411a91eaa5bf6a49e99a
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1782776906645
+status: 3
+tags: []
+user_id: unknown

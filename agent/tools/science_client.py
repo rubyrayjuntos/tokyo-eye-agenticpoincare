@@ -57,19 +57,33 @@ class ScienceClient:
         """Check science container health status."""
         return await self._get("/health", timeout=self._health_timeout)
 
-    async def run_gnn(self, structure_id: str, **kwargs: Any) -> dict[str, Any]:
-        """Run GNN inference on a structure."""
+    async def run_compute_job(
+        self,
+        job_id: str,
+        structure_id: str,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Run a single atomic compute job."""
         return await self._post(
-            "/compute/gnn",
+            f"/compute/jobs/{job_id}",
             {"structure_id": structure_id, **kwargs},
             timeout=self._pipeline_timeout,
         )
 
-    async def run_pipeline(self, structure_id: str, **kwargs: Any) -> dict[str, Any]:
-        """Run the full DTIE pipeline on a structure."""
+    async def run_post_source_leak_phases(
+        self,
+        structure_id: str,
+        parent_run_id: str,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Run allosteric + buffering phases after peeled source_leak_detection."""
         return await self._post(
-            "/compute/pipeline",
-            {"structure_id": structure_id, **kwargs},
+            "/compute/post-source-leak-phases",
+            {
+                "structure_id": structure_id,
+                "parent_run_id": parent_run_id,
+                **kwargs,
+            },
             timeout=self._pipeline_timeout,
         )
 
@@ -151,7 +165,18 @@ class ScienceClient:
         try:
             body = resp.json()
             if isinstance(body, dict):
-                return str(body.get("detail", resp.text))
-            return resp.text
+                detail = body.get("detail", resp.text)
+                if isinstance(detail, list):
+                    return "; ".join(
+                        str(item.get("msg", item)) if isinstance(item, dict) else str(item)
+                        for item in detail
+                    )
+                detail_text = str(detail).strip()
+                if detail_text and detail_text != "Internal Server Error":
+                    return detail_text
+            text = resp.text.strip()
+            if text and text != '{"detail":"Internal Server Error"}':
+                return text
+            return str(detail) if isinstance(body, dict) and body.get("detail") else resp.text
         except Exception:
             return resp.text

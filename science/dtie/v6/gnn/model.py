@@ -47,6 +47,14 @@ from torch_geometric.data import Data
 import geoopt
 from typing import Any, Dict, List, Tuple, Optional
 
+from science.dtie.common.poincare_conventions import rescale_tangent_before_expmap
+from science.dtie.v6.gnn.hyperbolic_moe import (
+    HyperbolicPrototypeGate,
+    mobius_weighted_combine,
+    project_ball,
+    project_disc_2d,
+    project_disc_2d_legacy,
+)
 from science.dtie.v5.gnn.model import (
     EquivariantConv,
     MobiusLinear,
@@ -234,6 +242,147 @@ class TopologicalMoEGateV6(nn.Module):
 
 # ==================== 2. MAIN TOKYO EYES v6 ====================
 
+def infer_v6_model_kwargs(
+    state_dict: dict[str, torch.Tensor],
+    architecture: dict[str, Any] | str | None = None,
+    training_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Infer constructor kwargs from checkpoint payload."""
+    arch: dict[str, Any] = {}
+    if isinstance(architecture, dict):
+        arch = architecture
+    tc = training_config or {}
+    hyperbolic_gate = arch.get("hyperbolic_gate")
+    if hyperbolic_gate is None:
+        hyperbolic_gate = any(
+            k.startswith("gate.mobius1") or k.startswith("gate.prototype_bank")
+            for k in state_dict
+        )
+    hyperbolic_expert_mix = bool(arch.get("hyperbolic_expert_mix", tc.get("hyperbolic_expert_mix", False)))
+    topology_only = bool(arch.get("topology_only_gate", False))
+    gate_disc_input = arch.get("gate_disc_input")
+    if gate_disc_input is None:
+        gate_disc_input = any(k.startswith("gate.gate_disc_proj") for k in state_dict)
+    else:
+        gate_disc_input = bool(gate_disc_input)
+    deep_hyperbolic_gate = bool(arch.get("deep_hyperbolic_gate", tc.get("deep_hyperbolic_gate", False)))
+    if not deep_hyperbolic_gate:
+        deep_hyperbolic_gate = any(k.startswith("gate.mobius3") for k in state_dict)
+    gate_disc_scale = float(arch.get("gate_disc_scale", tc.get("gate_disc_scale", 1.0)))
+    gate_gumbel = bool(arch.get("gate_gumbel", tc.get("gate_gumbel", False)))
+    gate_key = "gate.gate_net.0.weight"
+    if not hyperbolic_gate and gate_key in state_dict:
+        topology_only = int(state_dict[gate_key].shape[1]) == 7
+    return {
+        "hidden": int(arch.get("hidden", 128)),
+        "num_experts": int(arch.get("num_experts", 4)),
+        "hyperbolic_gate": bool(hyperbolic_gate),
+        "hyperbolic_expert_mix": hyperbolic_expert_mix,
+        "topology_only_gate": topology_only,
+        "gate_disc_input": bool(gate_disc_input),
+        "deep_hyperbolic_gate": deep_hyperbolic_gate,
+        "gate_disc_scale": gate_disc_scale,
+        "gate_gumbel": gate_gumbel,
+        "legacy_disc_projection": infer_legacy_disc_projection_from_checkpoint(
+            training_config=tc,
+        ),
+        "radial_angular_recombine": str(
+            arch.get("radial_angular_recombine", tc.get("radial_angular_recombine", "multiply"))
+        ),
+        "disc_radial_source": resolve_disc_radial_source(
+            arch.get("disc_radial_source", tc.get("disc_radial_source"))
+        ),
+        "disc_projection_path": str(
+            arch.get(
+                "disc_projection_path",
+                tc.get(
+                    "disc_projection_path",
+                    "post_routing"
+                    if infer_legacy_disc_projection_from_checkpoint(training_config=tc)
+                    else "pre_routing",
+                ),
+            )
+        ),
+    }
+
+
+def resolve_disc_projection_path(
+    *,
+    legacy_disc_projection: bool = False,
+    disc_projection_path: str | None = None,
+) -> str:
+    """Active 2D disc source: pre_routing (x_hyp) or post_routing (x_routed_hyp)."""
+    if disc_projection_path is not None:
+        path = str(disc_projection_path)
+        if path not in ("pre_routing", "post_routing"):
+            raise ValueError(f"disc_projection_path must be pre_routing or post_routing, got {path!r}")
+        return path
+    return "post_routing" if legacy_disc_projection else "pre_routing"
+
+
+DISC_RADIAL_SOURCES = ("mobius", "radial_depth", "dist0_x_hyp")
+# Authoritative-radius overrides: tier-1 save uses thickness + shell, not eff_rank / σ₂/σ₁.
+DISC_RADIAL_OVERRIDE_SOURCES = ("radial_depth", "dist0_x_hyp")
+
+
+def uses_disc_radial_override(disc_radial_source: str | None) -> bool:
+    """True when 2D disc radius is decoupled from MobiusLinear magnitude."""
+    return str(disc_radial_source or "mobius") in DISC_RADIAL_OVERRIDE_SOURCES
+
+
+def resolve_disc_radial_source(disc_radial_source: str | None) -> str:
+    """Validate pre-routing 2D radial authority mode (v5.5 Lever A)."""
+    source = "mobius" if disc_radial_source is None else str(disc_radial_source)
+    if source not in DISC_RADIAL_SOURCES:
+        raise ValueError(
+            f"disc_radial_source must be one of {DISC_RADIAL_SOURCES}, got {source!r}"
+        )
+    return source
+
+
+def apply_disc_radial_override(
+    hyp_proj_2d_raw: torch.Tensor,
+    target_radius: torch.Tensor,
+    *,
+    k: torch.Tensor,
+    eps: float = 1e-8,
+) -> torch.Tensor:
+    """Decoupled 2D disc: MobiusLinear direction + authoritative radial depth."""
+    from geoopt.manifolds.stereographic import math as pmath
+
+    out_dtype = hyp_proj_2d_raw.dtype
+    raw = hyp_proj_2d_raw.float()
+    kf = k.float() if isinstance(k, torch.Tensor) else k
+    radius = target_radius.float()
+    if radius.dim() == 1:
+        radius = radius.unsqueeze(-1)
+    tangent_2d = pmath.logmap0(raw, k=kf)
+    direction_2d = F.normalize(tangent_2d, p=2, dim=-1, eps=eps)
+    tangent_2d_scaled = direction_2d * radius
+    return pmath.expmap0(tangent_2d_scaled, k=kf).to(dtype=out_dtype)
+
+
+def infer_legacy_disc_projection_from_checkpoint(
+    *,
+    training_config: dict[str, Any] | None = None,
+    metrics: dict[str, Any] | None = None,
+    override: bool | None = None,
+) -> bool:
+    """Default legacy=True for checkpoints saved before pre-routing disc path."""
+    if override is not None:
+        return bool(override)
+    tc = training_config or {}
+    if "legacy_disc_projection" in tc:
+        return bool(tc["legacy_disc_projection"])
+    if tc.get("disc_projection_source") == "pre_routing_x_hyp":
+        return False
+    if isinstance(metrics, dict) and metrics.get("disc_projection_source") == "pre_routing_x_hyp":
+        return False
+    if isinstance(metrics, dict) and "legacy_disc_projection" in metrics:
+        return bool(metrics["legacy_disc_projection"])
+    return True
+
+
 class GOSPConeMapperV6(nn.Module):
     """
     Tokyo Eyes v6 — Topologically-Routed MoE Specialization.
@@ -269,11 +418,37 @@ class GOSPConeMapperV6(nn.Module):
         expert_dropout_p: float = 0.15,
         min_usage: float = 0.05,
         topology_only_gate: bool = False,
+        hyperbolic_gate: bool = True,
+        hyperbolic_expert_mix: bool = False,
+        gate_disc_input: bool = True,
+        gate_disc_scale: float = 1.0,
+        gate_gumbel: bool = False,
+        deep_hyperbolic_gate: bool = False,
+        legacy_disc_projection: bool = False,
+        disc_projection_path: str | None = None,
+        radial_angular_recombine: str = "multiply",
+        disc_radial_source: str = "mobius",
     ):
         super().__init__()
         self.hidden = hidden
         self.depth_conditioning = depth_conditioning
         self.projection_audit_tolerance = projection_audit_tolerance
+        self.hyperbolic_gate = hyperbolic_gate
+        self.hyperbolic_expert_mix = hyperbolic_expert_mix
+        self.gate_disc_input = gate_disc_input
+        self.gate_disc_scale = gate_disc_scale
+        self.gate_gumbel = gate_gumbel
+        self.deep_hyperbolic_gate = deep_hyperbolic_gate
+        # Softer than 0.99 — aggressive clamping collapses angular spread on the disc.
+        self.disc_proj_softness = 0.95
+        self.disc_projection_path = resolve_disc_projection_path(
+            legacy_disc_projection=legacy_disc_projection,
+            disc_projection_path=disc_projection_path,
+        )
+        self.legacy_disc_projection = self.disc_projection_path == "post_routing"
+        self.radial_angular_recombine = radial_angular_recombine
+        self.disc_radial_source = resolve_disc_radial_source(disc_radial_source)
+        self.gate_mode = "hyperbolic" if hyperbolic_gate else "tangent_mlp"
 
         # Node embedding
         self.node_emb = nn.Linear(node_dim, hidden)
@@ -293,18 +468,42 @@ class GOSPConeMapperV6(nn.Module):
         # Decoupled radial and angular heads (warm-startable from v5)
         self.radial_head = RadialHead(hidden)
         self.angular_head = AngularHead(hidden)
+        if radial_angular_recombine in ("mlp_fusion", "angular_lift"):
+            self.radial_angular_fusion = nn.Sequential(
+                nn.Linear(hidden + 1, hidden),
+                nn.SiLU(),
+                nn.Linear(hidden, hidden),
+            )
+            nn.init.zeros_(self.radial_angular_fusion[-1].weight)
+            nn.init.zeros_(self.radial_angular_fusion[-1].bias)
+        else:
+            self.radial_angular_fusion = None
 
-        # V6 NEW: Enriched MoE gate
-        self.gate = TopologicalMoEGateV6(
-            hidden_dim=hidden,
-            num_experts=num_experts,
-            capacity_threshold=capacity_threshold,
-            expert_dropout_p=expert_dropout_p,
-            min_usage=min_usage,
-            topology_only=topology_only_gate,
-        )
+        # V6 MoE gate — hyperbolic prototype (default) or legacy tangent MLP
+        if hyperbolic_gate:
+            self.gate = HyperbolicPrototypeGate(
+                hidden_dim=hidden,
+                num_experts=num_experts,
+                capacity_threshold=capacity_threshold,
+                expert_dropout_p=expert_dropout_p,
+                min_usage=min_usage,
+                topology_only=topology_only_gate,
+                use_disc_position=gate_disc_input,
+                disc_feature_scale=gate_disc_scale,
+                use_gumbel=gate_gumbel,
+                deep_gate=deep_hyperbolic_gate,
+            )
+        else:
+            self.gate = TopologicalMoEGateV6(
+                hidden_dim=hidden,
+                num_experts=num_experts,
+                capacity_threshold=capacity_threshold,
+                expert_dropout_p=expert_dropout_p,
+                min_usage=min_usage,
+                topology_only=topology_only_gate,
+            )
 
-        # Experts — operate on tangent space (fresh initialization)
+        # Experts — tangent MLP (Stage 3 can mix outputs on the ball)
         self.experts = nn.ModuleList([
             nn.Sequential(
                 nn.Linear(hidden, hidden),
@@ -346,6 +545,63 @@ class GOSPConeMapperV6(nn.Module):
         """Learnable positive curvature."""
         return F.softplus(self.log_c) + 1e-4
 
+    def _tangent_from_radial_angular(
+        self,
+        radial_depth: torch.Tensor,
+        angular_direction: torch.Tensor,
+    ) -> torch.Tensor:
+        """Cone multiply (baseline), residual fusion, or direction-only lift ablation."""
+        if self.radial_angular_recombine == "angular_lift":
+            base = angular_direction
+            if self.radial_angular_fusion is not None:
+                fused_in = torch.cat([radial_depth, angular_direction], dim=-1)
+                return base + self.radial_angular_fusion(fused_in)
+            return base
+        cone = radial_depth * angular_direction
+        if self.radial_angular_recombine != "mlp_fusion" or self.radial_angular_fusion is None:
+            return cone
+        fused_in = torch.cat([radial_depth, angular_direction], dim=-1)
+        return cone + self.radial_angular_fusion(fused_in)
+
+    def _pre_routing_disc_raw(
+        self,
+        x_hyp: torch.Tensor,
+        *,
+        radial_depth: torch.Tensor,
+        depth: torch.Tensor,
+        c: torch.Tensor,
+        k: torch.Tensor,
+    ) -> torch.Tensor:
+        """2D pre-routing disc before soft clamp; optional decoupled radial override."""
+        hyp_proj_2d_pre_raw = self.hyp_proj_head_2d(x_hyp, c=c)
+        if self.disc_radial_source == "mobius":
+            return hyp_proj_2d_pre_raw
+        if self.disc_radial_source == "radial_depth":
+            target_radius = radial_depth
+        else:
+            target_radius = depth
+        return apply_disc_radial_override(hyp_proj_2d_pre_raw, target_radius, k=k)
+
+    def _post_routing_disc_raw(
+        self,
+        x_routed_hyp: torch.Tensor,
+        *,
+        depth_routed: torch.Tensor,
+        c: torch.Tensor,
+        k: torch.Tensor,
+    ) -> torch.Tensor:
+        """2D post-routing disc before soft clamp; optional decoupled radial override.
+
+        For both ``radial_depth`` and ``dist0_x_hyp`` modes the authoritative
+        post-routing radius is ``depth_routed`` (dist0 of the MoE-combined ball
+        point) so the 2D disc reflects expert-shifted topology, not pre-routed
+        burial depth.
+        """
+        hyp_proj_2d_post_raw = self.hyp_proj_head_2d(x_routed_hyp, c=c)
+        if self.disc_radial_source == "mobius":
+            return hyp_proj_2d_post_raw
+        return apply_disc_radial_override(hyp_proj_2d_post_raw, depth_routed, k=k)
+
     def forward(self, data: Data) -> Dict[str, Any]:
         from geoopt.manifolds.stereographic import math as pmath
 
@@ -369,8 +625,9 @@ class GOSPConeMapperV6(nn.Module):
         # Angular pathway — controls direction/clustering
         angular_direction = self.angular_head(x)  # [N, hidden] unit vectors
 
-        # Recombine into tangent vector
-        tangent_vector = radial_depth * angular_direction  # [N, hidden]
+        # Recombine into tangent vector (cone multiply or residual fusion ablation)
+        tangent_vector = self._tangent_from_radial_angular(radial_depth, angular_direction)
+        tangent_vector = rescale_tangent_before_expmap(tangent_vector, c)
 
         # Lift to Poincaré ball
         x_hyp = pmath.expmap0(tangent_vector, k=k)
@@ -380,49 +637,129 @@ class GOSPConeMapperV6(nn.Module):
         depth = pmath.dist0(x_hyp, k=k, keepdim=True)  # [N, 1]
         cone_width = torch.exp(-depth)  # [N, 1]
 
-        # ── Step 4: V6 MoE routing with enriched gate ─────────────────────
-        x_tangent = pmath.logmap0(x_hyp, k=k)  # [N, hidden]
+        disc_softness = self.disc_proj_softness
+        gate_disc_kw: dict[str, torch.Tensor] = {}
 
-        # V6: pass expanded topological features to gate
-        scores, capacity_loss = self.gate(
-            x_tangent=x_tangent,
-            clustering=data.clustering,
-            cone_depth=depth,
-            degree=data.degree,
-            rho=data.rho,
-            ss_onehot=data.ss_onehot,
+        # Pre-routing disc (always computed for audit + optional gate enrichment)
+        hyp_proj_2d_pre_raw = self._pre_routing_disc_raw(
+            x_hyp,
+            radial_depth=radial_depth,
+            depth=depth,
+            c=c,
+            k=k,
         )
+        hyp_proj_2d_pre, disc_r_pre = project_disc_2d(
+            hyp_proj_2d_pre_raw, k=k, softness=disc_softness
+        )
+        if (
+            self.disc_projection_path == "pre_routing"
+            and self.hyperbolic_gate
+            and getattr(self.gate, "use_disc_position", False)
+        ):
+            gate_disc_kw = {"disc_xy": hyp_proj_2d_pre, "disc_r": disc_r_pre}
 
+        # ── Step 4: V6 MoE routing ────────────────────────────────────────
+        gate_audit: dict[str, Any] = {}
+        if self.hyperbolic_gate:
+            scores, capacity_loss, gate_audit = self.gate(
+                x_hyp=x_hyp,
+                k=k,
+                clustering=data.clustering,
+                cone_depth=depth,
+                degree=data.degree,
+                rho=data.rho,
+                ss_onehot=data.ss_onehot,
+                **gate_disc_kw,
+            )
+            gate_features = [
+                "x_hyp",
+                "clustering",
+                "cone_depth",
+                "log_degree_norm",
+                "rho_norm",
+                "ss_onehot",
+            ]
+            if getattr(self.gate, "use_disc_position", False):
+                gate_features.extend(["gate_disc_xy", "gate_disc_r"])
+        else:
+            x_tangent = pmath.logmap0(x_hyp, k=k)
+            scores, capacity_loss = self.gate(
+                x_tangent=x_tangent,
+                clustering=data.clustering,
+                cone_depth=depth,
+                degree=data.degree,
+                rho=data.rho,
+                ss_onehot=data.ss_onehot,
+            )
+            gate_features = [
+                "x_tangent",
+                "clustering",
+                "cone_depth",
+                "log_degree_norm",
+                "rho_norm",
+                "ss_onehot",
+            ]
+
+        x_tangent = pmath.logmap0(x_hyp, k=k)
         expert_outputs = torch.stack(
             [expert(x_tangent) for expert in self.experts], dim=1
-        )  # [N, num_experts, hidden]
-
-        # Weighted combination in tangent space
-        x_routed_tangent = torch.einsum("ne,neh->nh", scores, expert_outputs)
-
-        # Re-lift to Poincaré ball
-        x_routed_hyp = pmath.expmap0(x_routed_tangent, k=k)
-        x_routed_hyp, proj_count_s2, proj_frac_s2 = self._project_with_audit(
-            x_routed_hyp, k=k
         )
 
-        # ── Step 5: Uncertainty ───────────────────────────────────────────
+        if self.hyperbolic_expert_mix:
+            expert_hyp = torch.stack(
+                [
+                    pmath.project(
+                        pmath.expmap0(
+                            rescale_tangent_before_expmap(expert_outputs[:, e, :], c),
+                            k=k,
+                        ),
+                        k=k,
+                    )
+                    for e in range(len(self.experts))
+                ],
+                dim=1,
+            )
+            x_routed_hyp, proj_count_s2, proj_frac_s2 = self._project_with_audit(
+                mobius_weighted_combine(expert_hyp, scores, k=k), k=k
+            )
+        else:
+            x_routed_tangent = torch.einsum("ne,neh->nh", scores, expert_outputs)
+            x_routed_tangent = rescale_tangent_before_expmap(x_routed_tangent, c)
+            x_routed_hyp, proj_count_s2, proj_frac_s2 = self._project_with_audit(
+                pmath.expmap0(x_routed_tangent, k=k), k=k
+            )
+
+        depth_routed = pmath.dist0(x_routed_hyp, k=k, keepdim=True)
         x_routed_tangent_out = pmath.logmap0(x_routed_hyp, k=k)
         x_for_unc = torch.cat([x_routed_tangent_out, depth, cone_width], dim=-1)
         uncertainty, evidence = self.uncertainty_head(x_for_unc)
 
-        # ── Step 6: Projections ───────────────────────────────────────────
-        # 2D disc projection
-        hyp_proj_2d = self.hyp_proj_head_2d(x_routed_hyp, c=c)
-        hyp_proj_2d = pmath.project(hyp_proj_2d, k=k)
-        hyp_norms_2d = hyp_proj_2d.norm(dim=-1, keepdim=True)
-        hyp_proj_2d = hyp_proj_2d * torch.clamp(0.99 / (hyp_norms_2d + 1e-8), max=1.0)
+        # ── Step 6: Projections (path-aware; always emit pre + post for audit) ──
+        hyp_proj_2d_post_raw = self._post_routing_disc_raw(
+            x_routed_hyp,
+            depth_routed=depth_routed,
+            c=c,
+            k=k,
+        )
+        hyp_proj_2d_post, _ = project_disc_2d(
+            hyp_proj_2d_post_raw, k=k, softness=disc_softness
+        )
+        with torch.no_grad():
+            hyp_proj_2d_post_legacy, _ = project_disc_2d_legacy(hyp_proj_2d_post_raw, k=k)
 
-        # 3D ball projection
-        hyp_proj_3d = self.hyp_proj_head_3d(x_routed_hyp, c=c)
-        hyp_proj_3d = pmath.project(hyp_proj_3d, k=k)
-        hyp_norms_3d = hyp_proj_3d.norm(dim=-1, keepdim=True)
-        hyp_proj_3d = hyp_proj_3d * torch.clamp(0.99 / (hyp_norms_3d + 1e-8), max=1.0)
+        if self.disc_projection_path == "pre_routing":
+            hyp_proj_2d = hyp_proj_2d_pre
+            disc_projection_source = "pre_routing_x_hyp"
+            hyp_proj_3d_raw = self.hyp_proj_head_3d(x_routed_hyp, c=c)
+            hyp_proj_3d, _ = project_ball(hyp_proj_3d_raw, k=k, softness=disc_softness)
+        else:
+            hyp_proj_2d = hyp_proj_2d_post_legacy
+            disc_projection_source = "legacy_post_routing_x_routed_hyp"
+            hyp_proj_3d_raw = self.hyp_proj_head_3d(x_routed_hyp, c=c)
+            hyp_proj_3d, _ = project_disc_2d_legacy(hyp_proj_3d_raw, k=k)
+
+        hyp_proj_2d_routed = hyp_proj_2d_post
+        hyp_proj_2d_legacy_teacher = hyp_proj_2d_post_legacy
 
         # Euclidean scrubber projection (backward compat)
         projections = self.projection_head(x_routed_tangent_out)
@@ -439,22 +776,53 @@ class GOSPConeMapperV6(nn.Module):
 
         audit_trail = {
             "version": "v6",
-            "architecture": "topological_moe_specialization",
+            "architecture": "hyperbolic_prototype_moe" if self.hyperbolic_gate else "topological_moe_specialization",
+            "hyperbolic_gate": self.hyperbolic_gate,
+            "hyperbolic_expert_mix": self.hyperbolic_expert_mix,
+            "gate_disc_input": getattr(self, "gate_disc_input", False),
+            "deep_hyperbolic_gate": getattr(self, "deep_hyperbolic_gate", False),
+            "disc_projection_source": disc_projection_source,
+            "disc_projection_path": self.disc_projection_path,
+            "disc_path_used": self.disc_projection_path,
+            "gate_mode": self.gate_mode,
+            "legacy_disc_projection": self.legacy_disc_projection,
+            "radial_angular_recombine": self.radial_angular_recombine,
+            "disc_radial_source": self.disc_radial_source,
+            "disc_proj_softness": disc_softness if not self.legacy_disc_projection else 0.0,
             "depth_metric": "hyperbolic_dist0",
-            "depth_used_in": ["gate", "cone_loss", "uncertainty_head"],
+            "depth_used_in": ["gate", "cone_loss", "uncertainty_head", "cone_depth_routed"],
             "radial_head_scale": self.radial_head.radial_scale.item(),
             "projection_applied_count": proj_count_total,
             "projection_applied_fraction": proj_frac_avg,
             "curvature_value": c.detach(),
-            "gate_input_dim": self.gate.hidden_dim + 7,
+            "gate_input_dim": (
+                (HyperbolicPrototypeGate.TOPO_DIM + HyperbolicPrototypeGate.DISC_DIM)
+                if getattr(self.gate, "use_disc_position", False)
+                else (
+                    HyperbolicPrototypeGate.TOPO_DIM
+                    if getattr(self.gate, "topology_only", False)
+                    else self.hidden + 7
+                )
+            ),
             "affected_outputs": [
-                "cone_depth", "cone_width", "expert_weights",
+                "cone_depth", "cone_depth_routed", "cone_width", "expert_weights",
                 "x_hyp", "x_routed_hyp", "hyp_projections_2d", "hyp_projections_3d",
                 "uncertainty", "capacity_loss", "expert_load", "routing_entropy",
             ],
             "affected_losses": ["cone_consistency", "capacity_loss"],
-            "tangent_space_used_for": ["gate", "experts", "euclidean_projection"],
-            "ball_space_used_for": ["hyp_projections_2d", "hyp_projections_3d", "x_hyp_output"],
+            "tangent_space_used_for": ["experts", "euclidean_projection"],
+            "ball_space_used_for": [
+                "gate",
+                "hyp_projections_2d",
+                "hyp_projections_3d",
+                "x_hyp_output",
+                "x_routed_hyp",
+            ] if self.hyperbolic_gate else [
+                "hyp_projections_2d",
+                "hyp_projections_3d",
+                "x_hyp_output",
+            ],
+            **gate_audit,
         }
 
         return {
@@ -462,6 +830,7 @@ class GOSPConeMapperV6(nn.Module):
             "projections": projections,
             "uncertainty": uncertainty,
             "cone_depth": depth,
+            "cone_depth_routed": depth_routed,
             "cone_width": cone_width,
             "expert_weights": scores,
             "balance_loss": capacity_loss,  # backward compat key
@@ -471,6 +840,12 @@ class GOSPConeMapperV6(nn.Module):
             "x_routed_hyp": x_routed_hyp,
             "hyp_projections": hyp_proj_2d,  # backward compat alias
             "hyp_projections_2d": hyp_proj_2d,
+            "hyp_projections_2d_pre": hyp_proj_2d_pre,
+            "hyp_projections_2d_post": hyp_proj_2d_post,
+            "hyp_projections_2d_routed": hyp_proj_2d_routed,
+            "hyp_projections_2d_legacy_teacher": hyp_proj_2d_legacy_teacher,
+            "disc_path_used": self.disc_projection_path,
+            "gate_mode": self.gate_mode,
             "hyp_projections_3d": hyp_proj_3d,
             "radial_features": radial_depth,
             "angular_features": angular_direction,
@@ -478,8 +853,73 @@ class GOSPConeMapperV6(nn.Module):
             "capacity_loss": capacity_loss,
             "expert_load": expert_load,
             "routing_entropy": routing_entropy,
-            "gate_features_used": [
-                "x_tangent", "clustering", "cone_depth",
-                "log_degree_norm", "rho_norm", "ss_onehot",
-            ],
+            "gate_features_used": gate_features,
         }
+
+
+def load_v6_state_dict(
+    model: GOSPConeMapperV6,
+    state_dict: dict[str, torch.Tensor],
+) -> tuple[list[str], list[str]]:
+    """Load weights tolerating gate topo expansion (7 → 10 with disc inputs)."""
+    adapted = dict(state_dict)
+    topo_key = "gate.topo_encoder.0.weight"
+    model_state = model.state_dict()
+    if topo_key in adapted and topo_key in model_state:
+        old_w = adapted[topo_key]
+        new_w = model_state[topo_key]
+        if old_w.shape != new_w.shape and old_w.shape[0] == new_w.shape[0] and old_w.shape[1] < new_w.shape[1]:
+            expanded = new_w.clone()
+            expanded[:, : old_w.shape[1]] = old_w
+            adapted[topo_key] = expanded
+    incompatible = model.load_state_dict(adapted, strict=False)
+    missing = list(getattr(incompatible, "missing_keys", incompatible[0] if isinstance(incompatible, tuple) else []))
+    unexpected = list(getattr(incompatible, "unexpected_keys", incompatible[1] if isinstance(incompatible, tuple) else []))
+    return missing, unexpected
+
+
+def verify_v6_checkpoint(
+    checkpoint_path: str | None = None,
+    *,
+    device: str = "cpu",
+) -> dict[str, Any]:
+    """Verify checkpoint loads into the in-repo GOSPConeMapperV6 architecture.
+
+    Used by health checks and CI to catch architecture/weight drift before ingest.
+    """
+    from science.contracts.model_registry import get_production_checkpoint_path, resolve_checkpoint_file
+
+    logical = checkpoint_path or get_production_checkpoint_path()
+    resolved = resolve_checkpoint_file(logical)
+    if resolved is None or not resolved.is_file():
+        raise FileNotFoundError(f"V6 checkpoint not found: {logical}")
+
+    # Import gate module first — missing file fails fast with ImportError.
+    from science.dtie.v6.gnn import hyperbolic_moe  # noqa: F401
+
+    checkpoint_data = torch.load(resolved, map_location=device, weights_only=False)
+    if isinstance(checkpoint_data, dict) and "model_state_dict" in checkpoint_data:
+        state_dict = checkpoint_data["model_state_dict"]
+        architecture = checkpoint_data.get("architecture")
+        training_config = checkpoint_data.get("training_config")
+    else:
+        state_dict = checkpoint_data
+        architecture = training_config = None
+
+    kwargs = infer_v6_model_kwargs(state_dict, architecture, training_config)
+    model = GOSPConeMapperV6(node_dim=4, **kwargs)
+    missing, unexpected = load_v6_state_dict(model, state_dict)
+
+    return {
+        "path": logical,
+        "resolved_path": str(resolved),
+        "missing_keys": missing,
+        "unexpected_keys": unexpected,
+        "load_ok": not missing,
+        "hyperbolic_moe_ok": True,
+        "deep_hyperbolic_gate": bool(kwargs.get("deep_hyperbolic_gate")),
+        "gate_disc_scale": float(kwargs.get("gate_disc_scale", 1.0)),
+        "hyperbolic_gate": bool(kwargs.get("hyperbolic_gate")),
+        "hyperbolic_expert_mix": bool(kwargs.get("hyperbolic_expert_mix")),
+        "mobius3_in_checkpoint": any(k.startswith("gate.mobius3") for k in state_dict),
+    }

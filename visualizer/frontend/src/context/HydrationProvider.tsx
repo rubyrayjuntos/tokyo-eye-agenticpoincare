@@ -1,11 +1,16 @@
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
-import { api } from "../lib/api";
+import { useMachine } from "@xstate/react";
+
 import { useDashboard } from "../lib/context";
 import { buildHydrationView } from "../lib/hydrationView";
+import { loadHydrationBundle } from "../lib/hydrationLoader";
+import {
+  hydrationMachine,
+  hydrationMachineStatus,
+} from "../lib/hydrationMachine";
 import type {
   HydrationResponse,
-  EmbeddingData,
   GraphMetricsData,
   AllostericSitesData,
   SourceLeakData,
@@ -16,7 +21,12 @@ import type {
   PharmacophoreData,
   DrugCandidateData,
   StructureAnalysisSnapshot,
+  ArtifactAvailabilityEntry,
+  HydrateMeta,
+  PersistenceStatus,
+  EmbeddingData,
 } from "../lib/types";
+import { useOptionalWorkbenchBus } from "../workbench/useOptionalWorkbenchBus";
 
 export interface LoadingState {
   embeddings: boolean;
@@ -29,24 +39,14 @@ export interface LoadingState {
 }
 
 export interface HydrationContextValue {
-  /** Full hydration response (null before first load) */
   hydration: HydrationResponse | null;
-  /** Per-panel loading indicators */
   loading: LoadingState;
-  /** Whether the overall hydration fetch is in progress */
   isHydrating: boolean;
-  /** Error from the hydration fetch, if any */
   error: string | null;
-  /** Force a re-hydration of the current structure */
   refresh: () => void;
-  /** Explicit multi-structure hydration support for Therapeutic Compiler (pathway samples etc.).
-   * Keyed by structure_id (lowercase). Populated from therapeuticCompilerState + active.
-   */
   multiHydrations: Record<string, HydrationResponse | null>;
-  /** Refresh all (active + multi) */
   refreshAll: () => void;
   structureSnapshot: StructureAnalysisSnapshot | null;
-  /** Convenience accessors */
   embeddings: EmbeddingData | null;
   graphMetrics: GraphMetricsData | null;
   allostericSites: AllostericSitesData | null;
@@ -59,7 +59,11 @@ export interface HydrationContextValue {
   drugCandidates: DrugCandidateData | null;
   phase4_resistance: ResistanceData | null;
   bufferingAtlas: Record<string, unknown> | null;
-  persistenceStatus: HydrationResponse["persistence_status"] | null;
+  persistenceStatus: PersistenceStatus | null;
+  artifactAvailability: Record<string, ArtifactAvailabilityEntry> | null;
+  hydrateMeta: HydrateMeta | null;
+  hydrateSignalsInferred: boolean;
+  hydrationStatus: "idle" | "loading" | "loaded" | "failed";
 }
 
 const defaultLoading: LoadingState = {
@@ -94,10 +98,54 @@ const HydrationContext = createContext<HydrationContextValue>({
   phase4_resistance: null,
   bufferingAtlas: null,
   persistenceStatus: null,
+  artifactAvailability: null,
+  hydrateMeta: null,
+  hydrateSignalsInferred: false,
+  hydrationStatus: "idle",
 });
 
-export function useHydration() {
-  return useContext(HydrationContext);
+export function useHydration(): HydrationContextValue & {
+  hydrationBusStatus: "idle" | "loading" | "loaded" | "failed" | null;
+} {
+  const hydration = useContext(HydrationContext);
+  const bus = useOptionalWorkbenchBus();
+  const [busPayload, setBusPayload] = useState<
+    import("../workbench/eventRegistry").EventRegistry["data:hydration_updated"] | null
+  >(null);
+
+  useEffect(() => {
+    if (!bus) {
+      setBusPayload(null);
+      return;
+    }
+
+    const cached = bus.getLatestState("data:hydration_updated");
+    if (cached) {
+      setBusPayload(cached);
+    }
+
+    return bus.subscribe("data:hydration_updated", (payload) => {
+      setBusPayload(payload);
+    });
+  }, [bus]);
+
+  const busMatchesActive =
+    busPayload?.structureId != null &&
+    hydration.hydration?.structure_id != null &&
+    busPayload.structureId.toLowerCase() ===
+      hydration.hydration.structure_id.toLowerCase();
+
+  if (!busMatchesActive || !busPayload) {
+    return { ...hydration, hydrationBusStatus: busPayload?.status ?? null };
+  }
+
+  return {
+    ...hydration,
+    isHydrating: busPayload.status === "loading",
+    error: busPayload.error ?? hydration.error,
+    hydrateSignalsInferred: busPayload.signalsInferred,
+    hydrationBusStatus: busPayload.status,
+  };
 }
 
 interface HydrationProviderProps {
@@ -106,20 +154,88 @@ interface HydrationProviderProps {
 
 export function HydrationProvider({ children }: HydrationProviderProps) {
   const { activeStructure, refreshKey } = useDashboard();
+  const workbenchBus = useOptionalWorkbenchBus();
+  const [hydrationState, sendHydration] = useMachine(hydrationMachine);
+  const machineContext = hydrationState.context;
+  const hydrationStatus = hydrationMachineStatus(hydrationState.value);
 
-  const [hydration, setHydration] = useState<HydrationResponse | null>(null);
-  const [loading, setLoading] = useState<LoadingState>(defaultLoading);
-  const [isHydrating, setIsHydrating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Multi-structure hydration state for Therapeutic Compiler (explicit support)
   const [multiHydrations, setMultiHydrations] = useState<Record<string, HydrationResponse | null>>({});
 
-  const fetchHydration = useCallback(async (structureId: string) => {
-    setIsHydrating(true);
-    setError(null);
-    // Set all panels to loading
-    setLoading({
+  const runHydration = useCallback(
+    async (structureId: string) => {
+      sendHydration({ type: "HYDRATION_REQUESTED", structureId });
+      try {
+        const result = await loadHydrationBundle(structureId);
+        sendHydration({ type: "HYDRATION_SUCCEEDED", result });
+      } catch (err: unknown) {
+        const msg =
+          err && typeof err === "object" && "message" in err
+            ? (err as { message: string }).message
+            : "Hydration failed";
+        sendHydration({ type: "HYDRATION_FAILED", error: msg });
+      }
+    },
+    [sendHydration],
+  );
+
+  const fetchMultiHydration = useCallback(async (structureId: string) => {
+    try {
+      const result = await loadHydrationBundle(structureId);
+      setMultiHydrations((prev) => ({ ...prev, [structureId]: result.hydration }));
+    } catch {
+      setMultiHydrations((prev) => ({ ...prev, [structureId]: null }));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeStructure) {
+      void runHydration(activeStructure.structure_id);
+    } else {
+      sendHydration({ type: "HYDRATION_CLEARED" });
+    }
+  }, [activeStructure, refreshKey, runHydration, sendHydration]);
+
+  const { therapeuticCompilerState } = useDashboard();
+  useEffect(() => {
+    if (!therapeuticCompilerState) return;
+    const structs = new Set<string>();
+    if (therapeuticCompilerState.pathwayStructureMap) {
+      Object.values(therapeuticCompilerState.pathwayStructureMap).forEach((s: unknown) =>
+        s && structs.add(String(s).toLowerCase()),
+      );
+    }
+    if (therapeuticCompilerState.atlas?.nodes) {
+      therapeuticCompilerState.atlas.nodes.forEach((n: { metadata?: { structure_id?: string }; id?: string }) => {
+        const sid = n.metadata?.structure_id || n.id?.split("_").pop();
+        if (sid) structs.add(String(sid).toLowerCase());
+      });
+    }
+    if (activeStructure) structs.add(activeStructure.structure_id.toLowerCase());
+
+    Array.from(structs).forEach((sid) => {
+      if (sid !== activeStructure?.structure_id?.toLowerCase() && !multiHydrations[sid]) {
+        void fetchMultiHydration(sid);
+      }
+    });
+  }, [therapeuticCompilerState, activeStructure, multiHydrations, fetchMultiHydration]);
+
+  const refresh = useCallback(() => {
+    if (activeStructure) {
+      void runHydration(activeStructure.structure_id);
+    }
+  }, [activeStructure, runHydration]);
+
+  const refreshAll = useCallback(() => {
+    refresh();
+    Object.keys(multiHydrations).forEach((sid) => void fetchMultiHydration(sid));
+  }, [refresh, multiHydrations, fetchMultiHydration]);
+
+  const hydration = machineContext.hydration;
+  const hydrationView = buildHydrationView(hydration, activeStructure?.structure_id);
+
+  const loading = useMemo<LoadingState>(() => {
+    if (hydrationStatus !== "loading") return defaultLoading;
+    return {
       embeddings: true,
       graph_metrics: true,
       allosteric_sites: true,
@@ -127,102 +243,44 @@ export function HydrationProvider({ children }: HydrationProviderProps) {
       hypotheses: true,
       provenance_runs: true,
       annotations: true,
+    };
+  }, [hydrationStatus]);
+
+  useEffect(() => {
+    if (!workbenchBus) return;
+
+    workbenchBus.publish("data:hydration_updated", {
+      structureId: machineContext.structureId,
+      status: hydrationStatus,
+      degraded: Boolean(machineContext.hydrateMeta?.degraded),
+      residueCount: hydrationView.embeddings?.residues?.length ?? 0,
+      error: machineContext.error,
+      signalsInferred: machineContext.signalsInferred,
+      contractVersion: machineContext.hydrateMeta?.contract_version ?? null,
     });
 
-    try {
-      const data = await api.hydrate(structureId);
-      const snapshotResidues = data.structure_snapshot?.residues ?? [];
-      const legacyResidues = data.embeddings?.residues ?? [];
-
-      if (snapshotResidues.length === 0 && legacyResidues.length === 0) {
-        const embeddings = await api.getEmbeddings(structureId);
-        setHydration({
-          ...data,
-          embeddings,
-        });
-      } else {
-        setHydration(data);
-      }
-      setError(null);
-    } catch (err: unknown) {
-      const msg =
-        err && typeof err === "object" && "message" in err
-          ? (err as { message: string }).message
-          : "Hydration failed";
-      setError(msg);
-      setHydration(null);
-    } finally {
-      setIsHydrating(false);
-      setLoading(defaultLoading);
-    }
-  }, []);
-
-  // Fetch a single additional structure for multi support
-  const fetchMultiHydration = useCallback(async (structureId: string) => {
-    try {
-      const data = await api.hydrate(structureId);
-      setMultiHydrations(prev => ({ ...prev, [structureId]: data }));
-    } catch (e) {
-      setMultiHydrations(prev => ({ ...prev, [structureId]: null }));
-    }
-  }, []);
-
-  // Fetch hydration when active structure changes or refreshKey increments
-  useEffect(() => {
-    if (activeStructure) {
-      fetchHydration(activeStructure.structure_id);
-    } else {
-      setHydration(null);
-      setError(null);
-      setLoading(defaultLoading);
-    }
-  }, [activeStructure, refreshKey, fetchHydration]);
-
-  // Explicit multi-structure: when therapeuticCompilerState changes, hydrate the structures it references
-  const { therapeuticCompilerState } = useDashboard();
-  useEffect(() => {
-    if (!therapeuticCompilerState) return;
-    const structs = new Set<string>();
-    if (therapeuticCompilerState.pathwayStructureMap) {
-      Object.values(therapeuticCompilerState.pathwayStructureMap).forEach((s: any) => s && structs.add(String(s).toLowerCase()));
-    }
-    if (therapeuticCompilerState.atlas?.nodes) {
-      therapeuticCompilerState.atlas.nodes.forEach((n: any) => {
-        const sid = n.metadata?.structure_id || n.id?.split('_').pop();
-        if (sid) structs.add(String(sid).toLowerCase());
+    if (hydrationStatus === "loaded" && machineContext.structureId) {
+      workbenchBus.publish("data:hydration_ready", {
+        structureId: machineContext.structureId,
+        residueCount: hydrationView.embeddings?.residues?.length ?? 0,
+        degraded: Boolean(machineContext.hydrateMeta?.degraded),
       });
     }
-    // Also include active if present
-    if (activeStructure) structs.add(activeStructure.structure_id.toLowerCase());
-
-    Array.from(structs).forEach(sid => {
-      if (sid !== activeStructure?.structure_id?.toLowerCase() && !multiHydrations[sid]) {
-        fetchMultiHydration(sid);
-      }
-    });
-  }, [therapeuticCompilerState, activeStructure, multiHydrations, fetchMultiHydration]);
-
-  const refresh = useCallback(() => {
-    if (activeStructure) {
-      fetchHydration(activeStructure.structure_id);
-    }
-  }, [activeStructure, fetchHydration]);
-
-  const refreshAll = useCallback(() => {
-    refresh();
-    Object.keys(multiHydrations).forEach(sid => fetchMultiHydration(sid));
-  }, [refresh, multiHydrations, fetchMultiHydration]);
-
-  const hydrationView = buildHydrationView(
-    hydration,
-    activeStructure?.structure_id,
-  );
+  }, [
+    workbenchBus,
+    hydrationStatus,
+    machineContext.structureId,
+    machineContext.error,
+    machineContext.hydrateMeta,
+    machineContext.signalsInferred,
+    hydrationView.embeddings?.residues?.length,
+  ]);
 
   const value: HydrationContextValue = {
     hydration,
     loading,
-    isHydrating,
-    error,
+    isHydrating: hydrationStatus === "loading",
+    error: machineContext.error,
     refresh,
     structureSnapshot: hydrationView.structureSnapshot,
     embeddings: hydrationView.embeddings,
@@ -230,16 +288,20 @@ export function HydrationProvider({ children }: HydrationProviderProps) {
     allostericSites: hydrationView.allostericSites,
     sourceLeaks: hydrationView.sourceLeaks,
     resistanceData: hydrationView.resistanceData,
-    hypotheses: hydration?.hypotheses ?? null,
-    provenanceRuns: hydration?.provenance_runs ?? null,
-    annotations: hydration?.annotations ?? null,
+    hypotheses: hydrationView.hypotheses,
+    provenanceRuns: hydrationView.provenanceRuns,
+    annotations: (hydration?.annotations as Annotation[] | null | undefined) ?? null,
     pharmacophorePockets: hydrationView.pharmacophorePockets,
     drugCandidates: hydrationView.drugCandidates,
     phase4_resistance: hydrationView.phase4Resistance,
-    bufferingAtlas: hydration?.buffering_atlas ?? null,  // live (X, Y) from Phase 7 / governed facts for the current structure
+    bufferingAtlas: (hydration?.buffering_atlas as Record<string, unknown> | null) ?? null,
     persistenceStatus: hydrationView.persistenceStatus,
+    artifactAvailability: machineContext.artifactAvailability,
+    hydrateMeta: machineContext.hydrateMeta,
+    hydrateSignalsInferred: machineContext.signalsInferred,
     multiHydrations,
     refreshAll,
+    hydrationStatus,
   };
 
   return (

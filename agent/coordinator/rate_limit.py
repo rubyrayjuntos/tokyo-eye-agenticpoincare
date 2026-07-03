@@ -7,6 +7,7 @@ Redis-backed rate limiting (e.g., via slowapi or a custom middleware).
 from __future__ import annotations
 
 import os
+import threading
 import time
 from collections import defaultdict
 from typing import Any
@@ -25,23 +26,25 @@ class RateLimiter:
         self._max_requests = max_requests
         self._window_seconds = window_seconds
         self._requests: dict[str, list[float]] = defaultdict(list)
+        self._lock = threading.Lock()
 
     def check(self, key: str) -> None:
         """Check if the key is within rate limits. Raises HTTPException if exceeded."""
-        now = time.time()
-        window_start = now - self._window_seconds
+        with self._lock:
+            now = time.time()
+            window_start = now - self._window_seconds
 
-        # Clean old entries
-        timestamps = self._requests[key]
-        self._requests[key] = [t for t in timestamps if t > window_start]
+            # Clean old entries
+            timestamps = self._requests[key]
+            self._requests[key] = [t for t in timestamps if t > window_start]
 
-        if len(self._requests[key]) >= self._max_requests:
-            raise HTTPException(
-                status_code=429,
-                detail=f"Rate limit exceeded. Max {self._max_requests} requests per {self._window_seconds}s.",
-            )
+            if len(self._requests[key]) >= self._max_requests:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Rate limit exceeded. Max {self._max_requests} requests per {self._window_seconds}s.",
+                )
 
-        self._requests[key].append(now)
+            self._requests[key].append(now)
 
 
 # Singleton for the chat endpoint

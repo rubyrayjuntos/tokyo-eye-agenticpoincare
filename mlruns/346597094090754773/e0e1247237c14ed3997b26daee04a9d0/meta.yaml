@@ -1,0 +1,15 @@
+artifact_uri: file:///app/mlruns/346597094090754773/e0e1247237c14ed3997b26daee04a9d0/artifacts
+end_time: 1782767810941
+entry_point_name: ''
+experiment_id: '346597094090754773'
+lifecycle_stage: active
+run_id: e0e1247237c14ed3997b26daee04a9d0
+run_name: disc_gentle_arch_v1
+run_uuid: e0e1247237c14ed3997b26daee04a9d0
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1782767765141
+status: 3
+tags: []
+user_id: unknown

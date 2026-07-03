@@ -24,6 +24,10 @@ from agent.tools.disc_topology import (
     compute_disc_neighborhood,
     compute_disc_topology,
 )
+from science.dtie.common.curvature_values import (
+    MissingLearnedCurvatureError,
+    learned_curvature_from_rows,
+)
 from agent.tools.disc_topology_cache import TopologyCache
 from agent.tools.dtie.tools import ToolDB, ToolResult
 
@@ -110,8 +114,11 @@ async def get_disc_topology(
             message=f"No hyp_projection_2d data for {structure_id} run {run_id}.",
         )
 
-    # Extract coordinates and curvature
-    curvature_c = float(rows[0].get("curvature") or 1.0)
+    try:
+        curvature_c = learned_curvature_from_rows(rows, context="get_disc_topology")
+    except MissingLearnedCurvatureError as exc:
+        return ToolResult(success=False, message=str(exc))
+
     coordinates: list[tuple[str, float, float]] = []
     for r in rows:
         coords = r["hyp_projection_2d"]
@@ -216,7 +223,11 @@ async def get_disc_neighborhood(
         {"structure_id": structure_id, "run_id": run_id},
     )
 
-    curvature_c = float(rows[0].get("curvature") or 1.0) if rows else 1.0
+    try:
+        curvature_c = learned_curvature_from_rows(rows, context="get_disc_neighborhood")
+    except MissingLearnedCurvatureError as exc:
+        return ToolResult(success=False, message=str(exc))
+
     coordinates: list[tuple[str, float, float]] = []
     for r in rows:
         coords = r["hyp_projection_2d"]

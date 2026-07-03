@@ -1,5 +1,5 @@
 /**
- * DataInspectorPanel — Surfaces all computed DTIE pipeline data in a browsable,
+ * DataInspectorPanel — Surfaces governed discovery pathway data in a browsable,
  * searchable, exportable interface. The capstone data access feature.
  *
  * Tabs: Overview | Residues | Pockets | Candidates
@@ -9,6 +9,7 @@ import { useState, useMemo, useCallback } from "react";
 import { CheckCircle2, Circle, ArrowUpDown, Filter } from "lucide-react";
 import { useDashboard } from "../../lib/context";
 import { useHydration } from "../../context/HydrationProvider";
+import { isArtifactPresent } from "../../lib/artifactAvailability";
 import { mergeResidueData, type MergedResidueRow } from "../../lib/mergeResidueData";
 import { sortRows, filterRows, type SortConfig, type FilterCriteria } from "../../lib/tableUtils";
 import type { PharmacophoreData, PharmacophoreRow, DrugCandidateData, DrugCandidateRow } from "../../lib/types";
@@ -27,30 +28,50 @@ interface PhaseStatus {
 }
 
 function usePhaseStatuses(): PhaseStatus[] {
-  const { embeddings, graphMetrics, sourceLeaks, resistanceData, persistenceStatus, pharmacophorePockets, drugCandidates } = useHydration();
+  const {
+    embeddings,
+    graphMetrics,
+    sourceLeaks,
+    resistanceData,
+    persistenceStatus,
+    pharmacophorePockets,
+    drugCandidates,
+    artifactAvailability,
+  } = useHydration();
 
   return useMemo(() => [
     {
       label: "Embeddings",
-      computed: persistenceStatus?.embeddings_persisted ?? (embeddings?.residues?.length ?? 0) > 0,
+      computed:
+        isArtifactPresent(artifactAvailability, "gnn_hyp") ||
+        persistenceStatus?.embeddings_persisted ||
+        (embeddings?.residues?.length ?? 0) > 0,
       count: embeddings?.residues?.length ?? null,
       unit: "residues",
     },
     {
       label: "Graph",
-      computed: persistenceStatus?.graph_persisted ?? (graphMetrics?.metrics?.length ?? 0) > 0,
+      computed:
+        isArtifactPresent(artifactAvailability, "graph") ||
+        persistenceStatus?.graph_persisted ||
+        (graphMetrics?.metrics?.length ?? 0) > 0,
       count: graphMetrics?.metrics?.length ?? null,
       unit: "nodes",
     },
     {
       label: "Sites",
-      computed: persistenceStatus?.sites_persisted ?? false,
+      computed:
+        isArtifactPresent(artifactAvailability, "allosteric_sites") ||
+        persistenceStatus?.sites_persisted ||
+        false,
       count: null,
       unit: "sites",
     },
     {
       label: "Source Leaks",
-      computed: (sourceLeaks?.leaks?.length ?? 0) > 0,
+      computed:
+        isArtifactPresent(artifactAvailability, "source_leaks") ||
+        (sourceLeaks?.leaks?.length ?? 0) > 0,
       count: sourceLeaks?.leaks?.length ?? null,
       unit: "leaks",
     },
@@ -61,18 +82,18 @@ function usePhaseStatuses(): PhaseStatus[] {
       unit: "residues",
     },
     {
-      label: "Phase 5",
+      label: "Act 04 · Fragment",
       computed: persistenceStatus?.phase5_persisted ?? (pharmacophorePockets?.pockets?.length ?? 0) > 0,
       count: pharmacophorePockets?.pockets?.length ?? null,
       unit: "pockets",
     },
     {
-      label: "Phase 6",
+      label: "Act 04 · Candidates",
       computed: persistenceStatus?.phase6_persisted ?? (drugCandidates?.candidates?.length ?? 0) > 0,
       count: drugCandidates?.candidates?.length ?? null,
       unit: "candidates",
     },
-  ], [embeddings, graphMetrics, sourceLeaks, resistanceData, persistenceStatus, pharmacophorePockets, drugCandidates]);
+  ], [artifactAvailability, embeddings, graphMetrics, sourceLeaks, resistanceData, persistenceStatus, pharmacophorePockets, drugCandidates]);
 }
 
 // ---------------------------------------------------------------------------
@@ -589,9 +610,9 @@ function PocketsTab({ data, onSelectPocket }: PocketsTabProps) {
     return (
       <div className="flex items-center justify-center h-full px-4">
         <div className="text-center space-y-1">
-          <p className="text-xs text-zinc-500">Phase 5 — Pharmacophore Pockets</p>
+          <p className="text-xs text-zinc-500">Act 04 — Pharmacophore pockets</p>
           <p className="text-[10px] text-zinc-600">
-            Not computed — run pipeline with Phase 5 enabled.
+            Not computed — run discovery pathway with fragment act enabled.
           </p>
         </div>
       </div>
@@ -666,9 +687,9 @@ function CandidatesTab({ data, onSelectCandidate }: CandidatesTabProps) {
     return (
       <div className="flex items-center justify-center h-full px-4">
         <div className="text-center space-y-1">
-          <p className="text-xs text-zinc-500">Phase 6 — Drug Candidates</p>
+          <p className="text-xs text-zinc-500">Act 04 — Drug candidates</p>
           <p className="text-[10px] text-zinc-600">
-            Not computed — run pipeline with Phase 6 enabled.
+            Not computed — run discovery pathway with fragment act enabled.
           </p>
         </div>
       </div>

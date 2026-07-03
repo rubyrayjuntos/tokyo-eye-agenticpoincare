@@ -1,0 +1,75 @@
+{
+  "structure_id": "11QE",
+  "chain": "A",
+  "checkpoint_curvature": 0.7026534080505371,
+  "angular_distribution_stats": [
+    {
+      "structure_id": "11QE",
+      "n_dehydron": 100,
+      "n_non_dehydron": 68,
+      "mean_theta_dehydron_deg": 19.14662760555744,
+      "mean_theta_non_dehydron_deg": -27.314302439198773,
+      "ks_statistic_raw": 0.6070588235294118,
+      "ks_pvalue_raw": 1.865187380432227e-14,
+      "ks_statistic_theta_residual": 0.5805882352941176,
+      "ks_pvalue_theta_residual": 3.129562760180928e-13,
+      "quartile_ks": [
+        {
+          "quartile": 1,
+          "disc_r_min": 0.23794321715831757,
+          "disc_r_max": 0.39153770357370377,
+          "n_dehydron": 16,
+          "n_non_dehydron": 26,
+          "ks_statistic": 0.4807692307692308,
+          "ks_pvalue": 0.013173502044781828,
+          "within_quartile_perm_p": 0.01259748050389922
+        },
+        {
+          "quartile": 2,
+          "disc_r_min": 0.39153770357370377,
+          "disc_r_max": 0.47758816182613373,
+          "n_dehydron": 13,
+          "n_non_dehydron": 29,
+          "ks_statistic": 0.7427055702917772,
+          "ks_pvalue": 2.546788054895807e-05,
+          "within_quartile_perm_p": 0.0001999600079984003
+        },
+        {
+          "quartile": 3,
+          "disc_r_min": 0.47758816182613373,
+          "disc_r_max": 0.5702825635671616,
+          "n_dehydron": 32,
+          "n_non_dehydron": 10,
+          "ks_statistic": 0.75,
+          "ks_pvalue": 8.764457907401346e-05,
+          "within_quartile_perm_p": 0.0001999600079984003
+        },
+        {
+          "quartile": 4,
+          "disc_r_min": 0.5702825635671616,
+          "disc_r_max": 0.8187853693962097,
+          "n_dehydron": 39,
+          "n_non_dehydron": 3,
+          "ks_statistic": NaN,
+          "ks_pvalue": NaN,
+          "within_quartile_perm_p": NaN
+        }
+      ],
+      "quartile_ks_significant_count": 3,
+      "label_shuffle_ks_empirical_p": 0.002,
+      "within_quartile_max_ks_observed": 0.75,
+      "within_quartile_max_ks_perm_p": 0.0001999600079984003,
+      "within_quartile_perm_n": 5000,
+      "within_quartile_significant_quartile_count": 3,
+      "corr_rho_disc_r": -0.48012313725803013,
+      "corr_rho_cone_depth": -0.48012310215906845,
+      "corr_disc_r_cone_depth": 0.9999999999998755,
+      "corr_disc_r_cone_depth_spearman": 1.0,
+      "radial_depth_note": "lever_a uses disc_radial_source=radial_depth: disc_r (=||disc_2d||) is set by apply_disc_radial_override from radial_depth, not independently learned. cone_depth = hyperbolic dist0(x_hyp). High corr(disc_r, cone_depth) means radial disc position and burial depth are one monotonic family \u2014 state once in SBIR text.",
+      "tier2_gate_status": "gate_closed_pass",
+      "tier2_interpretation": "residual + within-quartile permutation support angular clustering beyond crescent geometry \u2014 structure eligible for Tier 2 (cohort not yet declared)",
+      "tier2_sbir_framing": "Dehydron residues preferentially occupy distinct angular regions in a space where the angular axis encodes local chemical environment and domain topology \u2014 a relationship not directly supervised on dehydron labels, consistent with under-wrapped backbone hydrogen bonds occupying structurally heterogeneous microenvironments.",
+      "tier1_note": "\u03c1 vs disc_r reflects trained radial organization (\u03c1 \u2208 data.x[:,0]); confirms physics encoded \u2014 not an emergence claim"
+    }
+  ]
+}

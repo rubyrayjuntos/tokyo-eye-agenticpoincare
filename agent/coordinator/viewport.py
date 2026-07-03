@@ -100,6 +100,13 @@ async def websocket_viewport(websocket: WebSocket):
     session_id = (payload or {}).get("session_id", str(uuid.uuid4()))
     conn = await viewport_manager.connect(websocket, session_id)
 
+    from agent.coordinator.routers.orchestration import push_orchestration_snapshot
+
+    try:
+        await push_orchestration_snapshot(session_id)
+    except Exception:
+        logger.warning("Failed to push orchestration snapshot for session %s", session_id, exc_info=True)
+
     try:
         while True:
             data = await websocket.receive_json()

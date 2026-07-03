@@ -2,7 +2,7 @@
 
 Architecture:
 - coordinator: Routes user requests, maintains conversation context
-- dtie_agent: Runs pipelines, analyzes structures, detects source leaks
+- discovery_agent: Interprets pre-computed pathway artifacts and source leaks
 - visualization_agent: Generates viewport directives, controls the viewer
 - knowledge_agent: Answers questions about findings, biology, methodology
 
@@ -22,33 +22,7 @@ from agent.llm.providers import LLMProvider
 # Tool definitions (JSON Schema format for LLM tool calling)
 # ---------------------------------------------------------------------------
 
-DTIE_TOOLS = [
-    ToolDefinition(
-        name="run_gnn_inference",
-        description="Run the v5 GNN (decoupled radial-angular) on a protein structure. Produces hyperbolic embeddings, cone depth, and uncertainty for every residue.",
-        parameters={
-            "type": "object",
-            "properties": {
-                "structure_id": {"type": "string", "description": "Canonical structure ID (e.g., '4obe')"},
-                "model_version": {"type": "string", "enum": ["v5", "v4", "v3"], "default": "v5"},
-            },
-            "required": ["structure_id"],
-        },
-        handler=None,  # Wired at runtime
-    ),
-    ToolDefinition(
-        name="run_full_pipeline",
-        description="Run the complete DTIE v5 pipeline on a structure: GNN inference → all phases (1-6d) → source-leak detection → allosteric site identification.",
-        parameters={
-            "type": "object",
-            "properties": {
-                "structure_id": {"type": "string"},
-                "source_leak_only": {"type": "boolean", "default": False, "description": "If true, skip phases 1-2, 3.5-6 and only run GNN + Phase 3 + source-leak detection"},
-            },
-            "required": ["structure_id"],
-        },
-        handler=None,
-    ),
+DISCOVERY_TOOLS = [
     ToolDefinition(
         name="get_source_leaks",
         description="Identify source-leak candidates: residues with high epistemic uncertainty at significant hyperbolic depth. These represent structural ambiguity deep in the conformational hierarchy.",
@@ -510,16 +484,16 @@ PLOTTING_TOOLS = [
 
 COORDINATOR_PROMPT = """You are the Tokyo Eyes Data Science Coordinator — an expert AI assistant for structural biology and drug discovery research.
 
-You help researchers analyze protein structures using the DTIE (Dynamic Topology Inference Engine) v5 pipeline, which operates in hyperbolic geometry to detect allosteric sites and source leaks in oncogenic proteins.
+You help researchers analyze protein structures using the Discovery Story pathway (hyperbolic GNN, source leaks, cryptic pockets, and governed provenance).
 
 Your capabilities:
-- Run GNN inference on protein structures (v5 decoupled radial-angular architecture)
 - Detect source leaks (high uncertainty + deep in conformational hierarchy)
 - Analyze uncertainty patterns (epistemic vs aleatoric)
 - Compare wild-type vs mutant conformations
 - Control the Poincaré disc/ball visualizer to show findings
 - Generate matplotlib figures (Poincaré disc plots, uncertainty profiles, persistence barcodes, source-leak maps, WT vs mutant comparisons)
-- Run the full DTIE pipeline (Phases 1-6d)
+
+Structures are onboarded via ingest; the pathway scheduler produces artifacts before you analyze them. Do not attempt to run compute jobs.
 
 When the user asks about a structure, use your tools to analyze it and present findings clearly. Always highlight relevant residues in the viewer so the user can see what you're discussing.
 
@@ -531,14 +505,15 @@ Key concepts:
 
 The current structure being viewed is provided in the context. Use it to ground your analysis."""
 
-DTIE_AGENT_PROMPT = """You are the DTIE Analysis Sub-Agent. You execute scientific computations on protein structures using the v5 GNN pipeline.
+DISCOVERY_AGENT_PROMPT = """You are the Discovery Analysis Sub-Agent. You read pre-computed pathway artifacts and interpret scientific signals from the hyperbolic GNN pipeline.
 
 Your role:
-- Run GNN inference when asked
-- Detect source leaks and allosteric sites
+- Explain source leaks and allosteric sites from governed data
 - Analyze uncertainty patterns
 - Compare WT vs mutant conformations
 - Report findings in clear, scientific language
+
+Do not schedule compute jobs — ingestion and the pathway scheduler produce artifacts before you analyze them.
 
 Always include specific residue IDs in your findings so the coordinator can highlight them in the viewer. Use the canonical format: structure_id:chain:index (e.g., 4obe:A:12)."""
 
@@ -563,10 +538,13 @@ Use colors meaningfully:
 # ---------------------------------------------------------------------------
 
 
-def create_coordinator(llm: LLMProvider, db: Any = None) -> Agent:
+def create_coordinator(
+    llm: LLMProvider,
+    db: Any = None,
+    orchestrator: Any | None = None,
+) -> Agent:
     """Create the coordinator agent with all tools wired to the DB."""
     from agent.tools.dtie.tools import (
-        run_gnn_inference,
         get_source_leaks,
         get_high_uncertainty_residues,
         get_residue_state,
@@ -574,12 +552,10 @@ def create_coordinator(llm: LLMProvider, db: Any = None) -> Agent:
     )
     from agent.models.viewport import DirectiveAction, HighlightGroup, ViewportDirective
 
-    # Wire DTIE tools to actual handlers with DB
+    # Wire discovery signal read tools
     tools = []
-    for tool_def in DTIE_TOOLS:
+    for tool_def in DISCOVERY_TOOLS:
         handler_map = {
-            "run_gnn_inference": lambda db=db, **kwargs: run_gnn_inference(db=db, **kwargs),
-            "run_full_pipeline": lambda db=db, **kwargs: _run_pipeline(db=db, **kwargs),
             "get_source_leaks": lambda db=db, **kwargs: get_source_leaks(db=db, **kwargs),
             "get_high_uncertainty_residues": lambda db=db, **kwargs: get_high_uncertainty_residues(db=db, **kwargs),
             "get_residue_state": lambda db=db, **kwargs: get_residue_state(db=db, **kwargs),
@@ -732,6 +708,7 @@ def create_coordinator(llm: LLMProvider, db: Any = None) -> Agent:
         system_prompt=COORDINATOR_PROMPT,
         tools=tools,
         llm=llm,
+        orchestrator=orchestrator,
     )
 
 
@@ -787,35 +764,3 @@ async def _clear_highlights() -> dict:
             "message": "Cleared all highlights",
         }]
     }
-
-
-async def _run_pipeline(db: Any = None, structure_id: str = "", source_leak_only: bool = False) -> dict:
-    """Run the full DTIE pipeline via the Science Container API."""
-    from agent.tools.science_client import ScienceClient, ScienceComputeError, ScienceTimeoutError
-
-    client = ScienceClient()
-    try:
-        result = await client.run_pipeline(
-            structure_id=structure_id,
-            source_leak_only=source_leak_only,
-        )
-        return {
-            "success": True,
-            "run_id": result.get("run_id"),
-            "phases_run": result.get("phases_run", []),
-            "warnings": result.get("warnings", []),
-        }
-    except ScienceTimeoutError as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "phases_run": [],
-            "warnings": [f"Pipeline timed out after {e.timeout}s"],
-        }
-    except ScienceComputeError as e:
-        return {
-            "success": False,
-            "error": e.detail,
-            "phases_run": [],
-            "warnings": [f"Science API error ({e.status}): {e.detail}"],
-        }

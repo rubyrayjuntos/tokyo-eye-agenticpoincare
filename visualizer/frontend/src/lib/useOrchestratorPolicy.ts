@@ -1,21 +1,17 @@
 /**
  * useOrchestratorPolicy — React hook that binds all XState machines
- * (discovery phase, hypothesis lifecycle) and derives a combined
+ * (discovery phase, hypothesis lifecycle, structure scope) and derives a combined
  * PlannerPolicy for the orchestrator.
- *
- * Consumers get:
- * - machine context snapshots (discovery, hypothesis)
- * - planner policy (merged from all machines + session mode)
- * - strongly-typed dispatch helpers
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useMachine } from '@xstate/react';
 import { discoveryPhaseMachine } from './discoveryPhaseMachine';
 import { hypothesisLifecycleMachine } from './hypothesisLifecycleMachine';
+import { structureScopeMachine } from './structureScopeMachine';
+import type { StructureScopeEvent } from './structureScopeMachine';
 import {
   plannerPolicySelector,
-  createDefaultStructureScope,
   type PlannerPolicy,
   type SessionMode,
   type StructureScopeContext,
@@ -23,30 +19,30 @@ import {
 import type { DiscoveryPhase, DiscoveryPhaseEvent } from './discoveryPhaseMachine';
 import type { HypothesisLifecycleEvent } from './hypothesisLifecycleMachine';
 import type { ViewportContext } from './viewportMachine';
+import {
+  applyHypothesisLifecycleFromBackend,
+  guardDiscoveryEvent,
+  guardHypothesisEvent,
+  type OrchestrationAuthority,
+} from './backendOrchestrationSync';
+import type { HypothesisLifecycleState } from './hypothesisLifecycleMachine';
 
-// ---------------------------------------------------------------------------
-// Hook return type
-// ---------------------------------------------------------------------------
+export interface UseOrchestratorPolicyOptions {
+  authority?: OrchestrationAuthority;
+}
 
 export interface OrchestratorPolicyResult {
-  // Derived policy — the single object the orchestrator consumes
+  authority: OrchestrationAuthority;
   plannerPolicy: PlannerPolicy;
-
-  // Machine state snapshots for direct UI inspection
   discoveryContext: ReturnType<typeof discoveryPhaseMachine.getInitialSnapshot>['context'];
   hypothesisContext: ReturnType<typeof hypothesisLifecycleMachine.getInitialSnapshot>['context'];
-
-  // Structure scope (for display and mutation)
   structureScope: StructureScopeContext;
   setStructureScope: (scope: StructureScopeContext) => void;
+  sendStructureScope: (event: StructureScopeEvent) => void;
   sessionMode: SessionMode;
   setSessionMode: (mode: SessionMode) => void;
-
-  // Discovery phase dispatch
   sendDiscovery: (event: DiscoveryPhaseEvent) => void;
   setDiscoveryPhase: (phase: DiscoveryPhase, rationale?: string) => void;
-
-  // Hypothesis lifecycle dispatch
   sendHypothesis: (event: HypothesisLifecycleEvent) => void;
   startHypothesis: (text: string, source: 'user' | 'agent') => void;
   addEvidence: (ref?: string) => void;
@@ -55,25 +51,41 @@ export interface OrchestratorPolicyResult {
   markSupported: () => void;
   markSynthesized: () => void;
   clearHypothesis: () => void;
+  /** Apply hypothesis lifecycle from backend snapshot (bypasses user guard). */
+  applyHypothesisFromBackend: (lifecycle: HypothesisLifecycleState) => void;
 }
-
-// ---------------------------------------------------------------------------
-// Hook
-// ---------------------------------------------------------------------------
 
 export function useOrchestratorPolicy(
   viewportContext: ViewportContext,
+  options: UseOrchestratorPolicyOptions = {},
 ): OrchestratorPolicyResult {
-  // --- machines ---
-  const [discoveryState, sendDiscovery] = useMachine(discoveryPhaseMachine);
-  const [hypothesisState, sendHypothesis] = useMachine(hypothesisLifecycleMachine);
+  const authority = options.authority ?? 'local';
+  const [discoveryState, sendDiscoveryRaw] = useMachine(discoveryPhaseMachine);
+  const [hypothesisState, sendHypothesisRaw] = useMachine(hypothesisLifecycleMachine);
+  const [structureScopeState, sendStructureScope] = useMachine(structureScopeMachine);
 
-  // --- structure scope (local state — promote to machine if lifecycle grows) ---
-  const [structureScope, setStructureScope] = useState<StructureScopeContext>(
-    createDefaultStructureScope,
+  const sendDiscovery = useCallback(
+    (event: DiscoveryPhaseEvent) => {
+      const guarded = guardDiscoveryEvent(event, authority);
+      if (guarded) {
+        sendDiscoveryRaw(guarded);
+      }
+    },
+    [authority, sendDiscoveryRaw],
   );
 
-  // --- derive planner policy ---
+  const sendHypothesis = useCallback(
+    (event: HypothesisLifecycleEvent) => {
+      const guarded = guardHypothesisEvent(event, authority);
+      if (guarded) {
+        sendHypothesisRaw(guarded);
+      }
+    },
+    [authority, sendHypothesisRaw],
+  );
+
+  const structureScope = structureScopeState.context;
+
   const plannerPolicy = useMemo(
     () =>
       plannerPolicySelector({
@@ -85,22 +97,24 @@ export function useOrchestratorPolicy(
     [structureScope, viewportContext, discoveryState.context, hypothesisState.context],
   );
 
-  // --- session mode shortcut ---
   const sessionMode = structureScope.sessionMode;
   const setSessionMode = useCallback(
-    (mode: SessionMode) =>
-      setStructureScope(prev => ({ ...prev, sessionMode: mode })),
-    [],
+    (mode: SessionMode) => sendStructureScope({ type: 'SET_SESSION_MODE', mode }),
+    [sendStructureScope],
   );
 
-  // --- discovery helpers ---
+  const setStructureScope = useCallback(
+    (scope: StructureScopeContext) =>
+      sendStructureScope({ type: 'SYNC_FROM_WORKSPACE', scope }),
+    [sendStructureScope],
+  );
+
   const setDiscoveryPhase = useCallback(
     (phase: DiscoveryPhase, rationale?: string) =>
       sendDiscovery({ type: 'USER_SET_PHASE', phase, rationale }),
     [sendDiscovery],
   );
 
-  // --- hypothesis helpers ---
   const startHypothesis = useCallback(
     (text: string, source: 'user' | 'agent') =>
       sendHypothesis({ type: 'START_HYPOTHESIS', hypothesisText: text, source }),
@@ -108,8 +122,7 @@ export function useOrchestratorPolicy(
   );
 
   const addEvidence = useCallback(
-    (ref?: string) =>
-      sendHypothesis({ type: 'ADD_SUPPORTING_EVIDENCE', ref }),
+    (ref?: string) => sendHypothesis({ type: 'ADD_SUPPORTING_EVIDENCE', ref }),
     [sendHypothesis],
   );
 
@@ -120,8 +133,7 @@ export function useOrchestratorPolicy(
   );
 
   const reviseHypothesis = useCallback(
-    (text: string) =>
-      sendHypothesis({ type: 'REVISE_HYPOTHESIS', hypothesisText: text }),
+    (text: string) => sendHypothesis({ type: 'REVISE_HYPOTHESIS', hypothesisText: text }),
     [sendHypothesis],
   );
 
@@ -140,12 +152,25 @@ export function useOrchestratorPolicy(
     [sendHypothesis],
   );
 
+  const applyHypothesisFromBackend = useCallback(
+    (lifecycle: HypothesisLifecycleState) => {
+      applyHypothesisLifecycleFromBackend(
+        sendHypothesisRaw,
+        hypothesisState.context.stateLabel,
+        lifecycle,
+      );
+    },
+    [sendHypothesisRaw, hypothesisState.context.stateLabel],
+  );
+
   return {
+    authority,
     plannerPolicy,
     discoveryContext: discoveryState.context,
     hypothesisContext: hypothesisState.context,
     structureScope,
     setStructureScope,
+    sendStructureScope,
     sessionMode,
     setSessionMode,
     sendDiscovery,
@@ -158,5 +183,6 @@ export function useOrchestratorPolicy(
     markSupported,
     markSynthesized,
     clearHypothesis,
+    applyHypothesisFromBackend,
   };
 }

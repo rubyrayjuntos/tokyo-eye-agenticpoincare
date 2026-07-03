@@ -8,6 +8,7 @@ This repo is a deliberate, clean-slate synthesis of the best surviving component
 
 ## Quick Links
 
+- [**Developer onboarding (compliance)**](docs/DEVELOPER_ONBOARDING.md) — **start here for any new development**
 - [AGENTS.md](AGENTS.md) — Authoritative project context
 - [CONSOLIDATION_PLAN.md](CONSOLIDATION_PLAN.md) — Strategy and effort estimate
 - [MIGRATION_MAP.md](MIGRATION_MAP.md) — Detailed source-to-destination mapping

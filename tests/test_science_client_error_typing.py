@@ -38,11 +38,10 @@ detail_messages = st.text(
 )
 
 endpoints = st.sampled_from([
-    "/compute/gnn",
-    "/compute/pipeline",
     "/compute/cryptic-scan",
     "/compute/motif-analysis",
     "/compute/md-validate",
+    "/compute/jobs/gnn_inference",
     "/health",
 ])
 
@@ -113,11 +112,11 @@ class TestScienceClientErrorTyping:
             try:
                 client = ScienceClient(base_url="http://test:8001")
                 with pytest.raises(ScienceComputeError) as exc_info:
-                    await client.run_gnn("test_structure")
+                    await client.run_cryptic_scan("test_structure")
 
                 assert exc_info.value.status == status_code
                 assert exc_info.value.detail == detail
-                assert exc_info.value.endpoint == "/compute/gnn"
+                assert exc_info.value.endpoint == "/compute/cryptic-scan"
             finally:
                 httpx.AsyncClient.__init__ = original_init  # type: ignore[assignment]
 
@@ -152,16 +151,14 @@ class TestScienceClientErrorTyping:
                 with pytest.raises(ScienceTimeoutError) as exc_info:
                     if endpoint == "/health":
                         await client.health()
-                    elif endpoint == "/compute/gnn":
-                        await client.run_gnn("test_structure")
-                    elif endpoint == "/compute/pipeline":
-                        await client.run_pipeline("test_structure")
                     elif endpoint == "/compute/cryptic-scan":
                         await client.run_cryptic_scan("test_structure")
                     elif endpoint == "/compute/motif-analysis":
                         await client.run_motif_analysis("test_structure")
                     elif endpoint == "/compute/md-validate":
                         await client.run_md_validate("test_structure", "site_1")
+                    elif endpoint == "/compute/jobs/gnn_inference":
+                        await client.run_compute_job("gnn_inference", "test_structure")
 
                 assert exc_info.value.endpoint == endpoint
                 if endpoint == "/health":

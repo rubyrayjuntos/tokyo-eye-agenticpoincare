@@ -1,0 +1,9 @@
+artifact_location: file:///home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/mlruns/tokyo-eyes-v6
+creation_time: 1783042727182
+effective_trace_archival_retention: null
+experiment_id: '955122831316084136'
+last_update_time: 1783042727182
+lifecycle_stage: active
+name: tokyo-eyes-v6-local
+trace_location: null
+workspace: default

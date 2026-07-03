@@ -1,0 +1,104 @@
+{
+  "demo": "9est_cryptic_pipeline_persisted",
+  "generated_utc": "2026-07-02T15:23:18.196367+00:00",
+  "structure_id": "9est",
+  "n_gold": 26,
+  "scan_metadata": {
+    "scan_id": "f1568342-25f8-424c-930f-5aa792189530",
+    "status": "complete",
+    "sites_found": 28,
+    "model_version": "GOSPConeMapper-v6",
+    "scan_parameters": {
+      "eps_angstrom": 8.0,
+      "max_clusters": 25,
+      "channel_profile": "v6_lever_a",
+      "min_cluster_size": 3,
+      "cone_depth_threshold": 6.0,
+      "uncertainty_threshold": 9.5,
+      "overlap_threshold_angstrom": 5.0
+    },
+    "created_at": "2026-07-02T15:16:07.295436+00:00"
+  },
+  "n_sites": 28,
+  "top3_gold_recall": 0.6923076923076923,
+  "sites": [
+    {
+      "site_rank": 1,
+      "site_type": "surface_pocket",
+      "discovery_method": "geometry",
+      "druggability_score": 0.6185298333333333,
+      "n_residues": 25,
+      "n_gold_hit": 1,
+      "recall_on_gold": 0.038461538461538464,
+      "gold_resnums_hit": [
+        151
+      ],
+      "fpocket_druggability": 0.982
+    },
+    {
+      "site_rank": 2,
+      "site_type": "surface_pocket",
+      "discovery_method": "geometry",
+      "druggability_score": 0.5615023333333334,
+      "n_residues": 15,
+      "n_gold_hit": 9,
+      "recall_on_gold": 0.34615384615384615,
+      "gold_resnums_hit": [
+        35,
+        41,
+        42,
+        57,
+        58,
+        60,
+        61,
+        96,
+        99
+      ],
+      "fpocket_druggability": 0.921
+    },
+    {
+      "site_rank": 3,
+      "site_type": "surface_pocket",
+      "discovery_method": "geometry",
+      "druggability_score": 0.37550533333333336,
+      "n_residues": 12,
+      "n_gold_hit": 8,
+      "recall_on_gold": 0.3076923076923077,
+      "gold_resnums_hit": [
+        191,
+        192,
+        195,
+        213,
+        214,
+        215,
+        216,
+        217
+      ],
+      "fpocket_druggability": 0.687
+    },
+    {
+      "site_rank": 4,
+      "site_type": "strain_relief_insert",
+      "discovery_method": "gnn_strain",
+      "druggability_score": 0.3175899902979533,
+      "n_residues": 6,
+      "n_gold_hit": 0,
+      "recall_on_gold": 0.0,
+      "gold_resnums_hit": [],
+      "fpocket_druggability": null
+    },
+    {
+      "site_rank": 5,
+      "site_type": "strain_relief_insert",
+      "discovery_method": "gnn_strain",
+      "druggability_score": 0.31747839450836185,
+      "n_residues": 5,
+      "n_gold_hit": 0,
+      "recall_on_gold": 0.0,
+      "gold_resnums_hit": [],
+      "fpocket_druggability": null
+    }
+  ],
+  "fpocket_used": true,
+  "tool_message": "Found 28 binding sites for 9est (filters: none)"
+}

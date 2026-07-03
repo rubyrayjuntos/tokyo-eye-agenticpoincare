@@ -541,7 +541,7 @@
     },
     {
       "pdb_id": "1CEW",
-      "chain": "A",
+      "chain": "I",
       "gene": "CEW",
       "fold_class": "alpha_plus_beta",
       "desc": "cutinase",
@@ -551,7 +551,7 @@
       "fold_id_tier": "topology",
       "fold_id_source": "pdbe_cache",
       "cath_status": "OK_TOPOLOGY",
-      "structure_key": "1CEW:A",
+      "structure_key": "1CEW:I",
       "sequence_length": 108,
       "flags": []
     },
@@ -1071,7 +1071,7 @@
     },
     {
       "a": "4OBE:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "3.40.50.300",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -1539,7 +1539,7 @@
     },
     {
       "a": "4DSO:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "3.40.50.300",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -1995,7 +1995,7 @@
     },
     {
       "a": "6OIM:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "3.40.50.300",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -2439,7 +2439,7 @@
     },
     {
       "a": "5VQ2:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "3.40.50.300",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -2871,7 +2871,7 @@
     },
     {
       "a": "3CON:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "3.40.50.300",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -3291,7 +3291,7 @@
     },
     {
       "a": "4G0N:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "3.40.50.300",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -3699,7 +3699,7 @@
     },
     {
       "a": "4MNE:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "1.10.510.10",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -4095,7 +4095,7 @@
     },
     {
       "a": "1IVO:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "3.80.20.20",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -4479,7 +4479,7 @@
     },
     {
       "a": "2ITV:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "1.10.510.10",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -4851,7 +4851,7 @@
     },
     {
       "a": "4NST:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "1.10.510.10",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -5211,7 +5211,7 @@
     },
     {
       "a": "3PP0:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "1.10.510.10",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -5559,7 +5559,7 @@
     },
     {
       "a": "2OIQ:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "1.10.510.10",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -5895,7 +5895,7 @@
     },
     {
       "a": "2SHP:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "3.90.190.10",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -6219,7 +6219,7 @@
     },
     {
       "a": "1BG1:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "1.20.1050.20",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -6531,7 +6531,7 @@
     },
     {
       "a": "2Z6H:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "1.25.10.10",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -6831,7 +6831,7 @@
     },
     {
       "a": "4GQB:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "3.20.20.150",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -7119,7 +7119,7 @@
     },
     {
       "a": "2HHB:B",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "1.10.490.10",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -7395,7 +7395,7 @@
     },
     {
       "a": "1UBQ:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "3.10.20.90",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -7659,7 +7659,7 @@
     },
     {
       "a": "1CRN:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "3.30.1350.10",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -7911,7 +7911,7 @@
     },
     {
       "a": "1TIM:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "3.20.20.70",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -8151,7 +8151,7 @@
     },
     {
       "a": "1AKE:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "3.40.50.300",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -8379,7 +8379,7 @@
     },
     {
       "a": "1LYZ:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "1.10.530.10",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -8595,7 +8595,7 @@
     },
     {
       "a": "1MBN:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "1.10.490.10",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -8799,7 +8799,7 @@
     },
     {
       "a": "2ABD:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "1.20.80.10",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -8991,7 +8991,7 @@
     },
     {
       "a": "1PGB:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "3.10.20.10",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -9171,7 +9171,7 @@
     },
     {
       "a": "2VIK:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "3.40.20.10",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -9339,7 +9339,7 @@
     },
     {
       "a": "1SUP:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "3.40.50.200",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -9495,7 +9495,7 @@
     },
     {
       "a": "1A2P:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "3.10.450.30",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -9639,7 +9639,7 @@
     },
     {
       "a": "1HHP:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "2.40.70.10",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -9771,7 +9771,7 @@
     },
     {
       "a": "1FKB:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "3.10.50.40",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -9891,7 +9891,7 @@
     },
     {
       "a": "1TEN:A",
-      "b": "1CEW:A",
+      "b": "1CEW:I",
       "fold_id_a": "2.60.40.10",
       "fold_id_b": "3.10.450.10",
       "same_fold_id": false,
@@ -10010,7 +10010,7 @@
       "metric_used": "tm_align_tmtools"
     },
     {
-      "a": "1CEW:A",
+      "a": "1CEW:I",
       "b": "1R69:A",
       "fold_id_a": "3.10.450.10",
       "fold_id_b": "1.10.260.40",
@@ -10022,7 +10022,7 @@
       "metric_used": "tm_align_tmtools"
     },
     {
-      "a": "1CEW:A",
+      "a": "1CEW:I",
       "b": "1CTF:A",
       "fold_id_a": "3.10.450.10",
       "fold_id_b": "3.30.1390.10",
@@ -10034,7 +10034,7 @@
       "metric_used": "tm_align_tmtools"
     },
     {
-      "a": "1CEW:A",
+      "a": "1CEW:I",
       "b": "2CRO:A",
       "fold_id_a": "3.10.450.10",
       "fold_id_b": "1.10.260.40",
@@ -10046,7 +10046,7 @@
       "metric_used": "tm_align_tmtools"
     },
     {
-      "a": "1CEW:A",
+      "a": "1CEW:I",
       "b": "1PIN:A",
       "fold_id_a": "3.10.450.10",
       "fold_id_b": "3.10.50.40",
@@ -10058,7 +10058,7 @@
       "metric_used": "tm_align_tmtools"
     },
     {
-      "a": "1CEW:A",
+      "a": "1CEW:I",
       "b": "1BRS:A",
       "fold_id_a": "3.10.450.10",
       "fold_id_b": "3.10.450.30",
@@ -10070,7 +10070,7 @@
       "metric_used": "tm_align_tmtools"
     },
     {
-      "a": "1CEW:A",
+      "a": "1CEW:I",
       "b": "1AON:A",
       "fold_id_a": "3.10.450.10",
       "fold_id_b": "3.50.7.10",
@@ -10082,7 +10082,7 @@
       "metric_used": "tm_align_tmtools"
     },
     {
-      "a": "1CEW:A",
+      "a": "1CEW:I",
       "b": "1A0I:A",
       "fold_id_a": "3.10.450.10",
       "fold_id_b": "3.30.470.30",
@@ -10094,7 +10094,7 @@
       "metric_used": "tm_align_tmtools"
     },
     {
-      "a": "1CEW:A",
+      "a": "1CEW:I",
       "b": "1F88:A",
       "fold_id_a": "3.10.450.10",
       "fold_id_b": "1.20.1070.10",
@@ -10106,7 +10106,7 @@
       "metric_used": "tm_align_tmtools"
     },
     {
-      "a": "1CEW:A",
+      "a": "1CEW:I",
       "b": "2Z73:A",
       "fold_id_a": "3.10.450.10",
       "fold_id_b": "1.20.1070.10",
@@ -10922,7 +10922,7 @@
       },
       {
         "pdb_id": "1CEW",
-        "chain": "A",
+        "chain": "I",
         "gene": "CEW",
         "fold_class": "alpha_plus_beta",
         "desc": "cutinase",
@@ -10932,7 +10932,7 @@
         "fold_id_tier": "topology",
         "fold_id_source": "pdbe_cache",
         "cath_status": "OK_TOPOLOGY",
-        "structure_key": "1CEW:A",
+        "structure_key": "1CEW:I",
         "sequence_length": 108,
         "role": "train",
         "disposition_rule": "per_fold_cap_structural_spread"
@@ -11628,7 +11628,7 @@
       },
       {
         "pdb_id": "1CEW",
-        "chain": "A",
+        "chain": "I",
         "gene": "CEW",
         "fold_class": "alpha_plus_beta",
         "desc": "cutinase",
@@ -11638,7 +11638,7 @@
         "fold_id_tier": "topology",
         "fold_id_source": "pdbe_cache",
         "cath_status": "OK_TOPOLOGY",
-        "structure_key": "1CEW:A",
+        "structure_key": "1CEW:I",
         "sequence_length": 108,
         "role": "train",
         "disposition_rule": "per_fold_cap_structural_spread"

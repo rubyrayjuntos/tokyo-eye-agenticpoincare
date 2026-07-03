@@ -245,3 +245,26 @@ input:focus, select:focus, textarea:focus {
 .panel-active-glow {
   animation: border-pulse 3s ease-in-out infinite;
 }
+
+.ck-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.ck-scroll::-webkit-scrollbar-thumb {
+  background: rgba(184, 189, 204, 0.16);
+  border-radius: 999px;
+}
+
+.ck-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Mol* viewer fills panel container */
+.msp-plugin .msp-viewport-controls-buttons {
+  top: 34px;
+}
+
+.msp-plugin canvas {
+  display: block !important;
+}

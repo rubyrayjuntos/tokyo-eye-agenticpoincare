@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { buildHydrationView } from "../hydrationView";
-import type { HydrationResponse } from "../types";
+import { buildHydrationView, normalizeHypotheses, normalizeProvenanceRuns } from "../hydrationView";
+import type { HydrationResponse, Hypothesis, ProvenanceRun } from "../types";
 
 const baseHydration: HydrationResponse = {
   structure_id: "rcsb:4obe",
@@ -154,5 +154,80 @@ describe("buildHydrationView", () => {
     expect(view.sourceLeaks?.leaks[0]?.source).toBe("legacy");
     expect(view.allostericSites?.sites[0]?.confidence).toBe(0.12);
     expect(view.persistenceStatus?.embeddings_persisted).toBe(false);
+  });
+
+  it("unwraps hydrate tool wrappers for hypotheses and provenance runs", () => {
+    const hypothesis: Hypothesis = {
+      hypothesis_id: "hyp-1",
+      structure_id: "4uj1",
+      statement: "Switch-II coupling",
+      mechanism: null,
+      status: "gathering",
+      confidence: 0.62,
+      predictions: [],
+      evidence_supporting: 1,
+      evidence_contradicting: 0,
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    };
+    const run: ProvenanceRun = {
+      run_id: "run-1",
+      structure_id: "4uj1",
+      model_version: "v5",
+      pipeline_name: "embeddings",
+      run_type: "pipeline",
+      parent_run_id: null,
+      started_at: "2026-01-01T00:00:00Z",
+    };
+
+    const hydration: HydrationResponse = {
+      ...baseHydration,
+      hypotheses: { hypotheses: [hypothesis], count: 1, filters: {} },
+      provenance_runs: { runs: [run], count: 1, query: {} },
+    };
+
+    const view = buildHydrationView(hydration, "4uj1");
+
+    expect(view.hypotheses).toEqual([hypothesis]);
+    expect(view.provenanceRuns).toEqual([run]);
+    expect(normalizeHypotheses(hydration.hypotheses)).toEqual([hypothesis]);
+    expect(normalizeProvenanceRuns(hydration.provenance_runs)).toEqual([run]);
+  });
+
+  it("accepts bare arrays for hypotheses and provenance runs", () => {
+    const hypothesis: Hypothesis = {
+      hypothesis_id: "hyp-2",
+      structure_id: "4uj1",
+      statement: "Peripheral leak",
+      mechanism: null,
+      status: "proposed",
+      confidence: 0.4,
+      predictions: [],
+      evidence_supporting: 0,
+      evidence_contradicting: 0,
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    };
+    const run: ProvenanceRun = {
+      run_id: "run-2",
+      structure_id: "4uj1",
+      model_version: "v5",
+      pipeline_name: "graph",
+      run_type: "pipeline",
+      parent_run_id: null,
+      started_at: "2026-01-02T00:00:00Z",
+    };
+
+    const view = buildHydrationView(
+      {
+        ...baseHydration,
+        hypotheses: [hypothesis],
+        provenance_runs: [run],
+      },
+      "4uj1",
+    );
+
+    expect(view.hypotheses).toEqual([hypothesis]);
+    expect(view.provenanceRuns).toEqual([run]);
   });
 });

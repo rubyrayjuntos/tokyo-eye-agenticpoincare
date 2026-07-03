@@ -101,5 +101,12 @@ def test_stage_a_smoke_mlflow_run_from_env() -> None:
     client = mlflow.tracking.MlflowClient(tracking_uri=tracking_uri)
     artifact_names = collect_run_artifact_names(run_id, tracking_uri=tracking_uri)
 
-    errors = validate_stage_a_smoke_run(params, metric_keys, dict(run.data.metrics), artifact_names)
+    full_corpus = os.environ.get("STAGE_A_SMOKE_FULL", "").strip() in {"1", "true", "yes"}
+    errors = validate_stage_a_smoke_run(
+        params,
+        metric_keys,
+        dict(run.data.metrics),
+        artifact_names,
+        full_corpus=full_corpus,
+    )
     assert errors == [], "P_STAGE_A_SMOKE failed:\n" + "\n".join(errors)

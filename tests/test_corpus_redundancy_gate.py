@@ -11,6 +11,7 @@ import pytest
 from science.training.corpus_governance import (
     FROZEN_REPORT,
     LOCKED_MANIFEST,
+    STAGE_A_MAX_RESIDUES,
     validate_p_corpus_01,
 )
 
@@ -84,8 +85,9 @@ def test_p_corpus_01_fails_on_pin_desync_loudly() -> None:
         expected_report_sha256="0" * 64,
         expected_manifest_sha256=None,
     )
-    assert len(errors) == 1
-    msg = errors[0]
+    pin_errors = [e for e in errors if "pinned SHA256 does not match" in e]
+    assert len(pin_errors) == 1
+    msg = pin_errors[0]
     assert "pinned SHA256 does not match" in msg
     assert "regeneration incomplete" in msg
     assert "corpus_governance.py" in msg
@@ -148,3 +150,36 @@ def test_p_corpus_01_fails_on_cross_fold_train_leak() -> None:
         expected_manifest_sha256=None,
     )
     assert any("CROSS_FOLD_HIGH_TM" in e for e in errors)
+
+
+def test_p_corpus_01_fails_on_wrong_manifest_chain() -> None:
+    """Manifest chain that disagrees with author_chain_from_cache must fail loadability."""
+    report, manifest = _load_locked_artifacts()
+    bad = copy.deepcopy(manifest)
+    for entry in bad["proteins"]:
+        if entry["pdb_id"] == "1CEW":
+            entry["chain"] = "A"
+    errors = validate_p_corpus_01(
+        report,
+        bad,
+        expected_report_sha256=None,
+        expected_manifest_sha256=None,
+    )
+    assert any("1CEW:A" in e and "author chain" in e for e in errors)
+
+
+def test_p_corpus_01_fails_when_locked_structure_exceeds_residue_cap() -> None:
+    """4GQB at 625 residues must fail when STAGE_A_MAX_RESIDUES is below that."""
+    report, manifest = _load_locked_artifacts()
+    errors = validate_p_corpus_01(
+        report,
+        manifest,
+        expected_report_sha256=None,
+        expected_manifest_sha256=None,
+    )
+    # Current floor includes 4GQB — re-run loadability at an impossible cap.
+    from science.training.corpus_governance import validate_corpus_loadability
+
+    cap_errors = validate_corpus_loadability(manifest, report, max_residues=600)
+    assert any("4GQB:A" in e and "625" in e for e in cap_errors)
+    assert errors == [], "locked corpus must pass at STAGE_A_MAX_RESIDUES"

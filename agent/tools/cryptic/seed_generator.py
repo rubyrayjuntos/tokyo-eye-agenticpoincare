@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -22,6 +23,9 @@ except ImportError as _sklearn_err:
 else:
     _SKLEARN_MISSING = None
 
+if TYPE_CHECKING:
+    from agent.tools.cryptic.gnn_channel_profile import GNNChannelProfile
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,6 +36,7 @@ class GNNNodeOutput:
     residue_id: str
     epistemic_uncertainty: float
     cone_depth: float
+    disc_r: float | None = None  # v6 shell boundary proxy (‖hyp_projections_2d‖)
 
 
 @dataclass
@@ -159,11 +164,13 @@ def generate_seeds_from_gnn(
     eps_angstrom: float = 8.0,
     min_cluster_size: int = 3,
     max_clusters: int = 25,
+    *,
+    channel_profile: "GNNChannelProfile | None" = None,
 ) -> list[CandidateCluster]:
     """Identify all candidate binding site clusters from GNN output.
 
     Pipeline:
-    1. Filter residues by epistemic_uncertainty >= threshold AND cone_depth >= threshold
+    1. Filter residues by epistemic + shell thresholds (profile or legacy kwargs)
     2. Extract Cα coordinates for qualifying residues
     3. Run DBSCAN with eps=eps_angstrom, min_samples=min_cluster_size
     4. Score each cluster by mean composite_score of its members
@@ -173,13 +180,37 @@ def generate_seeds_from_gnn(
 
     Requirements: 1.1, 1.2, 1.3, 1.4, 1.5
     """
-    # Step 1: Filter qualifying residues
-    qualifying = filter_qualifying_residues(
-        gnn_nodes, uncertainty_threshold, cone_depth_threshold
+    from dataclasses import replace
+
+    from agent.tools.cryptic.gnn_channel_profile import (
+        V5_LEGACY,
+        composite_score_profile,
+        filter_qualifying_residues_profile,
+        resolve_profile_thresholds,
     )
 
+    if channel_profile is not None:
+        profile = channel_profile
+    elif uncertainty_threshold != 9.5 or cone_depth_threshold != 6.0:
+        profile = replace(
+            V5_LEGACY,
+            epistemic_threshold=uncertainty_threshold,
+            shell_threshold=cone_depth_threshold,
+        )
+    else:
+        profile = V5_LEGACY
+
+    # Step 1: Filter qualifying residues
+    qualifying = filter_qualifying_residues_profile(gnn_nodes, profile)
+    epi_thr, shell_thr = resolve_profile_thresholds(gnn_nodes, profile)
+
     if not qualifying:
-        logger.info("No qualifying residues found for seed generation")
+        logger.info(
+            "No qualifying residues (profile=%s, epi>=%.4f, shell>=%.4f)",
+            profile.name,
+            epi_thr,
+            shell_thr,
+        )
         return []
 
     # Steps 2-3: Cluster using DBSCAN
@@ -190,6 +221,17 @@ def generate_seeds_from_gnn(
     if not clusters:
         logger.info("DBSCAN produced no clusters from %d qualifying residues", len(qualifying))
         return []
+
+    # Re-score clusters with profile-aware composite
+    for cluster in clusters:
+        member_by_id = {n.residue_id: n for n in qualifying}
+        scores = [
+            composite_score_profile(member_by_id[rid], profile)
+            for rid in cluster.residue_ids
+            if rid in member_by_id
+        ]
+        if scores:
+            cluster.composite_score = sum(scores) / len(scores)
 
     # Step 4-5: Sort by composite_score descending
     clusters.sort(key=lambda c: c.composite_score, reverse=True)

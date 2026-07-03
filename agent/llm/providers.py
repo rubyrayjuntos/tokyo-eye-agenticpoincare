@@ -435,20 +435,17 @@ class MockProvider(LLMProvider):
                 )
 
         if "run" in text and ("pipeline" in text or "gnn" in text or "inference" in text):
-            if "run_gnn_inference" in tool_map:
-                return LLMResponse(
-                    message=Message(
-                        role="assistant",
-                        content="",
-                        tool_calls=[ToolCall(
-                            id=str(uuid.uuid4()),
-                            name="run_gnn_inference",
-                            arguments={"structure_id": "4obe", "model_version": "v5"},
-                        )],
+            return LLMResponse(
+                message=Message(
+                    role="assistant",
+                    content=(
+                        "Compute is only triggered by structure ingest (POST /api/ingest). "
+                        "Ingest the PDB ID first; the discovery pathway runs automatically."
                     ),
-                    input_tokens=est_input_tokens,
-                    output_tokens=50,
-                )
+                ),
+                input_tokens=est_input_tokens,
+                output_tokens=50,
+            )
 
         if "compare" in text or "mutant" in text or "differential" in text:
             if "compare_wt_mutant" in tool_map:

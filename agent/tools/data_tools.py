@@ -461,27 +461,56 @@ async def annotate_structure(
     if annotation_type not in valid_types:
         return ToolResult(success=False, message=f"Invalid type. Use: {valid_types}")
 
-    annotation_id = f"ann_{uuid.uuid4().hex[:12]}"
-
-    await db.execute(
-        """
-        INSERT INTO governed_asset (
-            asset_id, asset_type, structure_id, run_id, access_level, created_at
-        ) VALUES (
-            :asset_id, :asset_type, :structure_id, :run_id, :access_level, :created_at
-        )
-        ON CONFLICT (asset_id) DO NOTHING
-        """,
-        {
-            "asset_id": annotation_id,
-            "asset_type": f"annotation_{annotation_type}",
-            "structure_id": structure_id,
-            "run_id": annotation_id,  # Self-referencing for annotations
-            "access_level": "internal",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        },
+    from science.dtie.common.keys import validate_residue_id, validate_structure_id
+    from science.dtie.common.normalizer_payloads import (
+        AnnotationPayload,
+        ProvenanceContext,
+        RunType,
+        SourceType,
     )
-    await db.commit()
+
+    if not validate_structure_id(structure_id):
+        return ToolResult(success=False, message=f"Invalid structure_id format: {structure_id}")
+
+    if residue_ids:
+        invalid = [rid for rid in residue_ids if not validate_residue_id(rid)]
+        if invalid:
+            return ToolResult(
+                success=False,
+                message=f"Invalid residue_id format: {invalid[:3]}",
+            )
+
+    annotation_id = f"ann_{uuid.uuid4().hex[:12]}"
+    run_id = f"annotation_{annotation_id}"
+
+    payload = AnnotationPayload(
+        provenance=ProvenanceContext(
+            run_id=run_id,
+            structure_id=structure_id,
+            model_version="annotation_v1",
+            pipeline_name="agent_annotation",
+            run_type=RunType.ANALYSIS,
+            source_type=SourceType.DERIVED,
+            parameters={
+                "annotation_type": annotation_type,
+                "residue_count": len(residue_ids or []),
+            },
+        ),
+        annotation_id=annotation_id,
+        structure_id=structure_id,
+        annotation_type=annotation_type,
+        text=annotation.strip(),
+        residue_ids=residue_ids or [],
+        created_by="agent",
+    )
+
+    from data.normalizer.core import Normalizer
+
+    normalizer = Normalizer(db=db, caller_identity="annotate_structure_tool")
+    try:
+        result = await normalizer.normalize_annotation(payload)
+    except Exception as e:
+        return ToolResult(success=False, message=f"Failed to persist annotation: {e}")
 
     directive = ViewportDirective(
         action=DirectiveAction.ANNOTATE,
@@ -505,6 +534,7 @@ async def annotate_structure(
             "residue_ids": residue_ids,
             "annotation": annotation,
             "type": annotation_type,
+            "run_id": result.run_id,
         },
         message=f"Annotation saved: '{annotation[:60]}...' " if len(annotation) > 60 else f"Annotation saved: '{annotation}'",
         viewport_directives=[directive],

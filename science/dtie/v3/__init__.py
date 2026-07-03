@@ -1,12 +1,5 @@
-# LEGACY — kept for provenance and backward compatibility only.
-"""V3 DTIE — GOSPConeMapper-v3 (Euclidean, mature full pipeline).
+"""V3 GOSPConeMapper — frozen v2-bridge teacher for v6 shell-signal distillation."""
 
-⚠️  DEPRECATED: Do not use for new analysis. Use the v5 pipeline instead.
+from science.dtie.v3.gnn.model import GOSPConeMapper
 
-This code exists solely to:
-- Reproduce historical v3 results for validation
-- Provide provenance for data produced by v3 runs
-- Serve as reference for the phase logic (which v5 inherits)
-
-The v3 GNN (Euclidean-only, older architecture) is superseded by v5.
-"""
+__all__ = ["GOSPConeMapper"]

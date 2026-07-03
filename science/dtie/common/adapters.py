@@ -22,8 +22,13 @@ from typing import Any
 
 import numpy as np
 
+from science.dtie.common.curvature_values import require_learned_curvature
 from science.dtie.common.interfaces import GNNInferenceResult, GNNNodeOutput, PhaseResult
 from science.dtie.common.keys import make_residue_id
+from science.dtie.common.provenance_runtime import (
+    resolve_checkpoint_sha256,
+    resolve_code_version,
+)
 from science.dtie.common.normalizer_payloads import (
     GNNNodeResult,
     GNNOutputPayload,
@@ -136,6 +141,30 @@ class GNNOutputAdapter:
                 f"The GNN output format may have changed — update the adapter."
             )
 
+    def _build_inference_provenance(
+        self,
+        *,
+        run_id: str,
+        result: GNNInferenceResult,
+        code_version: str | None,
+        parent_run_id: str | None,
+        pipeline_name: str,
+    ) -> ProvenanceContext:
+        resolved_code_version = resolve_code_version(code_version)
+        checkpoint_sha256 = resolve_checkpoint_sha256(result.checkpoint_path)
+        return ProvenanceContext(
+            run_id=run_id,
+            structure_id=result.structure_id,
+            model_version=result.model_version,
+            pipeline_name=pipeline_name,
+            run_type=RunType.INFERENCE,
+            source_type=SourceType.PROBABILISTIC,
+            checkpoint_uri=result.checkpoint_path,
+            checkpoint_sha256=checkpoint_sha256,
+            code_version=resolved_code_version,
+            parent_run_id=parent_run_id,
+        )
+
     async def _normalize_hyperbolic(
         self,
         result: GNNInferenceResult,
@@ -175,21 +204,17 @@ class GNNOutputAdapter:
         hyp_dim = result.nodes[0].x_hyp.shape[0] if result.nodes and result.nodes[0].x_hyp is not None else 32
 
         payload = GNNOutputPayload(
-            provenance=ProvenanceContext(
+            provenance=self._build_inference_provenance(
                 run_id=f"{run_id}_hyp",
-                structure_id=result.structure_id,
-                model_version=result.model_version,
-                pipeline_name="dtie_v4",
-                run_type=RunType.INFERENCE,
-                source_type=SourceType.PROBABILISTIC,
-                checkpoint_uri=result.checkpoint_path,
+                result=result,
                 code_version=code_version,
                 parent_run_id=parent_run_id,
+                pipeline_name="dtie_v4",
             ),
             space_type=SpaceType.HYPERBOLIC,
             space_name=f"{result.model_version.lower().replace('-', '_')}_hyp{hyp_dim}",
             dimensionality=hyp_dim,
-            curvature=result.curvature or 1.0,
+            curvature=require_learned_curvature(result.curvature, context="hyperbolic gnn adapter"),
             nodes=nodes,
         )
 
@@ -229,16 +254,12 @@ class GNNOutputAdapter:
         pipeline = "dtie_v4" if result.space_type == "hyperbolic" else "dtie_v3"
 
         payload = GNNOutputPayload(
-            provenance=ProvenanceContext(
+            provenance=self._build_inference_provenance(
                 run_id=f"{run_id}_euc",
-                structure_id=result.structure_id,
-                model_version=result.model_version,
-                pipeline_name=pipeline,
-                run_type=RunType.INFERENCE,
-                source_type=SourceType.PROBABILISTIC,
-                checkpoint_uri=result.checkpoint_path,
+                result=result,
                 code_version=code_version,
                 parent_run_id=parent_run_id,
+                pipeline_name=pipeline,
             ),
             space_type=SpaceType.EUCLIDEAN,
             space_name=f"{result.model_version.lower().replace('-', '_')}_euc{euc_dim}",

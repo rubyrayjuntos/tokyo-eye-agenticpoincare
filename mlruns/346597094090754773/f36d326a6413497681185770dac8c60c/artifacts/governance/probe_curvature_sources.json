@@ -1,0 +1,7 @@
+{
+  "model_checkpoint_c": 0.7085484862327576,
+  "canonical_v6_pin": 0.7026273608207703,
+  "space_name": "gospconemapper_v6_hyp128",
+  "model_vs_canonical_match": false,
+  "note": "Training-time probe; full probe_curvature_sources requires DB at ingest."
+}

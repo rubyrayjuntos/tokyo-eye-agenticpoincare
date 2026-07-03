@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
-from science.training.corpus_governance import LOCKED_MANIFEST
+from science.training.corpus_governance import (
+    LOCKED_MANIFEST,
+    STAGE_A_MAX_RESIDUES,
+    STAGE_A_TRAIN_STRUCTURE_COUNT,
+    stage_a_train_fold_count,
+)
 from science.training.mlflow_governance import (
     MANDATORY_METRICS,
     corpus_manifest_hash,
@@ -50,13 +56,16 @@ def validate_stage_a_smoke_run(
     *,
     manifest_path: Path = LOCKED_CORPUS_MANIFEST,
     min_per_fold_loss_keys: int = 2,
+    full_corpus: bool = False,
 ) -> list[str]:
-    """Validate one-epoch smoke: full schema + per_fold_loss on CATH keys (subset ok)."""
+    """Validate one-epoch smoke: full schema + per_fold_loss on CATH keys."""
     errors: list[str] = []
 
     if not manifest_path.is_file():
         errors.append(f"locked manifest missing: {manifest_path}")
         return errors
+
+    manifest = json.loads(manifest_path.read_text()) if full_corpus else None
 
     expected_hash = corpus_manifest_hash(manifest_path)
     logged_hash = params.get("corpus_manifest_hash", "")
@@ -71,9 +80,28 @@ def validate_stage_a_smoke_run(
         errors.append(f"legacy per_family_loss metrics present: {family_keys}")
 
     fold_keys = sorted(k for k in metric_keys if k.startswith("per_fold_loss."))
-    if len(fold_keys) < min_per_fold_loss_keys:
+    expected_fold_keys = min_per_fold_loss_keys
+    if full_corpus and manifest is not None:
+        expected_fold_keys = stage_a_train_fold_count(manifest)
+        corpus_size = params.get("corpus_size", "")
+        if corpus_size != str(STAGE_A_TRAIN_STRUCTURE_COUNT):
+            errors.append(
+                f"full-corpus smoke expected corpus_size={STAGE_A_TRAIN_STRUCTURE_COUNT}, "
+                f"got {corpus_size!r}"
+            )
+        max_res = params.get("max_residues", "")
+        if max_res and int(max_res) < STAGE_A_MAX_RESIDUES:
+            errors.append(
+                f"max_residues={max_res} < STAGE_A_MAX_RESIDUES={STAGE_A_MAX_RESIDUES}"
+            )
+    if len(fold_keys) < expected_fold_keys:
         errors.append(
-            f"expected at least {min_per_fold_loss_keys} per_fold_loss.* metrics, got {fold_keys}"
+            f"expected at least {expected_fold_keys} per_fold_loss.* metrics, got {fold_keys}"
+        )
+    if full_corpus and manifest is not None and len(fold_keys) != expected_fold_keys:
+        errors.append(
+            f"full-corpus smoke expected exactly {expected_fold_keys} per_fold_loss keys "
+            f"(distinct train folds), got {len(fold_keys)}: {fold_keys}"
         )
 
     for key in fold_keys:
@@ -119,10 +147,12 @@ def smoke_assertions_doc() -> dict[str, Any]:
         "assertions": [
             "corpus_manifest_hash matches locked v6_corpus_stage_a.json",
             "no per_family_loss.* metrics",
-            "≥2 per_fold_loss.{fold_id_underscored} metrics from CATH vocabulary",
+            "≥2 per_fold_loss.{fold_id_underscored} metrics (subset smoke) or exactly 24 at MAX_PROTEINS=25",
+            "full-corpus: corpus_size=25, 24 per_fold_loss keys (4OBE+3CON share fold 3.40.50.300)",
             "effective_experts, effective_experts_min, min_routing_fraction logged",
             "stage_gate_passed logged (value may be 0 on 1-epoch subset)",
             "P_MLFLOW_01 params, core metrics, governance artifacts",
+            "P_CORPUS_01 loadability: manifest chains match author_chain_from_cache",
         ],
         "make_target": "train-v6-stage-a-smoke",
     }

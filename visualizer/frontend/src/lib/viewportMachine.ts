@@ -6,11 +6,15 @@ import type {
   ActivePanelName,
   BottomPanelId,
   EditorTabId,
+  SelectedResidueInfo,
 } from "./types";
 
 export interface ViewportContext {
   highlightedResidues: string[];
+  brushSelectedIds: string[];
+  selectedResidue: SelectedResidueInfo | null;
   userSelectedResidue: string | null;
+  mobiusFocusEnabled: boolean;
   currentDirective: ViewportDirective | null;
   activeMetric: string;
   isRadarActive: boolean;
@@ -40,7 +44,16 @@ export type ViewportEvent =
   | { type: "SET_ACTIVE_EDITOR_TAB"; tab: EditorTabId }
   | { type: "SET_BOTTOM_PANEL_OPEN"; open: boolean }
   | { type: "SET_ACTIVE_BOTTOM_PANEL"; panel: BottomPanelId }
-  | { type: "SET_LAYOUT_MODEL"; modelJSON: Record<string, any> };
+  | { type: "SET_LAYOUT_MODEL"; modelJSON: Record<string, any> }
+  | { type: "SET_MOBIUS_FOCUS"; enabled: boolean }
+  | { type: "SET_BRUSH_SELECTION"; residues: string[] }
+  | { type: "SET_SELECTED_RESIDUE"; residue: SelectedResidueInfo | null }
+  | {
+      type: "SET_SELECTION";
+      highlightedResidues: string[];
+      brushSelectedIds: string[];
+      selectedResidue: SelectedResidueInfo | null;
+    };
 
 export const viewportMachine = setup({
   types: {} as {
@@ -99,16 +112,73 @@ export const viewportMachine = setup({
         (event.type === "DIRECTIVE_RECEIVED" && event.directive.metric) ? event.directive.metric : context.activeMetric,
     }),
     applyUserSelection: assign({
-      highlightedResidues: ({ event, context }) => 
+      highlightedResidues: ({ event, context }) =>
         event.type === "USER_SELECT" ? event.residues : context.highlightedResidues,
+      brushSelectedIds: ({ event, context }) =>
+        event.type === "USER_SELECT" ? event.residues : context.brushSelectedIds,
       userSelectedResidue: ({ event, context }) =>
         event.type === "USER_SELECT" && event.residues.length === 1
           ? event.residues[0]
-          : (event.type === "USER_SELECT" ? null : context.userSelectedResidue),
+          : event.type === "USER_SELECT"
+            ? null
+            : context.userSelectedResidue,
+      selectedResidue: ({ event, context }) =>
+        event.type === "USER_SELECT" && event.residues.length === 1
+          ? context.selectedResidue?.residue_id === event.residues[0]
+            ? context.selectedResidue
+            : {
+                residue_id: event.residues[0],
+                residue_name: null,
+                chain_label: null,
+                epistemic_uncertainty: null,
+                cone_depth: null,
+              }
+          : event.type === "USER_SELECT"
+            ? null
+            : context.selectedResidue,
+    }),
+    applySelection: assign({
+      highlightedResidues: ({ event }) =>
+        event.type === "SET_SELECTION" ? event.highlightedResidues : [],
+      brushSelectedIds: ({ event }) =>
+        event.type === "SET_SELECTION" ? event.brushSelectedIds : [],
+      selectedResidue: ({ event }) =>
+        event.type === "SET_SELECTION" ? event.selectedResidue : null,
+      userSelectedResidue: ({ event }) => {
+        if (event.type !== "SET_SELECTION") return null;
+        const ids = event.highlightedResidues;
+        return ids.length === 1 ? ids[0] : null;
+      },
+    }),
+    applyBrushSelection: assign({
+      brushSelectedIds: ({ event, context }) =>
+        event.type === "SET_BRUSH_SELECTION" ? event.residues : context.brushSelectedIds,
+    }),
+    applySelectedResidue: assign({
+      selectedResidue: ({ event, context }) =>
+        event.type === "SET_SELECTED_RESIDUE" ? event.residue : context.selectedResidue,
+      userSelectedResidue: ({ event, context }) =>
+        event.type === "SET_SELECTED_RESIDUE"
+          ? event.residue?.residue_id ?? null
+          : context.userSelectedResidue,
+      highlightedResidues: ({ event, context }) =>
+        event.type === "SET_SELECTED_RESIDUE" && event.residue
+          ? [event.residue.residue_id]
+          : context.highlightedResidues,
+      brushSelectedIds: ({ event, context }) =>
+        event.type === "SET_SELECTED_RESIDUE" && event.residue
+          ? [event.residue.residue_id]
+          : context.brushSelectedIds,
+    }),
+    applyMobiusFocus: assign({
+      mobiusFocusEnabled: ({ event, context }) =>
+        event.type === "SET_MOBIUS_FOCUS" ? event.enabled : context.mobiusFocusEnabled,
     }),
     clearState: assign({
       currentDirective: () => null,
       highlightedResidues: () => [] as string[],
+      brushSelectedIds: () => [] as string[],
+      selectedResidue: () => null as SelectedResidueInfo | null,
       userSelectedResidue: () => null as string | null,
       isRadarActive: () => false,
     }),
@@ -144,7 +214,10 @@ export const viewportMachine = setup({
   initial: "idle",
   context: {
     highlightedResidues: [],
+    brushSelectedIds: [],
+    selectedResidue: null,
     userSelectedResidue: null,
+    mobiusFocusEnabled: false,
     currentDirective: null,
     activeMetric: "cone_depth",
     isRadarActive: false,
@@ -170,6 +243,10 @@ export const viewportMachine = setup({
           { target: "idle", actions: "applyDirective" }, // Default layout/property action catch-all
         ],
         USER_SELECT: { target: "highlighted", actions: "applyUserSelection" },
+        SET_SELECTION: { target: "highlighted", actions: "applySelection" },
+        SET_BRUSH_SELECTION: { actions: "applyBrushSelection" },
+        SET_SELECTED_RESIDUE: { target: "highlighted", actions: "applySelectedResidue" },
+        SET_MOBIUS_FOCUS: { actions: "applyMobiusFocus" },
         TOGGLE_RADAR: { actions: "applyRadarToggle" },
         SET_POINCARE_COLOR_MODE: { actions: "applyUIPrefs" },
         SET_VIEWER_COLOR_MODE: { actions: "applyUIPrefs" },
@@ -193,6 +270,10 @@ export const viewportMachine = setup({
           { target: "highlighted", actions: "applyDirective" },
         ],
         USER_SELECT: { target: "highlighted", actions: "applyUserSelection" },
+        SET_SELECTION: { target: "highlighted", actions: "applySelection" },
+        SET_BRUSH_SELECTION: { actions: "applyBrushSelection" },
+        SET_SELECTED_RESIDUE: { target: "highlighted", actions: "applySelectedResidue" },
+        SET_MOBIUS_FOCUS: { actions: "applyMobiusFocus" },
         CLEAR: { target: "idle", actions: "clearState" },
         TOGGLE_RADAR: { actions: "applyRadarToggle" },
         SET_POINCARE_COLOR_MODE: { actions: "applyUIPrefs" },
@@ -217,6 +298,10 @@ export const viewportMachine = setup({
           { target: "focused", actions: "applyDirective" },
         ],
         USER_SELECT: { target: "highlighted", actions: "applyUserSelection" },
+        SET_SELECTION: { target: "highlighted", actions: "applySelection" },
+        SET_BRUSH_SELECTION: { actions: "applyBrushSelection" },
+        SET_SELECTED_RESIDUE: { target: "highlighted", actions: "applySelectedResidue" },
+        SET_MOBIUS_FOCUS: { actions: "applyMobiusFocus" },
         CLEAR: { target: "idle", actions: "clearState" },
         TOGGLE_RADAR: { actions: "applyRadarToggle" },
         SET_POINCARE_COLOR_MODE: { actions: "applyUIPrefs" },

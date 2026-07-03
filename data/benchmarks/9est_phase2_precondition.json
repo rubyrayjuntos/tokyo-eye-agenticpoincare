@@ -1,0 +1,22 @@
+{
+  "phase": 2,
+  "generated_utc": "2026-07-02T14:11:10.165085+00:00",
+  "pesto_metrics": {
+    "recovery_at_3": 0,
+    "roc_auc": 0.4041303524062145,
+    "k_primary": 3
+  },
+  "n_gold": 26,
+  "n_eval_universe": 229,
+  "precondition_gate": "PASS",
+  "interpretation": "PeSTo does not recover interface on static 9EST at recovery@3 \u2014 precondition satisfied; Phase 3 (Tokyo Eye) may proceed.",
+  "pesto_meta": {
+    "pesto_root": "/tmp/PeSTo",
+    "model": "model/save/i_v4_1_2021-09-07_11-21",
+    "device": "cpu",
+    "pdb_path": "/tmp/dtie_pdb_cache/9EST.pdb",
+    "chain": "A",
+    "n_residues_scored": 232
+  },
+  "scores_path": "data/benchmarks/9est_pesto_scores.json"
+}

@@ -1,0 +1,14 @@
+artifact_uri: file:///app/mlruns/346597094090754773/6648afaca66b4b058c150fbb20ce664d/artifacts
+end_time: 1783042640363
+entry_point_name: ''
+experiment_id: '346597094090754773'
+lifecycle_stage: active
+run_id: 6648afaca66b4b058c150fbb20ce664d
+run_name: mlflow_governance_smoke
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1783042637275
+status: 4
+tags: []
+user_id: rswan

@@ -5,25 +5,26 @@
  * Feature: structure-onboarding-panel
  * Requirements: 3.1, 4.1, 4.2, 4.3, 4.4
  */
-import type { PipelineJob, IngestResponse, Structure } from "./types";
+import type { PipelineJob, IngestResponse, Structure, StructureReadiness } from "./types";
 
 export interface PipelineApiAdapter {
   ingest: (pdbId: string) => Promise<IngestResponse>;
-  runPipeline: (req: { structure_id: string }) => Promise<PipelineJob>;
   getPipelineStatus: (jobId: string) => Promise<PipelineJob>;
+  getStructureReadiness?: (structureId: string) => Promise<StructureReadiness>;
 }
 
 export interface IngestAndRunResult {
   structure: Structure;
-  pipelineJob: PipelineJob;
+  pipelineJob: PipelineJob | null;
+  readinessUrl: string | null;
 }
 
+const INGEST_ONLY_MESSAGE =
+  "Ingest did not queue a pipeline job. Compute is only triggered via POST /api/ingest.";
+
 /**
- * Executes the ingest step and ensures a pipeline job exists.
- * Returns the created structure and initial pipeline job.
- *
- * Property 2: For any successful ingest response containing a valid structure_id,
- * this function SHALL ensure a pipeline job exists without additional user interaction.
+ * Executes the ingest step and returns the coordinator-queued pipeline job.
+ * Returns null pipelineJob for audit-only duplicate ingests.
  */
 export async function ingestAndTriggerPipeline(
   pdbId: string,
@@ -34,7 +35,7 @@ export async function ingestAndTriggerPipeline(
   const structure: Structure = {
     structure_id: ingestResult.structure_id,
     pdb_id: ingestResult.pdb_id,
-    title: ingestResult.title,
+    title: ingestResult.title ?? ingestResult.pdb_id,
     resolution: null,
     method: "",
     source: "rcsb",
@@ -45,32 +46,34 @@ export async function ingestAndTriggerPipeline(
     ingested_at: new Date().toISOString(),
   };
 
-  const pipelineJob = ingestResult.pipeline_job_id
-    ? {
-        job_id: ingestResult.pipeline_job_id,
-        structure_id: ingestResult.structure_id,
-        status:
-          ingestResult.pipeline_status && ingestResult.pipeline_status !== "skipped"
-            ? ingestResult.pipeline_status
-            : "queued",
-        current_step: "pipeline",
-        progress: 0,
-        started_at: new Date().toISOString(),
-        completed_at: null,
-        error: null,
-      }
-    : await adapter.runPipeline({
-        structure_id: ingestResult.structure_id,
-      });
+  const readinessUrl =
+    ingestResult.readiness_url ??
+    `/api/structures/${ingestResult.structure_id}/readiness`;
 
-  return { structure, pipelineJob };
+  let pipelineJob: PipelineJob | null = null;
+  if (ingestResult.pipeline_job_id) {
+    pipelineJob = {
+      job_id: ingestResult.pipeline_job_id,
+      structure_id: ingestResult.structure_id,
+      status:
+        ingestResult.pipeline_status && ingestResult.pipeline_status !== "skipped"
+          ? ingestResult.pipeline_status
+          : "queued",
+      current_step: "gnn_inference",
+      progress: 0,
+      started_at: new Date().toISOString(),
+      completed_at: null,
+      error: null,
+    };
+  } else if (!ingestResult.audit_only) {
+    throw new Error(INGEST_ONLY_MESSAGE);
+  }
+
+  return { structure, pipelineJob, readinessUrl };
 }
 
 /**
  * Evaluates what should happen when a pipeline status is received.
- *
- * Property 3: For any pipeline job that reaches status === "complete",
- * this SHALL return an action to activate the structure and refresh the dashboard.
  */
 export type PipelineCompletionAction =
   | { type: "complete"; structure: Structure }

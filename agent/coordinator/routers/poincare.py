@@ -7,6 +7,11 @@ import logging
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
+from science.dtie.common.curvature_values import (
+    MissingLearnedCurvatureError,
+    learned_curvature_from_row,
+)
+
 router = APIRouter(prefix="/api", tags=["poincare"])
 
 logger = logging.getLogger(__name__)
@@ -75,10 +80,15 @@ async def get_poincare_data(
                 "epistemic_uncertainty": r.get("epistemic_uncertainty"),
             })
 
+        try:
+            curvature_c = learned_curvature_from_row(rows[0], context="poincare-data")
+        except MissingLearnedCurvatureError as exc:
+            return JSONResponse(status_code=422, content={"error": str(exc)})
+
         return {
             "structure_id": structure_id,
             "condition": condition,
-            "curvature_c": rows[0].get("curvature") or 1.0,
+            "curvature_c": curvature_c,
             "model_version": rows[0].get("model_version") or "GOSPConeMapper-v5",
             "residues": residues,
         }

@@ -21,11 +21,10 @@ from typing import Any
 
 import numpy as np
 
+from science.dtie.common.curvature_values import require_learned_curvature
 from science.dtie.common.interfaces import GNNInferenceResult, GNNNodeOutput
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_CHECKPOINT = "checkpoints/v6/tokyo_eyes_v6.pt"
 
 
 @contextmanager
@@ -75,10 +74,16 @@ class V6GNNRunner:
         checkpoint_path: str | None = None,
         device: str = "cpu",
         curvature_override: float | None = None,
+        legacy_disc_projection: bool | None = None,
     ):
-        self._checkpoint_path = checkpoint_path or DEFAULT_CHECKPOINT
+        if checkpoint_path is None:
+            from science.contracts.model_registry import get_production_checkpoint_path
+
+            checkpoint_path = get_production_checkpoint_path()
+        self._checkpoint_path = checkpoint_path
         self._device = device
         self._curvature_override = curvature_override
+        self._legacy_disc_projection_override = legacy_disc_projection
         self._model = None
         self._loaded = False
         self._load_lock = asyncio.Lock()
@@ -96,10 +101,17 @@ class V6GNNRunner:
         try:
             import torch
 
-            from science.dtie.v6.gnn.model import GOSPConeMapperV6
+            from science.contracts.model_registry import resolve_checkpoint_file
+            from science.dtie.v6.gnn.model import (
+                GOSPConeMapperV6,
+                infer_legacy_disc_projection_from_checkpoint,
+                infer_v6_model_kwargs,
+                load_v6_state_dict,
+            )
 
-            checkpoint = Path(self._checkpoint_path)
-            if not checkpoint.exists():
+            resolved = resolve_checkpoint_file(self._checkpoint_path)
+            checkpoint = resolved if resolved is not None else Path(self._checkpoint_path)
+            if not checkpoint.is_file():
                 raise FileNotFoundError(
                     f"V6 checkpoint not found: {self._checkpoint_path}"
                 )
@@ -112,45 +124,45 @@ class V6GNNRunner:
                 state_dict = checkpoint_data["model_state_dict"]
             else:
                 state_dict = checkpoint_data
+                checkpoint_data = {}
 
-            # Auto-detect topology_only_gate from checkpoint gate dimensions
-            topology_only = False
-            gate_key = "gate.gate_net.0.weight"
-            if gate_key in state_dict:
-                gate_input_dim = state_dict[gate_key].shape[1]
-                topology_only = (gate_input_dim == 7)
-
-            self._model = GOSPConeMapperV6(
-                node_dim=4, hidden=128, num_experts=4,
-                topology_only_gate=topology_only,
+            kwargs = infer_v6_model_kwargs(
+                state_dict,
+                checkpoint_data.get("architecture") if isinstance(checkpoint_data, dict) else None,
+                checkpoint_data.get("training_config") if isinstance(checkpoint_data, dict) else None,
+            )
+            kwargs["legacy_disc_projection"] = infer_legacy_disc_projection_from_checkpoint(
+                training_config=checkpoint_data.get("training_config")
+                if isinstance(checkpoint_data, dict)
+                else None,
+                metrics=checkpoint_data.get("metrics") if isinstance(checkpoint_data, dict) else None,
+                override=self._legacy_disc_projection_override,
             )
 
-            # Filter out keys with shape mismatches
-            model_state = self._model.state_dict()
-            compatible_state = {}
-            for key, value in state_dict.items():
-                if key in model_state and model_state[key].shape == value.shape:
-                    compatible_state[key] = value
-                elif key in model_state:
-                    logger.warning(
-                        "Shape mismatch for %s: checkpoint=%s, model=%s (skipping)",
-                        key, value.shape, model_state[key].shape,
-                    )
+            self._model = GOSPConeMapperV6(node_dim=4, **kwargs)
 
-            missing = set(model_state.keys()) - set(compatible_state.keys())
+            incompatible = load_v6_state_dict(self._model, state_dict)
+            missing = getattr(incompatible, "missing_keys", incompatible[0] if isinstance(incompatible, tuple) else [])
+            unexpected = getattr(incompatible, "unexpected_keys", incompatible[1] if isinstance(incompatible, tuple) else [])
             if missing:
                 logger.info(
-                    "V6 model: %d/%d params loaded, %d using random init",
-                    len(compatible_state), len(model_state), len(missing),
+                    "V6 model: %d missing keys (new modules init from scratch)",
+                    len(missing),
                 )
+            if unexpected:
+                logger.warning("V6 model: %d unexpected keys ignored", len(unexpected))
 
-            self._model.load_state_dict(compatible_state, strict=False)
             self._model.eval()
             self._model.to(self._device)
+            self._checkpoint_path = str(checkpoint)
 
             logger.info(
-                "V6 model loaded from %s (device=%s)",
-                self._checkpoint_path, self._device,
+                "V6 model loaded from %s (device=%s, deep_gate=%s, disc_scale=%.2f, legacy_disc=%s)",
+                self._checkpoint_path,
+                self._device,
+                kwargs.get("deep_hyperbolic_gate", False),
+                kwargs.get("gate_disc_scale", 1.0),
+                kwargs.get("legacy_disc_projection", False),
             )
             self._loaded = True
 
@@ -221,6 +233,7 @@ class V6GNNRunner:
         import torch
 
         num_nodes = graph_data.x.shape[0]
+        dev = graph_data.x.device
 
         # Compute degree from edge_index if missing
         if not hasattr(graph_data, "degree") or graph_data.degree is None:
@@ -228,12 +241,12 @@ class V6GNNRunner:
             edge_index = graph_data.edge_index
             graph_data.degree = pyg_degree(
                 edge_index[0], num_nodes=num_nodes
-            ).long()
+            ).long().to(dev)
 
         # Compute ss_onehot from x[:, 2] (ss_type) if missing
         if not hasattr(graph_data, "ss_onehot") or graph_data.ss_onehot is None:
             ss_type = graph_data.x[:, 2].long()
-            graph_data.ss_onehot = torch.zeros(num_nodes, 3)
+            graph_data.ss_onehot = torch.zeros(num_nodes, 3, device=dev)
             for i in range(num_nodes):
                 idx = int(ss_type[i].item())
                 if 0 <= idx <= 2:
@@ -304,24 +317,40 @@ class V6GNNRunner:
             )
             nodes.append(node)
 
-        # Extract learned curvature
+        # Extract learned curvature (must match model.curvature: softplus(log_c)+eps)
         curvature = self._curvature_override
-        if curvature is None and hasattr(self._model, "log_c"):
+        if curvature is None and hasattr(self._model, "curvature"):
+            curvature = float(self._model.curvature.detach().cpu().item())
+        elif curvature is None and hasattr(self._model, "log_c"):
             import torch.nn.functional as F
-            curvature = float(F.softplus(self._model.log_c).item())
+            curvature = float(F.softplus(self._model.log_c).item() + 1e-4)
 
         return GNNInferenceResult(
             structure_id=structure_id,
             model_version=self.model_version,
             checkpoint_path=self._checkpoint_path,
             nodes=nodes,
-            curvature=curvature or 1.0,
+            curvature=require_learned_curvature(curvature, context="v6 gnn_inference"),
             embedding_dim=output["x_hyp"].shape[1],
             space_type="hyperbolic",
             metadata={
                 "device": self._device,
                 "num_nodes": num_nodes,
-                "architecture": "topological_moe_specialization",
+                "architecture": output.get("audit_trail", {}).get(
+                    "architecture",
+                    "hyperbolic_prototype_moe" if getattr(self._model, "hyperbolic_gate", False) else "topological_moe_specialization",
+                ),
+                "deep_hyperbolic_gate": output.get("audit_trail", {}).get(
+                    "deep_hyperbolic_gate",
+                    getattr(self._model, "deep_hyperbolic_gate", False),
+                ),
+                "gate_disc_scale": getattr(self._model, "gate_disc_scale", 1.0),
+                "hyp_projections_2d_source": output.get("audit_trail", {}).get(
+                    "disc_projection_source", "pre_routing_x_hyp"
+                ),
+                "legacy_disc_projection": bool(
+                    getattr(self._model, "legacy_disc_projection", False)
+                ),
                 "has_3d_projections": True,
                 "expert_load": output["expert_load"].detach().cpu().numpy().tolist(),
                 "routing_entropy": float(output["routing_entropy"].detach()),

@@ -236,3 +236,36 @@ class AlignmentPayload(BaseModel):
     structure_id: str
     residue_alignments: list[ResidueAlignmentRecord]
     structural_alignments: list[StructuralAlignmentRecord] | None = None
+
+
+# ---------------------------------------------------------------------------
+# Computation scope (assign_computation_scope foundation job)
+# ---------------------------------------------------------------------------
+
+
+class QualityFiltersPayload(BaseModel):
+    """Quality filter thresholds stored on structure_computation_scope."""
+
+    max_b_factor_threshold: float = 100.0
+    min_resolution: float | None = None
+
+
+class ComputationScopeRecord(BaseModel):
+    """Row payload for structure_computation_scope."""
+
+    structure_id: str
+    primary_chain_ids: list[str]
+    reference_chain: str
+    exclude_chain_ids: list[str] = Field(default_factory=list)
+    scope_source: str
+    selection_reason: str
+    normalization_protocol: str = "graph_default"
+    quality_filters: QualityFiltersPayload | None = None
+    model_index: int = 1
+
+
+class ComputationScopePayload(BaseModel):
+    """Governed write contract for assign_computation_scope."""
+
+    provenance: ProvenanceContext
+    scope: ComputationScopeRecord

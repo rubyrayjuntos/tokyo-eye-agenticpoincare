@@ -1,0 +1,1 @@
+[{"epochs": 1, "freeze_angular": false, "freeze_gate": false, "freeze_radial": false, "lr": 2e-05, "name": "Phase 2 disc occupancy recovery v4 (target corpus)", "phase": 2}]

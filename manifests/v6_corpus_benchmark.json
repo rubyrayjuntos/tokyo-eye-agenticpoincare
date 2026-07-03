@@ -1,0 +1,27 @@
+{
+  "version": "1.0",
+  "description": "Small benchmark PDB set for GPU smoke tests and v2-teacher distillation (science/dtie/assets/benchmark_pdbs)",
+  "proteins": [
+    {"pdb_id": "1AO6", "chain": "A", "gene": "AO6", "fold_class": "benchmark", "enabled": true},
+    {"pdb_id": "1CSP", "chain": "A", "gene": "CSP", "fold_class": "benchmark", "enabled": true},
+    {"pdb_id": "1CRN", "chain": "A", "gene": "CRN", "fold_class": "benchmark", "enabled": true},
+    {"pdb_id": "1ENH", "chain": "A", "gene": "ENH", "fold_class": "benchmark", "enabled": true},
+    {"pdb_id": "1IFC", "chain": "A", "gene": "IFC", "fold_class": "benchmark", "enabled": true},
+    {"pdb_id": "1L2Y", "chain": "A", "gene": "L2Y", "fold_class": "benchmark", "enabled": true},
+    {"pdb_id": "1PGB", "chain": "A", "gene": "PGB", "fold_class": "benchmark", "enabled": true},
+    {"pdb_id": "1PIN", "chain": "A", "gene": "PIN", "fold_class": "benchmark", "enabled": true},
+    {"pdb_id": "1RIS", "chain": "A", "gene": "RIS", "fold_class": "benchmark", "enabled": true},
+    {"pdb_id": "1UWH", "chain": "A", "gene": "UWH", "fold_class": "benchmark", "enabled": true},
+    {"pdb_id": "1VII", "chain": "A", "gene": "VII", "fold_class": "benchmark", "enabled": true},
+    {"pdb_id": "1XQ8", "chain": "A", "gene": "XQ8", "fold_class": "benchmark", "enabled": true},
+    {"pdb_id": "2CRK", "chain": "A", "gene": "CRK", "fold_class": "benchmark", "enabled": true},
+    {"pdb_id": "2LVG", "chain": "A", "gene": "LVG", "fold_class": "benchmark", "enabled": true},
+    {"pdb_id": "2N0A", "chain": "A", "gene": "N0A", "fold_class": "benchmark", "enabled": true},
+    {"pdb_id": "2RH1", "chain": "A", "gene": "RH1", "fold_class": "benchmark", "enabled": true},
+    {"pdb_id": "3LZM", "chain": "A", "gene": "LZM", "fold_class": "benchmark", "enabled": true},
+    {"pdb_id": "4AKE", "chain": "A", "gene": "AKE", "fold_class": "benchmark", "enabled": true},
+    {"pdb_id": "4HHB", "chain": "A", "gene": "HHB", "fold_class": "benchmark", "enabled": true},
+    {"pdb_id": "4OBE", "chain": "A", "gene": "KRAS", "fold_class": "benchmark", "stage0": true, "enabled": true},
+    {"pdb_id": "6VYB", "chain": "A", "gene": "VYB", "fold_class": "benchmark", "enabled": true}
+  ]
+}

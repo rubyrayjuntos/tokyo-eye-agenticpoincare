@@ -1,0 +1,1209 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tokyo Eye v3 • Dashboard | Eidetix Bio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap');
+        
+        :root {
+            --primary: #22d3ee;
+        }
+        
+        body {
+            font-family: 'Inter', system_ui, sans-serif;
+        }
+        
+        .font-display {
+            font-family: 'Space Grotesk', 'Inter', sans-serif;
+            font-weight: 600;
+        }
+
+        .dashboard-bg {
+            background: radial-gradient(at center, #18181b 0%, #09090b 100%);
+        }
+
+        .section-card {
+            background-color: #18181b;
+            border: 1px solid #3f3f46;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .section-card:hover {
+            border-color: #52525b;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+        }
+
+        .nav-active {
+            background-color: #27251f;
+            color: #f4f4f5;
+            border-left: 3px solid #22d3ee;
+        }
+
+        .metric-value {
+            font-variant-numeric: tabular-nums;
+        }
+
+        .pipeline-step {
+            transition: all 0.3s ease;
+        }
+
+        .bio-grid {
+            background-image: 
+                linear-gradient(rgba(163, 163, 172, 0.07) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(163, 163, 172, 0.07) 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+
+        .protein-row {
+            transition: background-color 0.1s ease;
+        }
+        
+        .protein-row:hover {
+            background-color: #27251f;
+        }
+
+        .mock-3d-container {
+            background: #09090b;
+            border: 1px solid #3f3f46;
+            overflow: hidden;
+        }
+
+        .chart-container {
+            position: relative;
+        }
+
+        .status-dot {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        .sci-fi-text {
+            font-feature-settings: "ss02";
+            letter-spacing: -0.025em;
+        }
+        
+        .dashboard-header {
+            background: linear-gradient(to right, #18181b, #27251f);
+            border-bottom: 1px solid #3f3f46;
+        }
+
+        .viz-label {
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            font-weight: 600;
+            color: #a1a1aa;
+        }
+    </style>
+</head>
+<body class="bg-zinc-950 text-zinc-200 dashboard-bg">
+    <!-- Top Navigation -->
+    <nav class="border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-lg sticky top-0 z-50">
+        <div class="max-w-screen-2xl mx-auto">
+            <div class="px-8 py-4 flex items-center justify-between">
+                <div class="flex items-center gap-x-4">
+                    <!-- Logo -->
+                    <div class="flex items-center gap-x-3">
+                        <div class="w-10 h-10 bg-gradient-to-br from-cyan-400 to-teal-500 rounded-2xl flex items-center justify-center shadow-inner">
+                            <i class="fa-solid fa-atom text-zinc-950 text-3xl"></i>
+                        </div>
+                        <div>
+                            <span class="font-display text-3xl font-semibold tracking-tighter">TOKYO EYE</span>
+                            <span class="text-xs font-mono bg-zinc-800 text-cyan-400 px-1.5 py-0.5 rounded ml-1 align-super">v3</span>
+                        </div>
+                    </div>
+                    <div class="px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-3xl text-xs flex items-center gap-x-2">
+                        <div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                        <span class="font-medium text-emerald-400">PRODUCTION</span>
+                        <span class="text-zinc-500">•</span>
+                        <span class="font-mono text-xs">GOSP-GNN + DTIE</span>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-x-6">
+                    <div class="flex items-center gap-x-2 text-sm">
+                        <div class="text-right">
+                            <div class="font-medium">Ray Swan</div>
+                            <div class="text-xs text-zinc-500">Founder &amp; PI • Eidetix Bio</div>
+                        </div>
+                        <div class="w-8 h-8 bg-zinc-700 rounded-2xl overflow-hidden ring-2 ring-offset-2 ring-offset-zinc-950 ring-zinc-700">
+                            <img src="https://i.pravatar.cc/32?img=68" alt="Ray Swan" class="w-full h-full object-cover">
+                        </div>
+                    </div>
+                    
+                    <div class="h-6 w-px bg-zinc-700"></div>
+                    
+                    <div class="flex items-center gap-x-2 text-xs">
+                        <div class="px-3 py-1 bg-zinc-900 border border-zinc-700 rounded-3xl flex items-center gap-x-1.5">
+                            <i class="fa-solid fa-server text-emerald-400"></i>
+                            <span class="font-mono">gcp-us-central1 • vertex-ai</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-screen-2xl mx-auto px-8 pt-6 pb-12">
+        
+        <!-- Header -->
+        <div class="flex items-end justify-between mb-8">
+            <div>
+                <h1 class="font-display text-5xl tracking-tighter font-semibold">Tokyo Eye v3 Dashboard</h1>
+                <p class="text-xl text-zinc-400 mt-1">Geometric Optimal Structure Prediction • Thermodynamic GNN for Oncogenic Targets</p>
+                <div class="flex items-center gap-x-4 mt-3 text-sm">
+                    <div class="flex items-center gap-x-2">
+                        <span class="px-3 py-1 rounded-3xl bg-zinc-900 border border-zinc-700 text-xs font-medium">KRAS • EGFR • BRAF • NRAS • SHP2</span>
+                    </div>
+                    <div class="text-xs text-zinc-500 font-mono">Last model sync: 2026-05-28 19:12 CDT • Poincaré v3.2</div>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-x-3">
+                <button onclick="exportReport()" 
+                        class="px-5 py-2.5 flex items-center gap-x-2 text-sm font-medium border border-zinc-700 hover:bg-zinc-900 transition-colors rounded-3xl">
+                    <i class="fa-solid fa-download"></i>
+                    <span>Export Report</span>
+                </button>
+                <button onclick="retrainModel()" 
+                        class="px-5 py-2.5 flex items-center gap-x-2 text-sm font-medium bg-white text-zinc-950 hover:bg-zinc-200 transition-colors rounded-3xl">
+                    <i class="fa-solid fa-sync"></i>
+                    <span>Retrain GOSP-GNN</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- KPI Metrics -->
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-8">
+            <div class="section-card rounded-3xl p-5">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <div class="text-xs tracking-widest text-zinc-500">PROTEINS INGESTED</div>
+                        <div id="kpi-proteins" class="text-4xl font-semibold metric-value mt-1">142</div>
+                    </div>
+                    <i class="fa-solid fa-dna text-3xl text-cyan-400/70"></i>
+                </div>
+                <div class="text-emerald-400 text-xs mt-3 flex items-center gap-x-1">
+                    <i class="fa-solid fa-arrow-trend-up"></i> 
+                    <span>+18 this week</span>
+                </div>
+            </div>
+            
+            <div class="section-card rounded-3xl p-5">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <div class="text-xs tracking-widest text-zinc-500">MEAN UNCERTAINTY</div>
+                        <div id="kpi-uncertainty" class="text-4xl font-semibold metric-value mt-1">0.087</div>
+                    </div>
+                    <i class="fa-solid fa-chart-line text-3xl text-amber-400/70"></i>
+                </div>
+                <div class="text-xs mt-3 text-zinc-400">DTIE decomposition • Lower is better</div>
+            </div>
+            
+            <div class="section-card rounded-3xl p-5">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <div class="text-xs tracking-widest text-zinc-500">AVG INFERENCE TIME</div>
+                        <div class="text-4xl font-semibold metric-value mt-1">47<span class="text-2xl">s</span></div>
+                    </div>
+                    <i class="fa-solid fa-clock text-3xl text-violet-400/70"></i>
+                </div>
+                <div class="text-emerald-400 text-xs mt-3">GOSP-GNN forward pass</div>
+            </div>
+            
+            <div class="section-card rounded-3xl p-5">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <div class="text-xs tracking-widest text-zinc-500">ACTIVE JOBS</div>
+                        <div id="kpi-jobs" class="text-4xl font-semibold metric-value mt-1">3</div>
+                    </div>
+                    <i class="fa-solid fa-tasks text-3xl text-teal-400/70"></i>
+                </div>
+                <div class="flex gap-x-1 mt-4">
+                    <div class="text-[10px] px-2 py-0.5 bg-teal-900/30 text-teal-400 rounded">KRAS G12D</div>
+                    <div class="text-[10px] px-2 py-0.5 bg-amber-900/30 text-amber-400 rounded">EGFR</div>
+                </div>
+            </div>
+            
+            <div class="section-card rounded-3xl p-5 col-span-2 md:col-span-1">
+                <div class="text-xs tracking-widest text-zinc-500 mb-1">MODEL STATUS</div>
+                <div class="flex items-center gap-x-2">
+                    <div class="px-3 py-1 rounded-3xl bg-emerald-500/10 text-emerald-400 text-xs font-medium flex items-center gap-x-1.5">
+                        <i class="fa-solid fa-check-double"></i>
+                        <span>READY</span>
+                    </div>
+                </div>
+                <div class="text-xs text-zinc-400 mt-2">Poincaré embeddings • v3.2<br>Trained on 2.4M residue graphs</div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- PIPELINE CONTROLS SIDEBAR -->
+            <div class="lg:col-span-3">
+                <div class="section-card rounded-3xl p-6 sticky top-6">
+                    <div class="flex items-center justify-between mb-5">
+                        <div>
+                            <h3 class="font-semibold text-lg">Pipeline Controls</h3>
+                            <p class="text-xs text-zinc-500">GOSP-GNN + DTIE Execution</p>
+                        </div>
+                        <i class="fa-solid fa-microchip text-xl text-cyan-400"></i>
+                    </div>
+                    
+                    <!-- Protein Ingestion -->
+                    <div class="mb-6">
+                        <div class="flex items-center gap-x-2 mb-2">
+                            <i class="fa-solid fa-upload text-cyan-400"></i>
+                            <span class="font-medium text-sm">PROTEIN INGESTION</span>
+                        </div>
+                        
+                        <div class="space-y-3">
+                            <div>
+                                <label class="text-xs text-zinc-400 block mb-1">PDB ID / UniProt / AlphaFold</label>
+                                <div class="flex gap-x-2">
+                                    <input id="protein-input" type="text" value="4OBE" 
+                                           class="flex-1 bg-zinc-900 border border-zinc-700 focus:border-cyan-400 transition-colors text-sm px-3 py-2 rounded-2xl font-mono placeholder:text-zinc-600">
+                                    <button onclick="ingestProtein()" 
+                                            class="px-4 py-2 bg-cyan-400 hover:bg-cyan-300 active:bg-white transition-all text-zinc-950 text-sm font-semibold rounded-2xl flex items-center gap-x-2">
+                                        <i class="fa-solid fa-plus"></i>
+                                        <span class="hidden xl:inline">Ingest</span>
+                                    </button>
+                                </div>
+                                <div class="text-[10px] text-zinc-500 mt-1">Supports: PDB, mmCIF, CIF, UniProt accession</div>
+                            </div>
+                            
+                            <div class="flex items-center justify-between text-xs">
+                                <div class="flex items-center gap-x-1 text-emerald-400">
+                                    <i class="fa-solid fa-check"></i>
+                                    <span class="text-xs">Dehydron analysis ready</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Target & Config -->
+                    <div class="mb-6">
+                        <label class="text-xs text-zinc-400 block mb-1.5">TARGET SELECTION</label>
+                        <select id="target-select" class="w-full bg-zinc-900 border border-zinc-700 text-sm px-3 py-2.5 rounded-2xl">
+                            <option value="KRAS_G12D">KRAS G12D (PDB: 4OBE)</option>
+                            <option value="EGFR">EGFR L858R</option>
+                            <option value="BRAF">BRAF V600E</option>
+                            <option value="NRAS">NRAS Q61R</option>
+                            <option value="SHP2">SHP2 (PTPN11)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-6">
+                        <label class="text-xs text-zinc-400 block mb-2">PIPELINE MODULES</label>
+                        <div class="space-y-2 text-sm">
+                            <label class="flex items-center gap-x-2 cursor-pointer">
+                                <input type="checkbox" checked class="accent-cyan-400"> 
+                                <span>Poincaré Hyperbolic Embedding</span>
+                            </label>
+                            <label class="flex items-center gap-x-2 cursor-pointer">
+                                <input type="checkbox" checked class="accent-cyan-400"> 
+                                <span>Thermodynamic DTIE Analysis</span>
+                            </label>
+                            <label class="flex items-center gap-x-2 cursor-pointer">
+                                <input type="checkbox" checked class="accent-cyan-400"> 
+                                <span>Uncertainty Decomposition</span>
+                            </label>
+                            <label class="flex items-center gap-x-2 cursor-pointer">
+                                <input type="checkbox" class="accent-cyan-400"> 
+                                <span>Binding Site Prediction</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Execute Button -->
+                    <button onclick="runFullPipeline()"
+                            class="w-full py-3.5 bg-gradient-to-r from-cyan-400 to-teal-400 hover:from-cyan-300 hover:to-teal-300 active:scale-[0.985] transition-all text-zinc-950 font-semibold rounded-3xl flex items-center justify-center gap-x-3 shadow-lg shadow-cyan-500/20">
+                        <i class="fa-solid fa-play mr-1"></i>
+                        <span class="font-bold tracking-wider">EXECUTE FULL PIPELINE</span>
+                    </button>
+                    
+                    <div class="mt-4 text-center">
+                        <div id="pipeline-status" class="inline-flex items-center gap-x-2 text-xs px-3 py-1 rounded-3xl bg-zinc-900 border border-zinc-700">
+                            <div class="w-2 h-2 rounded-full bg-emerald-400 status-dot"></div>
+                            <span class="font-mono text-emerald-400">IDLE — Ready for ingestion</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- MAIN CONTENT -->
+            <div class="lg:col-span-9 space-y-6">
+                
+                <!-- DATA TABLE -->
+                <div class="section-card rounded-3xl p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h3 class="font-semibold">Recent Pipeline Results</h3>
+                            <p class="text-xs text-zinc-500">Last 24h • Auto-refreshes on new ingestion</p>
+                        </div>
+                        <button onclick="clearTable()" class="text-xs px-3 py-1 hover:bg-zinc-800 rounded-2xl border border-zinc-700 flex items-center gap-x-1">
+                            <i class="fa-solid fa-trash text-xs"></i>
+                            <span>Clear</span>
+                        </button>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b border-zinc-700 text-xs text-zinc-400">
+                                    <th class="text-left py-3 px-4 font-medium">ID / Target</th>
+                                    <th class="text-left py-3 px-4 font-medium">Ingestion</th>
+                                    <th class="text-center py-3 px-4 font-medium">Status</th>
+                                    <th class="text-right py-3 px-4 font-medium">Uncertainty</th>
+                                    <th class="text-right py-3 px-4 font-medium">ΔG Proxy</th>
+                                    <th class="text-center py-3 px-4 font-medium">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="results-table" class="text-sm divide-y divide-zinc-800">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- VISUALIZATIONS -->
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    
+                    <!-- 2D Plot: Embedding Projection -->
+                    <div class="section-card rounded-3xl p-6">
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <div class="viz-label">2D Plot Diagram</div>
+                                <h4 class="font-semibold">Poincaré Disc Projection</h4>
+                                <p class="text-xs text-zinc-400">Hyperbolic embeddings of residue graphs</p>
+                            </div>
+                            <button onclick="refreshEmbeddingChart()" 
+                                    class="text-xs flex items-center gap-x-1 px-3 py-1 border border-zinc-700 hover:bg-zinc-900 rounded-2xl">
+                                <i class="fa-solid fa-sync fa-sm"></i>
+                                <span>Resample</span>
+                            </button>
+                        </div>
+                        <div class="chart-container h-72">
+                            <canvas id="embedding-chart"></canvas>
+                        </div>
+                        <div class="flex justify-between text-[10px] text-zinc-500 mt-2 px-1">
+                            <div>● KRAS cluster</div>
+                            <div>● EGFR cluster</div>
+                            <div class="text-amber-400">High uncertainty</div>
+                        </div>
+                    </div>
+                    
+                    <!-- 2D Graph -->
+                    <div class="section-card rounded-3xl p-6">
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <div class="viz-label">2D Graph</div>
+                                <h4 class="font-semibold">Residue Interaction Network</h4>
+                            </div>
+                            <div class="text-xs px-2.5 py-1 bg-zinc-900 rounded-2xl border border-zinc-700">G12D • Chain A</div>
+                        </div>
+                        
+                        <div class="h-72 bg-zinc-900/50 rounded-2xl p-4 flex items-center justify-center relative bio-grid" id="graph-2d-container">
+                            <div class="text-center">
+                                <canvas id="interaction-chart" width="320" height="220"></canvas>
+                                <div class="text-[10px] text-center text-zinc-400 mt-2">Per-residue dehydron score + centrality</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 3D Graph -->
+                    <div class="section-card rounded-3xl p-6">
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <div class="viz-label">3D Graph</div>
+                                <h4 class="font-semibold">Latent Space • 3D Embeddings</h4>
+                            </div>
+                            <button onclick="load3DGraph()" class="text-xs px-3 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-2xl flex items-center gap-x-1">
+                                <i class="fa-solid fa-cube"></i>
+                                <span>Load 3D</span>
+                            </button>
+                        </div>
+                        
+                        <div id="three-3d-graph" class="mock-3d-container h-72 rounded-2xl flex items-center justify-center relative">
+                            <div class="text-center z-10">
+                                <i class="fa-solid fa-cube text-4xl text-zinc-600 mb-2"></i>
+                                <div class="text-sm text-zinc-400">3D Hyperbolic Latent Space</div>
+                                <div class="text-xs text-zinc-500 max-w-[200px] mx-auto">Click "Load 3D" to render interactive Poincaré ball projection of GNN embeddings</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 3D Molecular Visualization -->
+                    <div class="section-card rounded-3xl p-6">
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <div class="viz-label">3D Molecular Visualization</div>
+                                <h4 class="font-semibold">Structure Viewer • KRAS G12D</h4>
+                            </div>
+                            <button onclick="launchMolecularViewer()" 
+                                    class="px-4 py-1 text-xs bg-gradient-to-r from-teal-400 to-cyan-400 text-zinc-950 font-semibold rounded-2xl flex items-center gap-x-2">
+                                <i class="fa-solid fa-eye"></i>
+                                <span>Launch Viewer</span>
+                            </button>
+                        </div>
+                        
+                        <div onclick="launchMolecularViewer()" class="mock-3d-container h-72 rounded-2xl cursor-pointer flex flex-col items-center justify-center hover:border-cyan-400/50 transition-colors relative overflow-hidden">
+                            <div class="absolute inset-0 bg-[radial-gradient(#27251f_0.8px,transparent_1px)] bg-[length:3px_3px]"></div>
+                            
+                            <div class="relative z-10 text-center">
+                                <div class="mx-auto w-16 h-16 mb-3 flex items-center justify-center">
+                                    <i class="fa-solid fa-atom text-6xl text-cyan-400/70"></i>
+                                </div>
+                                <div class="font-medium">Interactive 3D Molecular View</div>
+                                <div class="text-xs text-zinc-400 max-w-[220px]">Click to open Three.js molecular renderer<br>with Cα trace, binding pocket highlight &amp; uncertainty overlay</div>
+                                
+                                <div class="mt-4 flex justify-center gap-x-4 text-xs">
+                                    <div class="px-2.5 py-px bg-zinc-800 rounded">4OBE</div>
+                                    <div class="px-2.5 py-px bg-zinc-800 rounded">G12D</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                </div>
+                
+            </div>
+        </div>
+        
+        <div class="mt-8 text-center text-xs text-zinc-500">
+            Tokyo Eye v3 • Internal use only • Eidetix Bio • GOSP-GNN thermodynamic priors + Poincaré embeddings + DTIE uncertainty
+        </div>
+    </div>
+
+    <!-- Molecular Viewer Modal -->
+    <div id="mol-modal" onclick="if (event.target.id === 'mol-modal') closeMolModal()" class="hidden fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-6">
+        <div onclick="event.stopImmediatePropagation()" class="bg-zinc-900 border border-zinc-700 rounded-3xl w-full max-w-5xl overflow-hidden">
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b border-zinc-700 flex items-center justify-between bg-zinc-950">
+                <div class="flex items-center gap-x-3">
+                    <i class="fa-solid fa-atom text-cyan-400"></i>
+                    <div>
+                        <span class="font-semibold">3D Molecular Visualization</span>
+                        <span class="ml-2 text-xs px-2 py-px bg-zinc-800 rounded">KRAS G12D • 4OBE</span>
+                    </div>
+                </div>
+                <button onclick="closeMolModal()" class="text-zinc-400 hover:text-white px-4">Close</button>
+            </div>
+            
+            <div class="p-6">
+                <div class="flex gap-6">
+                    <!-- Three.js Viewer -->
+                    <div class="flex-1">
+                        <div id="three-container" class="w-full aspect-video bg-black rounded-2xl overflow-hidden border border-zinc-700"></div>
+                        
+                        <div class="flex items-center justify-between mt-3 text-xs">
+                            <div class="flex gap-x-4">
+                                <button onclick="toggleRotation()" class="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-2xl flex items-center gap-x-1 text-xs">
+                                    <i class="fa-solid fa-sync"></i> <span id="rot-text">Pause Rotation</span>
+                                </button>
+                                <button onclick="resetCamera()" class="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-2xl text-xs">Reset View</button>
+                            </div>
+                            <div class="text-zinc-400 text-xs">Left drag: rotate • Scroll: zoom</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Controls -->
+                    <div class="w-64 text-sm">
+                        <div class="mb-4">
+                            <div class="text-xs text-zinc-400 mb-1.5">Visualization Layers</div>
+                            <div class="space-y-2">
+                                <label class="flex items-center gap-x-2 text-sm"><input type="checkbox" checked onchange="updateMolViz()" class="accent-cyan-400"> Cα Backbone Trace</label>
+                                <label class="flex items-center gap-x-2 text-sm"><input type="checkbox" checked onchange="updateMolViz()" class="accent-cyan-400"> Side Chains</label>
+                                <label class="flex items-center gap-x-2 text-sm"><input type="checkbox" checked onchange="updateMolViz()" class="accent-cyan-400"> Binding Pocket (G12D)</label>
+                                <label class="flex items-center gap-x-2 text-sm"><input type="checkbox" onchange="updateMolViz()" class="accent-cyan-400"> Uncertainty Heatmap</label>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <div class="text-xs text-zinc-400 mb-1">Thermodynamic Overlay</div>
+                            <div class="px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-2xl text-xs">
+                                <div class="flex justify-between"><span>Dehydron density</span> <span class="font-mono text-amber-400">High</span></div>
+                                <div class="flex justify-between mt-px"><span>ΔG contribution</span> <span class="font-mono">-7.2 kcal/mol</span></div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-5 text-xs text-zinc-400">
+                            This is a high-fidelity mock. In production this pane embeds <span class="font-mono">3Dmol.js</span> or <span class="font-mono">NGL</span> with actual PDB coordinates + GNN attention weights.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Tailwind script
+        function initializeTailwind() {
+            document.documentElement.style.setProperty('--accent', '#22d3ee');
+        }
+        
+        // Sample data
+        let resultsData = [
+            { id: "KRAS-4OBE-001", target: "KRAS G12D", time: "19:04", status: "Complete", uncertainty: 0.061, deltaG: -8.4 },
+            { id: "EGFR-3W32-004", target: "EGFR", time: "18:41", status: "Complete", uncertainty: 0.112, deltaG: -6.1 },
+            { id: "BRAF-4MNF-007", target: "BRAF V600E", time: "17:55", status: "Complete", uncertainty: 0.079, deltaG: -5.8 }
+        ];
+        
+        let embeddingChartInstance = null;
+        let interactionChartInstance = null;
+        let threeScene = null;
+        let threeCamera = null;
+        let threeRenderer = null;
+        let threeMeshGroup = null;
+        let isRotating = true;
+        
+        function updateKPIs() {
+            document.getElementById('kpi-proteins').textContent = (142 + resultsData.length * 2).toString();
+            const avgUnc = (resultsData.reduce((sum, r) => sum + r.uncertainty, 0) / resultsData.length).toFixed(3);
+            document.getElementById('kpi-uncertainty').textContent = avgUnc;
+        }
+        
+        function renderResultsTable() {
+            const tbody = document.getElementById('results-table');
+            tbody.innerHTML = '';
+            
+            resultsData.forEach((row, index) => {
+                const tr = document.createElement('tr');
+                tr.className = `protein-row border-b border-zinc-800 last:border-none`;
+                
+                const statusColor = row.status === 'Complete' ? 'text-emerald-400 bg-emerald-400/10' : 'text-amber-400 bg-amber-400/10';
+                
+                tr.innerHTML = `
+                    <td class="py-3.5 px-4">
+                        <div class="font-mono text-sm">${row.id}</div>
+                        <div class="text-xs text-zinc-400">${row.target}</div>
+                    </td>
+                    <td class="py-3.5 px-4 text-xs text-zinc-400 font-mono">${row.time}</td>
+                    <td class="py-3.5 px-4 text-center">
+                        <span class="inline-block px-3 py-px text-xs rounded-2xl font-medium ${statusColor}">${row.status}</span>
+                    </td>
+                    <td class="py-3.5 px-4 text-right font-mono text-sm">${row.uncertainty}</td>
+                    <td class="py-3.5 px-4 text-right font-mono text-sm text-emerald-400">${row.deltaG}</td>
+                    <td class="py-3.5 px-4">
+                        <div class="flex justify-center gap-x-1">
+                            <button onclick="view2D('${row.id}')" class="px-2.5 py-1 text-xs border border-zinc-600 hover:bg-zinc-800 rounded-xl">2D</button>
+                            <button onclick="view3DFromTable('${row.id}')" class="px-2.5 py-1 text-xs border border-zinc-600 hover:bg-zinc-800 rounded-xl">3D</button>
+                            <button onclick="downloadResult(${index})" class="px-2.5 py-1 text-xs border border-zinc-600 hover:bg-zinc-800 rounded-xl"><i class="fa-solid fa-download fa-xs"></i></button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+        
+        function ingestProtein() {
+            const input = document.getElementById('protein-input').value.trim().toUpperCase();
+            if (!input) {
+                alert("Please enter a PDB ID or UniProt accession (e.g. 4OBE)");
+                return;
+            }
+            
+            const targetSelect = document.getElementById('target-select').value;
+            const now = new Date();
+            const timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+            
+            const newEntry = {
+                id: `${input}-${Date.now().toString().slice(-4)}`,
+                target: targetSelect.replace('_', ' '),
+                time: timeStr,
+                status: "Ingested",
+                uncertainty: (Math.random() * 0.08 + 0.04).toFixed(3),
+                deltaG: (Math.random() * -4 - 4).toFixed(1)
+            };
+            
+            resultsData.unshift(newEntry);
+            if (resultsData.length > 8) resultsData.pop();
+            
+            renderResultsTable();
+            updateKPIs();
+            
+            // Simulate feature extraction toast
+            showToast(`Protein ${input} ingested. Graph constructed. Ready for GOSP-GNN.`);
+            
+            // Auto update embedding chart slightly
+            setTimeout(() => {
+                if (embeddingChartInstance) refreshEmbeddingChart();
+            }, 800);
+            
+            // Clear input
+            document.getElementById('protein-input').value = '';
+        }
+        
+        function runFullPipeline() {
+            const statusEl = document.getElementById('pipeline-status');
+            const btns = document.querySelectorAll('button');
+            
+            statusEl.innerHTML = `
+                <div class="w-2 h-2 rounded-full bg-amber-400 status-dot"></div>
+                <span class="font-mono text-amber-400">RUNNING — GOSP-GNN inference...</span>
+            `;
+            
+            // Disable buttons temporarily
+            btns.forEach(b => b.disabled = true);
+            
+            const steps = [
+                { msg: "Ingesting structure & computing dehydrons...", delay: 900 },
+                { msg: "Building residue graph (Poincaré ready)...", delay: 1100 },
+                { msg: "GOSP-GNN forward pass (thermodynamic priors)...", delay: 1600 },
+                { msg: "DTIE uncertainty decomposition...", delay: 1200 },
+                { msg: "Post-processing complete. Results ready.", delay: 700 }
+            ];
+            
+            let currentStep = 0;
+            
+            function nextStep() {
+                if (currentStep < steps.length) {
+                    statusEl.innerHTML = `
+                        <div class="w-2 h-2 rounded-full bg-amber-400 status-dot"></div>
+                        <span class="font-mono text-amber-400">${steps[currentStep].msg}</span>
+                    `;
+                    
+                    setTimeout(() => {
+                        currentStep++;
+                        nextStep();
+                    }, steps[currentStep].delay);
+                } else {
+                    // Complete
+                    const target = document.getElementById('target-select').value.replace('_', ' ');
+                    const newResult = {
+                        id: `${target.split(' ')[0]}-${Date.now().toString().slice(-5)}`,
+                        target: target,
+                        time: new Date().toLocaleTimeString('en-US', {hour12: false, hour: '2-digit', minute:'2-digit'}),
+                        status: "Complete",
+                        uncertainty: (Math.random() * 0.07 + 0.03).toFixed(3),
+                        deltaG: (Math.random() * -5 - 3.5).toFixed(1)
+                    };
+                    
+                    resultsData.unshift(newResult);
+                    renderResultsTable();
+                    updateKPIs();
+                    
+                    statusEl.innerHTML = `
+                        <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
+                        <span class="font-mono text-emerald-400">COMPLETE — New embedding available</span>
+                    `;
+                    
+                    btns.forEach(b => b.disabled = false);
+                    
+                    // Update charts
+                    setTimeout(() => {
+                        refreshEmbeddingChart();
+                        if (interactionChartInstance) updateInteractionChart();
+                    }, 600);
+                    
+                    showToast("Pipeline finished. New thermodynamic profile + uncertainty map generated.");
+                }
+            }
+            
+            nextStep();
+        }
+        
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.className = `fixed bottom-6 right-6 bg-zinc-900 border border-zinc-700 text-sm px-5 py-3 rounded-3xl flex items-center gap-x-3 shadow-xl z-[200]`;
+            toast.innerHTML = `
+                <i class="fa-solid fa-info-circle text-cyan-400"></i>
+                <span>${message}</span>
+            `;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.transition = 'all 0.3s ease';
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 3800);
+        }
+        
+        // Chart.js - 2D Embedding Scatter (Poincaré style)
+        function createEmbeddingChart() {
+            const ctx = document.getElementById('embedding-chart');
+            
+            if (embeddingChartInstance) embeddingChartInstance.destroy();
+            
+            const data = {
+                datasets: [{
+                    label: 'KRAS G12D residues',
+                    data: Array.from({length: 28}, () => ({
+                        x: (Math.random() - 0.5) * 1.6,
+                        y: (Math.random() - 0.5) * 1.6
+                    })),
+                    backgroundColor: '#22d3ee',
+                    borderColor: '#67e8f9',
+                    borderWidth: 1,
+                    pointRadius: 4
+                }, {
+                    label: 'EGFR cluster',
+                    data: Array.from({length: 19}, () => ({
+                        x: (Math.random() * 0.9) + 0.6,
+                        y: (Math.random() - 0.4) * 1.3
+                    })),
+                    backgroundColor: '#a78bfa',
+                    pointRadius: 3.5
+                }, {
+                    label: 'High uncertainty',
+                    data: [
+                        {x: -0.65, y: 0.82}, {x: 0.4, y: -0.71}, {x: -0.3, y: 0.55}
+                    ],
+                    backgroundColor: '#f59e0b',
+                    pointRadius: 5,
+                    pointStyle: 'triangle'
+                }]
+            };
+            
+            embeddingChartInstance = new Chart(ctx, {
+                type: 'scatter',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { 
+                            grid: { color: '#27251f' }, 
+                            ticks: { color: '#52525b', font: {size: 10} },
+                            title: { display: true, text: 'Poincaré X', color: '#71717a', font: {size: 10} }
+                        },
+                        y: { 
+                            grid: { color: '#27251f' }, 
+                            ticks: { color: '#52525b', font: {size: 10} },
+                            title: { display: true, text: 'Poincaré Y', color: '#71717a', font: {size: 10} }
+                        }
+                    },
+                    plugins: {
+                        legend: { 
+                            position: 'top', 
+                            align: 'end',
+                            labels: { boxWidth: 8, padding: 12, font: {size: 11}, color: '#a1a1aa' } 
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => `Residue embedding: (${ctx.raw.x.toFixed(2)}, ${ctx.raw.y.toFixed(2)})`
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function refreshEmbeddingChart() {
+            if (!embeddingChartInstance) return;
+            
+            // Slightly perturb data to simulate new run
+            embeddingChartInstance.data.datasets.forEach((dataset, i) => {
+                dataset.data = dataset.data.map(point => ({
+                    x: point.x + (Math.random() - 0.5) * 0.15,
+                    y: point.y + (Math.random() - 0.5) * 0.15
+                }));
+            });
+            
+            embeddingChartInstance.update();
+        }
+        
+        // 2D Interaction / Bar chart for residue scores
+        function createInteractionChart() {
+            const ctx = document.getElementById('interaction-chart');
+            
+            if (interactionChartInstance) interactionChartInstance.destroy();
+            
+            const labels = ['G12', 'G13', 'V14', 'G15', 'K16', 'S17', 'A18', 'L19', 'T20', 'I21', 'Q22', 'L23'];
+            const dehydronScores = [0.92, 0.81, 0.45, 0.67, 0.88, 0.31, 0.55, 0.72, 0.39, 0.61, 0.48, 0.85];
+            
+            interactionChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Dehydron Score',
+                        data: dehydronScores,
+                        backgroundColor: '#14b8a6',
+                        borderColor: '#5eead4',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, max: 1, grid: { color: '#27251f' }, ticks: { color: '#52525b', stepSize: 0.2, font:{size:9} } },
+                        x: { grid: { color: '#27251f' }, ticks: { color: '#52525b', font:{size:9} } }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: (c) => `Dehydron score: ${c.raw}` } }
+                    }
+                }
+            });
+        }
+        
+        function updateInteractionChart() {
+            if (!interactionChartInstance) return;
+            // Simulate update after pipeline
+            interactionChartInstance.data.datasets[0].data = interactionChartInstance.data.datasets[0].data.map(v => 
+                Math.max(0.2, Math.min(0.98, v + (Math.random()-0.5)*0.12))
+            );
+            interactionChartInstance.update();
+        }
+        
+        function view2D(id) {
+            showToast(`Opening 2D embedding & residue graph for ${id}`);
+            // In real app would navigate or highlight
+            document.getElementById('embedding-chart').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        
+        function view3DFromTable(id) {
+            showToast(`Loading 3D molecular view for ${id}...`);
+            setTimeout(() => {
+                launchMolecularViewer();
+            }, 420);
+        }
+        
+        function downloadResult(index) {
+            const item = resultsData[index];
+            const blob = new Blob([JSON.stringify(item, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${item.id}_tokyo_eye_result.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        // Simple 3D Graph placeholder loader
+        function load3DGraph() {
+            const container = document.getElementById('three-3d-graph');
+            container.innerHTML = `
+                <div class="w-full h-full flex items-center justify-center bg-zinc-950 relative" style="min-height: 288px">
+                    <canvas id="latent-3d-canvas" width="420" height="280" class="rounded-2xl"></canvas>
+                </div>
+            `;
+            
+            // Very simple 3D-ish canvas animation (fake 3D scatter)
+            const canvas = document.getElementById('latent-3d-canvas');
+            const ctx = canvas.getContext('2d');
+            let angle = 0;
+            
+            const points = Array.from({length: 65}, () => ({
+                x: (Math.random() - 0.5) * 160,
+                y: (Math.random() - 0.5) * 160,
+                z: (Math.random() - 0.5) * 160,
+                color: Math.random() > 0.7 ? '#f59e0b' : '#67e8f9'
+            }));
+            
+            function draw() {
+                ctx.fillStyle = '#09090b';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.save();
+                ctx.translate(canvas.width/2, canvas.height/2);
+                
+                points.forEach(p => {
+                    const rotX = p.x * Math.cos(angle) - p.z * Math.sin(angle);
+                    const rotZ = p.x * Math.sin(angle) + p.z * Math.cos(angle);
+                    
+                    const scale = 180 / (180 + rotZ);
+                    const screenX = rotX * scale;
+                    const screenY = p.y * scale;
+                    
+                    const size = Math.max(1.5, 4.5 * scale);
+                    
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.arc(screenX, screenY, size, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // faint connection lines
+                    if (Math.random() > 0.6) {
+                        ctx.strokeStyle = 'rgba(103, 232, 249, 0.15)';
+                        ctx.lineWidth = 0.6;
+                        ctx.beginPath();
+                        ctx.moveTo(screenX, screenY);
+                        ctx.lineTo(screenX * 0.6, screenY * 0.7);
+                        ctx.stroke();
+                    }
+                });
+                
+                ctx.restore();
+                angle += 0.008;
+                requestAnimationFrame(draw);
+            }
+            
+            draw();
+            
+            // Click to reset / info
+            canvas.onclick = () => {
+                showToast("This would be a full Three.js / Plotly 3D hyperbolic embedding explorer in production.");
+            };
+        }
+        
+        // Three.js Molecular Viewer
+        let molAnimationFrame = null;
+        
+        function launchMolecularViewer() {
+            const modal = document.getElementById('mol-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            
+            // Initialize Three.js scene if not already
+            setTimeout(() => {
+                initThreeMolecularScene();
+            }, 80);
+        }
+        
+        function closeMolModal() {
+            const modal = document.getElementById('mol-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+            
+            if (molAnimationFrame) {
+                cancelAnimationFrame(molAnimationFrame);
+                molAnimationFrame = null;
+            }
+            
+            // Cleanup three
+            const container = document.getElementById('three-container');
+            if (container) container.innerHTML = '';
+            threeScene = null;
+            threeRenderer = null;
+        }
+        
+        function initThreeMolecularScene() {
+            const container = document.getElementById('three-container');
+            if (!container) return;
+            
+            container.innerHTML = '';
+            
+            threeRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            threeRenderer.setSize(container.clientWidth, container.clientHeight);
+            threeRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(threeRenderer.domElement);
+            
+            threeScene = new THREE.Scene();
+            threeScene.fog = new THREE.Fog(0x09090b, 18, 45);
+            
+            threeCamera = new THREE.PerspectiveCamera(52, container.clientWidth / container.clientHeight, 0.5, 100);
+            threeCamera.position.set(0, 2, 14);
+            
+            // Lights
+            const ambient = new THREE.AmbientLight(0x334455, 0.6);
+            threeScene.add(ambient);
+            
+            const dirLight = new THREE.DirectionalLight(0x88ccff, 1.1);
+            dirLight.position.set(6, 12, 8);
+            threeScene.add(dirLight);
+            
+            const dirLight2 = new THREE.DirectionalLight(0x334466, 0.6);
+            dirLight2.position.set(-8, -4, -6);
+            threeScene.add(dirLight2);
+            
+            // Create mock protein: Cα trace + some sidechain spheres
+            threeMeshGroup = new THREE.Group();
+            threeScene.add(threeMeshGroup);
+            
+            // Fake Cα trace (helix-ish + loop)
+            const tracePoints = [];
+            for (let i = 0; i < 38; i++) {
+                const t = i / 6.5;
+                const x = Math.sin(t) * 3.8 + (i-19) * 0.08;
+                const y = Math.cos(t * 1.1) * 1.6 + (i % 5 === 0 ? 1.2 : 0);
+                const z = (i - 19) * 0.65;
+                tracePoints.push(new THREE.Vector3(x, y, z));
+            }
+            
+            // Backbone as tube (using simple spheres + lines)
+            const backboneMaterial = new THREE.MeshPhongMaterial({ color: 0x67e8f9, shininess: 22, specular: 0x112233 });
+            
+            for (let i = 0; i < tracePoints.length; i++) {
+                const sphere = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.32, 18, 18), 
+                    backboneMaterial
+                );
+                sphere.position.copy(tracePoints[i]);
+                threeMeshGroup.add(sphere);
+                
+                // Connect with thin cylinders (approximation with lines)
+                if (i > 0) {
+                    const prev = tracePoints[i-1];
+                    const points = [prev, tracePoints[i]];
+                    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                    const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: 0x22d3ee, linewidth: 2 }));
+                    threeMeshGroup.add(line);
+                }
+            }
+            
+            // Add a few "side chains" / atoms around G12D region
+            const sideChainMat = new THREE.MeshPhongMaterial({ color: 0xf59e0b, shininess: 30 });
+            const pocketPositions = [
+                new THREE.Vector3(1.8, 1.1, -2.4),
+                new THREE.Vector3(2.6, 0.4, -1.9),
+                new THREE.Vector3(1.2, -0.6, -3.1),
+                new THREE.Vector3(3.1, 1.8, -0.8)
+            ];
+            
+            pocketPositions.forEach(pos => {
+                const atom = new THREE.Mesh(new THREE.SphereGeometry(0.45, 16, 16), sideChainMat);
+                atom.position.copy(pos);
+                threeMeshGroup.add(atom);
+            });
+            
+            // Highlight G12D region with bigger red-ish sphere
+            const highlight = new THREE.Mesh(
+                new THREE.SphereGeometry(0.85, 20, 20),
+                new THREE.MeshPhongMaterial({ color: 0xef4444, transparent: true, opacity: 0.35, shininess: 10 })
+            );
+            highlight.position.set(2.1, 0.9, -2.1);
+            threeMeshGroup.add(highlight);
+            
+            // Simple auto rotation
+            function animate() {
+                molAnimationFrame = requestAnimationFrame(animate);
+                
+                if (isRotating && threeMeshGroup) {
+                    threeMeshGroup.rotation.y += 0.0045;
+                }
+                
+                threeRenderer.render(threeScene, threeCamera);
+            }
+            
+            animate();
+            
+            // Basic mouse drag rotation (simplified)
+            let isDragging = false;
+            let previousMouseX = 0;
+            
+            const canvas = threeRenderer.domElement;
+            
+            canvas.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                previousMouseX = e.clientX;
+            });
+            
+            window.addEventListener('mouseup', () => isDragging = false);
+            
+            canvas.addEventListener('mousemove', (e) => {
+                if (!isDragging || !threeMeshGroup) return;
+                const delta = e.clientX - previousMouseX;
+                threeMeshGroup.rotation.y += delta * 0.004;
+                previousMouseX = e.clientX;
+            });
+            
+            // Zoom with wheel
+            canvas.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                threeCamera.position.z += e.deltaY * 0.035;
+                threeCamera.position.z = Math.max(6, Math.min(28, threeCamera.position.z));
+            });
+            
+            // Store for controls
+            window.currentThreeGroup = threeMeshGroup;
+            window.currentThreeCamera = threeCamera;
+        }
+        
+        function toggleRotation() {
+            isRotating = !isRotating;
+            const txt = document.getElementById('rot-text');
+            if (txt) txt.textContent = isRotating ? 'Pause Rotation' : 'Resume Rotation';
+        }
+        
+        function resetCamera() {
+            if (window.currentThreeCamera) {
+                window.currentThreeCamera.position.set(0, 2, 14);
+            }
+            if (window.currentThreeGroup) {
+                window.currentThreeGroup.rotation.set(0, 0, 0);
+            }
+        }
+        
+        function updateMolViz() {
+            // In a full implementation this would toggle visibility of groups
+            showToast("Layer toggled. (In production this would show/hide atom groups + GNN attention overlay)");
+        }
+        
+        function clearTable() {
+            if (confirm("Clear all pipeline results from this session?")) {
+                resultsData = [];
+                renderResultsTable();
+                updateKPIs();
+            }
+        }
+        
+        function exportReport() {
+            showToast("Generating PDF report with all visualizations + thermodynamic profiles...");
+            setTimeout(() => {
+                const link = document.createElement('a');
+                link.download = 'Tokyo_Eye_v3_Report_' + new Date().toISOString().slice(0,10) + '.pdf';
+                // In real: generate real PDF. Here we fake it.
+                alert("Report exported (mock). In production this would use your internal reporting service + GCP Vertex export.");
+            }, 900);
+        }
+        
+        function retrainModel() {
+            const originalText = event.currentTarget ? event.currentTarget.innerHTML : '';
+            showToast("Queuing GOSP-GNN retraining job on Vertex AI with new DTIE priors...");
+            
+            setTimeout(() => {
+                showToast("Retraining job submitted. ETA: ~41 minutes. You will be notified on completion.");
+            }, 1400);
+        }
+        
+        function initializeCharts() {
+            createEmbeddingChart();
+            createInteractionChart();
+        }
+        
+        function initializeTable() {
+            renderResultsTable();
+            updateKPIs();
+        }
+        
+        function addInitialDemoData() {
+            // Already seeded in resultsData
+        }
+        
+        function initializeEverything() {
+            initializeTailwind();
+            initializeTable();
+            initializeCharts();
+            addInitialDemoData();
+            
+            // Demo: auto refresh embedding once
+            setTimeout(() => {
+                if (embeddingChartInstance) {
+                    // subtle initial animation hint
+                }
+            }, 1400);
+            
+            // Keyboard shortcut hint
+            document.addEventListener('keydown', function(e) {
+                if (e.key === "?" && document.activeElement.tagName === "BODY") {
+                    e.preventDefault();
+                    showToast("Pipeline hotkeys: Press 'r' to run full pipeline, 'i' to focus ingestion input.");
+                }
+                if (e.key.toLowerCase() === 'r') {
+                    const status = document.getElementById('pipeline-status');
+                    if (status.textContent.includes('IDLE')) runFullPipeline();
+                }
+            });
+            
+            // Welcome note for founder
+            console.log('%c[Tokyo Eye Dashboard] Mock initialized. All visualizations are high-fidelity simulations ready for real backend integration (FastAPI + Vertex).', 'color:#52525b');
+        }
+        
+        // Boot
+        window.onload = initializeEverything;
+        
+        // Expose some functions for console debugging if needed
+        window.TokyoEyeDashboard = { runFullPipeline, ingestProtein, refreshEmbeddingChart };
+    </script>
+</body>
+</html>

@@ -49,7 +49,12 @@ async def test_health_endpoint_responds():
         assert "gpu" in body
         assert "checkpoints" in body
         assert "db" in body
+        assert "contract_version" in body
+        assert "gnn_production" in body
+        assert "job_registry" in body
         assert body["status"] == "healthy"
+        assert body["contract_version"] == "1.6"
+        assert body["gnn_production"]["model_id"] == "gospc_v6"
         assert body["gpu"]["available"] is False
         assert body["checkpoints"] == ["v5_stage4_11prot.pt"]
 
@@ -60,8 +65,19 @@ async def test_health_endpoint_responds():
 
 
 @pytest.mark.asyncio
-async def test_gnn_endpoint_404_no_residues():
-    """Verify POST /compute/gnn returns 404 when structure has no residues."""
+async def test_gnn_endpoint_fails_when_structure_missing():
+    """Verify POST /compute/gnn returns error when GNN dispatch fails."""
+    from science.compute.runners.base import JobRunResult
+
+    failed = JobRunResult(
+        job_id="gnn_inference",
+        run_id="run_fail",
+        structure_id="fake",
+        success=False,
+        artifacts_produced=[],
+        outputs={"error": "No residues found for structure 'FAKE'"},
+    )
+
     with (
         patch("data.db.open_pool", new_callable=AsyncMock),
         patch("data.db.close_pool", new_callable=AsyncMock),
@@ -70,37 +86,33 @@ async def test_gnn_endpoint_404_no_residues():
             return_value="abc123hash",
         ),
         patch("science.api.routers.compute.get_connection") as mock_conn_ctx,
+        patch(
+            "science.compute.dispatch_helpers.dispatch_job_in_process",
+            new_callable=AsyncMock,
+            return_value=failed,
+        ),
     ):
-        # Mock the DB connection context manager
         mock_db = AsyncMock()
         mock_db.__aenter__ = AsyncMock(return_value=mock_db)
         mock_db.__aexit__ = AsyncMock(return_value=False)
         mock_conn_ctx.return_value = mock_db
 
-        # Mock GraphBuilder to raise ValueError (no residues)
-        with patch("science.api.routers.compute.GraphBuilder") as mock_builder_cls:
-            builder_instance = AsyncMock()
-            builder_instance.build_graph = AsyncMock(
-                side_effect=ValueError("No residues found for structure 'FAKE'")
+        from httpx import ASGITransport, AsyncClient
+        from science.api.app import app
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/compute/gnn",
+                json={
+                    "structure_id": "FAKE",
+                    "model_version": "v6",
+                    "device": "cpu",
+                    "checkpoint_path": "checkpoints/v6/tokyo_eyes_v6.pt",
+                },
             )
-            mock_builder_cls.return_value = builder_instance
 
-            from httpx import ASGITransport, AsyncClient
-            from science.api.app import app
-
-            transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.post(
-                    "/compute/gnn",
-                    json={
-                        "structure_id": "FAKE",
-                        "model_version": "v5",
-                        "device": "cpu",
-                        "checkpoint_path": "checkpoints_v5/v5_stage4_11prot.pt",
-                    },
-                )
-
-        assert resp.status_code == 404
+        assert resp.status_code == 500
         body = resp.json()
         assert "detail" in body
         assert "No residues found" in body["detail"]
@@ -153,6 +165,7 @@ def test_compute_models_importable():
     gnn_req = GNNRequest(structure_id="test_4obe")
     assert gnn_req.structure_id == "test_4obe"
     assert gnn_req.model_version == "v6"
+    assert gnn_req.checkpoint_path == "checkpoints/v6/tokyo_eyes_v6.pt"
     assert gnn_req.device == "cpu"
 
     gnn_resp = GNNResponse(

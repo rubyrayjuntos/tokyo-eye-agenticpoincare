@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 
+import { PipelineAuditReadout } from "../cockpit/PipelineAuditReadout";
 import { useDashboard } from "../../lib/context";
+import { useDiscoveryPhaseActions } from "../../lib/useDiscoveryPhaseActions";
 import type {
   DiscoveryPhase,
 } from "../../lib/discoveryPhaseMachine";
@@ -37,9 +39,9 @@ export default function PrototypeControlConsolePanel({
     plannerPolicy,
     discoveryContext,
     hypothesisContext,
-    sendDiscovery,
     sendHypothesis,
   } = useDashboard();
+  const { requestDiscoveryPhase, isBackendAuthority } = useDiscoveryPhaseActions();
   const panelBroker = usePanelBroker();
 
   const toolGroups = useMemo(
@@ -131,11 +133,7 @@ export default function PrototypeControlConsolePanel({
                 <button
                   key={phase}
                   onClick={() =>
-                    sendDiscovery({
-                      type: "USER_SET_PHASE",
-                      phase,
-                      rationale: "manual_control_console",
-                    })
+                    void requestDiscoveryPhase(phase, "manual_control_console")
                   }
                   className={`rounded border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] transition-colors ${
                     active
@@ -153,6 +151,11 @@ export default function PrototypeControlConsolePanel({
         <section className="mb-5">
           <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-text-secondary">
             Hypothesis Lifecycle
+            {isBackendAuthority ? (
+              <span className="ml-2 text-[9px] font-normal normal-case tracking-normal text-text-muted">
+                (backend authority)
+              </span>
+            ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
             {HYPOTHESIS_STATES.map((state) => {
@@ -161,6 +164,7 @@ export default function PrototypeControlConsolePanel({
                 <button
                   key={state}
                   onClick={() => setLifecycle(state)}
+                  disabled={isBackendAuthority}
                   className={`rounded border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] transition-colors ${
                     active
                       ? "border-teal-dim/40 text-teal"
@@ -213,6 +217,13 @@ export default function PrototypeControlConsolePanel({
               Open Findings
             </button>
           </div>
+        </section>
+
+        <section className="mb-5">
+          <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-text-secondary">
+            Pipeline Audit
+          </div>
+          <PipelineAuditReadout />
         </section>
 
         <section>

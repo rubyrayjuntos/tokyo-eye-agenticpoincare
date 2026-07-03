@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 
 from science.dtie.common.keys import (
+    coerce_residue_id,
+    coerce_residue_ids,
     make_atom_id,
     make_chain_id,
     make_residue_id,
@@ -129,3 +131,20 @@ class TestValidateResidueId:
 
     def test_invalid_uuid(self):
         assert validate_residue_id("550e8400-e29b-41d4-a716-446655440000") is False
+
+
+class TestCoerceResidueId:
+    def test_pdb_style_chain_index(self):
+        assert coerce_residue_id("A:379", "11qe") == "11qe:A:379"
+
+    def test_already_canonical(self):
+        assert coerce_residue_id("11qe:A:379", "11qe") == "11qe:A:379"
+
+    def test_with_insertion_code(self):
+        assert coerce_residue_id("A:145:A", "4obe") == "4obe:A:145:A"
+
+    def test_deduplicates_list(self):
+        assert coerce_residue_ids(
+            ["A:379", "11qe:A:379", "A:379"],
+            "11qe",
+        ) == ["11qe:A:379"]

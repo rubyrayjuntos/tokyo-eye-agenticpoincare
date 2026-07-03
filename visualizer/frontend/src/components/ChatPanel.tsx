@@ -135,7 +135,7 @@ export default function ChatPanel({
         {messages.length === 0 && (
           <div className="text-center text-slate-500 text-xs mt-8 space-y-2">
             <Bot className="w-8 h-8 mx-auto text-slate-600" />
-            <p>Ask about source leaks, uncertainty,<br />or run the DTIE pipeline.</p>
+            <p>Ask about source leaks, uncertainty,<br />or explore the Discovery Story.</p>
             <div className="space-y-1 text-[10px] text-slate-600">
               <p>"Show me source leaks in this structure"</p>
               <p>"What are the high uncertainty residues?"</p>

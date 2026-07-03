@@ -49,6 +49,7 @@ RUN pip install --no-cache-dir -r requirements-science.txt
 # Order from least to most frequently changed for better caching
 COPY shared/ /app/shared/
 COPY data/ /app/data/
+COPY manifests/ /app/manifests/
 COPY experiments/ /app/experiments/
 COPY agent/ /app/agent/
 COPY science/ /app/science/
