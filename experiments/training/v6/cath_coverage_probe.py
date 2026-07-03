@@ -114,6 +114,53 @@ def _resolve_fold_id(hits: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def author_chain_from_cache(
+    pdb_id: str,
+    manifest_chain: str,
+    *,
+    cache_dir: Path = _CACHE_DIR,
+) -> str | None:
+    """Map manifest chain (often struct_asym_id) to author chain_id in the PDB file."""
+    cache_file = cache_dir / f"{pdb_id.lower()}.json"
+    if not cache_file.is_file():
+        return None
+    payload = json.loads(cache_file.read_text())
+    block = payload.get(pdb_id.lower(), {}).get("CATH", {})
+    if not isinstance(block, dict):
+        return None
+    chain_u = manifest_chain.upper()
+    for info in block.values():
+        if not isinstance(info, dict):
+            continue
+        for m in info.get("mappings", []) or []:
+            m_chain = str(m.get("chain_id", "")).upper()
+            m_asym = str(m.get("struct_asym_id", "")).upper()
+            if m_asym == chain_u or m_chain == chain_u:
+                return str(m.get("chain_id", ""))
+    return None
+
+
+def resolve_fold_from_cache(
+    pdb_id: str,
+    chain: str,
+    *,
+    cache_dir: Path = _CACHE_DIR,
+) -> dict[str, Any]:
+    """Resolve fold_id from frozen PDBe cache (no network)."""
+    cache_file = cache_dir / f"{pdb_id.lower()}.json"
+    if not cache_file.is_file():
+        return {
+            "fold_id": None,
+            "fold_id_tier": "unverified",
+            "status": "FOLD_UNVERIFIED",
+            "fetch_error": "cache missing",
+        }
+    payload = json.loads(cache_file.read_text())
+    resolved = _resolve_fold_id(_chain_mappings(payload, pdb_id, chain))
+    resolved["fetch_error"] = payload.get("error")
+    return resolved
+
+
 def probe_manifest(
     manifest_path: Path,
     *,

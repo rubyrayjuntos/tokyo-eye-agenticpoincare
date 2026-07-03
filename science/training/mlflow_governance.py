@@ -82,6 +82,43 @@ MANDATORY_ARTIFACTS = frozenset(
 )
 
 
+def fold_id_to_mlflow_key(fold_id: str) -> str:
+    """Sanitize CATH topology code for MLflow metric keys (§ stage-a-corpus-selection)."""
+    return str(fold_id).replace(".", "_")
+
+
+def mlflow_key_to_fold_id(key: str) -> str:
+    """Reverse map from MLflow key segment to CATH fold_id."""
+    parts = key.split("_")
+    if len(parts) >= 4 and all(p.isdigit() for p in parts[:4]):
+        return ".".join(parts[:4])
+    return key.replace("_", ".")
+
+
+def resolve_protein_fold_id(entry: dict[str, Any]) -> str | None:
+    """CATH topology code for a manifest entry (manifest field or frozen PDBe cache)."""
+    if entry.get("fold_id"):
+        return str(entry["fold_id"])
+    from experiments.training.v6.cath_coverage_probe import resolve_fold_from_cache
+
+    cath = resolve_fold_from_cache(str(entry["pdb_id"]), str(entry.get("chain", "A")))
+    return cath.get("fold_id")
+
+
+def corpus_fold_ids(manifest_path: Path) -> set[str]:
+    from experiments.training.v6.corpus import load_corpus_manifest
+
+    data = load_corpus_manifest(manifest_path)
+    fold_ids: set[str] = set()
+    for entry in data.get("proteins", []):
+        if not entry.get("enabled", True):
+            continue
+        fid = resolve_protein_fold_id(entry)
+        if fid:
+            fold_ids.add(fid)
+    return fold_ids
+
+
 def gene_to_protein_family(gene: str) -> str:
     return GENE_TO_FAMILY.get(str(gene or "").upper(), "other")
 
@@ -92,15 +129,8 @@ def corpus_manifest_hash(manifest_path: Path) -> str:
 
 
 def corpus_families(manifest_path: Path) -> set[str]:
-    from experiments.training.v6.corpus import load_corpus_manifest
-
-    data = load_corpus_manifest(manifest_path)
-    families: set[str] = set()
-    for entry in data.get("proteins", []):
-        if not entry.get("enabled", True):
-            continue
-        families.add(gene_to_protein_family(entry.get("gene", "")))
-    return families
+    """Deprecated — use corpus_fold_ids. Retained for transitional imports."""
+    return {fold_id_to_mlflow_key(f) for f in corpus_fold_ids(manifest_path)}
 
 
 def corpus_enabled_count(manifest_path: Path) -> int:
@@ -211,7 +241,7 @@ def governance_epoch_metrics(
     }
 
     for key, value in losses.items():
-        if key.startswith("per_family_loss."):
+        if key.startswith("per_fold_loss."):
             metrics[key] = float(value)
 
     return {k: v for k, v in metrics.items() if v is not None and math.isfinite(v)}
@@ -241,9 +271,9 @@ def stage_a_gate_passed(health: dict[str, float], losses: dict[str, float]) -> i
     if not math.isfinite(r_ds) or abs(r_ds - 0.730) >= 0.05:
         return 0
 
-    family_losses = [float(v) for k, v in losses.items() if k.startswith("per_family_loss.")]
-    if len(family_losses) >= 2:
-        ratio = max(family_losses) / max(min(family_losses), 1e-8)
+    fold_losses = [float(v) for k, v in losses.items() if k.startswith("per_fold_loss.")]
+    if len(fold_losses) >= 2:
+        ratio = max(fold_losses) / max(min(fold_losses), 1e-8)
         if ratio >= 3.0:
             return 0
     return 1
@@ -361,8 +391,8 @@ def validate_finished_run(
     missing_artifacts = MANDATORY_ARTIFACTS - artifact_names
     if missing_artifacts:
         errors.append(f"missing artifacts: {sorted(missing_artifacts)}")
-    for fam in corpus_families(manifest_path):
-        key = f"per_family_loss.{fam}"
+    for fid in corpus_fold_ids(manifest_path):
+        key = f"per_fold_loss.{fold_id_to_mlflow_key(fid)}"
         if key not in metric_keys:
             errors.append(f"missing metric {key}")
     return errors

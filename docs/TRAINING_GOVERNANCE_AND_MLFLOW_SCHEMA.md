@@ -131,7 +131,7 @@ Every training run MUST emit the following. Fields are tagged:
 | `disc_thick` | **[EMITTED]** | Geometry health (target ~0.219 on full-run eval) |
 | `r_d_s` | **[EMITTED]** | Radial/depth decoupling (target ~0.730 on full-run eval) |
 | `r_e_s` | **[EMITTED]** | Epistemic/SASA relationship (~0.780 on full-run eval) |
-| `per_family_loss.{family}` | **[EMITTED]** | Imbalance detection — kinase, gtpase, tf, phosphatase, e3_ligase |
+| `per_fold_loss.{fold_id}` | **[EMITTED]** | Imbalance detection by CATH topology (`fold_id` dots → underscores in MLflow keys, e.g. `per_fold_loss.3_40_50_300`) |
 | `stage_gate_passed` (0\|1) | **[EMITTED]** | The gate verdict, logged as metric (see §5) |
 
 **Geometry baseline caveat:** σ₂/σ₁, disc_thick, r(d,s), r(e,s) are only interpretable against the **3-protein training-eval baseline** (11QE+4OBE+1IVO, `max_residues=600`) documented in the curvature SSOT spec — not against a 1-epoch resume smoke or a single curriculum phase. A smoke run in disc-occupancy phase may log σ₂/σ₁ ≈ 0.86 without regression; do not read it as drift from 0.665.
@@ -140,7 +140,7 @@ Every training run MUST emit the following. Fields are tagged:
 
 **Curvature logs as both:** `log_c` per-epoch metric (the trajectory, to watch stabilization) AND `curvature_final` param (the converged value that gets pinned). One is the path, one is the artifact. Both required.
 
-**Per-family loss is not optional.** Without it, you won't know if the model learns kinase geometry well while failing E3 ligases until final eval — the motivated-reasoning trap reproduced at training time.
+**Per-fold loss is not optional.** Without it, you won't know if the model learns one CATH fold well while starving another until final eval — the motivated-reasoning trap reproduced at training time. Keys use sanitized CATH topology codes from the corpus manifest (resolved via PDBe cache when `fold_id` is absent on entries).
 
 ### 3.3 Artifacts (logged at run end, and per-checkpoint)
 
@@ -253,7 +253,7 @@ Stage A → B gate:
   min_routing_fraction    ≥ 0.05       # no expert starved below 5%
   |sigma2_sigma1 - 0.665| / 0.665 < 0.10   # full-run eval baseline only
   |r_d_s - 0.730| < 0.05
-  per_family_loss max/min ratio < 3.0   (no family starved)
+  per_fold_loss max/min ratio < 3.0   (no fold starved)
 
 Stage B → C gate: same thresholds, corpus_size=60
 Stage C completion: same + curvature stabilization (§6)
@@ -328,7 +328,9 @@ Layer 3 — Comparison tooling (when both branches have runs)
 | `curvature_hash` IEEE754 format (migration 052) | **[EMITTED]** replaces repr for CI cross-env | False-red guard risk |
 | P_CURV_01 fixture checkpoint in git (`lever_a_v6_best_disc.pt`) | **[EMITTED]** MVP; migrate to LFS/S3 if refreshed >2× | Repo size / binary rot |
 | Step 0 δ-hyperbolicity analysis (defines experimental branch) | Pending | Multiscale branch spec |
-| Define Stage A corpus_25 protein list (family balance) | Pending | Stage A start |
+| Define Stage A corpus (fold-topology selection via redundancy script) | Pending — see `docs/specs/stage-a-corpus-selection/design.md` | Stage A start |
+| `per_fold_loss` rename (CATH `fold_id` vocabulary) | **[EMITTED]** | Wrong imbalance metric corrected |
+| P_CORPUS_01 corpus redundancy gate in CI | Pending — enforces `max_sequence_identity_pct` | Corpus drift |
 | Staging/prod `embedding_space.curvature` check | Pending | Phase 2 re-ingest |
 
 ---

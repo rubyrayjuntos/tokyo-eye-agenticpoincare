@@ -15,9 +15,10 @@ from science.training.mlflow_governance import (
     MANDATORY_METRICS,
     MANDATORY_PARAMS,
     build_governance_params,
-    corpus_families,
+    corpus_fold_ids,
     export_disc_governance_artifacts,
     finalize_governance_run,
+    fold_id_to_mlflow_key,
     governance_epoch_metrics,
     validate_finished_run,
 )
@@ -62,8 +63,8 @@ def test_governance_epoch_metrics_maps_shell_probes() -> None:
         "effective_experts": 3.9,
         "effective_experts_min": 3.5,
         "min_routing_fraction": 0.18,
-        "per_family_loss.gtpase": 1.2,
-        "per_family_loss.kinase": 1.1,
+        "per_fold_loss.3_40_50_300": 1.2,
+        "per_fold_loss.3_80_20_20": 1.1,
     }
     metrics = governance_epoch_metrics(health, losses, model)
     assert metrics["sigma2_sigma1"] == pytest.approx(0.665)
@@ -132,8 +133,8 @@ def test_p_mlflow_01_schema_on_finished_run(tmp_path: Path, monkeypatch: pytest.
             "effective_experts": 3.9,
             "effective_experts_min": 3.5,
             "min_routing_fraction": 0.18,
-            "per_family_loss.gtpase": 1.0,
-            "per_family_loss.kinase": 1.0,
+            "per_fold_loss.3_40_50_300": 1.0,
+            "per_fold_loss.3_80_20_20": 1.0,
         }
         tracker.log_metrics(governance_epoch_metrics(health, losses, model), step=1)
         finalize_governance_run(tracker, model, cfg, proteins, device="cpu")
@@ -163,8 +164,8 @@ def test_p_mlflow_01_schema_on_finished_run(tmp_path: Path, monkeypatch: pytest.
     assert MANDATORY_METRICS <= metric_keys
     assert MANDATORY_ARTIFACTS <= artifact_paths
     assert params["curvature_final"]
-    for fam in corpus_families(cfg.corpus_manifest):
-        assert f"per_family_loss.{fam}" in metric_keys
+    for fid in corpus_fold_ids(cfg.corpus_manifest):
+        assert f"per_fold_loss.{fold_id_to_mlflow_key(fid)}" in metric_keys
 
 
 def test_export_disc_governance_artifacts_requires_structure(

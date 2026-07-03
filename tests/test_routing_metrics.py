@@ -56,8 +56,8 @@ def test_stage_gate_uses_effective_experts_not_mean_fraction() -> None:
         "effective_experts": 3.9,
         "effective_experts_min": 3.5,
         "min_routing_fraction": 0.18,
-        "per_family_loss.gtpase": 1.0,
-        "per_family_loss.kinase": 1.1,
+        "per_fold_loss.3_40_50_300": 1.0,
+        "per_fold_loss.3_80_20_20": 1.1,
     }
     assert stage_a_gate_passed(health, losses_good) == 1
 
@@ -67,8 +67,8 @@ def test_stage_gate_uses_effective_experts_not_mean_fraction() -> None:
         "expert_load_1": 0.25,
         "expert_load_2": 0.25,
         "expert_load_3": 0.25,
-        "per_family_loss.gtpase": 1.0,
-        "per_family_loss.kinase": 1.1,
+        "per_fold_loss.3_40_50_300": 1.0,
+        "per_fold_loss.3_80_20_20": 1.1,
     }
     assert stage_a_gate_passed(health, losses_fraction_only) == 0
 
@@ -121,8 +121,8 @@ def test_collapsed_checkpoint_trips_stage_gate() -> None:
             "effective_experts_min": float(min(effs)),
             "min_routing_fraction": float(min(min_fracs)),
             "routing_entropy": float(sum(route_hs) / len(route_hs)),
-            "per_family_loss.gtpase": 1.0,
-            "per_family_loss.kinase": 1.0,
+            "per_fold_loss.3_40_50_300": 1.0,
+            "per_fold_loss.3_80_20_20": 1.0,
         }
 
     healthy = load_v6_model(healthy_ckpt, "cpu")

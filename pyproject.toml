@@ -25,6 +25,7 @@ agent = [
 training = [
     "mlflow>=2.14,<3",
     "optuna>=3.6,<5",
+    "tmtools>=0.3,<1",
 ]
 science = [
     "torch>=2.3,<3",
