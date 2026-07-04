@@ -1,0 +1,15 @@
+artifact_uri: file:///app/mlruns/346597094090754773/ca374be5e157424fa091646bf3b04395/artifacts
+end_time: 1783080615176
+entry_point_name: ''
+experiment_id: '346597094090754773'
+lifecycle_stage: active
+run_id: ca374be5e157424fa091646bf3b04395
+run_name: stage_a_floor_verify_v1
+run_uuid: ca374be5e157424fa091646bf3b04395
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1783080326518
+status: 3
+tags: []
+user_id: unknown

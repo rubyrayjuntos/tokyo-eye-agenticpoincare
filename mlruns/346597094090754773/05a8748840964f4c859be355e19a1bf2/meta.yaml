@@ -1,0 +1,15 @@
+artifact_uri: file:///app/mlruns/346597094090754773/05a8748840964f4c859be355e19a1bf2/artifacts
+end_time: 1783151113348
+entry_point_name: ''
+experiment_id: '346597094090754773'
+lifecycle_stage: active
+run_id: 05a8748840964f4c859be355e19a1bf2
+run_name: p4_corpus25_touchup_v2
+run_uuid: 05a8748840964f4c859be355e19a1bf2
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1783151059178
+status: 3
+tags: []
+user_id: unknown

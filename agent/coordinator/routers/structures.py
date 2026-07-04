@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from agent.coordinator.auth import get_current_user
 from agent.coordinator.deps import get_db
 from data.readiness import assess_structure_readiness
-from shared.gnn_viewer_paths import resolve_viewer_html_path, viewer_output_dir
+from shared.gnn_viewer_paths import resolve_disc_html_path, resolve_viewer_html_path, viewer_output_dir
 
 router = APIRouter(prefix="/api/structures", tags=["structures"])
 
@@ -37,6 +37,11 @@ async def get_structure_readiness(
     viewer_path = resolve_viewer_html_path(structure_id)
     if viewer_path is not None:
         payload["gnn_viewer_url"] = f"/api/structures/{structure_id.strip().lower()}/gnn-viewer"
+    disc_path = resolve_disc_html_path(structure_id)
+    if disc_path is not None:
+        payload["gnn_disc_viewer_url"] = (
+            f"/api/structures/{structure_id.strip().lower()}/gnn-viewer/disc"
+        )
     return payload
 
 
@@ -52,6 +57,32 @@ async def serve_gnn_interactive_viewer(
             status_code=404,
             detail=f"No GNN interactive viewer for structure '{structure_id}'. "
             "Run ingest / gnn_inference first.",
+        )
+
+    try:
+        file_path.resolve().relative_to(viewer_output_dir().resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="Access denied") from exc
+
+    return FileResponse(
+        path=str(file_path),
+        media_type="text/html",
+        filename=file_path.name,
+    )
+
+
+@router.get("/{structure_id}/gnn-viewer/disc")
+async def serve_gnn_disc_viewer(
+    structure_id: str,
+    _user: dict = Depends(get_current_user),
+) -> FileResponse:
+    """Serve the Poincaré disc interactive HTML for a structure."""
+    file_path = resolve_disc_html_path(structure_id)
+    if file_path is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No Poincaré disc viewer for structure '{structure_id}'. "
+            "Run ingest / gnn_inference or export_corpus_viewers first.",
         )
 
     try:

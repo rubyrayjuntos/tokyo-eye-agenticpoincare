@@ -4,6 +4,7 @@ entry_point_name: ''
 experiment_id: '955122831316084136'
 lifecycle_stage: active
 run_id: dec3c7f528074a318ec4ec4aff805d3f
+run_uuid: dec3c7f528074a318ec4ec4aff805d3f
 run_name: mlflow_governance_smoke2
 source_name: ''
 source_type: 4

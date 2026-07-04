@@ -152,6 +152,20 @@ def set_expert_dropout(model: nn.Module, p: float) -> None:
         model.gate.expert_dropout_p = p
 
 
+def set_gate_only_freeze(model: nn.Module) -> None:
+    """Train MoE gate + experts only; freeze backbone, geometry, and uncertainty heads."""
+    for name, param in model.named_parameters():
+        param.requires_grad = name.startswith("gate.") or name.startswith("experts.")
+    if hasattr(model, "gate") and hasattr(model.gate, "detach_gate_input"):
+        model.gate.detach_gate_input = False
+
+
+def set_uncertainty_from_backbone(model: nn.Module, *, enabled: bool) -> None:
+    """Switch uncertainty head input between backbone and post-routing tangent."""
+    if hasattr(model, "uncertainty_from_backbone"):
+        model.uncertainty_from_backbone = enabled
+
+
 def set_p4_uncertainty_only_freeze(model: nn.Module) -> None:
     """Phase 4 stage 1: train uncertainty_head only; freeze all other parameters."""
     for name, param in model.named_parameters():
@@ -238,6 +252,7 @@ def train_epoch(
     v2_teacher_epistemic_coeff: float = 0.10,
     epistemic_decoupling_holdouts: frozenset[str] | None = None,
     epistemic_uncertainty_only_train: bool = False,
+    gate_only_train: bool = False,
 ) -> dict[str, float]:
     """Run one training epoch over all proteins (one protein per optimizer step)."""
     import logging
@@ -245,6 +260,10 @@ def train_epoch(
     logger = logging.getLogger(__name__)
     if epistemic_uncertainty_only_train:
         set_p4_uncertainty_only_freeze(model)
+        set_uncertainty_from_backbone(model, enabled=False)
+    elif gate_only_train:
+        set_gate_only_freeze(model)
+        set_uncertainty_from_backbone(model, enabled=True)
     elif path_alignment_train or projection_recovery_train:
         set_path_alignment_freeze(model)
     elif fusion_path_recovery_train:
@@ -277,6 +296,7 @@ def train_epoch(
             "total",
             "evidential",
             "capacity_loss",
+            "routing_load_floor",
             "cone_consistency",
             "cone_depth_anticollapse",
             "shell_correlation",
@@ -311,6 +331,9 @@ def train_epoch(
             "epistemic_anticollapse",
             "r_epi_bf_resid",
             "partial_epi_sasa_given_depth",
+            "pocket_bce",
+            "interface_bce",
+            "leak_bce",
         ]
     }
     expert_load_acc: list[torch.Tensor] = []
@@ -342,6 +365,25 @@ def train_epoch(
                     if raw_mask is not None:
                         b_factor_present = raw_mask.to(device)
 
+                target_pocket = prot.get("target_pocket")
+                if target_pocket is not None:
+                    target_pocket = target_pocket.to(device)
+                target_interface = prot.get("target_interface")
+                if target_interface is not None:
+                    target_interface = target_interface.to(device)
+                pocket_label_mask = prot.get("pocket_label_mask")
+                if pocket_label_mask is not None:
+                    pocket_label_mask = pocket_label_mask.to(device)
+                interface_label_mask = prot.get("interface_label_mask")
+                if interface_label_mask is not None:
+                    interface_label_mask = interface_label_mask.to(device)
+                target_leak = prot.get("target_leak")
+                if target_leak is not None:
+                    target_leak = target_leak.to(device)
+                leak_label_mask = prot.get("leak_label_mask")
+                if leak_label_mask is not None:
+                    leak_label_mask = leak_label_mask.to(device)
+
             def _forward_losses() -> dict[str, Any]:
                 output = model(data)
                 sasa = data.x[:, 3]
@@ -353,6 +395,12 @@ def train_epoch(
                     sasa=sasa,
                     b_factor_ca=b_factor_ca,
                     b_factor_present=b_factor_present,
+                    target_pocket=target_pocket,
+                    target_interface=target_interface,
+                    target_leak=target_leak,
+                    pocket_label_mask=pocket_label_mask,
+                    interface_label_mask=interface_label_mask,
+                    leak_label_mask=leak_label_mask,
                     **loss_coeffs,
                 )
                 if (
@@ -511,6 +559,9 @@ def measure_geometry_health(
     cone_depth_stds, cone_depth_means = [], []
     disc_r_means, disc_r_stds = [], []
     probe_depth_sasa, probe_epi_sasa, probe_proj_depth, probe_disc_sasa = [], [], [], []
+    probe_epi_ale: list[float] = []
+    all_epi_vals: list[np.ndarray] = []
+    all_ale_vals: list[np.ndarray] = []
     disc_sigma_ratios, disc_eff_ranks, disc_thickness = [], [], []
     disc_thickness_pre, disc_thickness_post = [], []
     x_hyp_thickness = []
@@ -539,6 +590,10 @@ def measure_geometry_health(
 
             sasa = data.x[:, 3].cpu().numpy()
             epi = out["uncertainty"]["epistemic"].squeeze().cpu().numpy()
+            ale = out["uncertainty"]["aleatoric"].squeeze().cpu().numpy()
+            all_epi_vals.append(np.asarray(epi, dtype=float).reshape(-1))
+            all_ale_vals.append(np.asarray(ale, dtype=float).reshape(-1))
+            probe_epi_ale.append(_pearson_np(epi, ale))
             hyp = out["hyp_projections_2d"].cpu().numpy()
             disc_r = np.linalg.norm(hyp, axis=1) if hyp.ndim == 2 else np.abs(hyp)
             disc_r_means.append(float(disc_r.mean()))
@@ -599,6 +654,9 @@ def measure_geometry_health(
         "probe_r_epi_sasa": _nanmean(probe_epi_sasa),
         "probe_r_proj_depth": _nanmean(probe_proj_depth),
         "probe_r_disc_sasa": _nanmean(probe_disc_sasa),
+        "probe_r_epi_ale": _nanmean(probe_epi_ale),
+        "epistemic_std_mean": float(np.std(np.concatenate(all_epi_vals))) if all_epi_vals else 0.0,
+        "aleatoric_std_mean": float(np.std(np.concatenate(all_ale_vals))) if all_ale_vals else 0.0,
         "disc_sigma2_sigma1_mean": _nanmean(disc_sigma_ratios),
         "disc_effective_rank_mean": _nanmean(disc_eff_ranks),
         "disc_line_thickness_rms_mean": _nanmean(disc_thickness),

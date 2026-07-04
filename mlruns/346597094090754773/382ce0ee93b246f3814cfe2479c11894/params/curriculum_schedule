@@ -1,0 +1,1 @@
+[{"epochs": 20, "freeze_angular": false, "freeze_gate": false, "freeze_radial": false, "lr": 5e-05, "name": "Phase 4 epistemic-depth decoupling (B-factor residual, staged \u03bb)", "phase": 4}]

@@ -220,6 +220,8 @@ def governance_epoch_metrics(
     health: dict[str, float],
     losses: dict[str, float],
     model: nn.Module,
+    *,
+    inference_routing: dict[str, float] | None = None,
 ) -> dict[str, float]:
     """Map loop outputs to mandatory MLflow metric names (§3.2)."""
     from science.training.routing_metrics import collapse_metrics_from_epoch_losses
@@ -228,30 +230,50 @@ def governance_epoch_metrics(
     if disc_thick is None or not math.isfinite(disc_thick):
         disc_thick = health.get("disc_line_thickness_rms_mean", float("nan"))
 
-    routing = collapse_metrics_from_epoch_losses(losses)
+    train_routing = collapse_metrics_from_epoch_losses(losses)
+    gate_routing = inference_routing if inference_routing is not None else train_routing
 
     metrics: dict[str, float] = {
         "log_c": _log_c_raw(model),
-        **routing,
+        **gate_routing,
         "sigma2_sigma1": float(health.get("disc_sigma2_sigma1_mean", float("nan"))),
         "disc_thick": float(disc_thick),
         "r_d_s": float(health.get("probe_r_depth_sasa", float("nan"))),
         "r_e_s": float(health.get("probe_r_epi_sasa", float("nan"))),
-        "stage_gate_passed": float(stage_a_gate_passed(health, losses)),
+        "stage_gate_passed": float(
+            stage_a_gate_passed(health, losses, inference_routing=inference_routing)
+        ),
     }
+    if inference_routing is not None:
+        metrics["train_effective_experts"] = train_routing["effective_experts"]
+        metrics["train_effective_experts_min"] = train_routing["effective_experts_min"]
+        metrics["train_min_routing_fraction"] = train_routing["min_routing_fraction"]
 
     for key, value in losses.items():
         if key.startswith("per_fold_loss."):
             metrics[key] = float(value)
 
+    for key, value in (inference_routing or {}).items():
+        if key.startswith("eval_min_routing_fraction."):
+            metrics[key] = float(value)
+
     return {k: v for k, v in metrics.items() if v is not None and math.isfinite(v)}
 
 
-def stage_a_gate_passed(health: dict[str, float], losses: dict[str, float]) -> int:
+def stage_a_gate_passed(
+    health: dict[str, float],
+    losses: dict[str, float],
+    *,
+    inference_routing: dict[str, float] | None = None,
+) -> int:
     """Stage A→B pre-registered gate (§5). Returns 1 if pass, 0 if fail."""
     from science.training.routing_metrics import collapse_metrics_from_epoch_losses
 
-    routing = collapse_metrics_from_epoch_losses(losses)
+    routing = (
+        inference_routing
+        if inference_routing is not None
+        else collapse_metrics_from_epoch_losses(losses)
+    )
     eff = routing.get("effective_experts", float("nan"))
     eff_min = routing.get("effective_experts_min", float("nan"))
     min_frac = routing.get("min_routing_fraction", float("nan"))

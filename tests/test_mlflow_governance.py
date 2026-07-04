@@ -76,6 +76,36 @@ def test_governance_epoch_metrics_maps_shell_probes() -> None:
     assert "stage_gate_passed" in metrics
 
 
+def test_governance_epoch_metrics_prefers_inference_routing() -> None:
+    model = _StubModel()
+    health = {
+        "disc_sigma2_sigma1_mean": 0.665,
+        "disc_line_thickness_pre_mean": 0.219,
+        "probe_r_depth_sasa": 0.73,
+        "probe_r_epi_sasa": 0.78,
+    }
+    train_losses = {
+        "effective_experts": 3.7,
+        "effective_experts_min": 0.0,
+        "min_routing_fraction": 0.0,
+        "per_fold_loss.3_40_50_300": 1.2,
+        "per_fold_loss.3_80_20_20": 1.1,
+    }
+    infer_routing = {
+        "effective_experts": 3.9,
+        "effective_experts_min": 3.5,
+        "min_routing_fraction": 0.18,
+        "eval_min_routing_fraction.1PGB": 0.06,
+    }
+    metrics = governance_epoch_metrics(
+        health, train_losses, model, inference_routing=infer_routing
+    )
+    assert metrics["min_routing_fraction"] == pytest.approx(0.18)
+    assert metrics["train_min_routing_fraction"] == pytest.approx(0.0)
+    assert metrics["stage_gate_passed"] == pytest.approx(1.0)
+    assert metrics["eval_min_routing_fraction.1PGB"] == pytest.approx(0.06)
+
+
 def test_p_mlflow_01_schema_on_finished_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     mlflow = pytest.importorskip("mlflow")
 

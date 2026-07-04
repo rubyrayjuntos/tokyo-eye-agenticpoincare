@@ -1,0 +1,1 @@
+[{"epochs": 20, "freeze_angular": true, "freeze_gate": false, "freeze_radial": true, "lr": 3e-05, "name": "Phase 2 gate promotion after head decouple", "phase": 2}]

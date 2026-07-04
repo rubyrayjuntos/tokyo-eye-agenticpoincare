@@ -73,6 +73,22 @@ def _ols_residual_detached(y: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
     return y - (X @ beta).squeeze(-1)
 
 
+def epi_ale_decorrelation_loss(
+    epistemic: torch.Tensor,
+    aleatoric: torch.Tensor,
+) -> Dict[str, torch.Tensor]:
+    """Penalize Pearson correlation between epistemic and aleatoric (head coupling)."""
+    device = epistemic.device
+    dtype = epistemic.dtype
+    epi = epistemic.squeeze(-1) if epistemic.dim() > 1 else epistemic
+    ale = aleatoric.squeeze(-1) if aleatoric.dim() > 1 else aleatoric
+    if epi.numel() < 3:
+        z = torch.zeros((), device=device, dtype=dtype)
+        return {"epi_ale_decorrelation": z, "r_epi_ale": z}
+    r = _pearson_corr(epi, ale)
+    return {"epi_ale_decorrelation": r**2, "r_epi_ale": r.detach()}
+
+
 def epistemic_decoupling_loss(
     epistemic: torch.Tensor,
     cone_depth: torch.Tensor,
@@ -268,6 +284,26 @@ def disc_path_align_loss(
     return F.mse_loss(hyp_proj_2d, legacy_teacher.detach())
 
 
+def weighted_binary_cross_entropy(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+    *,
+    mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Class-imbalanced BCE with optional per-residue mask."""
+    if mask is not None and not mask.any():
+        return logits.new_zeros(())
+    if mask is not None:
+        logits = logits[mask]
+        targets = targets[mask]
+    if logits.numel() == 0:
+        return logits.new_zeros(())
+    pos = targets.sum()
+    neg = targets.numel() - pos
+    pos_weight = (neg / pos.clamp(min=1.0)).clamp(max=50.0)
+    return F.binary_cross_entropy_with_logits(logits, targets, pos_weight=pos_weight)
+
+
 def gosp_loss_v6(
     output: Dict[str, Any],
     target_rho: torch.Tensor,
@@ -316,10 +352,22 @@ def gosp_loss_v6(
     shell_floor_coeff: float = 0.0,
     shell_floor_min_r_depth_sasa: float = 0.60,
     epistemic_decoupling_coeff: float = 0.0,
+    epi_ale_decorrelation_coeff: float = 0.0,
     epistemic_bf_align_coeff: float = 0.22,
     epistemic_sasa_pen_coeff: float = 0.246,
     epistemic_anticollapse_coeff: float = 0.05,
     epistemic_min_epi_std: float = 0.02,
+    routing_load_floor_coeff: float = 0.0,
+    routing_load_floor_min: float = 0.05,
+    pocket_bce_coeff: float = 0.0,
+    interface_bce_coeff: float = 0.0,
+    leak_bce_coeff: float = 0.0,
+    target_pocket: Optional[torch.Tensor] = None,
+    target_interface: Optional[torch.Tensor] = None,
+    target_leak: Optional[torch.Tensor] = None,
+    pocket_label_mask: Optional[torch.Tensor] = None,
+    interface_label_mask: Optional[torch.Tensor] = None,
+    leak_label_mask: Optional[torch.Tensor] = None,
     b_factor_ca: Optional[torch.Tensor] = None,
     b_factor_present: Optional[torch.Tensor] = None,
     # Neighborhood consistency params
@@ -363,6 +411,10 @@ def gosp_loss_v6(
 
     # ── Asymmetric capacity loss (replaces v5 symmetric balance_loss) ─────
     capacity_loss = output["capacity_loss"]
+    routing_load_floor_raw = output.get("routing_load_floor")
+    routing_load_floor_loss = torch.tensor(0.0, device=device)
+    if routing_load_floor_coeff > 0 and routing_load_floor_raw is not None:
+        routing_load_floor_loss = routing_load_floor_coeff * routing_load_floor_raw
 
     # ── Cone loss — flows through RadialHead only ─────────────────────────
     cone_loss = cone_loss_v5(output["radial_features"], target_rho)
@@ -563,6 +615,45 @@ def gosp_loss_v6(
             + epistemic_anticollapse_coeff * epistemic_decoupling_losses["epistemic_anticollapse"]
         )
 
+    epi_ale_decorrelation_losses: Dict[str, torch.Tensor] = {}
+    epi_ale_decorrelation_total = torch.tensor(0.0, device=device)
+    if (
+        epi_ale_decorrelation_coeff > 0
+        and "uncertainty" in output
+        and "epistemic" in output["uncertainty"]
+        and "aleatoric" in output["uncertainty"]
+    ):
+        epi_ale_decorrelation_losses = epi_ale_decorrelation_loss(
+            output["uncertainty"]["epistemic"],
+            output["uncertainty"]["aleatoric"],
+        )
+        epi_ale_decorrelation_total = epi_ale_decorrelation_losses["epi_ale_decorrelation"]
+
+    pocket_bce = torch.tensor(0.0, device=device)
+    interface_bce = torch.tensor(0.0, device=device)
+    leak_bce = torch.tensor(0.0, device=device)
+    if pocket_bce_coeff > 0 and target_pocket is not None:
+        tgt = target_pocket.squeeze(-1) if target_pocket.dim() > 1 else target_pocket
+        pocket_bce = weighted_binary_cross_entropy(
+            output["binding_logits_pocket"],
+            tgt,
+            mask=pocket_label_mask,
+        )
+    if interface_bce_coeff > 0 and target_interface is not None:
+        tgt_i = target_interface.squeeze(-1) if target_interface.dim() > 1 else target_interface
+        interface_bce = weighted_binary_cross_entropy(
+            output["binding_logits_interface"],
+            tgt_i,
+            mask=interface_label_mask,
+        )
+    if leak_bce_coeff > 0 and target_leak is not None:
+        tgt_l = target_leak.squeeze(-1) if target_leak.dim() > 1 else target_leak
+        leak_bce = weighted_binary_cross_entropy(
+            output["binding_logits_leak"],
+            tgt_l,
+            mask=leak_label_mask,
+        )
+
     # ── Total loss ────────────────────────────────────────────────────────
     total = (
         (ev_loss if evidential_coeff > 0 else torch.tensor(0.0, device=device))
@@ -584,6 +675,11 @@ def gosp_loss_v6(
         + x_hyp_thickness_floor_coeff * x_hyp_thickness_total
         + shell_floor_loss
         + epistemic_decoupling_coeff * epistemic_decoupling_total
+        + epi_ale_decorrelation_coeff * epi_ale_decorrelation_total
+        + routing_load_floor_loss
+        + pocket_bce_coeff * pocket_bce
+        + interface_bce_coeff * interface_bce
+        + leak_bce_coeff * leak_bce
     )
     if shell_losses:
         total = total + shell_corr_coeff * shell_losses["shell_corr_total"]
@@ -604,6 +700,7 @@ def gosp_loss_v6(
         "total": total,
         "evidential": ev_loss,
         "capacity_loss": capacity_loss,
+        "routing_load_floor": routing_load_floor_loss,
         "cone_consistency": cone_loss,
         "cone_depth_anticollapse": anticollapse_loss,
         "disc_depth_scale": disc_scale_loss,
@@ -617,6 +714,7 @@ def gosp_loss_v6(
         "x_hyp_thickness_floor": x_hyp_thickness_total,
         "shell_floor": shell_floor_loss,
         "epistemic_decoupling": epistemic_decoupling_total,
+        "epi_ale_decorrelation": epi_ale_decorrelation_total,
         "neighborhood_consistency": nbr_loss,
         "angular_diversity": ang_loss,
         "domain_separation_2d": dom_loss_2d,
@@ -624,6 +722,9 @@ def gosp_loss_v6(
         "projection_violation": proj_violation,
         "routing_entropy": routing_entropy,
         "expert_load": output["expert_load"],
+        "pocket_bce": pocket_bce,
+        "interface_bce": interface_bce,
+        "leak_bce": leak_bce,
     }
     if shell_losses:
         result["shell_correlation"] = shell_losses["shell_corr_total"]
@@ -658,6 +759,8 @@ def gosp_loss_v6(
         result["partial_epi_sasa_given_depth"] = epistemic_decoupling_losses[
             "partial_epi_sasa_given_depth"
         ]
+    if epi_ale_decorrelation_losses:
+        result["r_epi_ale"] = epi_ale_decorrelation_losses["r_epi_ale"]
     return result
 
 

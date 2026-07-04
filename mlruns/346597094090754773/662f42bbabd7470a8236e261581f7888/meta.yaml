@@ -1,0 +1,15 @@
+artifact_uri: file:///app/mlruns/346597094090754773/662f42bbabd7470a8236e261581f7888/artifacts
+end_time: 1783152359757
+entry_point_name: ''
+experiment_id: '346597094090754773'
+lifecycle_stage: active
+run_id: 662f42bbabd7470a8236e261581f7888
+run_name: p4_corpus25_gate_v4
+run_uuid: 662f42bbabd7470a8236e261581f7888
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1783152154634
+status: 3
+tags: []
+user_id: unknown

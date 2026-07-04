@@ -90,8 +90,10 @@ def load_training_proteins(
         cache_dir = Path("/tmp/dtie_pdb_cache/corpus_cache")
         cache_dir.mkdir(parents=True, exist_ok=True)
         logger.info("Using writable corpus cache at %s (pdb_dir not writable)", cache_dir)
+    manifest_data = load_corpus_manifest(manifest_path)
+    residue_stage = int(manifest_data.get("residue_stage", 0) or 0)
     cache_key = hashlib.sha256(
-        f"{manifest.resolve()}|{max_proteins}|{max_residues}|bf_v1".encode()
+        f"{manifest.resolve()}|{max_proteins}|{max_residues}|bf_v1|rs{residue_stage}".encode()
     ).hexdigest()[:16]
     cache_path = cache_dir / f"graphs_{cache_key}.pt"
 
@@ -144,6 +146,14 @@ def load_training_proteins(
         from science.training.mlflow_governance import resolve_protein_fold_id
 
         prot["fold_id"] = resolve_protein_fold_id(entry)
+        if residue_stage >= 2:
+            from experiments.training.v6.pipeline_labels import attach_pipeline_supervision
+
+            attach_pipeline_supervision(prot, pdb_dir)
+        elif residue_stage >= 1:
+            from experiments.training.v6.residue_labels import attach_residue_supervision
+
+            attach_residue_supervision(prot, pdb_dir)
         proteins.append(prot)
         logger.info(
             "  %s (%s): %d residues [%s]",

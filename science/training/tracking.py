@@ -47,7 +47,10 @@ def _ensure_experiment(mlf: Any, tracking_uri: str, experiment_name: str) -> str
     client = MlflowClient(tracking_uri=tracking_uri)
     exp = client.get_experiment_by_name(experiment_name)
     store_root = Path(tracking_uri.replace("file:", "", 1))
-    artifact_location = (store_root / experiment_name.replace(" ", "_")).as_uri()
+    # Artifacts must NOT live directly under the tracking store root — MLflow treats
+    # every top-level subdirectory as an experiment and 500s the UI without meta.yaml.
+    artifact_root = store_root.parent / "mlflow-artifacts"
+    artifact_location = (artifact_root / experiment_name.replace(" ", "_")).as_uri()
     if exp is None:
         client.create_experiment(experiment_name, artifact_location=artifact_location)
         return experiment_name

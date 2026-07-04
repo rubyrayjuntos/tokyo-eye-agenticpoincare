@@ -1,0 +1,15 @@
+artifact_uri: file:///app/mlruns/346597094090754773/c92cd2192dce4c6e9248ccac27c1d287/artifacts
+end_time: null
+entry_point_name: ''
+experiment_id: '346597094090754773'
+lifecycle_stage: active
+run_id: c92cd2192dce4c6e9248ccac27c1d287
+run_name: stage_a_curriculum_v1
+run_uuid: c92cd2192dce4c6e9248ccac27c1d287
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1783060871154
+status: 1
+tags: []
+user_id: unknown

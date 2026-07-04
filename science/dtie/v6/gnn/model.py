@@ -64,6 +64,12 @@ from science.dtie.v5.gnn.model import (
     precompute_clustering,
     scan_tensors_for_invalid,
 )
+from science.dtie.v6.gnn.evidential import (
+    DecoupledEvidentialHead,
+    expand_coupled_uncertainty_state_dict,
+    uncertainty_head_is_decoupled,
+)
+from science.training.routing_metrics import routing_load_floor_penalty
 
 
 # ==================== 1. TOPOLOGICAL MoE GATE V6 ====================
@@ -160,13 +166,14 @@ class TopologicalMoEGateV6(nn.Module):
         degree: torch.Tensor,          # [N] integer node degree
         rho: torch.Tensor,             # [N] dehydron density
         ss_onehot: torch.Tensor,       # [N, 3] one-hot secondary structure
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Forward pass with capacity-aware routing and expert dropout.
 
         Returns:
             scores: [N, num_experts] routing probabilities
             capacity_loss: scalar asymmetric capacity penalty
+            routing_load_floor: scalar min-expert share hinge (differentiable)
         """
         # Log-transform degree (preserves ordering, compresses range)
         log_degree = torch.log1p(degree.float())
@@ -236,8 +243,9 @@ class TopologicalMoEGateV6(nn.Module):
         soft_scores = F.softmax(adjusted_logits, dim=-1)
         f = soft_scores.mean(dim=0)  # [num_experts]
         capacity_loss = torch.relu(self.min_usage - f).pow(2).sum()
+        routing_load_floor = routing_load_floor_penalty(f, self.min_usage)
 
-        return scores, capacity_loss
+        return scores, capacity_loss, routing_load_floor
 
 
 # ==================== 2. MAIN TOKYO EYES v6 ====================
@@ -302,6 +310,18 @@ def infer_v6_model_kwargs(
                     else "pre_routing",
                 ),
             )
+        ),
+        "decoupled_uncertainty_heads": bool(
+            arch.get(
+                "decoupled_uncertainty_heads",
+                tc.get(
+                    "decoupled_uncertainty_heads",
+                    uncertainty_head_is_decoupled(state_dict),
+                ),
+            )
+        ),
+        "uncertainty_from_backbone": bool(
+            arch.get("uncertainty_from_backbone", tc.get("uncertainty_from_backbone", False))
         ),
     }
 
@@ -428,6 +448,8 @@ class GOSPConeMapperV6(nn.Module):
         disc_projection_path: str | None = None,
         radial_angular_recombine: str = "multiply",
         disc_radial_source: str = "mobius",
+        decoupled_uncertainty_heads: bool = False,
+        uncertainty_from_backbone: bool = False,
     ):
         super().__init__()
         self.hidden = hidden
@@ -448,6 +470,8 @@ class GOSPConeMapperV6(nn.Module):
         self.legacy_disc_projection = self.disc_projection_path == "post_routing"
         self.radial_angular_recombine = radial_angular_recombine
         self.disc_radial_source = resolve_disc_radial_source(disc_radial_source)
+        self.decoupled_uncertainty_heads = decoupled_uncertainty_heads
+        self.uncertainty_from_backbone = uncertainty_from_backbone
         self.gate_mode = "hyperbolic" if hyperbolic_gate else "tangent_mlp"
 
         # Node embedding
@@ -514,7 +538,8 @@ class GOSPConeMapperV6(nn.Module):
         ])
 
         # Uncertainty head — hidden + 2 (tangent + depth + cone_width)
-        self.uncertainty_head = EvidentialHead(
+        head_cls = DecoupledEvidentialHead if decoupled_uncertainty_heads else EvidentialHead
+        self.uncertainty_head = head_cls(
             hidden_dim=hidden,
             extra_input_dim=2,
             aleatoric_logvar_min=aleatoric_logvar_min,
@@ -524,6 +549,11 @@ class GOSPConeMapperV6(nn.Module):
 
         # Euclidean scrubber projection (backward compat)
         self.projection_head = nn.Linear(hidden, projection_dim)
+
+        # ResidueStage1/2 supervised heads (pocket + interface + source-leak BCE)
+        self.binding_head_pocket = nn.Linear(hidden, 1)
+        self.binding_head_interface = nn.Linear(hidden, 1)
+        self.binding_head_leak = nn.Linear(hidden, 1)
 
         # Dual hyperbolic projections — 2D disc AND 3D ball
         self.hyp_proj_head_2d = MobiusLinear(hidden, hyp_proj_dim_2d)
@@ -660,6 +690,7 @@ class GOSPConeMapperV6(nn.Module):
 
         # ── Step 4: V6 MoE routing ────────────────────────────────────────
         gate_audit: dict[str, Any] = {}
+        routing_load_floor = torch.tensor(0.0, device=x_hyp.device)
         if self.hyperbolic_gate:
             scores, capacity_loss, gate_audit = self.gate(
                 x_hyp=x_hyp,
@@ -681,9 +712,10 @@ class GOSPConeMapperV6(nn.Module):
             ]
             if getattr(self.gate, "use_disc_position", False):
                 gate_features.extend(["gate_disc_xy", "gate_disc_r"])
+            routing_load_floor = gate_audit.get("routing_load_floor", routing_load_floor)
         else:
             x_tangent = pmath.logmap0(x_hyp, k=k)
-            scores, capacity_loss = self.gate(
+            scores, capacity_loss, routing_load_floor = self.gate(
                 x_tangent=x_tangent,
                 clustering=data.clustering,
                 cone_depth=depth,
@@ -731,7 +763,8 @@ class GOSPConeMapperV6(nn.Module):
 
         depth_routed = pmath.dist0(x_routed_hyp, k=k, keepdim=True)
         x_routed_tangent_out = pmath.logmap0(x_routed_hyp, k=k)
-        x_for_unc = torch.cat([x_routed_tangent_out, depth, cone_width], dim=-1)
+        unc_source = x_tangent if self.uncertainty_from_backbone else x_routed_tangent_out
+        x_for_unc = torch.cat([unc_source, depth, cone_width], dim=-1)
         uncertainty, evidence = self.uncertainty_head(x_for_unc)
 
         # ── Step 6: Projections (path-aware; always emit pre + post for audit) ──
@@ -766,6 +799,10 @@ class GOSPConeMapperV6(nn.Module):
         if self.depth_conditioning:
             projections = projections * cone_width
 
+        binding_logits_pocket = self.binding_head_pocket(x_routed_tangent_out).squeeze(-1)
+        binding_logits_interface = self.binding_head_interface(x_routed_tangent_out).squeeze(-1)
+        binding_logits_leak = self.binding_head_leak(x_routed_tangent_out).squeeze(-1)
+
         # ── V6 monitoring metrics ─────────────────────────────────────────
         expert_load = scores.mean(dim=0).detach()  # [num_experts]
         routing_entropy = -(scores.mean(dim=0) * torch.log(scores.mean(dim=0) + 1e-8)).sum()
@@ -791,6 +828,7 @@ class GOSPConeMapperV6(nn.Module):
             "disc_proj_softness": disc_softness if not self.legacy_disc_projection else 0.0,
             "depth_metric": "hyperbolic_dist0",
             "depth_used_in": ["gate", "cone_loss", "uncertainty_head", "cone_depth_routed"],
+            "uncertainty_input": "backbone" if self.uncertainty_from_backbone else "routed",
             "radial_head_scale": self.radial_head.radial_scale.item(),
             "projection_applied_count": proj_count_total,
             "projection_applied_fraction": proj_frac_avg,
@@ -851,9 +889,13 @@ class GOSPConeMapperV6(nn.Module):
             "angular_features": angular_direction,
             # V6 NEW outputs
             "capacity_loss": capacity_loss,
+            "routing_load_floor": routing_load_floor,
             "expert_load": expert_load,
             "routing_entropy": routing_entropy,
             "gate_features_used": gate_features,
+            "binding_logits_pocket": binding_logits_pocket,
+            "binding_logits_interface": binding_logits_interface,
+            "binding_logits_leak": binding_logits_leak,
         }
 
 
@@ -863,6 +905,8 @@ def load_v6_state_dict(
 ) -> tuple[list[str], list[str]]:
     """Load weights tolerating gate topo expansion (7 → 10 with disc inputs)."""
     adapted = dict(state_dict)
+    if getattr(model, "decoupled_uncertainty_heads", False):
+        adapted = expand_coupled_uncertainty_state_dict(adapted)
     topo_key = "gate.topo_encoder.0.weight"
     model_state = model.state_dict()
     if topo_key in adapted and topo_key in model_state:

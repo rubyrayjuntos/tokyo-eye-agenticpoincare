@@ -1,0 +1,1 @@
+[{"epochs": 129, "freeze_angular": false, "freeze_gate": false, "freeze_radial": false, "lr": 0.0005, "name": "Phase 2: Expert specialization", "phase": 2}]

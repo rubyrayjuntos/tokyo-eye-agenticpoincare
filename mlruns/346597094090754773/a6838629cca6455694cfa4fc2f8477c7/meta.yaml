@@ -1,0 +1,15 @@
+artifact_uri: file:///app/mlruns/346597094090754773/a6838629cca6455694cfa4fc2f8477c7/artifacts
+end_time: 1783060527942
+entry_point_name: ''
+experiment_id: '346597094090754773'
+lifecycle_stage: active
+run_id: a6838629cca6455694cfa4fc2f8477c7
+run_name: stage_a_smoke_full25_v2
+run_uuid: a6838629cca6455694cfa4fc2f8477c7
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1783060491910
+status: 3
+tags: []
+user_id: unknown

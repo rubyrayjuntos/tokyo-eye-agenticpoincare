@@ -1,8 +1,9 @@
 """GNN interactive 3D viewer — enhanced PDB + standalone NGL HTML.
 
 Restores the v2 autonomous viewer pattern for v6 ingest:
-  per-residue epistemic → B-factor, cone_depth → occupancy, expert → segID
-  cartoon + semi-transparent surface colored by uncertainty (PPI / outer-shell read).
+  per-residue investigation score (high aleatoric, low epistemic) → B-factor default
+  cone_depth → occupancy; toggles for aleatoric / epistemic on structure + disc HTML
+  cartoon + semi-transparent surface colored by selected metric (outer-shell read).
 
 Triggered after ``gnn_inference`` (non-fatal). Files land under
 ``GNN_VIEWER_OUTPUT_DIR`` (default ``data/local_objects/gnn_viewer``).
@@ -109,11 +110,50 @@ def build_residue_channel_lookup(
     return lookup
 
 
+def disc_xy_from_model_output(model_output: dict[str, Any]) -> Any:
+    """Pre-routing 2D disc coords — post-routing collapses to a streak."""
+    pre = model_output.get("hyp_projections_2d_pre")
+    if pre is not None:
+        return pre
+    return model_output["hyp_projections_2d"]
+
+
 def _scale_channel(values: np.ndarray, *, out_min: float, out_max: float) -> np.ndarray:
     vmin, vmax = float(values.min()), float(values.max())
     if vmax <= vmin:
         return np.full_like(values, (out_min + out_max) / 2.0, dtype=np.float64)
     return out_min + (values - vmin) * (out_max - out_min) / (vmax - vmin)
+
+
+def _node_aleatoric(node: GNNNodeOutput) -> float:
+    if node.aleatoric_uncertainty is not None:
+        return float(node.aleatoric_uncertainty)
+    return 0.0
+
+
+def investigation_scores(epistemic: np.ndarray, aleatoric: np.ndarray) -> np.ndarray:
+    """Per-residue score: high aleatoric + low epistemic → investigation priority."""
+    epi = np.asarray(epistemic, dtype=np.float64)
+    ale = np.asarray(aleatoric, dtype=np.float64)
+    epi_n = (epi - epi.min()) / (epi.max() - epi.min() + 1e-8)
+    ale_n = (ale - ale.min()) / (ale.max() - ale.min() + 1e-8)
+    return ale_n * (1.0 - epi_n)
+
+
+def _metric_maps_from_nodes(
+    node_lookup: dict[tuple[str, int], GNNNodeOutput],
+) -> tuple[dict[tuple[str, int], float], dict[tuple[str, int], float], dict[tuple[str, int], float]]:
+    keys = list(node_lookup.keys())
+    epistemic = np.array([node_lookup[k].epistemic_uncertainty for k in keys], dtype=np.float64)
+    aleatoric = np.array([_node_aleatoric(node_lookup[k]) for k in keys], dtype=np.float64)
+    investigation = investigation_scores(epistemic, aleatoric)
+    epist_scaled = _scale_channel(epistemic, out_min=0.0, out_max=99.0)
+    ale_scaled = _scale_channel(aleatoric, out_min=0.0, out_max=99.0)
+    inv_scaled = _scale_channel(investigation, out_min=0.0, out_max=99.0)
+    epist_map = {key: float(epist_scaled[i]) for i, key in enumerate(keys)}
+    ale_map = {key: float(ale_scaled[i]) for i, key in enumerate(keys)}
+    inv_map = {key: float(inv_scaled[i]) for i, key in enumerate(keys)}
+    return epist_map, ale_map, inv_map
 
 
 def _expert_seg(node: GNNNodeOutput) -> str:
@@ -161,9 +201,8 @@ async def write_annotated_pdb(
     keys = list(node_lookup.keys())
     epistemic = np.array([node_lookup[k].epistemic_uncertainty for k in keys], dtype=np.float64)
     depth = np.array([node_lookup[k].cone_depth for k in keys], dtype=np.float64)
-    epist_scaled = _scale_channel(epistemic, out_min=0.0, out_max=99.0)
+    epist_map, ale_map, inv_map = _metric_maps_from_nodes(node_lookup)
     depth_norm = _scale_channel(depth, out_min=0.0, out_max=1.0)
-    epist_map = {key: float(epist_scaled[i]) for i, key in enumerate(keys)}
     depth_map = {key: float(depth_norm[i]) for i, key in enumerate(keys)}
 
     # Classify residues for ATOM (polymer) vs HETATM (ligands/water/incomplete backbone).
@@ -196,7 +235,7 @@ async def write_annotated_pdb(
             prev_chain = chain
 
             node = node_lookup.get(key) or node_lookup.get((chain[:1], res_index))
-            b_factor = epist_map.get(key, 50.0) if node else 50.0
+            b_factor = inv_map.get(key, 50.0) if node else 50.0
             occupancy = max(0.35, depth_map.get(key, 0.5) if node else 0.5)
 
             residue_name = residue_names[key]
@@ -263,9 +302,8 @@ def write_offline_annotated_pdb(
     keys = list(node_lookup.keys())
     epistemic = np.array([node_lookup[k].epistemic_uncertainty for k in keys], dtype=np.float64)
     depth = np.array([node_lookup[k].cone_depth for k in keys], dtype=np.float64)
-    epist_scaled = _scale_channel(epistemic, out_min=0.0, out_max=99.0)
+    epist_map, ale_map, inv_map = _metric_maps_from_nodes(node_lookup)
     depth_norm = _scale_channel(depth, out_min=0.0, out_max=1.0)
-    epist_map = {key: float(epist_scaled[i]) for i, key in enumerate(keys)}
     depth_map = {key: float(depth_norm[i]) for i, key in enumerate(keys)}
 
     residue_atoms: dict[tuple[str, int], set[str]] = {}
@@ -297,7 +335,7 @@ def write_offline_annotated_pdb(
             prev_chain = chain_label
 
             node = node_lookup.get(key) or node_lookup.get((chain_label[:1], res_index))
-            b_factor = epist_map.get(key, 50.0) if node else 50.0
+            b_factor = inv_map.get(key, 50.0) if node else 50.0
             occupancy = max(0.35, depth_map.get(key, 0.5) if node else 0.5)
 
             residue_name = residue_names[key]
@@ -337,6 +375,7 @@ def write_interactive_html(
     pharmacophore_sites: list[dict[str, str | int]] | None = None,
     legend_mode: str = "default",
     chain: str = "A",
+    residue_metrics: list[dict[str, Any]] | None = None,
 ) -> None:
     """Write standalone NGL viewer HTML (6LDH-style cartoon + uncertainty surface)."""
     sid = structure_id.strip().lower()
@@ -376,14 +415,67 @@ def write_interactive_html(
     else:
         legend_html = f"""
     <b>{sid.upper()}</b> &nbsp;|&nbsp;
-    {model_version}{checkpoint_note} &nbsp;|&nbsp;
-    B-factor = Epistemic uncertainty
-    (<span class="hi">red = high gap / training uncertainty</span>
-     &rarr; <span class="lo">blue = well-trained region</span>)
-    &nbsp;|&nbsp; Occupancy = Cone depth &nbsp;|&nbsp;
-    SegID = Expert assignment (E0-E3)
+    {model_version}{checkpoint_note}<br/>
+    <b>ν<sub>epi</sub></b> = model training gap (red = under-trained) &nbsp;|&nbsp;
+    <b>ν<sub>ale</sub></b> = structural ambiguity (red = information-poor local geometry)<br/>
+    <b>Investigation</b> = high ν<sub>ale</sub> + low ν<sub>epi</sub>
+    (<span class="hi">red = priority sites</span> — model is confident the structure is ambiguous here)
+    &nbsp;|&nbsp; Occupancy = Cone depth
 """
         pharma_js = ""
+
+    metrics_json = json.dumps(residue_metrics or [])
+    metrics_toolbar = ""
+    metrics_js = ""
+    if residue_metrics:
+        metrics_toolbar = """
+    <label style="margin-left:12px">Color by
+      <select id="structure-metric">
+        <option value="investigation" selected>Investigation (high ale, low epi)</option>
+        <option value="aleatoric">Aleatoric uncertainty</option>
+        <option value="epistemic">Epistemic uncertainty</option>
+        <option value="cone_depth">Cone depth</option>
+        <option value="expert">Route expert (E0–E3)</option>
+      </select>
+    </label>"""
+        metrics_js = """
+        var RESIDUE_METRICS = __METRICS_JSON__;
+        var metricLookup = {};
+        RESIDUE_METRICS.forEach(function(row) { metricLookup[row.key] = row; });
+
+        function metricRange(key) {
+          var vals = RESIDUE_METRICS.map(function(r) { return r[key]; });
+          return { min: Math.min.apply(null, vals), max: Math.max.apply(null, vals) };
+        }
+
+        function scaleMetric(value, key) {
+          var rr = metricRange(key);
+          if (rr.max <= rr.min) return 50.0;
+          return 99.0 * (value - rr.min) / (rr.max - rr.min);
+        }
+
+        function bfactorForMetric(row, key) {
+          if (key === "expert") {
+            var bands = [12, 38, 62, 88];
+            return bands[row.expert] || 50;
+          }
+          return scaleMetric(row[key], key);
+        }
+
+        function applyStructureMetric(key) {
+          comp.structure.eachAtom(function(ap) {
+            if (!ap.isProtein()) return;
+            var rk = ap.chainname + ":" + ap.resno;
+            var row = metricLookup[rk];
+            if (!row) return;
+            ap.bfactor = bfactorForMetric(row, key);
+          });
+          comp.updateRepresentations({ what: "color" });
+        }
+
+        document.getElementById("structure-metric").addEventListener("change", function(ev) {
+          applyStructureMetric(ev.target.value);
+        });"""
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -400,7 +492,7 @@ def write_interactive_html(
 </head>
 <body>
   <div id="viewport"></div>
-  <div id="legend">{legend_html}
+  <div id="legend">{legend_html}{metrics_toolbar}
   </div>
   <script>
     var PDB_DATA = {pdb_json};
@@ -430,6 +522,7 @@ def write_interactive_html(
           sele: "hetero or water or ion",
           opacity: 0.7
         }}, colorOpts));{pharma_js}
+        {metrics_js.replace("__METRICS_JSON__", metrics_json)}
         comp.autoView();
       }});
 
@@ -444,6 +537,297 @@ def write_interactive_html(
 """
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(html, encoding="utf-8")
+
+
+def disc_payload_from_nodes(nodes: list[GNNNodeOutput]) -> list[dict[str, Any]]:
+    """Serialize per-residue disc coordinates + metrics for standalone HTML."""
+    points: list[dict[str, Any]] = []
+    for node in nodes:
+        hyp = node.hyp_projections
+        if hyp is None or len(hyp) < 2:
+            continue
+        expert = 0
+        if node.expert_weights is not None and len(node.expert_weights):
+            expert = int(np.argmax(node.expert_weights))
+        sasa = (
+            float(node.input_features[3])
+            if node.input_features is not None and len(node.input_features) > 3
+            else 0.0
+        )
+        points.append(
+            {
+                "label": f"{node.chain_label}:{node.residue_index}",
+                "x": float(hyp[0]),
+                "y": float(hyp[1]),
+                "r": float(np.hypot(hyp[0], hyp[1])),
+                "epistemic": float(node.epistemic_uncertainty),
+                "aleatoric": _node_aleatoric(node),
+                "cone_depth": float(node.cone_depth),
+                "sasa": sasa,
+                "expert": expert,
+            }
+        )
+    if points:
+        epi = np.array([p["epistemic"] for p in points], dtype=np.float64)
+        ale = np.array([p["aleatoric"] for p in points], dtype=np.float64)
+        inv = investigation_scores(epi, ale)
+        for i, point in enumerate(points):
+            point["investigation"] = float(inv[i])
+    return points
+
+
+def residue_metrics_payload(nodes: list[GNNNodeOutput]) -> list[dict[str, Any]]:
+    """Per-residue metrics for NGL structure viewer toggles (chain:resnum keys)."""
+    payload: list[dict[str, Any]] = []
+    if not nodes:
+        return payload
+    epi = np.array([n.epistemic_uncertainty for n in nodes], dtype=np.float64)
+    ale = np.array([_node_aleatoric(n) for n in nodes], dtype=np.float64)
+    inv = investigation_scores(epi, ale)
+    for i, node in enumerate(nodes):
+        expert = 0
+        if node.expert_weights is not None and len(node.expert_weights):
+            expert = int(np.argmax(node.expert_weights))
+        payload.append(
+            {
+                "key": f"{node.chain_label}:{node.residue_index}",
+                "epistemic": float(epi[i]),
+                "aleatoric": float(ale[i]),
+                "investigation": float(inv[i]),
+                "cone_depth": float(node.cone_depth),
+                "expert": expert,
+            }
+        )
+    return payload
+
+
+def write_poincare_disc_html(
+    *,
+    structure_id: str,
+    points: list[dict[str, Any]],
+    model_version: str,
+    output_path: Path,
+    checkpoint_path: str | None = None,
+    curvature: float | None = None,
+) -> None:
+    """Write standalone interactive Poincaré disc (canvas scatter, metric toggle)."""
+    sid = structure_id.strip().lower()
+    title = f"{sid.upper()} — Poincaré Disc"
+    checkpoint_note = (
+        f" &nbsp;|&nbsp; checkpoint: {Path(checkpoint_path).name}"
+        if checkpoint_path
+        else ""
+    )
+    curv_note = f" &nbsp;|&nbsp; κ={curvature:.3f}" if curvature is not None else ""
+    points_json = json.dumps(points)
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{title}</title>
+  <style>
+    body {{ margin:0; background:#111; color:#eee; font-family:sans-serif; }}
+    #toolbar {{ padding:8px 14px; background:#1a1a1a; font-size:12px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }}
+    #canvas {{ display:block; width:100vw; height:calc(100vh - 72px); cursor:crosshair; }}
+    select, label {{ font-size:12px; }}
+    #tip {{ position:fixed; pointer-events:none; background:rgba(0,0,0,0.85); border:1px solid #444; padding:4px 8px; font-size:11px; display:none; z-index:9; white-space:pre-line; }}
+    span.hi {{ color:#f77; }} span.lo {{ color:#77f; }}
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <b>{sid.upper()}</b> &nbsp;|&nbsp; {model_version}{checkpoint_note}{curv_note}
+    &nbsp;|&nbsp; <b>pre-routing x<sub>hyp</sub></b> (not post-routing streak)
+    <label>Color by
+      <select id="metric">
+        <option value="investigation" selected>Investigation (high ale, low epi)</option>
+        <option value="aleatoric">Aleatoric uncertainty</option>
+        <option value="epistemic">Epistemic uncertainty</option>
+        <option value="cone_depth">Cone depth</option>
+        <option value="expert">Route expert (E0–E3)</option>
+        <option value="sasa">SASA proxy</option>
+        <option value="r">Disc radius |z|</option>
+      </select>
+    </label>
+    <span id="stats"></span>
+  </div>
+  <canvas id="canvas"></canvas>
+  <div id="tip"></div>
+  <script>
+    var POINTS = {points_json};
+
+    function colorScale(t) {{
+      t = Math.max(0, Math.min(1, t));
+      var r = t < 0.5 ? 255 : Math.round(255 - (t - 0.5) * 2 * 255);
+      var b = t < 0.5 ? Math.round(t * 2 * 255) : 255;
+      var g = Math.round(80 + 80 * (1 - Math.abs(t - 0.5) * 2));
+      return "rgb(" + r + "," + g + "," + b + ")";
+    }}
+
+    function metricValue(p, key) {{
+      if (key === "expert") return p.expert / 3.0;
+      return p[key];
+    }}
+
+    var canvas = document.getElementById("canvas");
+    var ctx = canvas.getContext("2d");
+    var tip = document.getElementById("tip");
+    var metricSel = document.getElementById("metric");
+    var hover = -1;
+
+    function resize() {{
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight - 72;
+      draw();
+    }}
+
+    function toScreen(x, y) {{
+      var pad = 40;
+      var size = Math.min(canvas.width, canvas.height) - pad * 2;
+      var cx = canvas.width / 2;
+      var cy = canvas.height / 2;
+      return [cx + x * size / 2, cy - y * size / 2];
+    }}
+
+    function draw() {{
+      var key = metricSel.value;
+      var vals = POINTS.map(function(p) {{ return metricValue(p, key); }});
+      var vmin = Math.min.apply(null, vals);
+      var vmax = Math.max.apply(null, vals);
+      ctx.fillStyle = "#111";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      var pad = 40;
+      var size = Math.min(canvas.width, canvas.height) - pad * 2;
+      var cx = canvas.width / 2;
+      var cy = canvas.height / 2;
+      ctx.strokeStyle = "#666";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, cy, size / 2, 0, Math.PI * 2);
+      ctx.stroke();
+      for (var i = 0; i < POINTS.length; i++) {{
+        var p = POINTS[i];
+        var t = vmax > vmin ? (metricValue(p, key) - vmin) / (vmax - vmin) : 0.5;
+        var sc = toScreen(p.x, p.y);
+        ctx.beginPath();
+        ctx.fillStyle = colorScale(t);
+        ctx.arc(sc[0], sc[1], i === hover ? 5 : 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }}
+      document.getElementById("stats").textContent =
+        POINTS.length + " residues | " + key + " [" + vmin.toFixed(3) + ", " + vmax.toFixed(3) + "]";
+    }}
+
+    canvas.addEventListener("mousemove", function(ev) {{
+      var rect = canvas.getBoundingClientRect();
+      var mx = ev.clientX - rect.left;
+      var my = ev.clientY - rect.top;
+      hover = -1;
+      for (var i = 0; i < POINTS.length; i++) {{
+        var sc = toScreen(POINTS[i].x, POINTS[i].y);
+        var dx = sc[0] - mx, dy = sc[1] - my;
+        if (dx * dx + dy * dy <= 100) {{ hover = i; break; }}
+      }}
+      if (hover >= 0) {{
+        var p = POINTS[hover];
+        tip.style.display = "block";
+        tip.style.left = (ev.clientX + 12) + "px";
+        tip.style.top = (ev.clientY + 12) + "px";
+        tip.textContent = p.label + "\\nr=" + p.r.toFixed(3) +
+          " depth=" + p.cone_depth.toFixed(2) +
+          " nu_epi=" + p.epistemic.toFixed(3) +
+          " nu_ale=" + (p.aleatoric || 0).toFixed(3) +
+          " inv=" + (p.investigation || 0).toFixed(3) +
+          " E" + p.expert;
+      }} else {{
+        tip.style.display = "none";
+      }}
+      draw();
+    }});
+
+    metricSel.addEventListener("change", draw);
+    window.addEventListener("resize", resize);
+    resize();
+  </script>
+</body>
+</html>
+"""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(html, encoding="utf-8")
+
+
+def write_structure_viewers(
+    *,
+    structure_id: str,
+    pdb_text: str,
+    nodes: list[GNNNodeOutput],
+    model_version: str,
+    out_dir: Path,
+    checkpoint_path: str | None = None,
+    curvature: float | None = None,
+) -> dict[str, str]:
+    """Write both interactive HTML outputs (3D + Poincaré disc) for one structure."""
+    sid = structure_id.strip().lower()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    structure_html = out_dir / f"{sid}_interactive.html"
+    disc_html = out_dir / f"{sid}_poincare_disc.html"
+    write_interactive_html(
+        structure_id=sid,
+        pdb_text=pdb_text,
+        model_version=model_version,
+        output_path=structure_html,
+        checkpoint_path=checkpoint_path,
+        residue_metrics=residue_metrics_payload(nodes),
+    )
+    write_poincare_disc_html(
+        structure_id=sid,
+        points=disc_payload_from_nodes(nodes),
+        model_version=model_version,
+        output_path=disc_html,
+        checkpoint_path=checkpoint_path,
+        curvature=curvature,
+    )
+    return {
+        "structure_html": str(structure_html),
+        "disc_html": str(disc_html),
+    }
+
+
+def nodes_from_training_inference(
+    prot: dict[str, Any],
+    model_output: dict[str, Any],
+) -> list[GNNNodeOutput]:
+    """Build GNNNodeOutput list from a training-graph forward pass."""
+    import torch
+
+    data_x = prot["data"].x
+    residue_ids = prot["residue_ids"]
+    nodes: list[GNNNodeOutput] = []
+    raw_depth = model_output["radial_features"].squeeze(-1).detach()
+    depth_max = raw_depth.max() + 1e-8
+    normalized_depth = (raw_depth / depth_max) * 8.0
+    cone_width = torch.exp(-normalized_depth)
+    for i, rid in enumerate(residue_ids):
+        parts = str(rid).split(":")
+        chain = parts[0] if parts else str(prot.get("chain", "A"))
+        res_index = int(parts[1]) if len(parts) > 1 else i + 1
+        nodes.append(
+            GNNNodeOutput(
+                residue_index=res_index,
+                chain_label=chain,
+                input_features=data_x[i].detach().cpu().numpy(),
+                projections=model_output["projections"][i].detach().cpu().numpy(),
+                cone_depth=float(normalized_depth[i]),
+                cone_width=float(cone_width[i]),
+                epistemic_uncertainty=float(model_output["uncertainty"]["epistemic"][i].detach()),
+                aleatoric_uncertainty=float(model_output["uncertainty"]["aleatoric"][i].detach()),
+                total_uncertainty=float(model_output["uncertainty"]["total"][i].detach()),
+                hyp_projections=disc_xy_from_model_output(model_output)[i].detach().cpu().numpy(),
+                expert_weights=model_output["expert_weights"][i].detach().cpu().numpy(),
+            )
+        )
+    return nodes
 
 
 def _asset_id(structure_id: str, run_id: str) -> str:
@@ -468,6 +852,7 @@ async def generate_gnn_interactive_viewer(
     out_dir = viewer_output_dir() / structure_id
     pdb_path = out_dir / f"{structure_id}_gosp_native.pdb"
     html_path = out_dir / f"{structure_id}_interactive.html"
+    disc_html_path = out_dir / f"{structure_id}_poincare_disc.html"
 
     node_lookup = build_residue_channel_lookup(gnn_result.nodes)
     n_atoms = await write_annotated_pdb(structure_id, db, node_lookup, pdb_path)
@@ -475,13 +860,17 @@ async def generate_gnn_interactive_viewer(
         raise ValueError(f"No atoms in dim_atom for structure {structure_id}")
 
     pdb_text = pdb_path.read_text(encoding="utf-8")
-    write_interactive_html(
+    viewer_paths = write_structure_viewers(
         structure_id=structure_id,
         pdb_text=pdb_text,
+        nodes=gnn_result.nodes,
         model_version=gnn_result.model_version,
-        output_path=html_path,
+        out_dir=out_dir,
         checkpoint_path=gnn_result.checkpoint_path,
+        curvature=gnn_result.curvature,
     )
+    html_path = Path(viewer_paths["structure_html"])
+    disc_html_path = Path(viewer_paths["disc_html"])
 
     asset_id = _asset_id(structure_id, run_id)
     prov = ProvenanceContext(
@@ -506,18 +895,21 @@ async def generate_gnn_interactive_viewer(
             storage_uri=str(html_path),
             metadata={
                 "pdb_path": str(pdb_path),
+                "disc_html_path": str(disc_html_path),
                 "n_atoms": n_atoms,
                 "n_residues": len(gnn_result.nodes),
                 "viewer_format": "ngl_html_v1",
+                "disc_viewer_format": "poincare_canvas_v1",
             },
         )
     except Exception as exc:
         logger.warning("GNN viewer governed_asset registration failed (non-fatal): %s", exc)
 
     logger.info(
-        "GNN interactive viewer written structure=%s html=%s atoms=%d residues=%d",
+        "GNN interactive viewer written structure=%s html=%s disc=%s atoms=%d residues=%d",
         structure_id,
         html_path,
+        disc_html_path,
         n_atoms,
         len(gnn_result.nodes),
     )
@@ -525,8 +917,10 @@ async def generate_gnn_interactive_viewer(
     return {
         "asset_id": asset_id,
         "html_path": str(html_path),
+        "disc_html_path": str(disc_html_path),
         "pdb_path": str(pdb_path),
         "n_atoms": n_atoms,
         "n_residues": len(gnn_result.nodes),
         "viewer_url": f"/api/structures/{structure_id}/gnn-viewer",
+        "disc_viewer_url": f"/api/structures/{structure_id}/gnn-viewer/disc",
     }

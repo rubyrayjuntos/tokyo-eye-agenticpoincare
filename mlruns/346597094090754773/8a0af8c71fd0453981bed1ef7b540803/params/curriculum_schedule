@@ -1,0 +1,1 @@
+[{"epochs": 8, "freeze_angular": true, "freeze_gate": true, "freeze_radial": true, "lr": 5e-05, "name": "Phase 4 gate touchup uncertainty recalibration", "phase": 4}]

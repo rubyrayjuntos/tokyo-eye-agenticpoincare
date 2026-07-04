@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from geoopt.manifolds.stereographic import math as pmath
 
 from science.dtie.v5.gnn.model import MobiusLinear
+from science.training.routing_metrics import routing_load_floor_penalty
 
 
 class HyperbolicPrototypeBank(nn.Module):
@@ -270,8 +271,10 @@ class HyperbolicPrototypeGate(nn.Module):
             scores = F.one_hot(adjusted_logits.argmax(dim=-1), self.num_experts).float()
         else:
             scores = F.softmax(adjusted_logits, dim=-1)
-        f = scores.mean(dim=0)
-        capacity_loss = torch.relu(self.min_usage - f).pow(2).sum()
+        soft_scores = F.softmax(adjusted_logits, dim=-1)
+        f_soft = soft_scores.mean(dim=0)
+        capacity_loss = torch.relu(self.min_usage - f_soft).pow(2).sum()
+        routing_load_floor = routing_load_floor_penalty(f_soft, self.min_usage)
 
         audit: dict[str, Any] = {
             "gate_space": "hyperbolic",
@@ -285,4 +288,5 @@ class HyperbolicPrototypeGate(nn.Module):
             audit["gate_disc_r_mean"] = float(disc_r.mean().detach())
             audit["gate_disc_r_std"] = float(disc_r.std().detach())
             audit["gate_disc_external"] = disc_xy is not None
+        audit["routing_load_floor"] = routing_load_floor
         return scores, capacity_loss, audit

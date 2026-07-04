@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -142,6 +143,7 @@ class CheckpointManager:
         global_epoch: int,
     ) -> Path:
         slug = phase_name.split(":")[0].strip().lower().replace(" ", "_")
+        slug = re.sub(r"[^\w.-]+", "_", slug).strip("_") or f"phase_{phase}"
         path = self.output_dir / f"v6_phase{phase}_{self.protein_count}prot.pt"
         torch.save(
             {

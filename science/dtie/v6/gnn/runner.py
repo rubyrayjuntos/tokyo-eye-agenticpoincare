@@ -23,6 +23,7 @@ import numpy as np
 
 from science.dtie.common.curvature_values import require_learned_curvature
 from science.dtie.common.interfaces import GNNInferenceResult, GNNNodeOutput
+from science.dtie.v6.visualization.interactive_viewer import disc_xy_from_model_output
 
 logger = logging.getLogger(__name__)
 
@@ -312,7 +313,7 @@ class V6GNNRunner:
                 # for Lorentz inner product / arcosh near manifold boundary (avoids NaN).
                 x_hyp=output["x_hyp"][i].detach().cpu().numpy().astype("float64"),
                 x_routed_hyp=output["x_routed_hyp"][i].detach().cpu().numpy().astype("float64"),
-                hyp_projections=output["hyp_projections_2d"][i].detach().cpu().numpy().astype("float64"),
+                hyp_projections=disc_xy_from_model_output(output)[i].detach().cpu().numpy().astype("float64"),
                 expert_weights=output["expert_weights"][i].detach().cpu().numpy(),
             )
             nodes.append(node)

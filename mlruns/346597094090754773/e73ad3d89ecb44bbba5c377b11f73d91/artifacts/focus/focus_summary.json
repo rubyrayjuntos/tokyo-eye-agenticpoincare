@@ -1,0 +1,93 @@
+{
+  "checkpoint_eligible": false,
+  "needs_work": [
+    {
+      "metric": "routing_entropy",
+      "value": 1.370885302623113,
+      "priority": "critical",
+      "matters": true,
+      "status": "needs_work",
+      "target": "\u2264 1.18 (save ceiling this epoch)",
+      "note": "Blocks v6_best saves; MoE still too uniform vs current gate."
+    }
+  ],
+  "watch": [
+    {
+      "metric": "probe_r_depth_sasa",
+      "value": 0.6583897846032342,
+      "priority": "important",
+      "matters": true,
+      "status": "watch",
+      "target": "\u2265 0.80 (strong shell)",
+      "note": "Passes save gate but below production stretch."
+    },
+    {
+      "metric": "disc_r_std_mean",
+      "value": 0.08615831471979618,
+      "priority": "monitor",
+      "matters": false,
+      "status": "watch",
+      "target": "\u2265 0.10",
+      "note": "Disc spread; usually addressed in P1d \u2014 low leverage once shell strong."
+    },
+    {
+      "metric": "expert_1_r_depth_sasa",
+      "value": 0.345526195207503,
+      "priority": "monitor",
+      "matters": false,
+      "status": "watch",
+      "target": "\u2265 0.45 per expert",
+      "note": "Expert 1 residues weak on depth\u2194SASA (often surface specialist)."
+    },
+    {
+      "metric": "total",
+      "value": 4.121551096439362,
+      "priority": "monitor",
+      "matters": false,
+      "status": "watch",
+      "target": "\u2193 slowly",
+      "note": "Optimization loss \u2014 do not chase alone; use tier-1 probes instead."
+    }
+  ],
+  "healthy": [
+    {
+      "metric": "proj_frac_mean",
+      "value": 0.0,
+      "priority": "healthy",
+      "matters": true,
+      "status": "healthy",
+      "target": "\u2248 0",
+      "note": "Saturated \u2014 do not optimize further."
+    },
+    {
+      "metric": "probe_r_proj_depth",
+      "value": 0.9869459711337637,
+      "priority": "healthy",
+      "matters": true,
+      "status": "healthy",
+      "target": "\u2265 0.95",
+      "note": "Disc tracks burial \u2014 saturated."
+    },
+    {
+      "metric": "probe_r_epi_sasa",
+      "value": 0.8919404642821461,
+      "priority": "healthy",
+      "matters": false,
+      "status": "healthy",
+      "target": "\u2265 0.70",
+      "note": "Saturated for ingest quality."
+    }
+  ],
+  "primary_focus": [
+    "routing_entropy"
+  ],
+  "primary_focus_str": "routing_entropy",
+  "counts": {
+    "critical": 1,
+    "needs_work": 1,
+    "watch": 4,
+    "healthy": 3,
+    "matters_needs_work": 1
+  },
+  "recommendation": "Train more on: routing_entropy. These block saves or threaten shell/MoE quality."
+}

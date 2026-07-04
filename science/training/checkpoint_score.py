@@ -125,6 +125,40 @@ def shell_probe_ineligibility_reasons(health: dict[str, float]) -> list[str]:
     return reasons
 
 
+def uncertainty_save_ineligibility_reasons(
+    health: dict[str, float],
+    *,
+    max_probe_r_epi_ale: float | None = None,
+    max_probe_r_epi_sasa: float | None = None,
+    min_epistemic_std: float | None = None,
+    min_aleatoric_std: float | None = None,
+) -> list[str]:
+    """Uncertainty calibration save gates (Phase 4 uncertainty)."""
+    reasons: list[str] = []
+    r_epi_ale = _finite_probe(health.get("probe_r_epi_ale"))
+    r_epi_sasa = _finite_probe(health.get("probe_r_epi_sasa"))
+    epi_std = _finite_probe(health.get("epistemic_std_mean"))
+    ale_std = _finite_probe(health.get("aleatoric_std_mean"))
+
+    if max_probe_r_epi_ale is not None and r_epi_ale is not None and r_epi_ale > max_probe_r_epi_ale:
+        reasons.append(
+            f"probe_r_epi_ale={r_epi_ale:.3f}>{max_probe_r_epi_ale} (epi/ale coupled)"
+        )
+    if max_probe_r_epi_sasa is not None and r_epi_sasa is not None and r_epi_sasa > max_probe_r_epi_sasa:
+        reasons.append(
+            f"probe_r_epi_sasa={r_epi_sasa:.3f}>{max_probe_r_epi_sasa} (epi/sasa coupled)"
+        )
+    if min_epistemic_std is not None and epi_std is not None and epi_std < min_epistemic_std:
+        reasons.append(
+            f"epistemic_std={epi_std:.4f}<{min_epistemic_std} (epi collapsed)"
+        )
+    if min_aleatoric_std is not None and ale_std is not None and ale_std < min_aleatoric_std:
+        reasons.append(
+            f"aleatoric_std={ale_std:.4f}<{min_aleatoric_std} (ale collapsed)"
+        )
+    return reasons
+
+
 def disc_save_ineligibility_reasons(
     health: dict[str, float],
     *,
@@ -174,6 +208,10 @@ def score_checkpoint(
     min_disc_effective_rank_save: float | None = None,
     min_disc_line_thickness_save: float | None = None,
     disc_radial_source: str = "mobius",
+    max_probe_r_epi_ale_save: float | None = None,
+    max_probe_r_epi_sasa_save: float | None = None,
+    min_epistemic_std_save: float | None = None,
+    min_aleatoric_std_save: float | None = None,
 ) -> CheckpointScoreResult:
     """
     Rank checkpoints for v6_best.pt selection.
@@ -240,7 +278,17 @@ def score_checkpoint(
                 min_line_thickness=min_disc_line_thickness_save,
                 min_probe_r_depth_sasa=min_probe_r_depth_sasa_save,
             )
+            )
+
+    reasons.extend(
+        uncertainty_save_ineligibility_reasons(
+            health,
+            max_probe_r_epi_ale=max_probe_r_epi_ale_save,
+            max_probe_r_epi_sasa=max_probe_r_epi_sasa_save,
+            min_epistemic_std=min_epistemic_std_save,
+            min_aleatoric_std=min_aleatoric_std_save,
         )
+    )
 
     if (
         not radial_override

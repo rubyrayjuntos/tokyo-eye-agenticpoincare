@@ -1,0 +1,1 @@
+[{"epochs": 20, "freeze_angular": false, "freeze_gate": true, "freeze_radial": false, "lr": 5e-05, "name": "Phase 4 head decouple (split epi/ale trunks, rs2 warm-start)", "phase": 4}]

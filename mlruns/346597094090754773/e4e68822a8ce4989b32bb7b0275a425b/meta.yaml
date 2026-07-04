@@ -1,0 +1,15 @@
+artifact_uri: file:///app/mlruns/346597094090754773/e4e68822a8ce4989b32bb7b0275a425b/artifacts
+end_time: 1783134408260
+entry_point_name: ''
+experiment_id: '346597094090754773'
+lifecycle_stage: active
+run_id: e4e68822a8ce4989b32bb7b0275a425b
+run_name: p4_gate_promotion_v2
+run_uuid: e4e68822a8ce4989b32bb7b0275a425b
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1783134312572
+status: 3
+tags: []
+user_id: unknown

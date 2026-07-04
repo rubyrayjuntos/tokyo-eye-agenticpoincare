@@ -88,6 +88,83 @@ def test_four_expert_lever_a_routing_entropy_band() -> None:
     assert 3.0 <= eff <= 4.5
 
 
+def test_p_routing_inference_mode_gate_reads_inference_not_train() -> None:
+    """P_ROUTING_EVAL_MODE: stage_gate_passed must use inference routing, not train dropout."""
+    health = {
+        "disc_sigma2_sigma1_mean": 0.665,
+        "probe_r_depth_sasa": 0.73,
+    }
+    train_losses = {
+        "effective_experts": 3.7,
+        "effective_experts_min": 0.0,
+        "min_routing_fraction": 0.0,
+        "per_fold_loss.3_40_50_300": 1.0,
+        "per_fold_loss.3_80_20_20": 1.1,
+    }
+    infer_routing = {
+        "effective_experts": 3.9,
+        "effective_experts_min": 3.5,
+        "min_routing_fraction": 0.18,
+        "eval_min_routing_fraction.1PGB": 0.06,
+    }
+    assert stage_a_gate_passed(health, train_losses) == 0
+    assert stage_a_gate_passed(health, train_losses, inference_routing=infer_routing) == 1
+
+
+def test_p_routing_inference_mode_synthetic_starvation_still_fails() -> None:
+    """P_ROUTING_EVAL_MODE two-sided: real starvation in inference mode still trips gate."""
+    health = {
+        "disc_sigma2_sigma1_mean": 0.665,
+        "probe_r_depth_sasa": 0.73,
+    }
+    train_losses = {
+        "effective_experts": 3.7,
+        "effective_experts_min": 3.5,
+        "min_routing_fraction": 0.18,
+        "per_fold_loss.3_40_50_300": 1.0,
+        "per_fold_loss.3_80_20_20": 1.1,
+    }
+    starved_infer = {
+        "effective_experts": 1.2,
+        "effective_experts_min": 1.0,
+        "min_routing_fraction": 0.02,
+    }
+    assert stage_a_gate_passed(health, train_losses, inference_routing=starved_infer) == 0
+
+
+def test_inference_mode_routing_metrics_ignores_dropout() -> None:
+    """Inference pass disables dropout — zeros from expert_dropout must not appear."""
+    import torch.nn as nn
+
+    from science.training.routing_metrics import inference_mode_routing_metrics
+
+    class _MockMoE(nn.Module):
+        def forward(self, data: torch.Tensor) -> dict[str, torch.Tensor]:
+            load = torch.tensor([0.25, 0.25, 0.25, 0.25])
+            if self.training:
+                load = load.clone()
+                load[0] = 0.0
+                load = load / load.sum()
+            return {"expert_load": load}
+
+    model = _MockMoE()
+    model.train()
+    proteins = [{"pdb_id": "TEST", "data": torch.zeros(1)}]
+
+    import experiments.training.v6.train_loop as train_loop
+
+    original = train_loop.attach_v6_features
+    train_loop.attach_v6_features = lambda x: x
+    try:
+        metrics = inference_mode_routing_metrics(model, proteins, "cpu")
+    finally:
+        train_loop.attach_v6_features = original
+
+    assert metrics["min_routing_fraction"] == pytest.approx(0.25)
+    assert metrics["effective_experts_min"] == pytest.approx(4.0, rel=0.05)
+    assert metrics["eval_min_routing_fraction.TEST"] == pytest.approx(0.25)
+
+
 @pytest.mark.integration
 def test_collapsed_checkpoint_trips_stage_gate() -> None:
     """Belt-and-suspenders: archived collapsed routing must fail the gate (can say no)."""

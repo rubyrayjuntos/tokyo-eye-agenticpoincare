@@ -1,0 +1,15 @@
+artifact_uri: file:///app/mlruns/346597094090754773/cfd29b4d71314733b8e24723842b3066/artifacts
+end_time: 1783108773550
+entry_point_name: ''
+experiment_id: '346597094090754773'
+lifecycle_stage: active
+run_id: cfd29b4d71314733b8e24723842b3066
+run_name: residue_stage1_v1
+run_uuid: cfd29b4d71314733b8e24723842b3066
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1783108604779
+status: 3
+tags: []
+user_id: unknown

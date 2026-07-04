@@ -229,6 +229,7 @@ def load_protein_graph(pdb_id: str, chain: str, pdb_dir: Path) -> Optional[Dict]
 
     return {
         "pdb_id": pdb_id,
+        "chain": chain,
         "data": data,
         "target_rho": target_rho,
         "target_dehydron": target_dehydron,

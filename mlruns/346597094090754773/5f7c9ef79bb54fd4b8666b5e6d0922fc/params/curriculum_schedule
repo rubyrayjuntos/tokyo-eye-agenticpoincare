@@ -1,0 +1,1 @@
+[{"epochs": 25, "freeze_angular": false, "freeze_gate": true, "freeze_radial": false, "lr": 5e-05, "name": "Phase 4 uncertainty calibration (staged decoupling, rs2 warm-start)", "phase": 4}]

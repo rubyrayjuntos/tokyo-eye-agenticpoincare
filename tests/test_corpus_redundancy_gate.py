@@ -11,7 +11,6 @@ import pytest
 from science.training.corpus_governance import (
     FROZEN_REPORT,
     LOCKED_MANIFEST,
-    STAGE_A_MAX_RESIDUES,
     validate_p_corpus_01,
 )
 

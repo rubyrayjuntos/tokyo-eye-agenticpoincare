@@ -1,0 +1,1 @@
+[{"epochs": 30, "freeze_angular": false, "freeze_gate": true, "freeze_radial": false, "lr": 0.0001, "name": "ResidueStage2: pipeline cryptic + source-leak BCE (gate frozen)", "phase": 1}]

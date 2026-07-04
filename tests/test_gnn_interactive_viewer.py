@@ -12,7 +12,11 @@ from science.dtie.common.interfaces import GNNInferenceResult, GNNNodeOutput
 from shared.gnn_viewer_paths import interactive_viewer_enabled
 from science.dtie.v6.visualization.interactive_viewer import (
     build_residue_channel_lookup,
+    disc_payload_from_nodes,
+    disc_xy_from_model_output,
+    investigation_scores,
     write_interactive_html,
+    write_poincare_disc_html,
     _format_pdb_atom_name,
     _residue_name_3letter,
 )
@@ -69,6 +73,52 @@ class TestInteractiveViewerHelpers:
         assert "GOSPConeMapper-v6" in text
         assert "ATOM      1  CA  ALA A   1" in text
 
+    def test_write_poincare_disc_html_contains_canvas(self, tmp_path: Path) -> None:
+        nodes = [_sample_node(i, epistemic=0.5 + i * 0.1, depth=float(i)) for i in range(1, 6)]
+        for i, node in enumerate(nodes, start=1):
+            node.hyp_projections = np.array([0.1 * i, 0.05 * i])
+        out = tmp_path / "9est_poincare_disc.html"
+        write_poincare_disc_html(
+            structure_id="9est",
+            points=disc_payload_from_nodes(nodes),
+            model_version="GOSPConeMapper-v6",
+            output_path=out,
+            curvature=1.2,
+        )
+        text = out.read_text(encoding="utf-8")
+        assert "Poincaré Disc" in text
+        assert "pre-routing" in text
+        assert "getElementById(\"canvas\")" in text
+        assert '"label": "A:1"' in text or '"label":"A:1"' in text.replace(" ", "")
+
+    def test_disc_xy_from_model_output_prefers_pre(self) -> None:
+        import torch
+
+        pre = torch.tensor([[0.2, 0.1], [0.5, -0.3]])
+        post = torch.tensor([[0.01, 0.0], [0.02, 0.0]])
+        chosen = disc_xy_from_model_output(
+            {
+                "hyp_projections_2d_pre": pre,
+                "hyp_projections_2d": post,
+            }
+        )
+        assert torch.equal(chosen, pre)
+
+    def test_investigation_score_high_ale_low_epi(self) -> None:
+        epi = np.array([1.0, 0.2, 0.9])
+        ale = np.array([0.2, 0.9, 0.5])
+        inv = investigation_scores(epi, ale)
+        assert inv[1] > inv[0]
+        assert inv[1] > inv[2]
+
+    def test_disc_payload_includes_aleatoric_and_investigation(self) -> None:
+        nodes = [_sample_node(i, epistemic=0.2 + i * 0.1, depth=float(i)) for i in range(1, 5)]
+        for i, node in enumerate(nodes, start=1):
+            node.aleatoric_uncertainty = 0.1 * i
+            node.hyp_projections = np.array([0.1 * i, 0.05 * i])
+        points = disc_payload_from_nodes(nodes)
+        assert all("aleatoric" in p and "investigation" in p for p in points)
+
     def test_interactive_viewer_enabled_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("GNN_INTERACTIVE_HTML", raising=False)
         assert interactive_viewer_enabled() is True
@@ -124,7 +174,10 @@ async def test_generate_gnn_interactive_viewer_registers_asset(tmp_path: Path, m
 
     html_path = Path(meta["html_path"])
     pdb_path = Path(meta["pdb_path"])
+    disc_path = Path(meta["disc_html_path"])
     assert html_path.is_file()
     assert pdb_path.is_file()
+    assert disc_path.is_file()
     assert meta["viewer_url"] == "/api/structures/9est/gnn-viewer"
+    assert meta["disc_viewer_url"] == "/api/structures/9est/gnn-viewer/disc"
     normalizer.register_file_asset.assert_awaited_once()

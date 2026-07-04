@@ -1,0 +1,15 @@
+artifact_uri: file:///app/mlruns/346597094090754773/27e6f90d12c942348f46c2c567541703/artifacts
+end_time: 1783133671668
+entry_point_name: ''
+experiment_id: '346597094090754773'
+lifecycle_stage: active
+run_id: 27e6f90d12c942348f46c2c567541703
+run_name: p4_head_decouple_v1
+run_uuid: 27e6f90d12c942348f46c2c567541703
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1783133625418
+status: 3
+tags: []
+user_id: unknown

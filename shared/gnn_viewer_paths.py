@@ -36,3 +36,28 @@ def resolve_viewer_html_path(structure_id: str) -> Path | None:
         return None
     path = viewer_output_dir() / sid / f"{sid}_interactive.html"
     return path if path.is_file() else None
+
+
+def resolve_disc_html_path(structure_id: str) -> Path | None:
+    """Return Poincaré disc interactive HTML for a structure, if present."""
+    sid = structure_id.strip().lower()
+    if not _STRUCTURE_ID_RE.match(sid):
+        return None
+    path = viewer_output_dir() / sid / f"{sid}_poincare_disc.html"
+    return path if path.is_file() else None
+
+
+def structure_viewer_paths(structure_id: str) -> dict[str, Path]:
+    """Return on-disk viewer artifacts for a structure (empty if missing)."""
+    sid = structure_id.strip().lower()
+    root = viewer_output_dir() / sid
+    out: dict[str, Path] = {}
+    for key, name in (
+        ("structure", f"{sid}_interactive.html"),
+        ("disc", f"{sid}_poincare_disc.html"),
+        ("pdb", f"{sid}_gosp_native.pdb"),
+    ):
+        path = root / name
+        if path.is_file():
+            out[key] = path
+    return out

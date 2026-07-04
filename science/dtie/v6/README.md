@@ -16,8 +16,15 @@ After each successful `gnn_inference` (when `GNN_INTERACTIVE_HTML=true`, default
 
 - `{GNN_VIEWER_OUTPUT_DIR}/{structure_id}/{structure_id}_gosp_native.pdb` — B-factor = epistemic, occupancy = cone depth
 - `{structure_id}_interactive.html` — NGL cartoon + uncertainty surface (open in browser)
+- `{structure_id}_poincare_disc.html` — interactive Poincaré disc (metric toggle, hover residues)
 
-Agent serves: `GET /api/structures/{structure_id}/gnn-viewer` (also linked from readiness as `gnn_viewer_url` when present).
+Agent serves: `GET /api/structures/{structure_id}/gnn-viewer` and `.../gnn-viewer/disc` (also linked from readiness when present).
+
+Training corpus batch export (no ingest required):
+
+```bash
+make export-corpus-viewers CHECKPOINT=checkpoints/v6/runs/residue_stage2_v1/v6_phase1_12prot.pt
+```
 
 ## Dev checklist (science container)
 

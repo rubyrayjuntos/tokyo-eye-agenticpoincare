@@ -1,0 +1,15 @@
+artifact_uri: file:///app/mlruns/346597094090754773/382ce0ee93b246f3814cfe2479c11894/artifacts
+end_time: 1783125586121
+entry_point_name: ''
+experiment_id: '346597094090754773'
+lifecycle_stage: active
+run_id: 382ce0ee93b246f3814cfe2479c11894
+run_name: p4_epi_rs2_v2
+run_uuid: 382ce0ee93b246f3814cfe2479c11894
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1783125545372
+status: 3
+tags: []
+user_id: unknown
