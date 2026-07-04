@@ -72,6 +72,7 @@ def build_model(config: TrainingConfig) -> torch.nn.Module:
         legacy_disc_projection=config.legacy_disc_projection,
         radial_angular_recombine=config.radial_angular_recombine,
         disc_radial_source=config.disc_radial_source,
+        decoupled_uncertainty_heads=config.decoupled_uncertainty_heads,
     )
     return model
 
@@ -124,6 +125,28 @@ def main() -> None:
         "--save-epoch-snapshots",
         action="store_true",
         help="Save epochs/epoch_NNN.pt each epoch for training filmstrip viz",
+    )
+    parser.add_argument(
+        "--no-stage-a-stop",
+        action="store_true",
+        help="Disable P2 inference-routing stop enforcement on locked Stage A corpus",
+    )
+    parser.add_argument(
+        "--routing-load-floor",
+        action="store_true",
+        help="Phase 2: min-expert routing floor loss (Stage A contested-routing fix)",
+    )
+    parser.add_argument(
+        "--routing-load-floor-coeff",
+        type=float,
+        default=10.0,
+        help="λ for routing load floor (default 10.0; conservative)",
+    )
+    parser.add_argument(
+        "--routing-load-floor-min",
+        type=float,
+        default=0.05,
+        help="Min per-expert share hinge (default 0.05; matches inference stop)",
     )
     parser.add_argument(
         "--p1b",
@@ -297,6 +320,84 @@ def main() -> None:
         help="Option B: λ₁-only epochs 1-10, capped/log λ₂ ramp thereafter",
     )
     parser.add_argument(
+        "--p4-uncertainty-calibration",
+        action="store_true",
+        help="Phase 4 uncertainty calibration from rs2_post_p4 (decouple epi/ale, gated saves)",
+    )
+    parser.add_argument(
+        "--p4-head-decouple",
+        action="store_true",
+        help="Phase 4: split evidential epi/ale trunks + r(epi,ale) loss (rs2 warm-start)",
+    )
+    parser.add_argument(
+        "--max-probe-r-epi-sasa-save",
+        type=float,
+        default=None,
+        help="Relax v6_best gate: probe_r_epi_sasa must be <= this (default 0.78 for head decouple)",
+    )
+    parser.add_argument(
+        "--p4-gate-promotion",
+        action="store_true",
+        help="Gate-only pass after head decouple: reduce routing H, preserve uncertainty gates",
+    )
+    parser.add_argument(
+        "--p4-corpus25-gate-promotion",
+        action="store_true",
+        help="Gate-only on locked 25-protein Stage A (moderate MoE pressure, 30 ep default)",
+    )
+    parser.add_argument(
+        "--p4-corpus25-touchup-extended",
+        action="store_true",
+        help="Extended routed uncertainty touchup (25 ep, stronger SASA recal)",
+    )
+    parser.add_argument(
+        "--p4-gate-uncertainty-touchup",
+        action="store_true",
+        help="Uncertainty-only recalibration after gate promotion (re-lock epi/ale/sasa)",
+    )
+    parser.add_argument(
+        "--p4-gate-balance-coeff",
+        type=float,
+        default=None,
+        help="Override MoE balance_coeff for --p4-gate-promotion (default 0.06)",
+    )
+    parser.add_argument(
+        "--p4-gate-load-floor-coeff",
+        type=float,
+        default=None,
+        help="Override routing load floor λ for --p4-gate-promotion (default 12.0)",
+    )
+    parser.add_argument(
+        "--p4-gate-load-floor-min",
+        type=float,
+        default=None,
+        help="Override min expert share hinge for --p4-gate-promotion (default 0.10)",
+    )
+    parser.add_argument(
+        "--residue-stage1",
+        action="store_true",
+        help="ResidueStage1: pocket + interface BCE heads (warm-start small corpus)",
+    )
+    parser.add_argument("--residue-stage1-lr", type=float, default=1e-4)
+    parser.add_argument(
+        "--residue-stage1-epochs",
+        type=int,
+        default=None,
+        help="ResidueStage1 epoch count (default 30)",
+    )
+    parser.add_argument(
+        "--residue-stage2",
+        action="store_true",
+        help="ResidueStage2: pipeline cryptic pocket + source-leak BCE heads",
+    )
+    parser.add_argument("--residue-stage2-lr", type=float, default=1e-4)
+    parser.add_argument(
+        "--residue-stage2-epochs",
+        type=int,
+        default=None,
+        help="ResidueStage2 epoch count (default 30)",
+    )
+    parser.add_argument(
         "--legacy-disc-projection",
         action="store_true",
         help="Use post-routing hard-clamp disc path (old checkpoints / inference compat)",
@@ -411,6 +512,10 @@ def main() -> None:
         gentle_phase2=args.gentle_phase2,
         phase2_lr=args.phase2_lr,
         save_epoch_snapshots=args.save_epoch_snapshots,
+        enforce_stage_a_stop=not args.no_stage_a_stop,
+        routing_load_floor=args.routing_load_floor,
+        routing_load_floor_coeff=args.routing_load_floor_coeff,
+        routing_load_floor_min=args.routing_load_floor_min,
         p1b=args.p1b and not args.p1c and not args.p1d and not args.p2_bridge,
         p1b_lr=args.p1b_lr,
         p1c=args.p1c and not args.p1d and not args.p2_bridge,
@@ -500,6 +605,27 @@ def main() -> None:
         epistemic_sasa_pen_coeff=args.epistemic_sasa_pen_coeff,
         shell_corr_epi_sasa_weight=args.shell_corr_epi_sasa_weight,
         p4_epistemic_staged=args.p4_epistemic_staged,
+        p4_uncertainty_calibration=args.p4_uncertainty_calibration,
+        p4_head_decouple=args.p4_head_decouple,
+        p4_gate_promotion=args.p4_gate_promotion,
+        p4_corpus25_gate_promotion=args.p4_corpus25_gate_promotion,
+        p4_corpus25_touchup_extended=args.p4_corpus25_touchup_extended,
+        p4_gate_uncertainty_touchup=args.p4_gate_uncertainty_touchup,
+        p4_gate_balance_coeff=args.p4_gate_balance_coeff,
+        p4_gate_load_floor_coeff=args.p4_gate_load_floor_coeff,
+        p4_gate_load_floor_min=args.p4_gate_load_floor_min,
+        decoupled_uncertainty_heads=(
+            args.p4_head_decouple
+            or args.p4_gate_uncertainty_touchup
+            or args.p4_corpus25_touchup_extended
+        ),
+        max_probe_r_epi_sasa_save=args.max_probe_r_epi_sasa_save,
+        residue_stage1=args.residue_stage1,
+        residue_stage1_lr=args.residue_stage1_lr,
+        residue_stage1_epochs=args.residue_stage1_epochs,
+        residue_stage2=args.residue_stage2,
+        residue_stage2_lr=args.residue_stage2_lr,
+        residue_stage2_epochs=args.residue_stage2_epochs,
     )
     if (
         config.p2_disc_proj_recovery
@@ -525,6 +651,16 @@ def main() -> None:
         logger.error("No proteins loaded (%d failed). Check network / manifest.", failed)
         sys.exit(1)
     logger.info("Loaded %d proteins (%d failed)", len(proteins), failed)
+
+    if config.resume and config.resume.is_file():
+        import torch
+        from science.dtie.v6.gnn.evidential import uncertainty_head_is_decoupled
+
+        resume_blob = torch.load(config.resume, map_location="cpu", weights_only=False)
+        resume_sd = resume_blob.get("model_state_dict", resume_blob)
+        if uncertainty_head_is_decoupled(resume_sd):
+            config = config.model_copy(update={"decoupled_uncertainty_heads": True})
+            logger.info("Resume checkpoint uses decoupled uncertainty head")
 
     model = build_model(config)
     device = config.device

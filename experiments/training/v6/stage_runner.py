@@ -15,6 +15,7 @@ from science.training.config import (
     PhaseConfig,
     TrainingConfig,
     apply_phase_coeff_ramp,
+    apply_routing_load_floor_phase2,
     default_v6_phases,
     p1b_phase_config,
     p1c_phase_config,
@@ -39,6 +40,14 @@ from science.training.config import (
     p2_disc_proj_recovery_v5_phase_config,
     p2_rec_ablation_phase_config,
     p4_epistemic_decoupling_phase_config,
+    p4_head_decouple_phase_config,
+    p4_corpus25_gate_phase_config,
+    p4_corpus25_touchup_extended_phase_config,
+    p4_gate_promotion_phase_config,
+    p4_gate_uncertainty_touchup_phase_config,
+    p4_uncertainty_calibration_phase_config,
+    residue_stage1_phase_config,
+    residue_stage2_phase_config,
     routing_save_max_for_epoch,
 )
 from science.training.monitor import ConvergenceMonitor
@@ -48,6 +57,8 @@ from experiments.training.v6.train_loop import (
     measure_geometry_health,
     set_expert_dropout,
     set_p4_uncertainty_only_freeze,
+    set_gate_only_freeze,
+    set_uncertainty_from_backbone,
     train_epoch,
 )
 
@@ -73,10 +84,20 @@ class StageRunner:
         self.v2_teacher = v2_teacher
         self.checkpoint_mgr = CheckpointManager(config.output_dir, len(proteins))
         self.monitor = ConvergenceMonitor()
-        self.metrics_log: list[dict[str, Any]] = []
+        metrics_path = config.output_dir / "metrics.json"
+        if metrics_path.is_file():
+            try:
+                import json
+
+                self.metrics_log = json.loads(metrics_path.read_text())
+            except (json.JSONDecodeError, OSError):
+                self.metrics_log = []
+        else:
+            self.metrics_log = []
         self.global_epoch = resume_state.global_epoch if resume_state else 0
         self.best_score = resume_state.score if resume_state else -math.inf
         self._saved_eligible = resume_state is not None and resume_state.score > -math.inf
+        self._resume_checkpoint_phase = resume_state.phase if resume_state else None
         self._shell_low_streak = 0
         self._last_focus_summary: dict[str, Any] | None = None
         self._best_disc_sigma = -1.0
@@ -149,6 +170,28 @@ class StageRunner:
             min_disc_r_std_save=self.config.p2_disc_r_std_floor or 0.04,
             min_disc_line_thickness_save=self.config.p2_disc_line_thickness_floor or 0.02,
         )
+
+    def _begin_phase_best_tracking(self, phase: int) -> None:
+        """Reset v6_best promotion baseline when entering a new phase.
+
+        Gate-only and touchup phases use different loss compositions, so a high
+        gate score must not block touchup saves. Same-phase resume keeps the
+        inherited best_score for mid-phase continuation.
+        """
+        if self._resume_checkpoint_phase == phase:
+            self._resume_checkpoint_phase = None
+            return
+        if self.best_score > -math.inf:
+            logger.info(
+                "  v6_best baseline reset for phase %d (prior best score %.4f not comparable)",
+                phase,
+                self.best_score,
+            )
+        self.best_score = -math.inf
+        self._saved_eligible = False
+        self._best_disc_sigma = -1.0
+        self._best_disc_visual_score = -1.0
+        self._resume_checkpoint_phase = None
 
     def _maybe_export_disc_scatter(self, phase_cfg: PhaseConfig) -> None:
         interval = self.config.disc_scatter_interval_epochs
@@ -299,6 +342,116 @@ class StageRunner:
         )
 
     def _phases(self) -> list[PhaseConfig]:
+        if self.config.residue_stage2:
+            epochs = self.config.epochs_override or self.config.residue_stage2_epochs or 30
+            return [
+                residue_stage2_phase_config(
+                    lr=self.config.residue_stage2_lr,
+                    epochs=epochs,
+                )
+            ]
+        if self.config.residue_stage1:
+            epochs = self.config.epochs_override or self.config.residue_stage1_epochs or 30
+            return [
+                residue_stage1_phase_config(
+                    lr=self.config.residue_stage1_lr,
+                    epochs=epochs,
+                )
+            ]
+        if self.config.p4_uncertainty_calibration:
+            epochs = self.config.epochs_override or 25
+            return [
+                p4_uncertainty_calibration_phase_config(
+                    lr=self.config.p4_epistemic_lr,
+                    epochs=epochs,
+                )
+            ]
+        if self.config.p4_head_decouple:
+            epochs = self.config.epochs_override or 20
+            sasa_save = (
+                self.config.max_probe_r_epi_sasa_save
+                if self.config.max_probe_r_epi_sasa_save is not None
+                else 0.78
+            )
+            return [
+                p4_head_decouple_phase_config(
+                    lr=self.config.p4_epistemic_lr,
+                    epochs=epochs,
+                    max_probe_r_epi_sasa_save=sasa_save,
+                )
+            ]
+        if self.config.p4_corpus25_gate_promotion:
+            epochs = self.config.epochs_override or 30
+            sasa_save = (
+                self.config.max_probe_r_epi_sasa_save
+                if self.config.max_probe_r_epi_sasa_save is not None
+                else 0.79
+            )
+            gate_kw: dict[str, float] = {}
+            if self.config.p4_gate_balance_coeff is not None:
+                gate_kw["balance_coeff"] = self.config.p4_gate_balance_coeff
+            if self.config.p4_gate_load_floor_coeff is not None:
+                gate_kw["routing_load_floor_coeff"] = self.config.p4_gate_load_floor_coeff
+            if self.config.p4_gate_load_floor_min is not None:
+                gate_kw["routing_load_floor_min"] = self.config.p4_gate_load_floor_min
+            return [
+                p4_corpus25_gate_phase_config(
+                    lr=self.config.p4_epistemic_lr,
+                    epochs=epochs,
+                    max_probe_r_epi_sasa_save=sasa_save,
+                    **gate_kw,
+                )
+            ]
+        if self.config.p4_gate_promotion:
+            epochs = self.config.epochs_override or 20
+            sasa_save = (
+                self.config.max_probe_r_epi_sasa_save
+                if self.config.max_probe_r_epi_sasa_save is not None
+                else 0.79
+            )
+            gate_kw = {}
+            if self.config.p4_gate_balance_coeff is not None:
+                gate_kw["balance_coeff"] = self.config.p4_gate_balance_coeff
+            if self.config.p4_gate_load_floor_coeff is not None:
+                gate_kw["routing_load_floor_coeff"] = self.config.p4_gate_load_floor_coeff
+            if self.config.p4_gate_load_floor_min is not None:
+                gate_kw["routing_load_floor_min"] = self.config.p4_gate_load_floor_min
+            return [
+                p4_gate_promotion_phase_config(
+                    lr=self.config.p4_epistemic_lr,
+                    epochs=epochs,
+                    max_probe_r_epi_sasa_save=sasa_save,
+                    **gate_kw,
+                )
+            ]
+        if self.config.p4_corpus25_touchup_extended:
+            epochs = self.config.epochs_override or 25
+            sasa_save = (
+                self.config.max_probe_r_epi_sasa_save
+                if self.config.max_probe_r_epi_sasa_save is not None
+                else 0.79
+            )
+            return [
+                p4_corpus25_touchup_extended_phase_config(
+                    lr=self.config.p4_epistemic_lr,
+                    epochs=epochs,
+                    max_probe_r_epi_sasa_save=sasa_save,
+                )
+            ]
+        if self.config.p4_gate_uncertainty_touchup:
+            epochs = self.config.epochs_override or 8
+            sasa_save = (
+                self.config.max_probe_r_epi_sasa_save
+                if self.config.max_probe_r_epi_sasa_save is not None
+                else 0.79
+            )
+            return [
+                p4_gate_uncertainty_touchup_phase_config(
+                    lr=self.config.p4_epistemic_lr,
+                    epochs=epochs,
+                    max_probe_r_epi_sasa_save=sasa_save,
+                )
+            ]
         if self.config.p4_epistemic_decoupling:
             return [self._resolve_p4_epistemic_phase()]
         if (
@@ -386,6 +539,12 @@ class StageRunner:
             gentle_phase2=self.config.gentle_phase2,
             phase2_lr=self.config.phase2_lr,
         )
+        if self.config.routing_load_floor:
+            phases = apply_routing_load_floor_phase2(
+                phases,
+                coeff=self.config.routing_load_floor_coeff,
+                min_fraction=self.config.routing_load_floor_min,
+            )
         if self.config.phase is not None:
             phases = [p for p in phases if p.phase == self.config.phase]
         if self.config.epochs_override is not None:
@@ -476,6 +635,13 @@ class StageRunner:
                 logger.info("  Gate disc feature scale: %.2f", self.config.gate_disc_scale)
             if getattr(self.config, "gate_gumbel", False):
                 logger.info("  Gate routing: Gumbel-Softmax (hard)")
+            self._begin_phase_best_tracking(phase_cfg.phase)
+            if phase_cfg.coeffs.routing_load_floor_coeff > 0:
+                logger.info(
+                    "  Routing load floor: λ=%.2f min_share=%.2f (per-structure min-expert hinge)",
+                    phase_cfg.coeffs.routing_load_floor_coeff,
+                    phase_cfg.coeffs.routing_load_floor_min,
+                )
             if phase_cfg.min_disc_r_std_save is not None:
                 logger.info(
                     "  Disc save gate: disc_r_std >= %.3f required for v6_best",
@@ -488,10 +654,25 @@ class StageRunner:
                 )
             if phase_cfg.epistemic_uncertainty_only_train:
                 set_p4_uncertainty_only_freeze(self.model)
+                set_uncertainty_from_backbone(self.model, enabled=False)
                 optimizer = build_p4_optimizer(self.model, lr=phase_cfg.lr)
                 logger.info(
                     "  Phase 4 optimizer: AdamW on uncertainty_head only (lr=%.2e, AMP off)",
                     phase_cfg.lr,
+                )
+                logger.info("  Uncertainty probes: routed tangent (production inference path)")
+            elif phase_cfg.gate_only_train:
+                set_gate_only_freeze(self.model)
+                set_uncertainty_from_backbone(self.model, enabled=True)
+                from science.dtie.v5.gnn.model import build_optimizer
+
+                optimizer = build_optimizer(self.model, lr=phase_cfg.lr)
+                logger.info(
+                    "  Gate-only promotion: RiemannianAdam on gate+experts (lr=%.2e)",
+                    phase_cfg.lr,
+                )
+                logger.info(
+                    "  Uncertainty probes: backbone tangent (routing shifts decoupled from save gates)"
                 )
             else:
                 from science.dtie.v5.gnn.model import build_optimizer
@@ -565,6 +746,7 @@ class StageRunner:
                         None
                         if (
                             phase_cfg.epistemic_uncertainty_only_train
+                            or phase_cfg.gate_only_train
                             or phase_cfg.path_alignment_train
                             or phase_cfg.rec_ablation_train
                             or phase_cfg.projection_recovery_train
@@ -579,6 +761,7 @@ class StageRunner:
                         self._epistemic_holdouts if phase_cfg.phase == 4 else None
                     ),
                     epistemic_uncertainty_only_train=phase_cfg.epistemic_uncertainty_only_train,
+                    gate_only_train=phase_cfg.gate_only_train,
                 )
 
                 missing = ConvergenceMonitor.validate_epoch_metrics(losses)
@@ -620,6 +803,7 @@ class StageRunner:
                 disc_floor = coeffs.get("disc_spread_min_std")
                 disc_target = coeffs.get("disc_depth_scale_target")
                 route_ceiling = routing_save_max_for_epoch(phase_cfg, epoch)
+                skip_unc_gates = phase_cfg.gate_only_train
                 scored = score_checkpoint(
                     health,
                     losses,
@@ -631,6 +815,18 @@ class StageRunner:
                     min_disc_effective_rank_save=phase_cfg.min_disc_effective_rank_save,
                     min_disc_line_thickness_save=phase_cfg.min_disc_line_thickness_save,
                     disc_radial_source=self.config.disc_radial_source,
+                    max_probe_r_epi_ale_save=(
+                        None if skip_unc_gates else phase_cfg.max_probe_r_epi_ale_save
+                    ),
+                    max_probe_r_epi_sasa_save=(
+                        None if skip_unc_gates else phase_cfg.max_probe_r_epi_sasa_save
+                    ),
+                    min_epistemic_std_save=(
+                        None if skip_unc_gates else phase_cfg.min_epistemic_std_save
+                    ),
+                    min_aleatoric_std_save=(
+                        None if skip_unc_gates else phase_cfg.min_aleatoric_std_save
+                    ),
                 )
                 score = scored.score
 
@@ -653,11 +849,28 @@ class StageRunner:
                     checkpoint_eligible=scored.eligible,
                 )
                 log_metrics.update(focus_mlflow_metrics(focus))
-                from science.training.mlflow_governance import governance_epoch_metrics
-
-                log_metrics.update(
-                    governance_epoch_metrics(health, losses, self.model)
+                from science.training.mlflow_governance import (
+                    governance_epoch_metrics,
+                    stage_a_gate_passed,
                 )
+                from science.training.routing_metrics import inference_mode_routing_metrics
+
+                infer_routing = inference_mode_routing_metrics(
+                    self.model, self.proteins, self.config.device
+                )
+                gov = governance_epoch_metrics(
+                    health, losses, self.model, inference_routing=infer_routing
+                )
+                log_metrics.update(gov)
+                from science.training.stage_a_stop import (
+                    check_stage_a_inference_stop,
+                    format_stop_message,
+                    should_enforce_stage_a_stop,
+                )
+
+                stop_verdict = None
+                if should_enforce_stage_a_stop(self.config, phase_cfg.phase):
+                    stop_verdict = check_stage_a_inference_stop(infer_routing)
                 self._last_focus_summary = focus
                 if self.tracker:
                     self.tracker.log_metrics(log_metrics, step=self.global_epoch)
@@ -692,9 +905,12 @@ class StageRunner:
                 if phase_cfg.phase == 4 or float(losses.get("epistemic_decoupling", 0.0)) > 0.0:
                     logger.info(
                         "    decouple r(epi,bf_resid)=%.3f partial(epi,sasa|depth)=%.3f "
-                        "| λ_bf=%.3f λ_sasa=%.3f",
+                        "r(epi,ale)=%.3f epi_std=%.4f ale_std=%.4f | λ_bf=%.3f λ_sasa=%.3f",
                         float(losses.get("r_epi_bf_resid", float("nan"))),
                         float(losses.get("partial_epi_sasa_given_depth", float("nan"))),
+                        float(health.get("probe_r_epi_ale", float("nan"))),
+                        float(health.get("epistemic_std_mean", float("nan"))),
+                        float(health.get("aleatoric_std_mean", float("nan"))),
                         float(coeffs.get("epistemic_bf_align_coeff", 0.0)),
                         float(coeffs.get("epistemic_sasa_pen_coeff", 0.0)),
                     )
@@ -889,7 +1105,15 @@ class StageRunner:
                     "score": score,
                     "checkpoint_eligible": scored.eligible,
                     "elapsed": elapsed,
+                    "inference_routing": infer_routing,
+                    "stage_gate_passed": stage_a_gate_passed(
+                        health, losses, inference_routing=infer_routing
+                    ),
                 }
+                if stop_verdict is not None:
+                    entry["stop_enforced"] = stop_verdict.tripped
+                    if stop_verdict.reasons:
+                        entry["stop_reasons"] = list(stop_verdict.reasons)
                 self.metrics_log.append(entry)
                 self.checkpoint_mgr.write_metrics_log(self.metrics_log)
 
@@ -902,6 +1126,14 @@ class StageRunner:
                     )
 
                 self._maybe_export_disc_scatter(phase_cfg)
+
+                if stop_verdict is not None and stop_verdict.tripped:
+                    logger.error(
+                        "STAGE_A_STOP at global epoch %d: %s",
+                        self.global_epoch,
+                        stop_verdict.summary,
+                    )
+                    raise RuntimeError(format_stop_message(stop_verdict))
 
             self.checkpoint_mgr.save_phase(
                 self.model,

@@ -53,10 +53,16 @@ class LossCoeffs(BaseModel):
     shell_floor_coeff: float = 0.0
     shell_floor_min_r_depth_sasa: float = 0.60
     epistemic_decoupling_coeff: float = 0.0
+    epi_ale_decorrelation_coeff: float = 0.0
     epistemic_bf_align_coeff: float = 0.22
     epistemic_sasa_pen_coeff: float = 0.246
     epistemic_anticollapse_coeff: float = 0.05
     epistemic_min_epi_std: float = 0.02
+    routing_load_floor_coeff: float = 0.0
+    routing_load_floor_min: float = 0.05
+    pocket_bce_coeff: float = 0.0
+    interface_bce_coeff: float = 0.0
+    leak_bce_coeff: float = 0.0
 
 
 class PhaseConfig(BaseModel):
@@ -101,11 +107,16 @@ class PhaseConfig(BaseModel):
     epistemic_bf_align_coeff_final: float | None = None
     epistemic_sasa_pen_coeff_final: float | None = None
     epistemic_uncertainty_only_train: bool = False
+    gate_only_train: bool = False
     # Option B staged decoupling: λ₁-only phase, then capped/log λ₂ ramp
     epistemic_staged_decoupling: bool = False
     epistemic_bf_only_epochs: int = 10
     epistemic_sasa_pen_cap: float = 0.05
     epistemic_sasa_pen_cap_epochs: int = 5
+    max_probe_r_epi_ale_save: float | None = None
+    max_probe_r_epi_sasa_save: float | None = None
+    min_epistemic_std_save: float | None = None
+    min_aleatoric_std_save: float | None = None
 
 
 def routing_save_max_for_epoch(phase_cfg: PhaseConfig, epoch: int) -> float | None:
@@ -157,6 +168,10 @@ class TrainingConfig(BaseModel):
     gentle_phase2: bool = False
     phase2_lr: float | None = None
     save_epoch_snapshots: bool = False
+    enforce_stage_a_stop: bool = True
+    routing_load_floor: bool = False
+    routing_load_floor_coeff: float = 10.0
+    routing_load_floor_min: float = 0.05
     p1b: bool = False
     p1b_lr: float = 1e-4
     p1c: bool = False
@@ -214,6 +229,23 @@ class TrainingConfig(BaseModel):
     epistemic_sasa_pen_coeff: float | None = None
     shell_corr_epi_sasa_weight: float | None = None
     p4_epistemic_staged: bool = False
+    p4_uncertainty_calibration: bool = False
+    p4_head_decouple: bool = False
+    p4_gate_promotion: bool = False
+    p4_corpus25_gate_promotion: bool = False
+    p4_corpus25_touchup_extended: bool = False
+    p4_gate_uncertainty_touchup: bool = False
+    p4_gate_balance_coeff: float | None = None
+    p4_gate_load_floor_coeff: float | None = None
+    p4_gate_load_floor_min: float | None = None
+    decoupled_uncertainty_heads: bool = False
+    max_probe_r_epi_sasa_save: float | None = None
+    residue_stage1: bool = False
+    residue_stage1_lr: float = 1e-4
+    residue_stage1_epochs: int | None = None
+    residue_stage2: bool = False
+    residue_stage2_lr: float = 1e-4
+    residue_stage2_epochs: int | None = None
 
     def model_post_init(self, __context: object) -> None:
         self.output_dir = Path(self.output_dir)
@@ -228,8 +260,24 @@ class TrainingConfig(BaseModel):
         """Stable curriculum preset id for MLflow tags."""
         if self.full_hyp_moe_test:
             return "full_hyp_moe_test"
+        if self.residue_stage2:
+            return "residue_stage2"
+        if self.residue_stage1:
+            return "residue_stage1"
         if self.p4_epistemic_decoupling:
             return "p4_epistemic_decoupling"
+        if self.p4_uncertainty_calibration:
+            return "p4_uncertainty_calibration"
+        if self.p4_head_decouple:
+            return "p4_head_decouple"
+        if self.p4_corpus25_gate_promotion:
+            return "p4_corpus25_gate_promotion"
+        if self.p4_gate_promotion:
+            return "p4_gate_promotion"
+        if self.p4_corpus25_touchup_extended:
+            return "p4_corpus25_touchup_extended"
+        if self.p4_gate_uncertainty_touchup:
+            return "p4_gate_uncertainty_touchup"
         if self.p2_hypmix_final:
             return "p2_hypmix_final"
         if (
@@ -365,6 +413,28 @@ def default_v6_phases(
             ),
         ),
     ]
+
+
+def apply_routing_load_floor_phase2(
+    phases: list[PhaseConfig],
+    *,
+    coeff: float,
+    min_fraction: float = 0.05,
+) -> list[PhaseConfig]:
+    """Enable per-structure min-expert routing floor on Phase 2 only (Stage A contested routing)."""
+    out: list[PhaseConfig] = []
+    for phase_cfg in phases:
+        if phase_cfg.phase != 2:
+            out.append(phase_cfg)
+            continue
+        new_coeffs = phase_cfg.coeffs.model_copy(
+            update={
+                "routing_load_floor_coeff": coeff,
+                "routing_load_floor_min": min_fraction,
+            }
+        )
+        out.append(phase_cfg.model_copy(update={"coeffs": new_coeffs}))
+    return out
 
 
 def apply_phase_coeff_ramp(
@@ -1261,6 +1331,345 @@ def p4_epistemic_decoupling_phase_config(
                 }
             ),
         }
+    )
+
+
+def p4_uncertainty_calibration_phase_config(
+    lr: float = 5e-5,
+    epochs: int = 25,
+) -> PhaseConfig:
+    """P4 from rs2_post_p4: decouple ν_epi/ν_ale without heavy disc-occupancy pressure."""
+    return PhaseConfig(
+        phase=4,
+        name="Phase 4 uncertainty calibration (staged decoupling, rs2 warm-start)",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=False,
+        freeze_gate=True,
+        expert_dropout_p=0.0,
+        epistemic_decoupling_ramp_epochs=5,
+        epistemic_bf_align_coeff_final=0.28,
+        epistemic_sasa_pen_coeff_final=0.08,
+        epistemic_staged_decoupling=True,
+        epistemic_bf_only_epochs=8,
+        epistemic_sasa_pen_cap=0.04,
+        epistemic_sasa_pen_cap_epochs=5,
+        epistemic_uncertainty_only_train=True,
+        min_disc_line_thickness_save=0.04,
+        min_probe_r_depth_sasa_save=0.55,
+        max_probe_r_epi_ale_save=0.85,
+        max_probe_r_epi_sasa_save=0.78,
+        min_epistemic_std_save=0.05,
+        min_aleatoric_std_save=0.5,
+        routing_save_ceiling_start=1.39,
+        routing_save_ceiling_final=1.22,
+        routing_save_ceiling_ramp_epochs=10,
+        coeffs=LossCoeffs(
+            evidential_coeff=0.01,
+            balance_coeff=0.001,
+            cone_coeff=0.05,
+            neighborhood_coeff=0.05,
+            angular_coeff=0.02,
+            domain_sep_2d_coeff=0.02,
+            domain_sep_3d_coeff=0.02,
+            cone_depth_anticollapse_coeff=0.15,
+            shell_corr_coeff=0.05,
+            shell_corr_epi_sasa_weight=0.0,
+            disc_occupancy_coeff=0.10,
+            disc_occupancy_min_sigma_ratio=0.30,
+            epistemic_decoupling_coeff=1.0,
+            epistemic_bf_align_coeff=0.0,
+            epistemic_sasa_pen_coeff=0.0,
+            epistemic_anticollapse_coeff=0.15,
+            epistemic_min_epi_std=0.03,
+        ),
+    )
+
+
+def p4_head_decouple_phase_config(
+    lr: float = 5e-5,
+    epochs: int = 20,
+    *,
+    max_probe_r_epi_sasa_save: float = 0.78,
+    phase_name: str = "Phase 4 head decouple split epi ale trunks rs2 warm-start",
+) -> PhaseConfig:
+    """P4 with split epi/ale trunks + direct r(epi,ale) penalty (rs2 warm-start)."""
+    return PhaseConfig(
+        phase=4,
+        name=phase_name,
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=False,
+        freeze_gate=True,
+        expert_dropout_p=0.0,
+        epistemic_decoupling_ramp_epochs=5,
+        epistemic_bf_align_coeff_final=0.28,
+        epistemic_sasa_pen_coeff_final=0.08,
+        epistemic_staged_decoupling=True,
+        epistemic_bf_only_epochs=6,
+        epistemic_sasa_pen_cap=0.04,
+        epistemic_sasa_pen_cap_epochs=5,
+        epistemic_uncertainty_only_train=True,
+        min_disc_line_thickness_save=0.04,
+        min_probe_r_depth_sasa_save=0.55,
+        max_probe_r_epi_ale_save=0.70,
+        max_probe_r_epi_sasa_save=max_probe_r_epi_sasa_save,
+        min_epistemic_std_save=0.05,
+        min_aleatoric_std_save=0.5,
+        routing_save_ceiling_start=1.39,
+        routing_save_ceiling_final=1.22,
+        routing_save_ceiling_ramp_epochs=8,
+        coeffs=LossCoeffs(
+            evidential_coeff=0.01,
+            balance_coeff=0.001,
+            cone_coeff=0.05,
+            neighborhood_coeff=0.05,
+            angular_coeff=0.02,
+            domain_sep_2d_coeff=0.02,
+            domain_sep_3d_coeff=0.02,
+            cone_depth_anticollapse_coeff=0.15,
+            shell_corr_coeff=0.05,
+            shell_corr_epi_sasa_weight=0.0,
+            disc_occupancy_coeff=0.08,
+            disc_occupancy_min_sigma_ratio=0.30,
+            epistemic_decoupling_coeff=1.0,
+            epi_ale_decorrelation_coeff=0.75,
+            epistemic_bf_align_coeff=0.0,
+            epistemic_sasa_pen_coeff=0.0,
+            epistemic_anticollapse_coeff=0.15,
+            epistemic_min_epi_std=0.03,
+        ),
+    )
+
+
+def p4_gate_promotion_phase_config(
+    lr: float = 3e-5,
+    epochs: int = 20,
+    *,
+    max_probe_r_epi_sasa_save: float = 0.79,
+    balance_coeff: float = 0.06,
+    routing_load_floor_coeff: float = 12.0,
+    routing_load_floor_min: float = 0.10,
+) -> PhaseConfig:
+    """Gate-only pass after head decouple: reduce routing H while preserving uncertainty gates."""
+    return PhaseConfig(
+        phase=2,
+        name="Phase 2 gate promotion after head decouple",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=True,
+        freeze_angular=True,
+        freeze_backbone=True,
+        freeze_gate=False,
+        gate_only_train=True,
+        expert_dropout_p=0.12,
+        expert_dropout_ramp_epochs=5,
+        min_probe_r_depth_sasa_save=0.55,
+        min_disc_line_thickness_save=0.04,
+        max_probe_r_epi_ale_save=0.70,
+        max_probe_r_epi_sasa_save=max_probe_r_epi_sasa_save,
+        min_epistemic_std_save=0.05,
+        min_aleatoric_std_save=0.5,
+        routing_save_ceiling_start=1.38,
+        routing_save_ceiling_final=1.18,
+        routing_save_ceiling_ramp_epochs=epochs,
+        p2_bridge=True,
+        coeffs=LossCoeffs(
+            balance_coeff=balance_coeff,
+            routing_load_floor_coeff=routing_load_floor_coeff,
+            routing_load_floor_min=routing_load_floor_min,
+            evidential_coeff=0.0,
+            cone_coeff=0.02,
+            neighborhood_coeff=0.02,
+            angular_coeff=0.0,
+            domain_sep_2d_coeff=0.0,
+            domain_sep_3d_coeff=0.0,
+            cone_depth_anticollapse_coeff=0.05,
+            shell_corr_coeff=0.05,
+            disc_occupancy_coeff=0.05,
+            disc_occupancy_min_sigma_ratio=0.30,
+            epistemic_decoupling_coeff=0.0,
+            epi_ale_decorrelation_coeff=0.0,
+        ),
+    )
+
+
+def p4_corpus25_gate_phase_config(
+    lr: float = 3e-5,
+    epochs: int = 30,
+    *,
+    max_probe_r_epi_sasa_save: float = 0.79,
+    balance_coeff: float = 0.08,
+    routing_load_floor_coeff: float = 14.0,
+    routing_load_floor_min: float = 0.10,
+) -> PhaseConfig:
+    """Gate-only on locked 25-protein Stage A: moderate MoE pressure vs v5_strong."""
+    base = p4_gate_promotion_phase_config(
+        lr=lr,
+        epochs=epochs,
+        max_probe_r_epi_sasa_save=max_probe_r_epi_sasa_save,
+        balance_coeff=balance_coeff,
+        routing_load_floor_coeff=routing_load_floor_coeff,
+        routing_load_floor_min=routing_load_floor_min,
+    )
+    return base.model_copy(
+        update={
+            "name": "Phase 2 corpus-25 gate promotion",
+        }
+    )
+
+
+def p4_gate_uncertainty_touchup_phase_config(
+    lr: float = 5e-5,
+    epochs: int = 15,
+    *,
+    max_probe_r_epi_sasa_save: float = 0.79,
+) -> PhaseConfig:
+    """Re-lock uncertainty after gate routing shift (uncertainty head only, gate frozen)."""
+    return PhaseConfig(
+        phase=4,
+        name="Phase 4 gate touchup uncertainty recalibration",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=True,
+        freeze_angular=True,
+        freeze_backbone=True,
+        freeze_gate=True,
+        expert_dropout_p=0.0,
+        epistemic_decoupling_ramp_epochs=4,
+        epistemic_bf_align_coeff_final=0.22,
+        epistemic_sasa_pen_coeff_final=0.12,
+        epistemic_staged_decoupling=True,
+        epistemic_bf_only_epochs=5,
+        epistemic_sasa_pen_cap=0.06,
+        epistemic_sasa_pen_cap_epochs=6,
+        epistemic_uncertainty_only_train=True,
+        min_disc_line_thickness_save=0.04,
+        min_probe_r_depth_sasa_save=0.55,
+        max_probe_r_epi_ale_save=0.70,
+        max_probe_r_epi_sasa_save=max_probe_r_epi_sasa_save,
+        min_epistemic_std_save=0.05,
+        min_aleatoric_std_save=0.5,
+        # Gate frozen — do not block touchup saves on routing H.
+        routing_save_ceiling_start=1.45,
+        routing_save_ceiling_final=1.45,
+        routing_save_ceiling_ramp_epochs=1,
+        coeffs=LossCoeffs(
+            evidential_coeff=0.005,
+            balance_coeff=0.0,
+            cone_coeff=0.0,
+            neighborhood_coeff=0.0,
+            angular_coeff=0.0,
+            domain_sep_2d_coeff=0.0,
+            domain_sep_3d_coeff=0.0,
+            epistemic_decoupling_coeff=1.0,
+            epi_ale_decorrelation_coeff=0.6,
+            epistemic_bf_align_coeff=0.0,
+            epistemic_sasa_pen_coeff=0.0,
+            epistemic_anticollapse_coeff=0.10,
+            epistemic_min_epi_std=0.03,
+        ),
+    )
+
+
+def p4_corpus25_touchup_extended_phase_config(
+    lr: float = 5e-5,
+    epochs: int = 25,
+    *,
+    max_probe_r_epi_sasa_save: float = 0.79,
+) -> PhaseConfig:
+    """Extended routed uncertainty recal: rebuild r(epi,sasa) while gate stays frozen."""
+    base = p4_gate_uncertainty_touchup_phase_config(
+        lr=lr,
+        epochs=epochs,
+        max_probe_r_epi_sasa_save=max_probe_r_epi_sasa_save,
+    )
+    return base.model_copy(
+        update={
+            "name": "Phase 4 corpus expand extended uncertainty touchup",
+            "epistemic_decoupling_ramp_epochs": 6,
+            "epistemic_bf_only_epochs": 6,
+            "epistemic_sasa_pen_cap_epochs": 10,
+            "epistemic_sasa_pen_cap": 0.10,
+            "epistemic_sasa_pen_coeff_final": 0.18,
+            "coeffs": base.coeffs.model_copy(
+                update={
+                    "epi_ale_decorrelation_coeff": 0.7,
+                    "epistemic_sasa_pen_coeff": 0.0,
+                }
+            ),
+        }
+    )
+
+
+def residue_stage2_phase_config(
+    lr: float = 1e-4,
+    epochs: int = 30,
+) -> PhaseConfig:
+    """ResidueStage2: pipeline cryptic pocket + source-leak BCE (gate frozen)."""
+    return PhaseConfig(
+        phase=1,
+        name="ResidueStage2: pipeline cryptic + source-leak BCE (gate frozen)",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=False,
+        freeze_gate=True,
+        expert_dropout_p=0.0,
+        coeffs=LossCoeffs(
+            evidential_coeff=0.001,
+            balance_coeff=0.001,
+            cone_coeff=0.10,
+            neighborhood_coeff=0.10,
+            angular_coeff=0.05,
+            domain_sep_2d_coeff=0.05,
+            domain_sep_3d_coeff=0.05,
+            cone_depth_anticollapse_coeff=0.30,
+            shell_corr_coeff=0.15,
+            disc_occupancy_coeff=0.25,
+            disc_occupancy_min_sigma_ratio=0.35,
+            pocket_bce_coeff=0.5,
+            interface_bce_coeff=0.25,
+            leak_bce_coeff=1.5,
+        ),
+    )
+
+
+def residue_stage1_phase_config(
+    lr: float = 1e-4,
+    epochs: int = 30,
+) -> PhaseConfig:
+    """ResidueStage1: pocket + interface BCE on stable small-corpus manifold."""
+    return PhaseConfig(
+        phase=1,
+        name="ResidueStage1: pocket + interface BCE (gate frozen)",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=False,
+        freeze_gate=True,
+        expert_dropout_p=0.0,
+        coeffs=LossCoeffs(
+            evidential_coeff=0.001,
+            balance_coeff=0.001,
+            cone_coeff=0.10,
+            neighborhood_coeff=0.10,
+            angular_coeff=0.05,
+            domain_sep_2d_coeff=0.05,
+            domain_sep_3d_coeff=0.05,
+            cone_depth_anticollapse_coeff=0.30,
+            shell_corr_coeff=0.15,
+            disc_occupancy_coeff=0.25,
+            disc_occupancy_min_sigma_ratio=0.35,
+            pocket_bce_coeff=1.0,
+            interface_bce_coeff=0.5,
+        ),
     )
 
 

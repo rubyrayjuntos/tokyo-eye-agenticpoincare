@@ -4,7 +4,7 @@ SHELL := /bin/bash -o pipefail
 # Map container UID/GID to host so bind mounts (mlruns, checkpoints) are writable
 DOCKER_USER := $(shell id -u):$(shell id -g)
 SCIENCE_RUN := docker compose run --rm --user $(DOCKER_USER)
-STAGE_A_MAX_RESIDUES := $(shell uv run python -c "from science.training.corpus_governance import STAGE_A_MAX_RESIDUES; print(STAGE_A_MAX_RESIDUES)")
+STAGE_A_MAX_RESIDUES := $(shell PYTHONPATH=. python3 -c "from science.training.corpus_governance import STAGE_A_MAX_RESIDUES; print(STAGE_A_MAX_RESIDUES)" 2>/dev/null || echo 650)
 # Host-mapped UID often has no writable $HOME in the container; install test deps to /tmp.
 TEST_DEPS_DIR := /tmp/tokyoeye-pytest-deps
 TEST_RUN_PREFIX := pip install --quiet --target $(TEST_DEPS_DIR) pytest pytest-asyncio hypothesis httpx && PYTHONPATH=$(TEST_DEPS_DIR):$$PYTHONPATH PYTEST_CACHE_DIR=/tmp/tokyoeye-pytest-cache python -m pytest
@@ -552,6 +552,356 @@ train-v6-stage-a-smoke: ## 1-epoch locked Stage A corpus + MLflow (P_STAGE_A_SMO
 		--resume /app/$(or $(RESUME),checkpoints/v6/runs/lever_a_clean_slate_v1/v6_best_disc.pt)
 	@echo "Smoke complete. Verify with: STAGE_A_SMOKE_RUN_ID=<run_id> make test-stage-a-smoke"
 
+train-v6-stage-a-curriculum: ## Full 3-phase Stage A on locked corpus (25 proteins, epoch snapshots, lever_a warm-start)
+	@test -f manifests/v6_corpus_stage_a.json || (echo "Missing locked Stage A manifest" && exit 1)
+	@test -f $(or $(RESUME),checkpoints/v6/runs/lever_a_clean_slate_v1/v6_best_disc.pt) || \
+		(echo "Missing lever_a resume checkpoint for warm-start" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a.json \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),stage_a_$(shell date +%Y%m%d_%H%M%S)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),25) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),checkpoints/v6/runs/lever_a_clean_slate_v1/v6_best_disc.pt) \
+		--save-epoch-snapshots
+	@echo "Curriculum complete. Read trajectory: checkpoints/v6/runs/$(or $(RUN_ID),stage_a_*)"
+
+train-v6-stage-a-small-corpus: ## 12-protein fold-diverse expansion (no floor; lever_a warm-start; corpus-jump test)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@test -f $(or $(RESUME),checkpoints/v6/runs/lever_a_clean_slate_v1/v6_best_disc.pt) || \
+		(echo "Missing lever_a resume checkpoint for warm-start" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),stage_a_small_$(shell date +%Y%m%d_%H%M%S)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),checkpoints/v6/runs/lever_a_clean_slate_v1/v6_best_disc.pt) \
+		--save-epoch-snapshots
+	@echo "Small corpus curriculum complete. Read trajectory: checkpoints/v6/runs/$(or $(RUN_ID),stage_a_small_*)"
+
+train-v6-residue-stage1: ## ResidueStage1 BCE on 12-protein corpus (warm-start stage_a_small_v1)
+	@test -f manifests/v6_corpus_residue_stage1.json || (echo "Missing ResidueStage1 manifest" && exit 1)
+	@test -f $(or $(RESUME),checkpoints/v6/runs/stage_a_small_v1/v6_best_disc.pt) || \
+		(echo "Missing stage_a_small_v1 checkpoint for warm-start" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/v6_corpus_residue_stage1.json \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),residue_stage1_$(shell date +%Y%m%d_%H%M%S)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),checkpoints/v6/runs/stage_a_small_v1/v6_best.pt) \
+		--residue-stage1 \
+		--residue-stage1-lr $(or $(RESIDUE_STAGE1_LR),1e-4) \
+		--residue-stage1-epochs $(or $(EPOCHS),30) \
+		--no-corpus-cache
+	@echo "ResidueStage1 complete. Compare pocket_bce / interface_bce in MLflow."
+
+train-v6-residue-stage2: ## ResidueStage2 pipeline cryptic + source-leak BCE (warm-start residue_stage1)
+	@test -f manifests/v6_corpus_residue_stage2_pipeline.json || (echo "Missing ResidueStage2 manifest" && exit 1)
+	@test -f $(or $(RESUME),checkpoints/v6/runs/residue_stage1_v1/v6_best.pt) || \
+		(echo "Missing resume checkpoint: $(or $(RESUME),checkpoints/v6/runs/residue_stage1_v1/v6_best.pt)" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/v6_corpus_residue_stage2_pipeline.json \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),residue_stage2_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),checkpoints/v6/runs/residue_stage1_v1/v6_best.pt) \
+		--residue-stage2 \
+		--residue-stage2-lr $(or $(RESIDUE_STAGE2_LR),1e-4) \
+		--residue-stage2-epochs $(or $(EPOCHS),30) \
+		--no-corpus-cache
+	@echo "ResidueStage2 complete. Compare leak_bce / pocket_bce in MLflow."
+
+train-v6-p4-from-residue-stage2: ## P4 staged epistemic on 12-protein corpus (warm-start residue_stage2)
+	@test -f $(or $(RESUME),checkpoints/v6/runs/residue_stage2_v1/v6_phase1_12prot.pt) || \
+		(echo "Missing resume checkpoint: $(or $(RESUME),checkpoints/v6/runs/residue_stage2_v1/v6_phase1_12prot.pt)" && exit 1)
+	@test -f science/dtie/v3/checkpoints/v2_bridge_epoch_014.pt || \
+		(echo "Missing v2_bridge teacher checkpoint" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),p4_epi_rs2_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),checkpoints/v6/runs/residue_stage2_v1/v6_phase1_12prot.pt) \
+		--p4-epistemic-decoupling \
+		--p4-epistemic-staged \
+		--p4-epistemic-lr $(or $(P4_EPISTEMIC_LR),1e-4) \
+		--epistemic-bf-align-coeff $(or $(EPISTEMIC_BF_ALIGN_COEFF),0.22) \
+		--epistemic-sasa-pen-coeff $(or $(EPISTEMIC_SASA_PEN_COEFF),0.10) \
+		--shell-corr-epi-sasa-weight $(or $(SHELL_CORR_EPI_SASA),0.0) \
+		--epistemic-decoupling-holdouts $(or $(EPISTEMIC_DECOUPLING_HOLDOUTS),1IVO\,4MNE) \
+		--epochs $(or $(EPOCHS),30) \
+		--save-epoch-snapshots \
+		--v2-teacher-checkpoint $(V2_TEACHER_CKPT_CONTAINER) \
+		--v2-teacher-epistemic-coeff 0 \
+		--no-corpus-cache
+	@echo "P4-from-residue-stage2 complete. Inspect std(epi), r(epi,ale), probe_r_epi_sasa in MLflow."
+
+train-v6-exhaustive-curriculum: ## Chain P4→P4-tight→RS2 refresh (~70 epochs, sequential)
+	@chmod +x experiments/training/v6/run_exhaustive_curriculum.sh
+	bash experiments/training/v6/run_exhaustive_curriculum.sh
+
+probe-v6-biology: ## KRAS biology probes (Probe 1/4/5) on CHECKPOINT; optional COMPARE=
+	@mkdir -p checkpoints/v6/diagnostics pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.biology_probes \
+		--checkpoint /app/$(or $(CHECKPOINT),checkpoints/v6/runs/rs2_post_p4_v1/v6_best.pt) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		$(if $(COMPARE),--compare /app/$(COMPARE),) \
+		--output /app/$(or $(OUTPUT),checkpoints/v6/diagnostics/biology_probes_$(or $(RUN_ID),latest).json)
+
+train-v6-p4-uncertainty-calibration: ## P4 uncertainty decoupling warm-start rs2_post_p4_v1 (25 ep)
+	@test -f $(or $(RESUME),checkpoints/v6/runs/rs2_post_p4_v1/v6_best.pt) || \
+		(echo "Missing resume checkpoint: $(or $(RESUME),checkpoints/v6/runs/rs2_post_p4_v1/v6_best.pt)" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),p4_uncertainty_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),checkpoints/v6/runs/rs2_post_p4_v1/v6_best.pt) \
+		--p4-uncertainty-calibration \
+		--p4-epistemic-lr $(or $(P4_EPISTEMIC_LR),5e-5) \
+		--epistemic-decoupling-holdouts $(or $(EPISTEMIC_DECOUPLING_HOLDOUTS),1IVO\,4MNE) \
+		--epochs $(or $(EPOCHS),25) \
+		--save-epoch-snapshots \
+		--v2-teacher-checkpoint $(V2_TEACHER_CKPT_CONTAINER) \
+		--v2-teacher-epistemic-coeff 0 \
+		--no-corpus-cache
+	@echo "P4 uncertainty calibration complete. Check probe_r_epi_ale, epistemic_std_mean in MLflow."
+
+train-v6-p4-head-decouple: ## P4 split epi/ale trunks + decorrelation loss (20 ep, rs2 warm-start)
+	@test -f $(or $(RESUME),checkpoints/v6/runs/rs2_post_p4_v1/v6_best.pt) || \
+		(echo "Missing resume checkpoint: $(or $(RESUME),checkpoints/v6/runs/rs2_post_p4_v1/v6_best.pt)" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),p4_head_decouple_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),checkpoints/v6/runs/rs2_post_p4_v1/v6_best.pt) \
+		--p4-head-decouple \
+		--p4-epistemic-lr $(or $(P4_EPISTEMIC_LR),5e-5) \
+		--epistemic-decoupling-holdouts $(or $(EPISTEMIC_DECOUPLING_HOLDOUTS),1IVO\,4MNE) \
+		--epochs $(or $(EPOCHS),20) \
+		--save-epoch-snapshots \
+		--v2-teacher-checkpoint $(V2_TEACHER_CKPT_CONTAINER) \
+		--v2-teacher-epistemic-coeff 0 \
+		--no-corpus-cache
+	@echo "P4 head decouple complete. Target: probe_r_epi_ale < 0.70 for v6_best save."
+
+train-v6-p4-head-decouple-continue: ## Continue head decouple from phase checkpoint (12 ep, sasa gate 0.79)
+	@test -f $(or $(RESUME),checkpoints/v6/runs/p4_head_decouple_v1/v6_phase4_12prot.pt) || \
+		(echo "Missing resume: $(or $(RESUME),checkpoints/v6/runs/p4_head_decouple_v1/v6_phase4_12prot.pt)" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),p4_head_decouple_v2) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),checkpoints/v6/runs/p4_head_decouple_v1/v6_phase4_12prot.pt) \
+		--p4-head-decouple \
+		--max-probe-r-epi-sasa-save $(or $(MAX_PROBE_R_EPI_SASA_SAVE),0.79) \
+		--p4-epistemic-lr $(or $(P4_EPISTEMIC_LR),5e-5) \
+		--epistemic-decoupling-holdouts $(or $(EPISTEMIC_DECOUPLING_HOLDOUTS),1IVO\,4MNE) \
+		--epochs $(or $(EPOCHS),12) \
+		--save-epoch-snapshots \
+		--v2-teacher-checkpoint $(V2_TEACHER_CKPT_CONTAINER) \
+		--v2-teacher-epistemic-coeff 0 \
+		--no-corpus-cache
+	@echo "P4 head decouple continue complete."
+
+train-v6-p4-gate-promotion: ## Gate-only routing pass from head-decouple best (20 ep, backbone uncertainty probes)
+	@test -f $(or $(RESUME),checkpoints/v6/runs/p4_head_decouple_v2/v6_best.pt) || \
+		(echo "Missing resume: $(or $(RESUME),checkpoints/v6/runs/p4_head_decouple_v2/v6_best.pt)" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),p4_gate_promotion_v3) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),checkpoints/v6/runs/p4_head_decouple_v2/v6_best.pt) \
+		--p4-gate-promotion \
+		--max-probe-r-epi-sasa-save $(or $(MAX_PROBE_R_EPI_SASA_SAVE),0.79) \
+		--p4-epistemic-lr $(or $(P4_EPISTEMIC_LR),3e-5) \
+		--epochs $(or $(EPOCHS),20) \
+		$(if $(P4_GATE_BALANCE_COEFF),--p4-gate-balance-coeff $(P4_GATE_BALANCE_COEFF),) \
+		$(if $(P4_GATE_LOAD_FLOOR_COEFF),--p4-gate-load-floor-coeff $(P4_GATE_LOAD_FLOOR_COEFF),) \
+		$(if $(P4_GATE_LOAD_FLOOR_MIN),--p4-gate-load-floor-min $(P4_GATE_LOAD_FLOOR_MIN),) \
+		$(if $(GATE_GUMBEL),--gate-gumbel,) \
+		--save-epoch-snapshots \
+		--v2-teacher-epistemic-coeff 0 \
+		--no-corpus-cache
+	@echo "P4 gate promotion complete. Uncertainty save gates use backbone tangent during gate training."
+
+train-v6-p4-gate-touchup: ## Routed-path uncertainty recalibration after gate pass (15 ep)
+	@test -f $(or $(RESUME),checkpoints/v6/runs/$(or $(GATE_PROMOTION_RUN),p4_gate_promotion_v3)/v6_phase2_12prot.pt) || \
+		(echo "Missing resume: $(or $(RESUME),checkpoints/v6/runs/$(or $(GATE_PROMOTION_RUN),p4_gate_promotion_v3)/v6_phase2_12prot.pt)" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),p4_gate_touchup_v3) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),checkpoints/v6/runs/$(or $(GATE_PROMOTION_RUN),p4_gate_promotion_v3)/v6_phase2_12prot.pt) \
+		--p4-gate-uncertainty-touchup \
+		--max-probe-r-epi-sasa-save $(or $(MAX_PROBE_R_EPI_SASA_SAVE),0.79) \
+		--p4-epistemic-lr $(or $(P4_EPISTEMIC_LR),5e-5) \
+		--epistemic-decoupling-holdouts $(or $(EPISTEMIC_DECOUPLING_HOLDOUTS),1IVO\,4MNE) \
+		--epochs $(or $(EPOCHS),15) \
+		--save-epoch-snapshots \
+		--v2-teacher-epistemic-coeff 0 \
+		--no-corpus-cache
+	@echo "P4 gate touchup complete. Production uncertainty path is routed tangent."
+
+train-v6-p4-gate-full-promotion: ## Gate pass + routed touchup (v3 defaults)
+	$(MAKE) train-v6-p4-gate-promotion RUN_ID=$(or $(GATE_PROMOTION_RUN),p4_gate_promotion_v3)
+	$(MAKE) train-v6-p4-gate-touchup \
+		GATE_PROMOTION_RUN=$(or $(GATE_PROMOTION_RUN),p4_gate_promotion_v3) \
+		RUN_ID=$(or $(GATE_TOUCHUP_RUN),p4_gate_touchup_v3)
+
+CORPUS25_MANIFEST := v6_corpus_stage_a_expand_v1.json
+CORPUS25_PROTEINS := 23
+CORPUS25_RESUME := checkpoints/v6/runs/p4_corpus25_touchup_v4c/v6_best.pt
+CORPUS25_GATE_TOUCHUP_RESUME := checkpoints/v6/runs/$(or $(GATE_PROMOTION_RUN),p4_corpus25_gate_v1)/v6_best.pt
+
+train-v6-p4-corpus25-gate: ## Gate on Stage A expand corpus (23 prot) from touchup v5 (30 ep, moderate MoE + Gumbel)
+	@test -f manifests/$(CORPUS25_MANIFEST) || (echo "Missing expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(CORPUS25_RESUME)) || \
+		(echo "Missing resume: $(or $(RESUME),$(CORPUS25_RESUME))" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/$(CORPUS25_MANIFEST) \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),p4_corpus25_gate_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),$(CORPUS25_PROTEINS)) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),$(CORPUS25_RESUME)) \
+		--p4-corpus25-gate-promotion \
+		--gate-gumbel \
+		--max-probe-r-epi-sasa-save $(or $(MAX_PROBE_R_EPI_SASA_SAVE),0.79) \
+		--p4-epistemic-lr $(or $(P4_EPISTEMIC_LR),3e-5) \
+		--epochs $(or $(EPOCHS),30) \
+		$(if $(P4_GATE_BALANCE_COEFF),--p4-gate-balance-coeff $(P4_GATE_BALANCE_COEFF),) \
+		$(if $(P4_GATE_LOAD_FLOOR_COEFF),--p4-gate-load-floor-coeff $(P4_GATE_LOAD_FLOOR_COEFF),) \
+		$(if $(P4_GATE_LOAD_FLOOR_MIN),--p4-gate-load-floor-min $(P4_GATE_LOAD_FLOOR_MIN),) \
+		--save-epoch-snapshots \
+		--v2-teacher-epistemic-coeff 0 \
+		--no-corpus-cache
+	@echo "Corpus-25 gate pass complete."
+
+train-v6-p4-corpus25-touchup: ## Routed uncertainty touchup after corpus expand gate (default: from gate v6_best)
+	@test -f manifests/$(CORPUS25_MANIFEST) || (echo "Missing expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(CORPUS25_GATE_TOUCHUP_RESUME)) || \
+		(echo "Missing resume: $(or $(RESUME),$(CORPUS25_GATE_TOUCHUP_RESUME))" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/$(CORPUS25_MANIFEST) \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),p4_corpus25_touchup_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),$(CORPUS25_PROTEINS)) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),$(CORPUS25_GATE_TOUCHUP_RESUME)) \
+		--p4-gate-uncertainty-touchup \
+		--max-probe-r-epi-sasa-save $(or $(MAX_PROBE_R_EPI_SASA_SAVE),0.79) \
+		--p4-epistemic-lr $(or $(P4_EPISTEMIC_LR),5e-5) \
+		--epistemic-decoupling-holdouts $(or $(EPISTEMIC_DECOUPLING_HOLDOUTS),1IVO\,4MNE) \
+		--epochs $(or $(EPOCHS),15) \
+		--save-epoch-snapshots \
+		--v2-teacher-epistemic-coeff 0 \
+		--no-corpus-cache
+	@echo "Corpus-25 touchup complete."
+
+train-v6-p4-corpus25-touchup-extended: ## Extended SASA recal touchup (25 ep, gate frozen)
+	@test -f manifests/$(CORPUS25_MANIFEST) || (echo "Missing expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(CORPUS25_RESUME)) || \
+		(echo "Missing resume: $(or $(RESUME),$(CORPUS25_RESUME))" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/$(CORPUS25_MANIFEST) \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),p4_corpus25_touchup_v4) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),$(CORPUS25_PROTEINS)) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),$(CORPUS25_RESUME)) \
+		--p4-corpus25-touchup-extended \
+		--max-probe-r-epi-sasa-save $(or $(MAX_PROBE_R_EPI_SASA_SAVE),0.79) \
+		--p4-epistemic-lr $(or $(P4_EPISTEMIC_LR),5e-5) \
+		--epistemic-decoupling-holdouts $(or $(EPISTEMIC_DECOUPLING_HOLDOUTS),1IVO\,4MNE) \
+		--epochs $(or $(EPOCHS),25) \
+		--save-epoch-snapshots \
+		--v2-teacher-epistemic-coeff 0 \
+		--no-corpus-cache
+	@echo "Corpus-25 extended touchup complete."
+
+train-v6-p4-corpus25-full: ## Corpus expand gate + touchup from CORPUS25_RESUME champion
+	$(MAKE) train-v6-p4-corpus25-gate \
+		RUN_ID=$(or $(GATE_PROMOTION_RUN),p4_corpus25_gate_v1) \
+		RESUME=$(or $(RESUME),$(CORPUS25_RESUME))
+	$(MAKE) train-v6-p4-corpus25-touchup \
+		GATE_PROMOTION_RUN=$(or $(GATE_PROMOTION_RUN),p4_corpus25_gate_v1) \
+		RUN_ID=$(or $(GATE_TOUCHUP_RUN),p4_corpus25_touchup_v1)
+
+train-v6-p4-corpus25-push: ## Extended touchup → gate → touchup from gate best (v3b champion)
+	$(MAKE) train-v6-p4-corpus25-touchup-extended \
+		RUN_ID=$(or $(TOUCHUP_EXTENDED_RUN),p4_corpus25_touchup_v4) \
+		RESUME=$(or $(RESUME),$(CORPUS25_RESUME))
+	$(MAKE) train-v6-p4-corpus25-gate \
+		RUN_ID=$(or $(GATE_PROMOTION_RUN),p4_corpus25_gate_v4) \
+		RESUME=checkpoints/v6/runs/$(or $(TOUCHUP_EXTENDED_RUN),p4_corpus25_touchup_v4)/v6_best.pt
+	$(MAKE) train-v6-p4-corpus25-touchup \
+		GATE_PROMOTION_RUN=$(or $(GATE_PROMOTION_RUN),p4_corpus25_gate_v4) \
+		RUN_ID=$(or $(GATE_TOUCHUP_RUN),p4_corpus25_touchup_v4b)
+
+export-corpus-viewers: ## Export NGL + Poincaré disc HTML for each corpus structure
+	@mkdir -p data/local_objects/gnn_viewer
+	$(SCIENCE_RUN) science python -m experiments.training.v6.export_corpus_viewers \
+		--checkpoint /app/$(or $(CHECKPOINT),checkpoints/v6/runs/residue_stage2_v1/v6_phase1_12prot.pt) \
+		--corpus /app/$(or $(CORPUS),manifests/v6_corpus_stage_a_small_v1.json) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12)
+	@echo "Viewers under data/local_objects/gnn_viewer/<pdb>/"
+
 test-stage-a-smoke: ## Assert P_STAGE_A_SMOKE on STAGE_A_SMOKE_RUN_ID MLflow run
 	@test -n "$$STAGE_A_SMOKE_RUN_ID" || (echo "Set STAGE_A_SMOKE_RUN_ID to the smoke run id" && exit 1)
 	MLFLOW_TRACKING_URI=$(or $(MLFLOW_TRACKING_URI),file:./mlruns) \
@@ -738,11 +1088,15 @@ test-v6-gnn-integration: ## Run tests/test_v6_gnn_integration.py in science cont
 		sh -c "$(TEST_RUN_PREFIX) tests/test_v6_gnn_integration.py -v --tb=short"
 
 mlflow-ui: ## Open MLflow UI for training runs (http://localhost:5000)
-	@mkdir -p mlruns
+	@mkdir -p mlruns mlflow-artifacts
+	@python3 experiments/training/v6/repair_mlflow_store.py --store mlruns
 	$(SCIENCE_RUN) -p 5000:5000 science \
 		mlflow ui --host 0.0.0.0 --port 5000 --backend-store-uri file:/app/mlruns
 
-.PHONY: help up down kill build rebuild logs ps migrate psql dev dev-frontend test test-host test-docker test-integration test-integration-docker test-all lint format typecheck clean train-v6 train-v6-curriculum assess-v6 eval-v6 diagnose-embedding promote-v6 promote-v6-from-run promote-production-v6 verify-v6-gnn test-v6-gnn-integration mlflow-ui train-v6-theory-test-mlflow train-v6-mlflow-governance-smoke train-v6-stage-a-smoke test-stage-a-smoke sync-corpus-pins sync-p-curv-fixture seed-p-curv-fixture test-p-curv-01
+mlflow-repair-store: ## Fix local mlruns/ metadata that breaks mlflow ui (HTTP 500)
+	@python3 experiments/training/v6/repair_mlflow_store.py --store mlruns
+
+.PHONY: help up down kill build rebuild logs ps migrate psql dev dev-frontend test test-host test-docker test-integration test-integration-docker test-all lint format typecheck clean train-v6 train-v6-curriculum assess-v6 eval-v6 diagnose-embedding promote-v6 promote-v6-from-run promote-production-v6 verify-v6-gnn test-v6-gnn-integration mlflow-ui train-v6-theory-test-mlflow train-v6-mlflow-governance-smoke train-v6-stage-a-smoke train-v6-stage-a-curriculum test-stage-a-smoke sync-corpus-pins sync-p-curv-fixture seed-p-curv-fixture test-p-curv-01
 
 # ---------------------------------------------------------------------------
 # Docker Compose shortcuts

@@ -776,3 +776,36 @@ def test_metric_focus_ep85_production_winner() -> None:
     assert route_items
     assert route_items[0]["status"] in {"watch", "healthy"}
 
+
+def test_stage_runner_resets_best_score_on_cross_phase_resume(tmp_path: Path) -> None:
+    """Touchup from gate v6_best must not inherit gate score as save baseline."""
+    import math
+
+    from experiments.training.v6.stage_runner import StageRunner
+    from science.training.checkpoint import CheckpointData
+
+    model = torch.nn.Linear(2, 1)
+    cfg = TrainingConfig(output_dir=str(tmp_path), corpus_manifest="manifests/v6_corpus_120.json")
+    resume = CheckpointData(
+        model_state_dict={},
+        optimizer_state_dict=None,
+        global_epoch=30,
+        phase=2,
+        phase_name="Gate promotion",
+        metrics={},
+        training_config={},
+        architecture={},
+        score=3.32,
+    )
+    runner = StageRunner(model, [], cfg, resume_state=resume)
+    assert runner.best_score == pytest.approx(3.32)
+
+    runner._begin_phase_best_tracking(4)
+    assert runner.best_score == -math.inf
+    assert runner._saved_eligible is False
+
+    runner2 = StageRunner(model, [], cfg, resume_state=resume)
+    runner2._begin_phase_best_tracking(2)
+    assert runner2.best_score == pytest.approx(3.32)
+    assert runner2._saved_eligible is True
+
