@@ -82,10 +82,13 @@ def test_stage_gate_uses_effective_experts_not_mean_fraction() -> None:
 
 
 def test_four_expert_lever_a_routing_entropy_band() -> None:
-    """routing_entropy ≈ 1.38 (lever_a) → effective ≈ 4, inside Stage A band."""
+    """routing_entropy ≈ 1.38 (lever_a) → effective ≈ 4, inside N=4 Stage A band."""
+    from science.training.routing_gate_bounds import stage_a_effective_experts_bounds
+
     h = 1.3785733779271443
     eff = math.exp(h)
-    assert 3.0 <= eff <= 4.5
+    lo, hi, _ = stage_a_effective_experts_bounds(4)
+    assert lo <= eff <= hi
 
 
 def test_p_routing_inference_mode_gate_reads_inference_not_train() -> None:

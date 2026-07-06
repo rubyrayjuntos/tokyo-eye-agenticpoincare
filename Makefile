@@ -3,7 +3,7 @@ SHELL := /bin/bash -o pipefail
 
 # Map container UID/GID to host so bind mounts (mlruns, checkpoints) are writable
 DOCKER_USER := $(shell id -u):$(shell id -g)
-SCIENCE_RUN := docker compose run --rm --user $(DOCKER_USER)
+SCIENCE_RUN := docker compose run --rm -e DB_POOL_MIN_SIZE=2 -e DB_POOL_MAX_SIZE=10 --user $(DOCKER_USER)
 STAGE_A_MAX_RESIDUES := $(shell PYTHONPATH=. python3 -c "from science.training.corpus_governance import STAGE_A_MAX_RESIDUES; print(STAGE_A_MAX_RESIDUES)" 2>/dev/null || echo 650)
 # Host-mapped UID often has no writable $HOME in the container; install test deps to /tmp.
 TEST_DEPS_DIR := /tmp/tokyoeye-pytest-deps
@@ -419,6 +419,16 @@ ingest-9est-pipeline: ## Ingest 9EST + queue discovery pathway (requires make up
 		-H "Content-Type: application/json" \
 		-d '{"pdb_id":"9EST","force_reingest":true}' | python -m json.tool
 
+ingest-corpus-master-features: ## MASTER features → dim_residue for 12-prot corpus (requires dim rows + DATABASE_URL)
+	PYTHONPATH=. python3 -m experiments.training.v6.ingest_corpus_master_features \
+		--manifest manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--pdb-dir pdb_cache \
+		--verify \
+		$(if $(DRY_RUN),--dry-run,)
+
+ingest-corpus-master-features-dry-run: ## Dry-run MASTER feature ingest (compute only)
+	$(MAKE) ingest-corpus-master-features DRY_RUN=1
+
 run-9est-pipeline: ## Re-run discovery pathway on ingested 9EST (science container)
 	@docker compose exec -T science python -c "import urllib.request,json; print(json.dumps(json.load(urllib.request.urlopen(urllib.request.Request('http://localhost:8001/compute/pipeline', data=json.dumps({'structure_id':'9est'}).encode(), headers={'Content-Type':'application/json'}, method='POST'))), indent=2))"
 
@@ -569,7 +579,18 @@ train-v6-stage-a-curriculum: ## Full 3-phase Stage A on locked corpus (25 protei
 		--save-epoch-snapshots
 	@echo "Curriculum complete. Read trajectory: checkpoints/v6/runs/$(or $(RUN_ID),stage_a_*)"
 
-train-v6-stage-a-small-corpus: ## 12-protein fold-diverse expansion (no floor; lever_a warm-start; corpus-jump test)
+gate-p-feature-01: ## P_FEATURE_01 round-trip gate: SSOT recompute == DB ingest == training read
+	@test -f manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) || (echo "Missing corpus manifest" && exit 1)
+	@mkdir -p data/gates pdb_cache mlruns
+	$(SCIENCE_RUN) science python -m science.training.p_feature_01_gate \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--stamp-path /app/data/gates/p_feature_01_passed.json
+	@echo "P_FEATURE_01 passed — stamp: data/gates/p_feature_01_passed.json"
+
+train-v6-stage-a-small-corpus: ## 12-protein fold-diverse expansion (requires gate-p-feature-01 stamp)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
 	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
 	@test -f $(or $(RESUME),checkpoints/v6/runs/lever_a_clean_slate_v1/v6_best_disc.pt) || \
 		(echo "Missing lever_a resume checkpoint for warm-start" && exit 1)
@@ -585,6 +606,52 @@ train-v6-stage-a-small-corpus: ## 12-protein fold-diverse expansion (no floor; l
 		--resume /app/$(or $(RESUME),checkpoints/v6/runs/lever_a_clean_slate_v1/v6_best_disc.pt) \
 		--save-epoch-snapshots
 	@echo "Small corpus curriculum complete. Read trajectory: checkpoints/v6/runs/$(or $(RUN_ID),stage_a_small_*)"
+
+train-v6-stage-a-small-master-cold: ## Cold-start 12-prot MASTER features (P1→P2→P3, lineage root, no resume)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),stage_a_small_master_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--no-warm-start \
+		--master-cold-lineage \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--save-epoch-snapshots
+	@echo "MASTER cold-start complete. Run: checkpoints/v6/runs/$(or $(RUN_ID),stage_a_small_master_cold_v1)"
+
+train-v6-stage-a-small-master-cold-smoke: ## 1-epoch MASTER cold-start smoke — all 12 structures (P_MASTER_COLD_SMOKE)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),stage_a_small_master_cold_smoke_12_$(shell date +%Y%m%d_%H%M%S)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cpu) \
+		--phase 1 \
+		--epochs 1 \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--no-warm-start \
+		--master-cold-lineage \
+		--no-corpus-cache \
+		--save-epoch-snapshots
+	@echo "Smoke complete. Verify with: MASTER_COLD_SMOKE_RUN_ID=<run_id> make test-stage-a-small-master-cold-smoke"
+
+test-stage-a-small-master-cold-smoke: ## Assert P_MASTER_COLD_SMOKE on MASTER_COLD_SMOKE_RUN_ID MLflow run
+	@test -n "$$MASTER_COLD_SMOKE_RUN_ID" || (echo "Set MASTER_COLD_SMOKE_RUN_ID to the smoke run id" && exit 1)
+	MLFLOW_TRACKING_URI=$(or $(MLFLOW_TRACKING_URI),file:./mlruns) \
+	MLFLOW_ALLOW_FILE_STORE=true \
+	python3 -m pytest tests/test_stage_a_small_master_cold_smoke.py::test_master_cold_smoke_mlflow_run_from_env -v
 
 train-v6-residue-stage1: ## ResidueStage1 BCE on 12-protein corpus (warm-start stage_a_small_v1)
 	@test -f manifests/v6_corpus_residue_stage1.json || (echo "Missing ResidueStage1 manifest" && exit 1)
@@ -885,12 +952,54 @@ train-v6-p4-corpus25-push: ## Extended touchup → gate → touchup from gate be
 	$(MAKE) train-v6-p4-corpus25-touchup-extended \
 		RUN_ID=$(or $(TOUCHUP_EXTENDED_RUN),p4_corpus25_touchup_v4) \
 		RESUME=$(or $(RESUME),$(CORPUS25_RESUME))
+	@ext_run="$(or $(TOUCHUP_EXTENDED_RUN),p4_corpus25_touchup_v4)"; \
+	ext_dir="checkpoints/v6/runs/$$ext_run"; \
+	if [ -f "$$ext_dir/v6_best.pt" ]; then \
+	  ext_ckpt="$$ext_dir/v6_best.pt"; \
+	elif [ -f "$$ext_dir/v6_phase4_$(CORPUS25_PROTEINS)prot.pt" ]; then \
+	  ext_ckpt="$$ext_dir/v6_phase4_$(CORPUS25_PROTEINS)prot.pt"; \
+	  echo "Touchup-extended did not beat prior v6_best score — gate resumes from $$ext_ckpt"; \
+	else \
+	  ext_ckpt="$$(ls -1 $$ext_dir/v6_phase*_*prot.pt 2>/dev/null | tail -1)"; \
+	  if [ -z "$$ext_ckpt" ]; then \
+	    echo "No checkpoint in $$ext_dir after touchup-extended (expected v6_best.pt or v6_phase*_*prot.pt)"; \
+	    exit 1; \
+	  fi; \
+	  echo "Gate resumes from phase checkpoint $$ext_ckpt"; \
+	fi; \
 	$(MAKE) train-v6-p4-corpus25-gate \
 		RUN_ID=$(or $(GATE_PROMOTION_RUN),p4_corpus25_gate_v4) \
-		RESUME=checkpoints/v6/runs/$(or $(TOUCHUP_EXTENDED_RUN),p4_corpus25_touchup_v4)/v6_best.pt
+		RESUME="$$ext_ckpt"
 	$(MAKE) train-v6-p4-corpus25-touchup \
 		GATE_PROMOTION_RUN=$(or $(GATE_PROMOTION_RUN),p4_corpus25_gate_v4) \
 		RUN_ID=$(or $(GATE_TOUCHUP_RUN),p4_corpus25_touchup_v4b)
+
+auto-train-v6-corpus25: ## Playbook-driven autonomous corpus-25 loop (DRY_RUN=1, ONCE=1, DIAGNOSE=1, MULTI=N, APPROVE=1, PLAYBOOK=...)
+	@mkdir -p checkpoints/v6/runs/auto_trainer
+	PYTHONPATH=. python3 -m experiments.training.v6.auto_trainer \
+		--playbook manifests/auto_trainer/$(or $(PLAYBOOK),corpus12_recovery_playbook.yaml) \
+		$(if $(DRY_RUN),--dry-run,) \
+		$(if $(ONCE),--once,) \
+		$(if $(DIAGNOSE),--diagnose,) \
+		$(if $(MULTI),--multi $(MULTI),) \
+		$(if $(APPROVE),--approve,) \
+		$(if $(MAX_ITERATIONS),--max-iterations $(MAX_ITERATIONS),)
+
+auto-train-v6-status: ## JSON status for champion, program goals, and next planned action
+	@mkdir -p checkpoints/v6/runs/auto_trainer
+	PYTHONPATH=. python3 -m experiments.training.v6.auto_trainer --status \
+		--playbook manifests/auto_trainer/$(or $(PLAYBOOK),corpus12_recovery_playbook.yaml)
+
+assess-v6-12prot-baseline: ## Side-by-side assess on 12-prot manifest (CHAMPION=... BASELINE=...)
+	@mkdir -p checkpoints/v6/runs/baseline_compare_12prot
+	$(MAKE) assess-v6 \
+		CHECKPOINT=/app/checkpoints/v6/runs/$(or $(CHAMPION),auto_touchup_20260704_135750)/v6_best.pt \
+		CORPUS=v6_corpus_stage_a_small_v1.json MAX_PROTEINS=12 MAX_RESIDUES=650 DEVICE=$(or $(DEVICE),cuda) \
+		OUTPUT=/app/checkpoints/v6/runs/baseline_compare_12prot/champion_on_12prot.json
+	$(MAKE) assess-v6 \
+		CHECKPOINT=/app/checkpoints/v6/runs/$(or $(BASELINE),residue_stage2_v1/v6_phase1_12prot.pt) \
+		CORPUS=v6_corpus_stage_a_small_v1.json MAX_PROTEINS=12 MAX_RESIDUES=650 DEVICE=$(or $(DEVICE),cuda) \
+		OUTPUT=/app/checkpoints/v6/runs/baseline_compare_12prot/baseline_on_12prot.json
 
 export-corpus-viewers: ## Export NGL + Poincaré disc HTML for each corpus structure
 	@mkdir -p data/local_objects/gnn_viewer
@@ -907,7 +1016,7 @@ test-stage-a-smoke: ## Assert P_STAGE_A_SMOKE on STAGE_A_SMOKE_RUN_ID MLflow run
 	MLFLOW_TRACKING_URI=$(or $(MLFLOW_TRACKING_URI),file:./mlruns) \
 	MLFLOW_ALLOW_FILE_STORE=true \
 	STAGE_A_SMOKE_FULL=$${STAGE_A_SMOKE_FULL:-0} \
-	uv run pytest tests/test_stage_a_integration_smoke.py::test_stage_a_smoke_mlflow_run_from_env -v
+	python3 -m pytest tests/test_stage_a_integration_smoke.py::test_stage_a_smoke_mlflow_run_from_env -v
 
 sync-corpus-pins: ## Print SHA256 constants for corpus_governance.py (same commit as JSON)
 	uv run python experiments/training/v6/sync_corpus_pins.py
@@ -1087,16 +1196,19 @@ test-v6-gnn-integration: ## Run tests/test_v6_gnn_integration.py in science cont
 	$(SCIENCE_RUN) -v $(PWD)/tests:/app/tests science \
 		sh -c "$(TEST_RUN_PREFIX) tests/test_v6_gnn_integration.py -v --tb=short"
 
-mlflow-ui: ## Open MLflow UI for training runs (http://localhost:5000)
-	@mkdir -p mlruns mlflow-artifacts
+mlflow-ui: ## Start MLflow UI (http://localhost:5000); also started by make up
+	@mkdir -p mlruns
 	@python3 experiments/training/v6/repair_mlflow_store.py --store mlruns
-	$(SCIENCE_RUN) -p 5000:5000 science \
-		mlflow ui --host 0.0.0.0 --port 5000 --backend-store-uri file:/app/mlruns
+	docker compose up -d mlflow-ui
+	@echo "✓ MLflow UI at http://localhost:5000"
+
+mlflow-ui-logs: ## Tail MLflow UI container logs
+	docker compose logs -f mlflow-ui
 
 mlflow-repair-store: ## Fix local mlruns/ metadata that breaks mlflow ui (HTTP 500)
 	@python3 experiments/training/v6/repair_mlflow_store.py --store mlruns
 
-.PHONY: help up down kill build rebuild logs ps migrate psql dev dev-frontend test test-host test-docker test-integration test-integration-docker test-all lint format typecheck clean train-v6 train-v6-curriculum assess-v6 eval-v6 diagnose-embedding promote-v6 promote-v6-from-run promote-production-v6 verify-v6-gnn test-v6-gnn-integration mlflow-ui train-v6-theory-test-mlflow train-v6-mlflow-governance-smoke train-v6-stage-a-smoke train-v6-stage-a-curriculum test-stage-a-smoke sync-corpus-pins sync-p-curv-fixture seed-p-curv-fixture test-p-curv-01
+.PHONY: help up down kill build rebuild logs ps migrate psql dev dev-frontend test test-host test-docker test-integration test-integration-docker test-all lint format typecheck clean train-v6 train-v6-curriculum assess-v6 eval-v6 diagnose-embedding promote-v6 promote-v6-from-run promote-production-v6 verify-v6-gnn test-v6-gnn-integration mlflow-ui mlflow-ui-logs train-v6-theory-test-mlflow train-v6-mlflow-governance-smoke train-v6-stage-a-smoke train-v6-stage-a-curriculum test-stage-a-smoke auto-train-v6-corpus25 auto-train-v6-status sync-corpus-pins sync-p-curv-fixture seed-p-curv-fixture test-p-curv-01
 
 # ---------------------------------------------------------------------------
 # Docker Compose shortcuts
@@ -1111,7 +1223,7 @@ down: ## Stop all services gracefully
 
 kill: ## Force-stop and remove all containers and volumes
 	docker compose down -v --remove-orphans
-	docker rm -f tokyoeye_db tokyoeye_agent tokyoeye_science 2>/dev/null || true
+	docker rm -f tokyoeye_db tokyoeye_agent tokyoeye_science tokyoeye_mlflow_ui mlflow_ui 2>/dev/null || true
 	@echo "✓ All containers and volumes removed"
 
 build: ## Rebuild all images from scratch (no cache)
@@ -1124,8 +1236,8 @@ rebuild: ## Rebuild and restart all services
 build-agent: ## Rebuild agent image only
 	docker compose build --no-cache agent
 
-build-science: ## Rebuild science image only
-	docker compose build --no-cache science
+build-science: ## Rebuild science image only (shared by science + mlflow-ui)
+	docker compose build --no-cache science mlflow-ui
 
 build-db: ## Rebuild database (normally not needed)
 	docker compose build --no-cache db
@@ -1158,6 +1270,9 @@ logs-agent: ## Tail agent logs only
 
 logs-science: ## Tail science container logs only
 	docker compose logs -f science
+
+logs-mlflow: ## Tail MLflow UI logs only
+	docker compose logs -f mlflow-ui
 
 logs-db: ## Tail database logs only
 	docker compose logs -f db

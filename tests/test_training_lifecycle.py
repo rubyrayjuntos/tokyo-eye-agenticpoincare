@@ -23,6 +23,23 @@ def test_training_config_serializes_paths() -> None:
     params = cfg.to_mlflow_params()
     assert "checkpoints/v6/test" in params["output_dir"]
     assert params["model_version"] == "GOSPConeMapper-v6"
+    assert params["num_experts"] == 4
+
+
+def test_training_config_num_experts_override() -> None:
+    cfg = TrainingConfig(num_experts=6)
+    assert cfg.num_experts == 6
+    assert cfg.to_mlflow_params()["num_experts"] == 6
+
+
+def test_training_config_mlflow_params_lowercase_bools() -> None:
+    from science.training.config import apply_master_cold_dehydron_config
+
+    cfg = TrainingConfig(master_cold_lineage=True)
+    cfg = apply_master_cold_dehydron_config(cfg)
+    params = cfg.to_mlflow_params()
+    assert params["topology_only_gate"] == "true"
+    assert params["master_cold_lineage"] == "true"
 
 
 def test_default_v6_phases_schedule() -> None:

@@ -244,6 +244,12 @@ These drive whether an epoch becomes `v6_best.pt`. Logic lives in `science/train
 
 **Trend:** Lines **separate** — different experts carve different burial regimes.
 
+### expert_{e}_tau_mean / expert_{e}_sasa_mean / expert_{e}_rho_mean / expert_{e}_ss_coil_frac
+
+**What:** Per-expert **biology role card** from dominant routing: mean dehydron flag τ, SASA, wrap count ρ, and fraction of coil residues (ss_type ≥ 0.75).
+
+**Trend:** Lines **diverge** when experts specialize by regime (rim/dehydron vs shell vs coil).
+
 ### expert_{e}_disc_r_mean
 
 **What:** Average Poincaré disc radius for residues routed to expert *e*.

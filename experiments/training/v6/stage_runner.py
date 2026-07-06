@@ -15,6 +15,7 @@ from science.training.config import (
     PhaseConfig,
     TrainingConfig,
     apply_phase_coeff_ramp,
+    apply_master_cold_dehydron_phases,
     apply_routing_load_floor_phase2,
     default_v6_phases,
     p1b_phase_config,
@@ -51,6 +52,8 @@ from science.training.config import (
     routing_save_max_for_epoch,
 )
 from science.training.monitor import ConvergenceMonitor
+from science.training.p3_entry_gate import p3_entry_gate_verdict
+from science.training.dehydron_cone_gate import dehydron_cone_gate_verdict
 from science.training.tracking import TrainingTracker
 from experiments.training.v6.train_loop import (
     build_p4_optimizer,
@@ -545,6 +548,8 @@ class StageRunner:
                 coeff=self.config.routing_load_floor_coeff,
                 min_fraction=self.config.routing_load_floor_min,
             )
+        if self.config.master_cold_lineage:
+            phases = apply_master_cold_dehydron_phases(phases)
         if self.config.phase is not None:
             phases = [p for p in phases if p.phase == self.config.phase]
         if self.config.epochs_override is not None:
@@ -570,7 +575,48 @@ class StageRunner:
     def run(self) -> dict[str, Any]:
         from science.dtie.v5.gnn.model import build_optimizer
 
+        p3_entry_skipped = False
+        p3_entry_reason = ""
+        p2_dehydron_blocked = False
+        p2_dehydron_reason = ""
+
         for phase_cfg in self._phases():
+            if phase_cfg.phase in (2, 3) and p2_dehydron_blocked:
+                logger.error(
+                    "P_DEHYDRON_CONE_01 skipped Phase %d: %s",
+                    phase_cfg.phase,
+                    p2_dehydron_reason,
+                )
+                continue
+            if phase_cfg.phase == 3:
+                p2_route_h = [
+                    float(e["losses"]["routing_entropy"])
+                    for e in self.metrics_log
+                    if e.get("phase") == 2 and "routing_entropy" in e.get("losses", {})
+                ]
+                from science.training.routing_gate_bounds import (
+                    model_num_experts,
+                    routing_entropy_save_ceiling,
+                )
+
+                _n_experts = model_num_experts(
+                    self.model, default=self.config.num_experts
+                )
+                _p3_ceiling = routing_entropy_save_ceiling(num_experts=_n_experts)
+                p3_gate = p3_entry_gate_verdict(p2_route_h, ceiling=_p3_ceiling)
+                if not p3_gate.passed:
+                    p3_entry_skipped = True
+                    p3_entry_reason = p3_gate.reason
+                    logger.error(
+                        "P3_ENTRY_GATE blocked Phase 3: %s "
+                        "(max_consecutive_below=%d, required=%d, ceiling=%.2f)",
+                        p3_gate.reason,
+                        p3_gate.max_consecutive_below_ceiling,
+                        p3_gate.required_consecutive,
+                        p3_gate.ceiling,
+                    )
+                    continue
+
             logger.info("=" * 70)
             logger.info("%s (%d epochs, lr=%.2e)", phase_cfg.name, phase_cfg.epochs, phase_cfg.lr)
             if phase_cfg.phase == 2 and phase_cfg.freeze_radial_epochs > 0:
@@ -802,7 +848,14 @@ class StageRunner:
                 ang_c = coeffs.get("angular_coeff")
                 disc_floor = coeffs.get("disc_spread_min_std")
                 disc_target = coeffs.get("disc_depth_scale_target")
-                route_ceiling = routing_save_max_for_epoch(phase_cfg, epoch)
+                from science.training.routing_gate_bounds import model_num_experts
+
+                _n_experts = model_num_experts(
+                    self.model, default=self.config.num_experts
+                )
+                route_ceiling = routing_save_max_for_epoch(
+                    phase_cfg, epoch, num_experts=_n_experts
+                )
                 skip_unc_gates = phase_cfg.gate_only_train
                 scored = score_checkpoint(
                     health,
@@ -851,7 +904,7 @@ class StageRunner:
                 log_metrics.update(focus_mlflow_metrics(focus))
                 from science.training.mlflow_governance import (
                     governance_epoch_metrics,
-                    stage_a_gate_passed,
+                    stage_gate_passed,
                 )
                 from science.training.routing_metrics import inference_mode_routing_metrics
 
@@ -859,7 +912,11 @@ class StageRunner:
                     self.model, self.proteins, self.config.device
                 )
                 gov = governance_epoch_metrics(
-                    health, losses, self.model, inference_routing=infer_routing
+                    health,
+                    losses,
+                    self.model,
+                    inference_routing=infer_routing,
+                    master_cold_lineage=self.config.master_cold_lineage,
                 )
                 log_metrics.update(gov)
                 from science.training.stage_a_stop import (
@@ -920,15 +977,21 @@ class StageRunner:
                         "    expert_load=%s",
                         ", ".join(f"{float(loads[i]):.3f}" for i in range(min(4, loads.numel()))),
                     )
-                if self.config.full_hyp_moe_test:
+                if self.config.full_hyp_moe_test or self.config.master_cold_lineage:
                     expert_bits = []
-                    for e in range(4):
+                    for e in range(len(self.model.experts)):
                         d = health.get(f"expert_{e}_depth_mean")
                         if d is None:
                             continue
                         r = health.get(f"expert_{e}_disc_r_mean", float("nan"))
                         rs = health.get(f"expert_{e}_r_depth_sasa", float("nan"))
-                        expert_bits.append(f"e{e}: depth={d:.3f} disc_r={r:.3f} r(d,s)={rs:.3f}")
+                        tau_m = health.get(f"expert_{e}_tau_mean", float("nan"))
+                        sasa_m = health.get(f"expert_{e}_sasa_mean", float("nan"))
+                        coil = health.get(f"expert_{e}_ss_coil_frac", float("nan"))
+                        expert_bits.append(
+                            f"e{e}: depth={d:.3f} disc_r={r:.3f} r(d,s)={rs:.3f} "
+                            f"τ={tau_m:.3f} sasa={sasa_m:.3f} coil={coil:.3f}"
+                        )
                     if expert_bits:
                         logger.info("    per_expert: %s", " | ".join(expert_bits))
                 thick_pre = health.get("disc_line_thickness_pre_mean")
@@ -1106,8 +1169,12 @@ class StageRunner:
                     "checkpoint_eligible": scored.eligible,
                     "elapsed": elapsed,
                     "inference_routing": infer_routing,
-                    "stage_gate_passed": stage_a_gate_passed(
-                        health, losses, inference_routing=infer_routing
+                    "stage_gate_passed": stage_gate_passed(
+                        health,
+                        losses,
+                        inference_routing=infer_routing,
+                        num_experts=len(self.model.experts),
+                        master_cold_lineage=self.config.master_cold_lineage,
                     ),
                 }
                 if stop_verdict is not None:
@@ -1141,6 +1208,18 @@ class StageRunner:
                 phase_name=phase_cfg.name,
                 global_epoch=self.global_epoch,
             )
+            if phase_cfg.phase == 1 and self.config.master_cold_lineage:
+                p1_entries = [e for e in self.metrics_log if e.get("phase") == 1]
+                if p1_entries:
+                    last_health = p1_entries[-1].get("health", {})
+                    p2_gate = dehydron_cone_gate_verdict(last_health)
+                    if not p2_gate.passed:
+                        p2_dehydron_blocked = True
+                        p2_dehydron_reason = p2_gate.reason
+                        logger.error(
+                            "P_DEHYDRON_CONE_01 blocked Phase 2 entry: %s",
+                            p2_gate.reason,
+                        )
             if not self._saved_eligible:
                 logger.warning(
                     "Phase %d finished with no eligible v6_best.pt — "
@@ -1156,4 +1235,10 @@ class StageRunner:
             "summary": self.monitor.stage_summary(),
             "output_dir": str(self.config.output_dir),
             "focus_summary": self._last_focus_summary,
+            "p3_entry_gate_passed": not p3_entry_skipped,
+            "p3_entry_gate_skipped": p3_entry_skipped,
+            "p3_entry_gate_reason": p3_entry_reason or None,
+            "p2_dehydron_gate_passed": not p2_dehydron_blocked,
+            "p2_dehydron_gate_blocked": p2_dehydron_blocked,
+            "p2_dehydron_gate_reason": p2_dehydron_reason or None,
         }

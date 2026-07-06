@@ -49,6 +49,36 @@ def _pearson_corr(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     return (ac * bc).sum() / denom
 
 
+def cone_alignment_loss(
+    radial_depth: torch.Tensor,
+    *,
+    target_rho: torch.Tensor | None = None,
+    target_dehydron: torch.Tensor | None = None,
+    mode: str = "rho_wrap",
+) -> torch.Tensor:
+    """
+    Radial cone supervision.
+
+    rho_wrap (legacy): high ρ (buried wrap) → high depth via ρ/30.
+    tau_dehydron_rim (MASTER cold): τ=1 (dehydron) → rim (high depth).
+    """
+    if mode == "tau_dehydron_rim":
+        if target_dehydron is None:
+            raise ValueError("target_dehydron required for tau_dehydron_rim cone mode")
+        target_depth = target_dehydron.squeeze(-1).clamp(0.0, 1.0)
+    else:
+        if target_rho is None:
+            raise ValueError("target_rho required for rho_wrap cone mode")
+        return cone_loss_v5(radial_depth, target_rho)
+
+    pred = radial_depth.squeeze(-1)
+    correlation = _pearson_corr(pred, target_depth)
+    corr_loss = 1.0 - correlation
+    depth_std = pred.std()
+    variance_penalty = torch.relu(0.15 - depth_std) * 5.0
+    return corr_loss + variance_penalty
+
+
 def _zscore_batch(x: torch.Tensor) -> torch.Tensor:
     """Per-structure z-score (one protein per forward pass)."""
     x = x.squeeze(-1) if x.dim() > 1 else x
@@ -362,9 +392,11 @@ def gosp_loss_v6(
     pocket_bce_coeff: float = 0.0,
     interface_bce_coeff: float = 0.0,
     leak_bce_coeff: float = 0.0,
+    cone_target_mode: str = "rho_wrap",
     target_pocket: Optional[torch.Tensor] = None,
     target_interface: Optional[torch.Tensor] = None,
     target_leak: Optional[torch.Tensor] = None,
+    target_dehydron: Optional[torch.Tensor] = None,
     pocket_label_mask: Optional[torch.Tensor] = None,
     interface_label_mask: Optional[torch.Tensor] = None,
     leak_label_mask: Optional[torch.Tensor] = None,
@@ -417,7 +449,12 @@ def gosp_loss_v6(
         routing_load_floor_loss = routing_load_floor_coeff * routing_load_floor_raw
 
     # ── Cone loss — flows through RadialHead only ─────────────────────────
-    cone_loss = cone_loss_v5(output["radial_features"], target_rho)
+    cone_loss = cone_alignment_loss(
+        output["radial_features"],
+        target_rho=target_rho,
+        target_dehydron=target_dehydron,
+        mode=cone_target_mode,
+    )
 
     # ── Angular diversity — flows through AngularHead only ────────────────
     ang_loss = angular_diversity_loss(output["x_routed_hyp"])

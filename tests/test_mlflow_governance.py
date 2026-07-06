@@ -45,10 +45,65 @@ def test_build_governance_params_manifest_hash() -> None:
     params = build_governance_params(cfg, proteins=[{"pdb_id": "11QE"}] * 3)
     assert params["branch"] == "residue-only"
     assert params["curvature_mode"] == "warm_start"
+    assert params["warm_start"] == "resume"
     assert params["space_name"] == "gospconemapper_v6_hyp128"
     assert len(params["corpus_manifest_hash"]) == 64
     assert params["corpus_size"] == "3"
     assert params["spec_version"].startswith("TRAINING_GOVERNANCE")
+
+
+def test_master_cold_lineage_governance_params() -> None:
+    cfg = TrainingConfig(
+        corpus_manifest="manifests/v6_corpus_stage_a_small_v1.json",
+        master_cold_lineage=True,
+    )
+    params = build_governance_params(cfg, proteins=[{"pdb_id": "4OBE"}] * 12)
+    assert params["warm_start"] == "none"
+    assert params["parent_run_id"] == "null"
+    assert params["curvature_mode"] == "free"
+    assert params["lineage_root"] == "true"
+    assert params["topology_only_gate"] == "true"
+    assert params["v2_teacher"] == "disabled"
+    assert params["feature_set"] == "master_four_vector"
+
+
+def test_master_cold_tracker_skips_duplicate_topology_only_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Config logs topology_only_gate; governance must not re-log the same key."""
+    mlflow = pytest.importorskip("mlflow")
+    from science.training.config import apply_master_cold_dehydron_config
+    from science.training.tracking import TrainingTracker
+
+    tracking_uri = (tmp_path / "mlruns").as_uri()
+    cfg = TrainingConfig(
+        output_dir=tmp_path / "run",
+        corpus_manifest=Path("manifests/v6_corpus_stage_a_small_v1.json"),
+        pdb_dir=Path("/tmp/dtie_pdb_cache"),
+        mlflow_tracking_uri=tracking_uri,
+        mlflow_experiment="test-master-cold-dedup",
+        device="cpu",
+        master_cold_lineage=True,
+    )
+    cfg = apply_master_cold_dehydron_config(cfg)
+    cfg.output_dir.mkdir(parents=True, exist_ok=True)
+    tracker = TrainingTracker(cfg, run_name="master_cold_dedup")
+    with tracker.start_run(proteins=[{"pdb_id": "4OBE"}] * 12, phases=[]):
+        pass
+    assert tracker.run_id is not None
+    run = mlflow.get_run(tracker.run_id)
+    assert run.data.params["topology_only_gate"] == "true"
+    assert run.data.params["v2_teacher"] == "disabled"
+
+
+def test_build_governance_params_includes_num_experts() -> None:
+    cfg = TrainingConfig(
+        corpus_manifest="manifests/v6_corpus_stage_a_small_v1.json",
+        num_experts=6,
+        master_cold_lineage=True,
+    )
+    params = build_governance_params(cfg, proteins=[{"pdb_id": "4OBE"}] * 12)
+    assert params["num_experts"] == "6"
 
 
 def test_governance_epoch_metrics_maps_shell_probes() -> None:
@@ -198,10 +253,16 @@ def test_p_mlflow_01_schema_on_finished_run(tmp_path: Path, monkeypatch: pytest.
         assert f"per_fold_loss.{fold_id_to_mlflow_key(fid)}" in metric_keys
 
 
+@pytest.mark.integration
 def test_export_disc_governance_artifacts_requires_structure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Artifact export is integration-tested when PDB cache is present."""
+    from tests.conftest import integration_db_skip_reason
+
+    skip_reason = integration_db_skip_reason()
+    if skip_reason:
+        pytest.skip(skip_reason)
     pytest.importorskip("matplotlib")
     cfg = TrainingConfig(
         output_dir=tmp_path,

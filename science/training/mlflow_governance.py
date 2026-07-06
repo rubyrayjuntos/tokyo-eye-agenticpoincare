@@ -67,11 +67,15 @@ MANDATORY_METRICS = frozenset(
     }
 )
 
+from science.training.routing_gate_bounds import model_num_experts
+
 # Stage A→B routing gate (§5) — effective count scale, not routing fractions.
+# Reference band at N=4; use stage_a_effective_experts_bounds(num_experts) at runtime.
 STAGE_A_EFFECTIVE_EXPERTS_MIN = 3.0
 STAGE_A_EFFECTIVE_EXPERTS_MAX = 4.5
 STAGE_A_EFFECTIVE_EXPERTS_FLOOR = 2.5
 STAGE_A_MIN_ROUTING_FRACTION = 0.05
+_REF_NUM_EXPERTS = 4
 
 MANDATORY_ARTIFACTS = frozenset(
     {
@@ -200,19 +204,56 @@ def build_governance_params(
 ) -> dict[str, str]:
     manifest = Path(config.corpus_manifest)
     corpus_size = len(proteins) if proteins is not None else corpus_enabled_count(manifest)
+    if config.master_cold_lineage:
+        parent_value = "null"
+        warm_start_value = "none"
+        curvature_mode = "free"
+    else:
+        parent_value = parent_run_id or "cold_start"
+        warm_start_value = "resume" if config.resume is not None else "none"
+        curvature_mode = _curvature_mode(config)
     params: dict[str, str] = {
         "branch": branch or "residue-only",
-        "parent_run_id": parent_run_id or "cold_start",
+        "parent_run_id": parent_value,
+        "warm_start": warm_start_value,
         "corpus_manifest_hash": corpus_manifest_hash(manifest),
         "corpus_size": str(corpus_size),
-        "curvature_mode": _curvature_mode(config),
+        "curvature_mode": curvature_mode,
         "scale": "micro",
-        "feature_set": "dehydron-only",
+        "feature_set": "master_four_vector",
         "curriculum_schedule": build_curriculum_schedule_json(phases or []),
         "git_commit": _git_commit(),
         "spec_version": SPEC_VERSION,
         "space_name": V6_HYP_SPACE_NAME,
+        "num_experts": str(config.num_experts),
     }
+    from science.training.routing_gate_bounds import (
+        CAPACITY_OUTCOME_A_VS_C,
+        routing_entropy_save_ceiling,
+    )
+
+    params["routing_entropy_save_ceiling"] = str(
+        routing_entropy_save_ceiling(num_experts=config.num_experts)
+    )
+    if config.num_experts != 4:
+        params["capacity_outcome_discriminator"] = CAPACITY_OUTCOME_A_VS_C
+    if config.master_cold_lineage:
+        params["lineage_root"] = "true"
+        params["topology_only_gate"] = "true"
+        params["v2_teacher"] = "disabled"
+    try:
+        from science.training.p_feature_01_gate import (
+            DEFAULT_STAMP_PATH,
+            governance_params_from_stamp,
+            load_gate_stamp,
+            validate_gate_stamp,
+        )
+
+        stamp = load_gate_stamp(DEFAULT_STAMP_PATH)
+        validate_gate_stamp(stamp, manifest)
+        params.update(governance_params_from_stamp(stamp))
+    except (FileNotFoundError, RuntimeError, OSError):
+        params["p_feature_01_passed"] = "false"
     return params
 
 
@@ -222,6 +263,7 @@ def governance_epoch_metrics(
     model: nn.Module,
     *,
     inference_routing: dict[str, float] | None = None,
+    master_cold_lineage: bool = False,
 ) -> dict[str, float]:
     """Map loop outputs to mandatory MLflow metric names (§3.2)."""
     from science.training.routing_metrics import collapse_metrics_from_epoch_losses
@@ -239,9 +281,17 @@ def governance_epoch_metrics(
         "sigma2_sigma1": float(health.get("disc_sigma2_sigma1_mean", float("nan"))),
         "disc_thick": float(disc_thick),
         "r_d_s": float(health.get("probe_r_depth_sasa", float("nan"))),
+        "r_d_tau": float(health.get("probe_r_depth_tau", float("nan"))),
+        "r_d_rho": float(health.get("probe_r_depth_rho", float("nan"))),
         "r_e_s": float(health.get("probe_r_epi_sasa", float("nan"))),
         "stage_gate_passed": float(
-            stage_a_gate_passed(health, losses, inference_routing=inference_routing)
+            stage_gate_passed(
+                health,
+                losses,
+                inference_routing=inference_routing,
+                num_experts=model_num_experts(model),
+                master_cold_lineage=master_cold_lineage,
+            )
         ),
     }
     if inference_routing is not None:
@@ -265,9 +315,13 @@ def stage_a_gate_passed(
     losses: dict[str, float],
     *,
     inference_routing: dict[str, float] | None = None,
+    num_experts: int = _REF_NUM_EXPERTS,
 ) -> int:
     """Stage A→B pre-registered gate (§5). Returns 1 if pass, 0 if fail."""
+    from science.training.routing_gate_bounds import stage_a_effective_experts_bounds
     from science.training.routing_metrics import collapse_metrics_from_epoch_losses
+
+    eff_min_bound, eff_max_bound, eff_floor_bound = stage_a_effective_experts_bounds(num_experts)
 
     routing = (
         inference_routing
@@ -280,11 +334,9 @@ def stage_a_gate_passed(
     sigma = float(health.get("disc_sigma2_sigma1_mean", float("nan")))
     r_ds = float(health.get("probe_r_depth_sasa", float("nan")))
 
-    if not math.isfinite(eff) or not (
-        STAGE_A_EFFECTIVE_EXPERTS_MIN <= eff <= STAGE_A_EFFECTIVE_EXPERTS_MAX
-    ):
+    if not math.isfinite(eff) or not (eff_min_bound <= eff <= eff_max_bound):
         return 0
-    if not math.isfinite(eff_min) or eff_min <= STAGE_A_EFFECTIVE_EXPERTS_FLOOR:
+    if not math.isfinite(eff_min) or eff_min <= eff_floor_bound:
         return 0
     if not math.isfinite(min_frac) or min_frac < STAGE_A_MIN_ROUTING_FRACTION:
         return 0
@@ -299,6 +351,73 @@ def stage_a_gate_passed(
         if ratio >= 3.0:
             return 0
     return 1
+
+
+def master_cold_stage_gate_passed(
+    health: dict[str, float],
+    losses: dict[str, float],
+    *,
+    inference_routing: dict[str, float] | None = None,
+    num_experts: int = _REF_NUM_EXPERTS,
+) -> int:
+    """MASTER cold lineage: routing + disc occupancy + P_DEHYDRON_CONE_01 (not SASA≈0.73)."""
+    from science.training.dehydron_cone_gate import dehydron_cone_gate_passed
+    from science.training.routing_gate_bounds import stage_a_effective_experts_bounds
+    from science.training.routing_metrics import collapse_metrics_from_epoch_losses
+
+    eff_min_bound, eff_max_bound, eff_floor_bound = stage_a_effective_experts_bounds(num_experts)
+
+    routing = (
+        inference_routing
+        if inference_routing is not None
+        else collapse_metrics_from_epoch_losses(losses)
+    )
+    eff = routing.get("effective_experts", float("nan"))
+    eff_min = routing.get("effective_experts_min", float("nan"))
+    min_frac = routing.get("min_routing_fraction", float("nan"))
+    sigma = float(health.get("disc_sigma2_sigma1_mean", float("nan")))
+
+    if not math.isfinite(eff) or not (eff_min_bound <= eff <= eff_max_bound):
+        return 0
+    if not math.isfinite(eff_min) or eff_min <= eff_floor_bound:
+        return 0
+    if not math.isfinite(min_frac) or min_frac < STAGE_A_MIN_ROUTING_FRACTION:
+        return 0
+    if not math.isfinite(sigma) or abs(sigma - 0.665) / 0.665 >= 0.10:
+        return 0
+    if not dehydron_cone_gate_passed(health):
+        return 0
+
+    fold_losses = [float(v) for k, v in losses.items() if k.startswith("per_fold_loss.")]
+    if len(fold_losses) >= 2:
+        ratio = max(fold_losses) / max(min(fold_losses), 1e-8)
+        if ratio >= 3.0:
+            return 0
+    return 1
+
+
+def stage_gate_passed(
+    health: dict[str, float],
+    losses: dict[str, float],
+    *,
+    inference_routing: dict[str, float] | None = None,
+    num_experts: int = _REF_NUM_EXPERTS,
+    master_cold_lineage: bool = False,
+) -> int:
+    """Stage A→B gate — SASA shell (default) or dehydron-rim (MASTER cold)."""
+    if master_cold_lineage:
+        return master_cold_stage_gate_passed(
+            health,
+            losses,
+            inference_routing=inference_routing,
+            num_experts=num_experts,
+        )
+    return stage_a_gate_passed(
+        health,
+        losses,
+        inference_routing=inference_routing,
+        num_experts=num_experts,
+    )
 
 
 def probe_curvature_sources_training(model: nn.Module) -> dict[str, Any]:

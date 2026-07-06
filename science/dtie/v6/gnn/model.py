@@ -78,8 +78,8 @@ class TopologicalMoEGateV6(nn.Module):
     """
     V6 MoE gate with enriched topological features and capacity-aware routing.
 
-    Gate input: [x_tangent, clustering, cone_depth, log_degree_norm, rho_norm, ss_onehot]
-    Total dimensions: hidden + 7
+    Gate input: [x_tangent, clustering, cone_depth, log_degree_norm, rho_norm, tau_flag, ss_onehot]
+    Total dimensions: hidden + 8
 
     Features:
     - Running statistics for degree/rho normalization (zero-mean, unit-variance)
@@ -99,10 +99,10 @@ class TopologicalMoEGateV6(nn.Module):
     ):
         super().__init__()
         # topology_only=True: gate routes ONLY on physics (8D: clustering, cone_depth,
-        # log_degree, rho, ss_H, ss_E, ss_C, sasa_proxy). No x_tangent drowning.
+        # log_degree, rho, tau, ss_H, ss_E, ss_C). No x_tangent drowning.
         self.topology_only = topology_only
         if topology_only:
-            gate_input_dim = 7  # clustering + cone_depth + log_degree + rho + ss_onehot[3]
+            gate_input_dim = 8  # clustering + cone_depth + log_degree + rho + tau + ss_onehot[3]
             self.gate_net = nn.Sequential(
                 nn.Linear(gate_input_dim, 32),
                 nn.SiLU(),
@@ -111,8 +111,8 @@ class TopologicalMoEGateV6(nn.Module):
                 nn.Linear(16, num_experts),
             )
         else:
-            # Original: hidden + 7
-            gate_input_dim = hidden_dim + 7
+            # Original: hidden + 8
+            gate_input_dim = hidden_dim + 8
             self.gate_net = nn.Sequential(
                 nn.Linear(gate_input_dim, 64),
                 nn.SiLU(),
@@ -166,6 +166,7 @@ class TopologicalMoEGateV6(nn.Module):
         degree: torch.Tensor,          # [N] integer node degree
         rho: torch.Tensor,             # [N] dehydron density
         ss_onehot: torch.Tensor,       # [N, 3] one-hot secondary structure
+        tau_flag: torch.Tensor | None = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Forward pass with capacity-aware routing and expert dropout.
@@ -185,8 +186,12 @@ class TopologicalMoEGateV6(nn.Module):
         # Normalize to zero-mean unit-variance using running statistics
         norm_degree = (log_degree - self.degree_mean) / (self.degree_var.sqrt() + 1e-8)
         norm_rho = (rho - self.rho_mean) / (self.rho_var.sqrt() + 1e-8)
+        if tau_flag is None:
+            tau_feat = torch.zeros_like(clustering).unsqueeze(-1)
+        else:
+            tau_feat = tau_flag.unsqueeze(-1).float()
 
-        # Assemble gate input: [x_tangent, clustering, cone_depth, norm_degree, norm_rho, ss_onehot]
+        # Assemble gate input: [x_tangent, clustering, cone_depth, norm_degree, norm_rho, tau, ss_onehot]
         # In Phase 3, detach x_tangent so backbone updates don't shift routing boundaries
         # In topology_only mode, x_tangent is excluded entirely (information bottleneck)
         if self.topology_only:
@@ -195,8 +200,9 @@ class TopologicalMoEGateV6(nn.Module):
                 cone_depth.detach(),          # [N, 1]
                 norm_degree.unsqueeze(-1),    # [N, 1]
                 norm_rho.unsqueeze(-1),       # [N, 1]
+                tau_feat,                     # [N, 1]
                 ss_onehot,                    # [N, 3]
-            ], dim=-1)  # Total: [N, 7]
+            ], dim=-1)  # Total: [N, 8]
         else:
             gate_x_tangent = x_tangent.detach() if self.detach_gate_input else x_tangent
             gate_input = torch.cat([
@@ -205,8 +211,9 @@ class TopologicalMoEGateV6(nn.Module):
                 cone_depth.detach(),          # [N, 1]
                 norm_degree.unsqueeze(-1),    # [N, 1]
                 norm_rho.unsqueeze(-1),       # [N, 1]
+                tau_feat,                     # [N, 1]
                 ss_onehot,                    # [N, 3]
-            ], dim=-1)  # Total: [N, hidden + 7]
+            ], dim=-1)  # Total: [N, hidden + 8]
 
         # Compute raw logits
         raw_logits = self.gate_net(gate_input)  # [N, num_experts]
@@ -267,7 +274,7 @@ def infer_v6_model_kwargs(
             for k in state_dict
         )
     hyperbolic_expert_mix = bool(arch.get("hyperbolic_expert_mix", tc.get("hyperbolic_expert_mix", False)))
-    topology_only = bool(arch.get("topology_only_gate", False))
+    topology_only = bool(arch.get("topology_only_gate", tc.get("topology_only_gate", False)))
     gate_disc_input = arch.get("gate_disc_input")
     if gate_disc_input is None:
         gate_disc_input = any(k.startswith("gate.gate_disc_proj") for k in state_dict)
@@ -279,8 +286,10 @@ def infer_v6_model_kwargs(
     gate_disc_scale = float(arch.get("gate_disc_scale", tc.get("gate_disc_scale", 1.0)))
     gate_gumbel = bool(arch.get("gate_gumbel", tc.get("gate_gumbel", False)))
     gate_key = "gate.gate_net.0.weight"
-    if not hyperbolic_gate and gate_key in state_dict:
-        topology_only = int(state_dict[gate_key].shape[1]) == 7
+    if hyperbolic_gate and not topology_only:
+        topology_only = not any(k.startswith("gate.mobius1") for k in state_dict)
+    elif not hyperbolic_gate and gate_key in state_dict:
+        topology_only = int(state_dict[gate_key].shape[1]) == 8
     return {
         "hidden": int(arch.get("hidden", 128)),
         "num_experts": int(arch.get("num_experts", 4)),
@@ -688,6 +697,12 @@ class GOSPConeMapperV6(nn.Module):
         ):
             gate_disc_kw = {"disc_xy": hyp_proj_2d_pre, "disc_r": disc_r_pre}
 
+        tau_flag = (
+            data.x[:, 1]
+            if data.x.size(1) > 1
+            else torch.zeros(data.x.size(0), device=x_hyp.device, dtype=data.x.dtype)
+        )
+
         # ── Step 4: V6 MoE routing ────────────────────────────────────────
         gate_audit: dict[str, Any] = {}
         routing_load_floor = torch.tensor(0.0, device=x_hyp.device)
@@ -700,6 +715,7 @@ class GOSPConeMapperV6(nn.Module):
                 degree=data.degree,
                 rho=data.rho,
                 ss_onehot=data.ss_onehot,
+                tau_flag=tau_flag,
                 **gate_disc_kw,
             )
             gate_features = [
@@ -708,6 +724,7 @@ class GOSPConeMapperV6(nn.Module):
                 "cone_depth",
                 "log_degree_norm",
                 "rho_norm",
+                "tau_flag",
                 "ss_onehot",
             ]
             if getattr(self.gate, "use_disc_position", False):
@@ -722,6 +739,7 @@ class GOSPConeMapperV6(nn.Module):
                 degree=data.degree,
                 rho=data.rho,
                 ss_onehot=data.ss_onehot,
+                tau_flag=tau_flag,
             )
             gate_features = [
                 "x_tangent",
@@ -729,6 +747,7 @@ class GOSPConeMapperV6(nn.Module):
                 "cone_depth",
                 "log_degree_norm",
                 "rho_norm",
+                "tau_flag",
                 "ss_onehot",
             ]
 

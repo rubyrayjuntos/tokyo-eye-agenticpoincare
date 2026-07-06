@@ -63,6 +63,7 @@ class LossCoeffs(BaseModel):
     pocket_bce_coeff: float = 0.0
     interface_bce_coeff: float = 0.0
     leak_bce_coeff: float = 0.0
+    cone_target_mode: Literal["rho_wrap", "tau_dehydron_rim"] = "rho_wrap"
 
 
 class PhaseConfig(BaseModel):
@@ -119,14 +120,21 @@ class PhaseConfig(BaseModel):
     min_aleatoric_std_save: float | None = None
 
 
-def routing_save_max_for_epoch(phase_cfg: PhaseConfig, epoch: int) -> float | None:
+def routing_save_max_for_epoch(
+    phase_cfg: PhaseConfig,
+    epoch: int,
+    *,
+    num_experts: int = 4,
+) -> float | None:
     """Interpolate routing_H save ceiling across a P2 bridge phase."""
     if phase_cfg.routing_save_ceiling_start is None:
         return None
     from science.training.checkpoint_score import ROUTING_ENTROPY_SAVE_MAX
+    from science.training.routing_gate_bounds import scale_routing_entropy_ceiling
 
-    start = phase_cfg.routing_save_ceiling_start
-    final = phase_cfg.routing_save_ceiling_final or ROUTING_ENTROPY_SAVE_MAX
+    start = scale_routing_entropy_ceiling(phase_cfg.routing_save_ceiling_start, num_experts)
+    final_raw = phase_cfg.routing_save_ceiling_final or ROUTING_ENTROPY_SAVE_MAX
+    final = scale_routing_entropy_ceiling(final_raw, num_experts)
     n = phase_cfg.routing_save_ceiling_ramp_epochs or phase_cfg.epochs
     if n <= 1:
         return final
@@ -246,6 +254,7 @@ class TrainingConfig(BaseModel):
     residue_stage2: bool = False
     residue_stage2_lr: float = 1e-4
     residue_stage2_epochs: int | None = None
+    master_cold_lineage: bool = False
 
     def model_post_init(self, __context: object) -> None:
         self.output_dir = Path(self.output_dir)
@@ -258,6 +267,8 @@ class TrainingConfig(BaseModel):
 
     def phase_preset_name(self) -> str | None:
         """Stable curriculum preset id for MLflow tags."""
+        if self.master_cold_lineage:
+            return "stage_a_small_master_cold"
         if self.full_hyp_moe_test:
             return "full_hyp_moe_test"
         if self.residue_stage2:
@@ -329,7 +340,12 @@ class TrainingConfig(BaseModel):
         for key, value in data.items():
             if value is None:
                 continue
-            flat[key] = str(value) if isinstance(value, Path) else value
+            if isinstance(value, bool):
+                flat[key] = "true" if value else "false"
+            elif isinstance(value, Path):
+                flat[key] = str(value)
+            else:
+                flat[key] = value
         return flat
 
 
@@ -435,6 +451,48 @@ def apply_routing_load_floor_phase2(
         )
         out.append(phase_cfg.model_copy(update={"coeffs": new_coeffs}))
     return out
+
+
+def apply_master_cold_dehydron_phases(phases: list[PhaseConfig]) -> list[PhaseConfig]:
+    """Dehydron-rim cone contract for MASTER cold-start lineage (P_DEHYDRON_CONE_01)."""
+    out: list[PhaseConfig] = []
+    for phase_cfg in phases:
+        coeff_updates: dict[str, float | str] = {
+            "cone_target_mode": "tau_dehydron_rim",
+            "shell_corr_depth_sasa_weight": 0.0,
+            "shell_corr_disc_sasa_weight": 0.0,
+            "shell_floor_coeff": 0.0,
+        }
+        if phase_cfg.phase == 1:
+            coeff_updates["shell_corr_coeff"] = 0.12
+        new_coeffs = phase_cfg.coeffs.model_copy(update=coeff_updates)
+        out.append(phase_cfg.model_copy(update={"coeffs": new_coeffs}))
+    return out
+
+
+def apply_master_cold_dehydron_config(config: TrainingConfig) -> TrainingConfig:
+    """Model/training overrides for MASTER cold dehydron ablation (topology-only gate, no V2 teacher)."""
+    return config.model_copy(
+        update={
+            "topology_only_gate": True,
+            "v2_teacher_checkpoint": None,
+            "v2_teacher_depth_coeff": 0.0,
+            "v2_teacher_epistemic_coeff": 0.0,
+        }
+    )
+
+
+def apply_master_cold_dehydron_lineage(
+    config: TrainingConfig,
+    phases: list[PhaseConfig],
+) -> tuple[TrainingConfig, list[PhaseConfig]]:
+    """
+    MASTER cold dehydron ablation (n6_v4+): τ-rim cone phases + topology-only gate + no V2 teacher.
+
+    Topology-only routing removes the 128D x_hyp Mobius trunk from gate logits so τ/ρ/degree/ss
+    drive prototypes instead of fold-blind backbone embeddings.
+    """
+    return apply_master_cold_dehydron_config(config), apply_master_cold_dehydron_phases(phases)
 
 
 def apply_phase_coeff_ramp(

@@ -30,14 +30,20 @@ Two failure modes this document exists to prevent:
 
 ## 1. Current State — MLflow Integration
 
-**What exists:** MLflow is integrated into the training loop with the governance schema in `science/training/mlflow_governance.py`. A 1-epoch lever_a resume smoke (`make train-v6-mlflow-governance-smoke`) verifies params, per-epoch metrics, and end-of-run artifacts; `tests/test_mlflow_governance.py` enforces P_MLFLOW_01.
+**What exists:** MLflow is integrated into the training loop with the governance schema in `science/training/mlflow_governance.py`. Smokes:
 
-**What "single epoch run" proves and does not prove:**
+- `make train-v6-mlflow-governance-smoke` — 1-epoch lever_a resume, 3-protein subset, schema check (legacy `dehydron-only` warm-start path).
+- `make train-v6-stage-a-small-master-cold-smoke` — 1-epoch **MASTER four-vector cold-start** on all **12** enabled structures in `v6_corpus_stage_a_small_v1.json` (`MAX_PROTEINS=12`); asserts `P_MASTER_COLD_SMOKE` (plumbing + lineage), **not** Gate 0 parity.
 
-- ✅ Proves: mandatory schema fields emit end-to-end (params, `log_c` + `curvature_final`, disc overlay, angular stats, probe JSON).
+`tests/test_mlflow_governance.py` enforces P_MLFLOW_01. Gate 0 feature parity is **`make gate-p-feature-01`** (`P_FEATURE_01`), separate from training smokes.
+
+**What a single-epoch smoke proves and does not prove:**
+
+- ✅ Proves: mandatory schema fields emit end-to-end (params, `log_c` + `curvature_final`, disc overlay, angular stats, probe JSON); training loop + MLflow wiring on the declared corpus slice.
+- ❌ Does not prove: three-way feature parity (fresh SSOT recompute ≈ written DB ≈ train-read) — that is **P_FEATURE_01** on all 12 structures.
 - ❌ Does not prove: P_MLFLOW_02 lineage across multi-stage corpus expansion (needs Stage A→B parent/child runs).
 
-**Treat the current integration as: schema verified on residue-only smoke; lineage verification pending.**
+**Treat MASTER cold integration as:** schema + lineage verified on 12-structure smoke; **Gate 0 must pass separately** before full cold curriculum (`make gate-p-feature-01` → stamp → `make train-v6-stage-a-small-master-cold`).
 
 **Known gaps (confirmed by Ray, 2026-07-02):**
 
@@ -46,9 +52,12 @@ Two failure modes this document exists to prevent:
 | ------------------------------------ | ------------- | -------------------------------------------------------------------------- |
 | `k` / `log_c` (curvature)            | **[EMITTED]** | `log_c` per epoch + `curvature_final` at run end                           |
 | Poincaré disc plot + biology overlay | **[EMITTED]** | `poincare_disc_overlay.png` + `angular_distribution_stats.json` at run end |
+| `probe_curvature_sources.json`       | **[EMITTED]** | Training-time curvature SSOT probe at run end                              |
+| MASTER feature provenance params     | **[EMITTED]** | Gate-sourced when stamp valid (`rho_def`, `ss_def`, …)                     |
+| MASTER cold lineage params           | **[EMITTED]** | `warm_start`, `lineage_root`, `parent_run_id=null` on cold runs            |
 
 
-All other schema fields are marked `[VERIFY]` in §3 — P_MLFLOW_01 on a finished run converts them to `[EMITTED]`.
+Remaining §3 fields marked `[VERIFY]` are enforced by P_MLFLOW_01 on a finished run.
 
 ---
 
@@ -124,40 +133,107 @@ Every training run MUST emit the following. Fields are tagged:
 
 ### 3.1 Params (logged once, at run start)
 
-
-| Param                             | Tag        | Purpose                                                                                              |
-| --------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------- |
-| `branch`                          | `[VERIFY]` | residue-only | multiscale — the comparison axis                                                      |
-| `parent_run_id`                   | `[VERIFY]` | MLflow run ID of warm-start source — **lineage tree**                                                |
-| `corpus_manifest_hash`            | `[VERIFY]` | SHA256 of exact protein set — **reproducibility**                                                    |
-| `corpus_size`                     | `[VERIFY]` | 25 | 60 | 120                                                                                        |
-| `curvature_mode`                  | `[VERIFY]` | pinned:0.7026… | free                                                                                |
-| `curvature_final` (converged `c`) | **[GAP]**  | The value pinned + hashed into embedding_space for this run's space_name. **The geometry artifact.** |
-| `scale`                           | `[VERIFY]` | micro | micro+macro | all                                                                            |
-| `feature_set`                     | `[VERIFY]` | dehydron-only | dehydron+ESM                                                                         |
-| `curriculum_schedule`             | `[VERIFY]` | Phase 1 ramp params (JSON)                                                                           |
-| `git_commit`                      | `[VERIFY]` | repo SHA at training time                                                                            |
-| `spec_version`                    | `[VERIFY]` | which spec doc governs this run                                                                      |
-| `space_name`                      | `[VERIFY]` | target embedding_space name (e.g., poincare_v7)                                                      |
+**Core params** (P_MLFLOW_01 `MANDATORY_PARAMS` in `mlflow_governance.py`):
 
 
-**Two params do the heavy lifting:** `parent_run_id` makes warm-start lineage a traceable tree (wrong-parent warm-start becomes visible, not silent), and `corpus_manifest_hash` makes "diverse corpus" a reproducible fact rather than a description.
+| Param                  | Tag           | Purpose                                                                                              |
+| ---------------------- | ------------- | ---------------------------------------------------------------------------------------------------- |
+| `branch`               | **[EMITTED]** | `residue-only` \| `multiscale` — comparison axis                                                     |
+| `parent_run_id`        | **[EMITTED]** | MLflow parent run id, `cold_start`, or **`null`** (MASTER cold lineage root)                         |
+| `corpus_manifest_hash` | **[EMITTED]** | SHA256 of exact manifest JSON — reproducibility                                                      |
+| `corpus_size`          | **[EMITTED]** | Count of **enabled** proteins loaded for this run (12 for small corpus cold-start)                 |
+| `curvature_mode`       | **[EMITTED]** | `free` (cold / no resume) \| `warm_start` (resume checkpoint present)                                 |
+| `curvature_final`      | **[EMITTED]** | Converged learned `c` logged at run end (not at start)                                               |
+| `scale`                | **[EMITTED]** | `micro` (current v6 corpus expansion)                                                                |
+| `feature_set`          | **[EMITTED]** | **`master_four_vector`** — `[ρ, τ, ss_type, sasa]` from governed ingest (see P_FEATURE_01)           |
+| `curriculum_schedule`  | **[EMITTED]** | Phase 1–3 JSON from `PhaseConfig` list                                                               |
+| `git_commit`           | **[EMITTED]** | Repo SHA at training time                                                                            |
+| `spec_version`         | **[EMITTED]** | `TRAINING_GOVERNANCE_AND_MLFLOW_SCHEMA:2026-07-02`                                                   |
+| `space_name`           | **[EMITTED]** | `gospconemapper_v6_hyp128` (`V6_HYP_SPACE_NAME`)                                                     |
+
+
+**Lineage params** (always emitted by `build_governance_params`; required on MASTER cold runs):
+
+
+| Param         | Tag           | Values / purpose                                                                 |
+| ------------- | ------------- | -------------------------------------------------------------------------------- |
+| `warm_start`  | **[EMITTED]** | `none` (cold) \| `resume` (checkpoint resume)                                    |
+| `lineage_root`| **[EMITTED]** | `true` when `--master-cold-lineage`; absent otherwise                            |
+
+
+**MASTER feature provenance** (emitted from `data/gates/p_feature_01_passed.json` when stamp validates; **never hand-typed**):
+
+
+| Param                     | Tag           | Source / purpose                                                          |
+| ------------------------- | ------------- | ------------------------------------------------------------------------- |
+| `p_feature_01_passed`     | **[EMITTED]** | `true` only when Gate 0 stamp authorizes this manifest                    |
+| `rho_def`                 | **[EMITTED]** | `dehydron_wrapping_6.5A`                                                  |
+| `tau_def`                 | **[EMITTED]** | `rho_lt_13.0`                                                             |
+| `ss_def`                  | **[EMITTED]** | `biotite_psea_dssp_class`                                                 |
+| `sasa_def`                | **[EMITTED]** | `freesasa_heavy_atom_A2`                                                  |
+| `feature_module_sha256`   | **[EMITTED]** | SHA256 of `science/dtie/common/residue_features.py` at gate time          |
+| `p_feature_01_checked_at` | **[EMITTED]** | ISO timestamp from gate stamp (`checked_at`)                              |
+
+
+**MLflow tags** (not params; set in `TrainingTracker.start_run`):
+
+| Tag             | When                         |
+| --------------- | ---------------------------- |
+| `git_sha`       | Always when git available    |
+| `model_version` | Always                       |
+| `phase_preset`  | e.g. `stage_a_small_master_cold` |
+| `parent_run_id` | MLflow tag mirrors param on cold runs (`null`) |
+| `lineage_root`  | `true` on MASTER cold runs   |
+| `resume_from`   | When `--resume` path set     |
+
+**TrainingConfig flat params:** `launch_training` also logs non-null fields from `TrainingConfig.to_mlflow_params()` (phase flags, lr overrides, etc.) — audit extras, not gate-critical.
+
+**Two params do the heavy lifting:** `parent_run_id` / `warm_start` make lineage explicit; `corpus_manifest_hash` makes the protein set reproducible.
 
 ### 3.2 Metrics (logged per epoch)
+
+**Governance core** (P_MLFLOW_01 `MANDATORY_METRICS`):
 
 
 | Metric                         | Tag           | Purpose                                                                                                              |
 | ------------------------------ | ------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `log_c` (curvature trajectory) | **[EMITTED]** | The path `c` takes as it floats. **Stabilization signal.**                                                           |
-| `effective_experts`            | **[EMITTED]** | `exp(H(routing))` — entropy-derived expert count (uniform over N → N; collapse → 1)                                  |
-| `effective_experts_min`        | **[EMITTED]** | Worst protein in the epoch; Stage gate floor                                                                         |
-| `min_routing_fraction`         | **[EMITTED]** | `min(p_i)` across experts — fraction-scale collapse tell                                                             |
-| `sigma2_sigma1`                | **[EMITTED]** | Geometry health (target ~0.665 on **full-run** eval; see caveat below)                                               |
-| `disc_thick`                   | **[EMITTED]** | Geometry health (target ~0.219 on full-run eval)                                                                     |
-| `r_d_s`                        | **[EMITTED]** | Radial/depth decoupling (target ~0.730 on full-run eval)                                                             |
-| `r_e_s`                        | **[EMITTED]** | Epistemic/SASA relationship (~0.780 on full-run eval)                                                                |
-| `per_fold_loss.{fold_id}`      | **[EMITTED]** | Imbalance detection by CATH topology (`fold_id` dots → underscores in MLflow keys, e.g. `per_fold_loss.3_40_50_300`) |
-| `stage_gate_passed` (0|1)      | **[EMITTED]** | The gate verdict, logged as metric (see §5)                                                                          |
+| `log_c`                        | **[EMITTED]** | Raw learned curvature parameter; trajectory toward stabilization                                                     |
+| `effective_experts`            | **[EMITTED]** | `exp(H(routing))` — inference-mode when available                                                                    |
+| `effective_experts_min`        | **[EMITTED]** | Worst protein in epoch (inference-mode when available)                                                               |
+| `min_routing_fraction`         | **[EMITTED]** | `min(p_i)` across experts — collapse tell (floor **0.05**)                                                          |
+| `sigma2_sigma1`                | **[EMITTED]** | Disc occupancy σ₂/σ₁ (geometry health; see caveat)                                                                   |
+| `disc_thick`                   | **[EMITTED]** | Pre-routing disc line thickness                                                                                      |
+| `r_d_s`                        | **[EMITTED]** | `probe_r_depth_sasa` — depth ↔ SASA shell signal                                                                     |
+| `r_e_s`                        | **[EMITTED]** | `probe_r_epi_sasa` — epistemic ↔ SASA                                                                                |
+| `per_fold_loss.{fold_id}`      | **[EMITTED]** | CATH topology imbalance (`fold_id` dots → underscores, e.g. `per_fold_loss.3_40_50_300`)                               |
+| `stage_gate_passed` (0\|1)     | **[EMITTED]** | Pre-registered Stage A→B composite gate (§5)                                                                         |
+
+
+**Routing diagnostics** (logged when inference routing is computed; not all are mandatory):
+
+
+| Metric                              | Purpose                                      |
+| ----------------------------------- | -------------------------------------------- |
+| `train_effective_experts`           | Train-mode routing (dropout can zero loads)  |
+| `train_effective_experts_min`       | Train-mode worst protein                     |
+| `train_min_routing_fraction`        | Train-mode min expert load                   |
+| `eval_min_routing_fraction.{pdb}`   | Per-structure inference min routing fraction |
+
+
+**Training loop extras** (logged via `stage_runner`; audit / checkpoint selection):
+
+
+| Metric                  | Purpose                                                |
+| ----------------------- | ------------------------------------------------------ |
+| `total`                 | Scalar optimization loss                               |
+| `score`                 | Composite checkpoint score                             |
+| `checkpoint_eligible`   | 0\|1 — save gates (shell + routing + disc occupancy)   |
+| `routing_save_max`      | Routing entropy ceiling used for save scoring          |
+| `elapsed_s`             | Epoch wall time                                        |
+| `focus_*_count`         | Metric-focus summary buckets                           |
+| `focus_flag_{metric}`   | 1.0 when a focus metric needs work                     |
+| Full `health` dict keys | e.g. `probe_r_proj_depth`, `disc_effective_rank_mean`, `expert_{i}_r_depth_sasa`, … |
+| Full `losses` dict keys | Loss components, `routing_entropy`, `expert_load`, …   |
 
 
 **Geometry baseline caveat:** σ₂/σ₁, disc_thick, r(d,s), r(e,s) targets in §5 were originally set from the **3-protein training-eval baseline** (11QE+4OBE+1IVO). **Corpus-transfer check (2026-07-03):** σ₂/σ₁ ≈ 0.665 **transfers** to the 25-fold Stage A corpus (lever_a@25 → 0.676). r(d,s) ≈ 0.730 does **not** transfer (lever_a@25 → 0.784). See §5.1 and the r(d,s) re-pin open item. Do not read a 1-epoch smoke or single-phase σ₂/σ₁ in isolation as regression from 0.665 without corpus context.
@@ -171,12 +247,14 @@ Every training run MUST emit the following. Fields are tagged:
 ### 3.3 Artifacts (logged at run end, and per-checkpoint)
 
 
-| Artifact                                   | Tag        | Purpose                                                                                                    |
-| ------------------------------------------ | ---------- | ---------------------------------------------------------------------------------------------------------- |
-| Poincaré disc plot + biology overlay (PNG) | **[GAP]**  | Visual audit: did the crescent hold structure, do dehydrons still separate angularly, did geometry degrade |
-| `angular_distribution_stats.json`          | **[GAP]**  | Tier 2 gate numbers (KS, within-Q perm) — travels **with** the disc plot                                   |
-| `probe_curvature_sources` output           | `[VERIFY]` | SSOT consistency check for this run                                                                        |
-| The checkpoint                             | `[VERIFY]` | (S3 in Layer 2, not the DB)                                                                                |
+| Artifact                                   | Tag           | Purpose                                                                                                    |
+| ------------------------------------------ | ------------- | ---------------------------------------------------------------------------------------------------------- |
+| `poincare_disc_overlay.png`                | **[EMITTED]** | Visual audit: disc + biology overlay                                                                       |
+| `angular_distribution_stats.json`          | **[EMITTED]** | Tier 2 angular stats (KS, within-Q perm)                                                                   |
+| `probe_curvature_sources.json`             | **[EMITTED]** | Training-time curvature SSOT probe JSON                                                                    |
+| `metrics.json`                             | **[EMITTED]** | Full epoch metric history (run output dir)                                                                 |
+| `focus_summary.json`                       | **[EMITTED]** | End-of-run metric focus recommendation                                                                     |
+| Checkpoint `.pt` files                     | **[EMITTED]** | Under run `output_dir` (not MLflow artifact store by default)                                              |
 
 
 **Disc plot + stats travel together.** The visual and the statistic attach to the run that produced them — geometry health, biology overlay, and gate verdict all on one run. Satisfies single-location documentation at the run level.
@@ -198,18 +276,21 @@ def test_run_logs_mandatory_schema(finished_run):
         'curvature_mode', 'curvature_final', 'scale', 'feature_set',
         'curriculum_schedule', 'git_commit', 'spec_version', 'space_name',
     }
+    # MASTER cold runs also emit (not in MANDATORY_PARAMS frozenset):
+    # warm_start, lineage_root, p_feature_01_passed, rho_def, tau_def,
+    # ss_def, sasa_def, feature_module_sha256, p_feature_01_checked_at
     required_metrics = {
         'log_c', 'effective_experts', 'effective_experts_min', 'min_routing_fraction',
         'sigma2_sigma1', 'disc_thick', 'r_d_s', 'r_e_s', 'stage_gate_passed',
     }
     required_artifacts = {
         'poincare_disc_overlay.png', 'angular_distribution_stats.json',
+        'probe_curvature_sources.json',
     }
     assert required_params <= set(finished_run.params)
     assert required_metrics <= set(finished_run.metrics)
     assert required_artifacts <= set(finished_run.artifacts)
-    # per-fold loss present for every fold_id in the corpus manifest
-    for fid in corpus_fold_ids(finished_run.params['corpus_manifest_hash']):
+    for fid in corpus_fold_ids(manifest_path):  # enabled entries only
         assert f'per_fold_loss.{fold_id_to_mlflow_key(fid)}' in finished_run.metrics
 ```
 
@@ -567,6 +648,54 @@ STAGE_A_SMOKE_RUN_ID=<id> make test-stage-a-smoke
 
 **Regeneration pins:** `make sync-corpus-pins` → update `corpus_governance.py` in the **same commit** as report/manifest JSON.
 
+### P_FEATURE_01 — Gate 0: MASTER feature DB round-trip (before training)
+
+**Purpose:** Prove the path the model **reads** matches SSOT recompute and persisted ingest facts — on **all enabled** manifest structures (12 for `v6_corpus_stage_a_small_v1.json`).
+
+**Not a training smoke.** Does not run the GNN. Asserts per structure:
+
+1. **Fresh** — `compute_master_features_from_db()` on governed `dim_atom` (same SSOT path as ingest persist)
+2. **Written** — `fact_ingestion_features` (`ss_type` from fact row)
+3. **Train reads** — `load_protein_graph()` → `x[:,0:4]`
+
+Plus fold-anchored SS on fresh recompute: **1TIM** (α/β), **1MBN** (helix-heavy), **1F88**; global all-coil rejection on structures ≥50 residues.
+
+```bash
+make gate-p-feature-01   # writes data/gates/p_feature_01_passed.json
+```
+
+Training refuses to start without a valid stamp (`require_p_feature_01_for_training`). MLflow copies stamp fields via `governance_params_from_stamp()` — **never hand-set `p_feature_01_passed`**.
+
+Implementation: `science/training/p_feature_01_gate.py`; tests: `tests/test_p_feature_01_db_gate.py`.
+
+### P_MASTER_COLD_SMOKE — 12-structure MASTER cold-start plumbing smoke
+
+**Purpose:** Prove assembled training stack on the **full** small corpus (all 12 enabled structures, `MAX_PROTEINS=12`) before `make train-v6-stage-a-small-master-cold`.
+
+```bash
+make gate-p-feature-01   # Gate 0 first — refreshes stamp on live DB
+make train-v6-stage-a-small-master-cold-smoke RUN_ID=stage_a_small_master_cold_smoke_12_v1
+MASTER_COLD_SMOKE_RUN_ID=<id> make test-stage-a-small-master-cold-smoke
+```
+
+**Asserts (via** `science/training/stage_a_small_master_cold_smoke.py`**):**
+
+
+| Check | Required |
+| ----- | -------- |
+| `warm_start=none`, `parent_run_id=null`, `lineage_root=true` | MASTER cold lineage |
+| `feature_set=master_four_vector`, `curvature_mode=free` | MASTER four-vector cold start |
+| `p_feature_01_passed=true` + `rho_def` / `ss_def` / `sasa_def` / `tau_def` / `feature_module_sha256` | Stamp-sourced provenance |
+| `corpus_manifest_hash` | Matches `v6_corpus_stage_a_small_v1.json` |
+| `corpus_size=12` | All enabled structures loaded |
+| `per_fold_loss.{fold_id}` | **All 12** CATH folds in manifest |
+| Routing + `stage_gate_passed` | Wired (value may be 0 at epoch 1) |
+| P_MLFLOW_01 core | Params, mandatory metrics, governance artifacts |
+
+**Does not assert:** three-way feature parity (that's P_FEATURE_01). **Does not assert:** shell convergence or `stage_gate_passed=1`.
+
+Disc scatter for governance artifacts: first loaded corpus protein when default `11QE:A` ∉ corpus (`launch_training` auto-selects, e.g. `1MBN:A`).
+
 ---
 
 
@@ -592,6 +721,8 @@ STAGE_A_SMOKE_RUN_ID=<id> make test-stage-a-smoke
 | P_STOP_ENFORCEMENT (inference stop halts loop)                        | **[EMITTED]** `stage_a_stop.py`, ep236 memo §5.1                   | Trustworthy verification runs    |
 | r(d,s) Stage gate pin re-derivation (0.730 → ~0.784 lever_a@25)       | Pending                                                            | Correct geometry gate on 25-corpus |
 | Load-balancing floor (1PGB contested routing)                         | **Half-pass MVP**; pressure+shape (§5.1.3)                         | P2 LR tail first; then floor shape |
+| P_FEATURE_01 Gate 0 (12-structure MASTER feature round-trip)          | **[EMITTED]** `make gate-p-feature-01`                           | Training halt until stamp valid    |
+| P_MASTER_COLD_SMOKE (12-structure cold plumbing)                    | Pending full-corpus smoke re-run                                 | Before cold curriculum           |
 
 
 ---
@@ -619,6 +750,7 @@ STAGE_A_SMOKE_RUN_ID=<id> make test-stage-a-smoke
 | Stage A P2 stop — 1PGB inference `min_r` < 0.05        | 2026-07-03 | Global ep236; memo §5.1; contested-oscillation diagnosis                          |
 | P_STOP_ENFORCEMENT wired                               | 2026-07-03 | `stage_a_stop.py`, `tests/test_stage_a_stop.py`                                   |
 | r(d,s) pin miscalibration noted (lever_a@25 = 0.784)   | 2026-07-03 | §5.1; re-pin pending                                                              |
+| MASTER cold MLflow lineage + feature_set docs            | 2026-07-06 | §3.1–3.3, P_FEATURE_01, P_MASTER_COLD_SMOKE in this doc                           |
 | Step 0 δ-hyperbolicity complete                          | —          | To be filled                                                                      |
 
 

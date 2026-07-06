@@ -92,6 +92,11 @@ def main() -> None:
         action="store_true",
         help="Skip v5/v6 warm-start even when a default checkpoint exists",
     )
+    parser.add_argument(
+        "--master-cold-lineage",
+        action="store_true",
+        help="MASTER-feature cold-start lineage root (MLflow: warm_start=none, parent_run_id=null)",
+    )
     parser.add_argument("--max-proteins", type=int, default=None)
     parser.add_argument(
         "--max-residues",
@@ -103,9 +108,20 @@ def main() -> None:
     parser.add_argument("--mlflow-uri", default=os.environ.get("MLFLOW_TRACKING_URI", "file:/app/mlruns"))
     parser.add_argument("--mlflow-experiment", default="tokyo-eyes-v6")
     parser.add_argument("--no-mlflow", action="store_true")
+    parser.add_argument(
+        "--skip-p-feature-01-gate",
+        action="store_true",
+        help="Dev only: bypass P_FEATURE_01 DB gate stamp (sets SKIP_P_FEATURE_01_GATE)",
+    )
     parser.add_argument("--no-hyperbolic-gate", action="store_true", help="Use legacy tangent MLP gate")
     parser.add_argument("--hyperbolic-expert-mix", action="store_true", help="Stage 3: mix expert outputs on ball")
     parser.add_argument("--epochs", type=int, default=None, help="Override phase epoch count (smoke tests)")
+    parser.add_argument(
+        "--num-experts",
+        type=int,
+        default=4,
+        help="MoE expert count (gate + expert MLP head only; backbone unchanged)",
+    )
     parser.add_argument("--v2-teacher-checkpoint", type=Path, default=None, help="Frozen v3 teacher .pt")
     parser.add_argument(
         "--v2-teacher-depth-coeff",
@@ -490,6 +506,7 @@ def main() -> None:
     config = TrainingConfig(
         device=args.device,
         lr=args.lr,
+        num_experts=args.num_experts,
         output_dir=args.output_dir,
         pdb_dir=args.pdb_dir,
         corpus_manifest=args.corpus,
@@ -626,7 +643,19 @@ def main() -> None:
         residue_stage2=args.residue_stage2,
         residue_stage2_lr=args.residue_stage2_lr,
         residue_stage2_epochs=args.residue_stage2_epochs,
+        master_cold_lineage=args.master_cold_lineage,
     )
+    if config.master_cold_lineage:
+        if config.resume is not None:
+            logger.error("--master-cold-lineage is incompatible with --resume")
+            sys.exit(2)
+        args.no_warm_start = True
+        from science.training.config import apply_master_cold_dehydron_config
+
+        config = apply_master_cold_dehydron_config(config)
+        logger.info(
+            "MASTER cold dehydron ablation: topology_only_gate=True, V2 teacher disabled"
+        )
     if (
         config.p2_disc_proj_recovery
         or config.p2_disc_proj_recovery_v2
@@ -638,6 +667,25 @@ def main() -> None:
     config.output_dir.mkdir(parents=True, exist_ok=True)
     if not config.pdb_dir.is_dir():
         config.pdb_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.skip_p_feature_01_gate:
+        os.environ["SKIP_P_FEATURE_01_GATE"] = "1"
+    from science.training.p_feature_01_gate import (
+        DEFAULT_STAMP_PATH,
+        require_p_feature_01_for_training,
+    )
+
+    try:
+        require_p_feature_01_for_training(
+            Path(config.corpus_manifest),
+            stamp_path=DEFAULT_STAMP_PATH,
+        )
+    except (FileNotFoundError, RuntimeError) as exc:
+        logger.error(
+            "P_FEATURE_01 DB gate not satisfied: %s — run `make gate-p-feature-01` first",
+            exc,
+        )
+        sys.exit(2)
 
     logger.info("Loading corpus from %s", config.corpus_manifest)
     proteins, failed = load_training_proteins(
@@ -652,8 +700,21 @@ def main() -> None:
         sys.exit(1)
     logger.info("Loaded %d proteins (%d failed)", len(proteins), failed)
 
+    if proteins and config.master_cold_lineage:
+        scatter_pdb = config.disc_scatter_structure.split(":")[0].upper()
+        loaded_pdbs = {str(p.get("pdb_id", "")).upper() for p in proteins}
+        if scatter_pdb not in loaded_pdbs:
+            old_spec = config.disc_scatter_structure
+            p0 = proteins[0]
+            new_spec = f"{p0['pdb_id']}:{p0.get('chain', 'A')}"
+            config = config.model_copy(update={"disc_scatter_structure": new_spec})
+            logger.info(
+                "MASTER cold lineage: disc_scatter_structure %s not in corpus — using %s",
+                old_spec,
+                new_spec,
+            )
+
     if config.resume and config.resume.is_file():
-        import torch
         from science.dtie.v6.gnn.evidential import uncertainty_head_is_decoupled
 
         resume_blob = torch.load(config.resume, map_location="cpu", weights_only=False)

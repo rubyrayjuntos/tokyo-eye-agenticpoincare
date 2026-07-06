@@ -109,7 +109,7 @@ class HyperbolicPrototypeGate(nn.Module):
     Optional pre-routing disc readout (gate_disc_proj) feeds xy + |p| into topo encoder.
     """
 
-    TOPO_DIM = 7
+    TOPO_DIM = 8
     DISC_DIM = 3  # disc_x, disc_y, disc_r
 
     def __init__(
@@ -192,6 +192,7 @@ class HyperbolicPrototypeGate(nn.Module):
         degree: torch.Tensor,
         rho: torch.Tensor,
         ss_onehot: torch.Tensor,
+        tau_flag: torch.Tensor | None = None,
         disc_xy: torch.Tensor | None = None,
         disc_r: torch.Tensor | None = None,
     ) -> torch.Tensor:
@@ -200,11 +201,16 @@ class HyperbolicPrototypeGate(nn.Module):
             self._update_running_stats(log_degree, rho)
         norm_degree = (log_degree - self.degree_mean) / (self.degree_var.sqrt() + 1e-8)
         norm_rho = (rho - self.rho_mean) / (self.rho_var.sqrt() + 1e-8)
+        if tau_flag is None:
+            tau_feat = torch.zeros_like(clustering).unsqueeze(-1)
+        else:
+            tau_feat = tau_flag.unsqueeze(-1).float()
         parts = [
             clustering.unsqueeze(-1),
             cone_depth.detach(),
             norm_degree.unsqueeze(-1),
             norm_rho.unsqueeze(-1),
+            tau_feat,
             ss_onehot,
         ]
         if self.use_disc_position and disc_xy is not None and disc_r is not None:
@@ -222,6 +228,7 @@ class HyperbolicPrototypeGate(nn.Module):
         rho: torch.Tensor,
         ss_onehot: torch.Tensor,
         *,
+        tau_flag: torch.Tensor | None = None,
         disc_xy: torch.Tensor | None = None,
         disc_r: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, dict[str, Any]]:
@@ -233,7 +240,14 @@ class HyperbolicPrototypeGate(nn.Module):
                 disc_xy, disc_r = project_disc_2d(disc_raw, k=k)
 
         topo = self._topo_features(
-            clustering, cone_depth, degree, rho, ss_onehot, disc_xy=disc_xy, disc_r=disc_r
+            clustering,
+            cone_depth,
+            degree,
+            rho,
+            ss_onehot,
+            tau_flag=tau_flag,
+            disc_xy=disc_xy,
+            disc_r=disc_r,
         )
         topo_tangent = self.topo_encoder(topo)
         topo_hyp = pmath.project(pmath.expmap0(topo_tangent, k=k), k=k)

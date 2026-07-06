@@ -110,21 +110,25 @@ class TrainingTracker:
             self._active = True
             self.run_id = run.info.run_id
             parent_id: str | None = None
-            if self.config.resume is not None:
+            if self.config.master_cold_lineage:
+                mlf.set_tag("parent_run_id", "null")
+                mlf.set_tag("lineage_root", "true")
+            elif self.config.resume is not None:
                 parent_id = find_run_id_by_checkpoint_path(
                     str(self.config.resume),
                     tracking_uri=self.config.mlflow_tracking_uri,
                     experiment_name=self._active_experiment or self.config.mlflow_experiment,
                 )
-            mlf.log_params(self.config.to_mlflow_params())
-            mlf.log_params(
-                build_governance_params(
-                    self.config,
-                    proteins=proteins,
-                    parent_run_id=parent_id,
-                    phases=phases,
-                )
+            config_params = self.config.to_mlflow_params()
+            mlf.log_params(config_params)
+            gov_params = build_governance_params(
+                self.config,
+                proteins=proteins,
+                parent_run_id=parent_id,
+                phases=phases,
             )
+            # Config params win; governance may repeat keys (e.g. topology_only_gate).
+            mlf.log_params({k: v for k, v in gov_params.items() if k not in config_params})
             sha = _git_sha()
             if sha:
                 mlf.set_tag("git_sha", sha)
@@ -134,7 +138,7 @@ class TrainingTracker:
                 mlf.set_tag("phase_preset", preset)
             if self.config.resume is not None:
                 mlf.set_tag("resume_from", str(self.config.resume))
-            if parent_id:
+            if parent_id and not self.config.master_cold_lineage:
                 mlf.set_tag("parent_run_id", parent_id)
             try:
                 yield self

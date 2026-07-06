@@ -23,6 +23,49 @@ _REPO = Path(__file__).resolve().parents[3]
 STARVE_THRESHOLD = 0.05
 
 
+def eval_checkpoint_routing(
+    checkpoint: Path,
+    proteins: list[dict],
+    device: str,
+) -> dict[str, dict[str, float | list[float]]]:
+    """Evaluate per-structure routing loads for a single checkpoint."""
+    return _eval_epoch(checkpoint, proteins, device)
+
+
+def summarize_routing_floor(
+    rows: dict[str, dict[str, float | list[float]]],
+    *,
+    threshold: float = STARVE_THRESHOLD,
+) -> dict[str, Any]:
+    """Summarize batch routing floor across structures."""
+    if not rows:
+        return {
+            "per_structure_min_routing": None,
+            "structures_below_floor": [],
+            "worst_pdb": None,
+            "worst_min_r": None,
+            "threshold": threshold,
+        }
+    worst_pdb, worst_row = min(
+        rows.items(),
+        key=lambda item: float(item[1]["min_routing_fraction"]),
+    )
+    batch_min = float(worst_row["min_routing_fraction"])
+    below = sorted(
+        pdb
+        for pdb, row in rows.items()
+        if float(row["min_routing_fraction"]) < threshold
+    )
+    return {
+        "per_structure_min_routing": batch_min,
+        "structures_below_floor": below,
+        "worst_pdb": worst_pdb,
+        "worst_min_r": batch_min,
+        "threshold": threshold,
+        "structure_count": len(rows),
+    }
+
+
 def _eval_epoch(
     checkpoint: Path,
     proteins: list[dict],

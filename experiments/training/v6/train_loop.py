@@ -339,7 +339,11 @@ def train_epoch(
     expert_load_acc: list[torch.Tensor] = []
     effective_experts_per_prot: list[float] = []
     min_routing_fracs: list[float] = []
-    grad_norms = {"radial": [], "angular": [], "backbone": []}
+    grad_norms: dict[str, list[float]] = {
+        "grad_radial": [],
+        "grad_angular": [],
+        "grad_backbone": [],
+    }
     fold_totals: dict[str, list[float]] = {}
 
     for prot in proteins:
@@ -348,6 +352,9 @@ def train_epoch(
         try:
             data = attach_v6_features(prot["data"].to(device))
             target_rho = prot["target_rho"].to(device)
+            target_dehydron = prot.get("target_dehydron")
+            if target_dehydron is not None:
+                target_dehydron = target_dehydron.to(device)
             ca_coords = prot["ca_coords"].to(device)
             domain_labels = prot.get("domain_labels")
             if domain_labels is not None:
@@ -390,6 +397,11 @@ def train_epoch(
                 losses = gosp_loss_v6(
                     output=output,
                     target_rho=target_rho.squeeze(-1) if target_rho.dim() > 1 else target_rho,
+                    target_dehydron=(
+                        target_dehydron.squeeze(-1)
+                        if target_dehydron is not None and target_dehydron.dim() > 1
+                        else target_dehydron
+                    ),
                     ca_coords=ca_coords,
                     domain_labels=domain_labels,
                     sasa=sasa,
@@ -427,11 +439,14 @@ def train_epoch(
                         losses.update(distill)
                 return losses
 
+            from science.training.grad_probe import append_subsystem_grad_norms
+
             if cuda_amp:
                 with torch.autocast(device_type="cuda", enabled=True):
                     losses = _forward_losses()
                 scaler.scale(losses["total"]).backward()
                 scaler.unscale_(optimizer)
+                append_subsystem_grad_norms(model, grad_norms)
                 trainable = [p for p in model.parameters() if p.requires_grad]
                 torch.nn.utils.clip_grad_norm_(trainable, max_norm=1.0)
                 scaler.step(optimizer)
@@ -439,6 +454,7 @@ def train_epoch(
             else:
                 losses = _forward_losses()
                 losses["total"].backward()
+                append_subsystem_grad_norms(model, grad_norms)
                 trainable = [p for p in model.parameters() if p.requires_grad]
                 if trainable:
                     torch.nn.utils.clip_grad_norm_(trainable, max_norm=1.0)
@@ -465,16 +481,6 @@ def train_epoch(
             h_val = float(h.item() if torch.is_tensor(h) else h)
             effective_experts_per_prot.append(float(np.exp(h_val)))
 
-        for p in model.radial_head.parameters():
-            if p.grad is not None:
-                grad_norms["radial"].append(p.grad.norm().item())
-        for p in model.angular_head.parameters():
-            if p.grad is not None:
-                grad_norms["angular"].append(p.grad.norm().item())
-        for p in model.convs.parameters():
-            if p.grad is not None:
-                grad_norms["backbone"].append(p.grad.norm().item())
-
         for k in epoch_losses:
             if k in losses:
                 v = losses[k]
@@ -489,13 +495,13 @@ def train_epoch(
                 float(total_v.item() if torch.is_tensor(total_v) else total_v)
             )
 
+    from science.training.grad_probe import finalize_subsystem_grad_norms
+
     result = {k: float(np.mean(v)) if v else 0.0 for k, v in epoch_losses.items()}
     for fold_id, vals in fold_totals.items():
         key = f"per_fold_loss.{fold_id_to_mlflow_key(fold_id)}"
         result[key] = float(np.mean(vals)) if vals else 0.0
-    result["grad_radial"] = float(np.mean(grad_norms["radial"])) if grad_norms["radial"] else 0.0
-    result["grad_angular"] = float(np.mean(grad_norms["angular"])) if grad_norms["angular"] else 0.0
-    result["grad_backbone"] = float(np.mean(grad_norms["backbone"])) if grad_norms["backbone"] else 0.0
+    result.update(finalize_subsystem_grad_norms(grad_norms))
     if expert_load_acc:
         mean_load = torch.stack(expert_load_acc).mean(dim=0)
         for i, load in enumerate(mean_load.tolist()):
@@ -527,13 +533,22 @@ def _accumulate_expert_geometry(
     disc_sums: list[float],
     disc_counts: list[int],
     r_ds_pairs: list[tuple[list[float], list[float]]],
+    tau_sums: list[float],
+    sasa_sums: list[float],
+    rho_sums: list[float],
+    coil_counts: list[int],
+    bio_counts: list[int],
 ) -> None:
-    """Per-expert cone_depth / disc_r / depth×SASA from dominant routing assignment."""
+    """Per-expert geometry + biology from dominant routing assignment."""
     weights = out.get("expert_weights")
     if weights is None:
         return
     cd = out["cone_depth"].squeeze().detach().cpu().numpy()
-    sasa = data.x[:, 3].detach().cpu().numpy()
+    x = data.x.detach().cpu().numpy()
+    rho = x[:, 0]
+    tau = x[:, 1]
+    ss = x[:, 2]
+    sasa = x[:, 3]
     hyp = out["hyp_projections_2d"].detach().cpu().numpy()
     disc_r = np.linalg.norm(hyp, axis=1) if hyp.ndim == 2 else np.abs(hyp)
     assign = weights.argmax(dim=1).detach().cpu().numpy()
@@ -548,6 +563,11 @@ def _accumulate_expert_geometry(
         disc_counts[e] += n
         r_ds_pairs[e][0].extend(cd[mask].tolist())
         r_ds_pairs[e][1].extend(sasa[mask].tolist())
+        tau_sums[e] += float(tau[mask].sum())
+        sasa_sums[e] += float(sasa[mask].sum())
+        rho_sums[e] += float(rho[mask].sum())
+        coil_counts[e] += int((ss[mask] >= 0.75).sum())
+        bio_counts[e] += n
 
 
 def measure_geometry_health(
@@ -559,6 +579,7 @@ def measure_geometry_health(
     cone_depth_stds, cone_depth_means = [], []
     disc_r_means, disc_r_stds = [], []
     probe_depth_sasa, probe_epi_sasa, probe_proj_depth, probe_disc_sasa = [], [], [], []
+    probe_depth_tau, probe_depth_rho = [], []
     probe_epi_ale: list[float] = []
     all_epi_vals: list[np.ndarray] = []
     all_ale_vals: list[np.ndarray] = []
@@ -571,6 +592,11 @@ def measure_geometry_health(
     disc_sums = [0.0] * num_experts
     disc_counts = [0] * num_experts
     r_ds_pairs: list[tuple[list[float], list[float]]] = [( [], []) for _ in range(num_experts)]
+    tau_sums = [0.0] * num_experts
+    sasa_sums = [0.0] * num_experts
+    rho_sums = [0.0] * num_experts
+    coil_counts = [0] * num_experts
+    bio_counts = [0] * num_experts
     sample = proteins if len(proteins) <= max_proteins else proteins[:max_proteins]
 
     with torch.no_grad():
@@ -589,6 +615,8 @@ def measure_geometry_health(
             cone_depth_means.append(float(cd.mean()))
 
             sasa = data.x[:, 3].cpu().numpy()
+            tau = data.x[:, 1].cpu().numpy()
+            rho = data.x[:, 0].cpu().numpy()
             epi = out["uncertainty"]["epistemic"].squeeze().cpu().numpy()
             ale = out["uncertainty"]["aleatoric"].squeeze().cpu().numpy()
             all_epi_vals.append(np.asarray(epi, dtype=float).reshape(-1))
@@ -599,6 +627,8 @@ def measure_geometry_health(
             disc_r_means.append(float(disc_r.mean()))
             disc_r_stds.append(float(disc_r.std()))
             probe_depth_sasa.append(_pearson_np(cd, sasa))
+            probe_depth_tau.append(_pearson_np(cd, tau))
+            probe_depth_rho.append(_pearson_np(cd, rho))
             probe_epi_sasa.append(_pearson_np(epi, sasa))
             probe_proj_depth.append(_pearson_np(disc_r, cd))
             probe_disc_sasa.append(_pearson_np(disc_r, sasa))
@@ -634,6 +664,11 @@ def measure_geometry_health(
                 disc_sums=disc_sums,
                 disc_counts=disc_counts,
                 r_ds_pairs=r_ds_pairs,
+                tau_sums=tau_sums,
+                sasa_sums=sasa_sums,
+                rho_sums=rho_sums,
+                coil_counts=coil_counts,
+                bio_counts=bio_counts,
             )
 
     def _nanmean(values: list[float]) -> float:
@@ -651,6 +686,8 @@ def measure_geometry_health(
         "disc_r_mean": float(np.mean(disc_r_means)),
         "disc_r_std_mean": float(np.mean(disc_r_stds)),
         "probe_r_depth_sasa": _nanmean(probe_depth_sasa),
+        "probe_r_depth_tau": _nanmean(probe_depth_tau),
+        "probe_r_depth_rho": _nanmean(probe_depth_rho),
         "probe_r_epi_sasa": _nanmean(probe_epi_sasa),
         "probe_r_proj_depth": _nanmean(probe_proj_depth),
         "probe_r_disc_sasa": _nanmean(probe_disc_sasa),
@@ -673,4 +710,10 @@ def measure_geometry_health(
             result[f"expert_{e}_r_depth_sasa"] = _pearson_np(
                 np.array(r_ds_pairs[e][0]), np.array(r_ds_pairs[e][1])
             )
+        if bio_counts[e] > 0:
+            n_bio = bio_counts[e]
+            result[f"expert_{e}_tau_mean"] = tau_sums[e] / n_bio
+            result[f"expert_{e}_sasa_mean"] = sasa_sums[e] / n_bio
+            result[f"expert_{e}_rho_mean"] = rho_sums[e] / n_bio
+            result[f"expert_{e}_ss_coil_frac"] = coil_counts[e] / n_bio
     return result
