@@ -36,7 +36,7 @@ train-v6-benchmark: ## GPU smoke on science/dtie benchmark_pdbs + v3 teacher (EP
 	@test -d science/dtie/assets/benchmark_pdbs || (echo "Missing science/dtie/assets/benchmark_pdbs" && exit 1)
 	@test -f science/dtie/v3/checkpoints/v2_bridge_epoch_014.pt || (echo "Missing v2_bridge teacher checkpoint" && exit 1)
 	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
-	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+	$(if $(TRAINING_LOAD_FROM_PDB),docker compose run --rm -e DB_POOL_MIN_SIZE=2 -e DB_POOL_MAX_SIZE=10 -e TRAINING_LOAD_FROM_PDB=1 --user $(DOCKER_USER),$(SCIENCE_RUN)) science python -m experiments.training.v6.launch_training \
 		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_benchmark.json) \
 		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),benchmark_$(shell date +%Y%m%d_%H%M%S)) \
 		--pdb-dir $(or $(PDB_DIR),$(BENCHMARK_PDB_CONTAINER)) \
@@ -112,6 +112,8 @@ train-v6-benchmark: ## GPU smoke on science/dtie benchmark_pdbs + v3 teacher (EP
 		$(if $(P1B_LR),--p1b-lr $(P1B_LR),) \
 		$(if $(V2_TEACHER_DEPTH),--v2-teacher-depth-coeff $(V2_TEACHER_DEPTH),) \
 		$(if $(V2_TEACHER_EPISTEMIC),--v2-teacher-epistemic-coeff $(V2_TEACHER_EPISTEMIC),) \
+		$(if $(DEHYDRON_RIM_RECOVERY),--dehydron-rim-recovery,) \
+		$(if $(DEHYDRON_RIM_RECOVERY_LR),--dehydron-rim-recovery-lr $(DEHYDRON_RIM_RECOVERY_LR),) \
 		$(if $(LR),--lr $(LR),) \
 		$(if $(RESUME),--resume /app/$(RESUME),)
 
@@ -612,7 +614,7 @@ train-v6-stage-a-small-master-cold: ## Cold-start 12-prot MASTER features (P1→
 		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
 	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
 	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
-	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
 		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
 		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),stage_a_small_master_cold_v1) \
 		--pdb-dir /tmp/dtie_pdb_cache \
@@ -626,12 +628,129 @@ train-v6-stage-a-small-master-cold: ## Cold-start 12-prot MASTER features (P1→
 		--save-epoch-snapshots
 	@echo "MASTER cold-start complete. Run: checkpoints/v6/runs/$(or $(RUN_ID),stage_a_small_master_cold_v1)"
 
+train-v6-slim-moe-structural-ssot: ## Cold-start 12-prot slim MoE + frozen structural disc SSOT (inference-aligned)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),slim_moe_structural_ssot_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--no-warm-start \
+		--slim-moe-structural-ssot \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--save-epoch-snapshots
+	@echo "Slim MoE structural SSOT cold-start complete. Run: checkpoints/v6/runs/$(or $(RUN_ID),slim_moe_structural_ssot_v1)"
+
+train-v6-slim-moe-routing-recovery: ## MoE routing recovery off slim SSOT checkpoint (structural disc frozen)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@test -f $(or $(RESUME),checkpoints/v6/runs/slim_moe_structural_ssot_cold_v1/v6_phase2_12prot.pt) || \
+		(echo "Missing resume checkpoint — set RESUME=..." && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),slim_moe_route_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),checkpoints/v6/runs/slim_moe_structural_ssot_cold_v1/v6_phase2_12prot.pt) \
+		--topology-routing-recovery \
+		--structural-disc-frozen \
+		--topology-routing-recovery-lr $(or $(LR),3e-5) \
+		--epochs $(or $(EPOCHS),40) \
+		--p2-bridge-ramp-epochs $(or $(P2_BRIDGE_RAMP_EPOCHS),$(EPOCHS),40) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--save-epoch-snapshots
+	@echo "Slim MoE routing recovery complete. Viewers: checkpoints/v6/runs/$(or $(RUN_ID),slim_moe_route_v1)/viewers/"
+
+train-v6-topology-routing-recovery: ## P2 MoE routing: ep169, 4 experts, structure gate, depth decouple
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@test -f $(or $(RESUME),checkpoints/v6/runs/master_cold_topology_v1/epochs/epoch_169.pt) || \
+		(echo "Missing resume checkpoint — set RESUME=..." && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),master_cold_topology_route_v3) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),checkpoints/v6/runs/master_cold_topology_v1/epochs/epoch_169.pt) \
+		--topology-routing-recovery \
+		--topology-routing-recovery-lr $(or $(LR),3e-5) \
+		--epochs $(or $(EPOCHS),40) \
+		--p2-bridge-ramp-epochs $(or $(P2_BRIDGE_RAMP_EPOCHS),$(EPOCHS),40) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--save-epoch-snapshots
+	@echo "Topology routing recovery complete. Run: checkpoints/v6/runs/$(or $(RUN_ID),master_cold_topology_route_v3)"
+
+train-v6-topology-gate-disc-recovery: ## Gate-only + light disc recovery off route_v3 (freeze depth bias, 20ep)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@test -f $(or $(RESUME),checkpoints/v6/runs/master_cold_topology_route_v3/epochs/epoch_209.pt) || \
+		(echo "Missing resume checkpoint — set RESUME=..." && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),master_cold_topology_gate_disc_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),checkpoints/v6/runs/master_cold_topology_route_v3/epochs/epoch_209.pt) \
+		--topology-gate-disc-recovery \
+		--topology-gate-disc-recovery-lr $(or $(LR),2e-5) \
+		--epochs $(or $(EPOCHS),20) \
+		--p2-bridge-ramp-epochs $(or $(P2_BRIDGE_RAMP_EPOCHS),$(EPOCHS),20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--save-epoch-snapshots
+	@echo "Topology gate+disc recovery complete. Run: checkpoints/v6/runs/$(or $(RUN_ID),master_cold_topology_gate_disc_v1)"
+
+train-v6-topology-crescent-recovery: ## Open 1D crescent: angular+disc wedge off route_v3 (25ep)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@test -f $(or $(RESUME),checkpoints/v6/runs/master_cold_topology_route_v3/epochs/epoch_209.pt) || \
+		(echo "Missing resume checkpoint — set RESUME=..." && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),master_cold_topology_crescent_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),checkpoints/v6/runs/master_cold_topology_route_v3/epochs/epoch_209.pt) \
+		--topology-crescent-recovery \
+		--topology-crescent-recovery-lr $(or $(LR),2e-5) \
+		--epochs $(or $(EPOCHS),25) \
+		--p2-bridge-ramp-epochs $(or $(P2_BRIDGE_RAMP_EPOCHS),$(EPOCHS),25) \
+		--p2-disc-line-thickness-floor $(or $(DISC_THICKNESS_FLOOR),0.03) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--save-epoch-snapshots
+	@echo "Topology crescent recovery complete. Run: checkpoints/v6/runs/$(or $(RUN_ID),master_cold_topology_crescent_v1)"
+
 train-v6-stage-a-small-master-cold-smoke: ## 1-epoch MASTER cold-start smoke — all 12 structures (P_MASTER_COLD_SMOKE)
 	@test -f data/gates/p_feature_01_passed.json || \
 		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
 	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
 	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
-	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
 		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
 		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),stage_a_small_master_cold_smoke_12_$(shell date +%Y%m%d_%H%M%S)) \
 		--pdb-dir /tmp/dtie_pdb_cache \
@@ -780,6 +899,141 @@ train-v6-p4-head-decouple: ## P4 split epi/ale trunks + decorrelation loss (20 e
 		--v2-teacher-epistemic-coeff 0 \
 		--no-corpus-cache
 	@echo "P4 head decouple complete. Target: probe_r_epi_ale < 0.70 for v6_best save."
+
+G3_ROUTE_RESUME ?= checkpoints/v6/runs/slim_moe_route_v1/v6_best.pt
+G3_EPOCHS ?= 12
+
+train-v6-g3-p4-decorr-only: ## G3 ablation A: decorr-only Phase 4 from route_v1 (no B-factor/SASA supervision)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f $(or $(RESUME),$(G3_ROUTE_RESUME)) || \
+		(echo "Missing resume: $(or $(RESUME),$(G3_ROUTE_RESUME))" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),g3_p4_decorr_only_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),$(G3_ROUTE_RESUME)) \
+		--p4-head-decouple-decorr-only \
+		--structural-disc-frozen \
+		--p4-epistemic-lr $(or $(P4_EPISTEMIC_LR),5e-5) \
+		--epochs $(or $(EPOCHS),$(G3_EPOCHS)) \
+		--save-epoch-snapshots \
+		--no-corpus-cache
+	@echo "G3 ablation A complete: checkpoints/v6/runs/$(or $(RUN_ID),g3_p4_decorr_only_v1)"
+
+train-v6-g3-p4-full: ## G3 ablation B: full Phase 4 head decouple from route_v1 (B-factor/SASA supervision on)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f $(or $(RESUME),$(G3_ROUTE_RESUME)) || \
+		(echo "Missing resume: $(or $(RESUME),$(G3_ROUTE_RESUME))" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),g3_p4_full_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),$(G3_ROUTE_RESUME)) \
+		--p4-head-decouple \
+		--structural-disc-frozen \
+		--p4-epistemic-lr $(or $(P4_EPISTEMIC_LR),5e-5) \
+		--epistemic-decoupling-holdouts $(or $(EPISTEMIC_DECOUPLING_HOLDOUTS),1IVO\,4MNE) \
+		--epochs $(or $(EPOCHS),$(G3_EPOCHS)) \
+		--save-epoch-snapshots \
+		--no-corpus-cache
+	@echo "G3 ablation B complete: checkpoints/v6/runs/$(or $(RUN_ID),g3_p4_full_v1)"
+
+eval-g3-ablation: ## Compare G3 A/B checkpoints (P8/P11 circularity gate)
+	@test -f $(or $(G3_DECORR_CKPT),checkpoints/v6/runs/g3_p4_decorr_only_v1/v6_best.pt) \
+		-o -f $(or $(G3_DECORR_CKPT),checkpoints/v6/runs/g3_p4_decorr_only_v1/v6_phase4_12prot.pt) || \
+		(echo "Missing decorr-only checkpoint (v6_best.pt or v6_phase4_12prot.pt)" && exit 1)
+	@test -f $(or $(G3_FULL_CKPT),checkpoints/v6/runs/g3_p4_full_v1/v6_best.pt) \
+		-o -f $(or $(G3_FULL_CKPT),checkpoints/v6/runs/g3_p4_full_v1/v6_phase4_12prot.pt) || \
+		(echo "Missing full-supervision checkpoint" && exit 1)
+	@DECORR=$$(test -f $(or $(G3_DECORR_CKPT),checkpoints/v6/runs/g3_p4_decorr_only_v1/v6_best.pt) && echo $(or $(G3_DECORR_CKPT),checkpoints/v6/runs/g3_p4_decorr_only_v1/v6_best.pt) || echo $(or $(G3_DECORR_CKPT),checkpoints/v6/runs/g3_p4_decorr_only_v1/v6_phase4_12prot.pt)); \
+	FULL=$$(test -f $(or $(G3_FULL_CKPT),checkpoints/v6/runs/g3_p4_full_v1/v6_best.pt) && echo $(or $(G3_FULL_CKPT),checkpoints/v6/runs/g3_p4_full_v1/v6_best.pt) || echo $(or $(G3_FULL_CKPT),checkpoints/v6/runs/g3_p4_full_v1/v6_phase4_12prot.pt)); \
+	mkdir -p checkpoints/v6/diagnostics; \
+	TRAINING_LOAD_FROM_PDB=1 $(SCIENCE_RUN) science python experiments/diagnostics/g3_ablation_eval.py \
+		--decor-only /app/$$DECORR \
+		--full-supervision /app/$$FULL \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cpu) \
+		--json-out /app/checkpoints/v6/diagnostics/g3_ablation_report.json \
+		--pdb-local
+
+gnnv7-retrain-g3: ## Run G3 A/B Phase 4 ablations then eval circularity gate
+	$(MAKE) train-v6-g3-p4-decorr-only RUN_ID=$(or $(G3_DECORR_RUN),g3_p4_decorr_only_v1) EPOCHS=$(or $(EPOCHS),$(G3_EPOCHS))
+	$(MAKE) train-v6-g3-p4-full RUN_ID=$(or $(G3_FULL_RUN),g3_p4_full_v1) EPOCHS=$(or $(EPOCHS),$(G3_EPOCHS))
+	$(MAKE) eval-g3-ablation G3_DECORR_CKPT=checkpoints/v6/runs/$(or $(G3_DECORR_RUN),g3_p4_decorr_only_v1)/v6_best.pt \
+		G3_FULL_CKPT=checkpoints/v6/runs/$(or $(G3_FULL_RUN),g3_p4_full_v1)/v6_best.pt
+
+train-v6-gnnv7-routing-recovery: ## GNNv7: MoE routing touch-up from route_v1 (hyperbolic MP graph during training)
+	@test -f $(or $(RESUME),$(G3_ROUTE_RESUME)) || \
+		(echo "Missing resume: $(or $(RESUME),$(G3_ROUTE_RESUME))" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),gnnv7_route_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),$(G3_ROUTE_RESUME)) \
+		--topology-routing-recovery \
+		--structural-disc-frozen \
+		--topology-routing-recovery-lr $(or $(LR),3e-5) \
+		--epochs $(or $(EPOCHS),20) \
+		--p2-bridge-ramp-epochs $(or $(P2_BRIDGE_RAMP_EPOCHS),$(EPOCHS),20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--save-epoch-snapshots
+	@echo "GNNv7 routing recovery complete: checkpoints/v6/runs/$(or $(RUN_ID),gnnv7_route_v1)"
+
+train-v6-gnnv7-p4-full: ## GNNv7: full Phase 4 after routing recovery (requires G3 pass)
+	@test -f $(or $(RESUME),checkpoints/v6/runs/gnnv7_route_v1/v6_best.pt) || \
+		(echo "Missing resume — run train-v6-gnnv7-routing-recovery first" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),gnnv7_p4_full_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri file:/app/mlruns \
+		--resume /app/$(or $(RESUME),checkpoints/v6/runs/gnnv7_route_v1/v6_best.pt) \
+		--p4-head-decouple \
+		--structural-disc-frozen \
+		--p4-epistemic-lr $(or $(P4_EPISTEMIC_LR),5e-5) \
+		--epistemic-decoupling-holdouts $(or $(EPISTEMIC_DECOUPLING_HOLDOUTS),1IVO\,4MNE) \
+		--epochs $(or $(EPOCHS),20) \
+		--save-epoch-snapshots \
+		--no-corpus-cache
+	@echo "GNNv7 Phase 4 complete: checkpoints/v6/runs/$(or $(RUN_ID),gnnv7_p4_full_v1)"
+
+gnnv7-retrain-full: ## Full GNNv7 retrain after G3 pass (routing recovery + Phase 4 full)
+	$(MAKE) train-v6-gnnv7-routing-recovery RUN_ID=$(or $(GNNV7_ROUTE_RUN),gnnv7_route_v1) EPOCHS=$(or $(ROUTING_EPOCHS),20)
+	$(MAKE) train-v6-gnnv7-p4-full RUN_ID=$(or $(GNNV7_P4_RUN),gnnv7_p4_full_v1) \
+		RESUME=checkpoints/v6/runs/$(or $(GNNV7_ROUTE_RUN),gnnv7_route_v1)/v6_best.pt EPOCHS=$(or $(P4_EPOCHS),20)
+
+gnnv7-retrain: ## Recommended sequence: G3 A/B gate, then full retrain if pass
+	@echo "=== GNNv7 retrain step 1/2: G3 A/B ablations ==="
+	$(MAKE) gnnv7-retrain-g3
+	@echo "=== GNNv7 retrain step 2/2: full routing + P4 (only if G3 passed) ==="
+	@if [ -f checkpoints/v6/diagnostics/g3_ablation_report.json ] && \
+		python3 -c "import json; r=json.load(open('checkpoints/v6/diagnostics/g3_ablation_report.json')); exit(0 if r['g3_report']['g3_pass'] else 1)"; then \
+		$(MAKE) gnnv7-retrain-full; \
+	else \
+		echo "G3 gate failed or report missing — skipping full retrain. Inspect checkpoints/v6/diagnostics/g3_ablation_report.json"; \
+		exit 1; \
+	fi
 
 train-v6-p4-head-decouple-continue: ## Continue head decouple from phase checkpoint (12 ep, sasa gate 0.79)
 	@test -f $(or $(RESUME),checkpoints/v6/runs/p4_head_decouple_v1/v6_phase4_12prot.pt) || \
@@ -1001,15 +1255,17 @@ assess-v6-12prot-baseline: ## Side-by-side assess on 12-prot manifest (CHAMPION=
 		CORPUS=v6_corpus_stage_a_small_v1.json MAX_PROTEINS=12 MAX_RESIDUES=650 DEVICE=$(or $(DEVICE),cuda) \
 		OUTPUT=/app/checkpoints/v6/runs/baseline_compare_12prot/baseline_on_12prot.json
 
-export-corpus-viewers: ## Export NGL + Poincaré disc HTML for each corpus structure
+export-corpus-viewers: ## Export NGL + Poincaré disc + split HTML for each corpus structure
 	@mkdir -p data/local_objects/gnn_viewer
 	$(SCIENCE_RUN) science python -m experiments.training.v6.export_corpus_viewers \
 		--checkpoint /app/$(or $(CHECKPOINT),checkpoints/v6/runs/residue_stage2_v1/v6_phase1_12prot.pt) \
 		--corpus /app/$(or $(CORPUS),manifests/v6_corpus_stage_a_small_v1.json) \
 		--pdb-dir /tmp/dtie_pdb_cache \
 		--device $(or $(DEVICE),cuda) \
-		--max-proteins $(or $(MAX_PROTEINS),12)
-	@echo "Viewers under data/local_objects/gnn_viewer/<pdb>/"
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		$(if $(STRUCTURAL_DISC_FROZEN),--structural-disc-frozen,) \
+		$(if $(OUTPUT_ROOT),--output-root /app/$(OUTPUT_ROOT),)
+	@echo "Viewers under $(or $(OUTPUT_ROOT),data/local_objects/gnn_viewer)/<pdb>/"
 
 test-stage-a-smoke: ## Assert P_STAGE_A_SMOKE on STAGE_A_SMOKE_RUN_ID MLflow run
 	@test -n "$$STAGE_A_SMOKE_RUN_ID" || (echo "Set STAGE_A_SMOKE_RUN_ID to the smoke run id" && exit 1)
@@ -1128,16 +1384,76 @@ diagnose-radial-angular-slice: ## Rank-collapse audit — pre/post routing disc 
 		$(if $(DISC_RADIAL_SOURCE),--disc-radial-source $(DISC_RADIAL_SOURCE),) \
 		--json-out "$(or $(JSON_OUT),checkpoints/v6/diagnostics/slice_audit_$(shell basename $(CHECKPOINT) .pt).json)"
 
-diagnose-embedding: ## Disc occupancy audit — full tables (CHECKPOINT=... or COMPARE_CHECKPOINTS='a b c')
+diagnose-embedding: ## Disc occupancy audit — full tables (CHECKPOINT=... or COMPARE_CHECKPOINTS='a b c'; PDB_LOCAL=0 needs DB)
 	@test -n "$(or $(CHECKPOINT),$(COMPARE_CHECKPOINTS))" || (echo "Usage: make diagnose-embedding CHECKPOINT=checkpoints/v6/tokyo_eyes_v6.pt STRUCTURES=11QE:A" && exit 1)
 	@mkdir -p pdb_cache checkpoints/v6/diagnostics
 	python -m experiments.diagnostics.embedding_occupancy_audit \
 		$(if $(COMPARE_CHECKPOINTS),--compare-checkpoints $(COMPARE_CHECKPOINTS),--checkpoint "$(CHECKPOINT)") \
 		--structures "$(or $(STRUCTURES),11QE:A,4OBE:A,1IVO:A,4MNE:A)" \
 		--pdb-dir /tmp/dtie_pdb_cache \
+		$(if $(filter 0,$(PDB_LOCAL)),,--pdb-local) \
 		--device $(or $(DEVICE),cpu) \
 		$(if $(JSON_OUT),--json-out "$(JSON_OUT)",) \
 		$(if $(EXPORT_SCATTER),--export-scatter "$(EXPORT_SCATTER)",)
+
+audit-dehydron-topology: ## Dehydron cone alignment + disc panels + P_DEHYDRON_CONE_01 pass/fail (CHECKPOINT=...)
+	@test -f "$(or $(CHECKPOINT),checkpoints/v6/tokyo_eyes_v6.pt)" || \
+		(echo "Missing checkpoint: set CHECKPOINT=checkpoints/v6/tokyo_eyes_v6.pt" && exit 1)
+	@mkdir -p checkpoints/v6/diagnostics/dehydron_topology
+	@CKPT="$(or $(CHECKPOINT),checkpoints/v6/tokyo_eyes_v6.pt)"; \
+	STEM=$$(basename "$$CKPT" .pt); \
+	python3 -m experiments.training.v6.dehydron_cone_alignment_audit \
+		--checkpoint "$$CKPT" \
+		--corpus "$(or $(CORPUS),manifests/v6_corpus_disc_target.json)" \
+		--pdb-dir "$(or $(PDB_DIR),/tmp/dtie_pdb_cache)" \
+		--pdb-local \
+		--device $(or $(DEVICE),cpu) \
+		--plot-dir "$(or $(PLOT_DIR),checkpoints/v6/diagnostics/dehydron_topology)" \
+		--output "$(or $(JSON_OUT),checkpoints/v6/diagnostics/dehydron_topology/$${STEM}_alignment.json)" \
+		--gate-exit
+
+edge-telemetry-baseline: ## Edge telemetry MVP — telemetry-alive + collapsed-routing baseline (track only, not gate)
+	@mkdir -p checkpoints/v6/runs
+	python3 -m experiments.diagnostics.edge_telemetry_baseline \
+		--corpus "$(or $(CORPUS),manifests/v6_corpus_stage_a_small_v1.json)" \
+		--pdb-dir "$(or $(PDB_DIR),/tmp/dtie_pdb_cache)" \
+		--pdb-local \
+		--device $(or $(DEVICE),cpu) \
+		--compare-checkpoints \
+			checkpoints/v6/runs/slim_moe_structural_ssot_cold_v1/v6_best.pt \
+			checkpoints/v6/runs/slim_moe_route_v1/v6_best.pt \
+		--json-out "$(or $(JSON_OUT),checkpoints/v6/runs/edge_telemetry_mvp_baseline.json)"
+
+residue-uncertainty-audit: ## Per-residue ν_epi / ν_ale CSV+JSON (CHECKPOINT=... STRUCTURES=1MBN:A)
+	@test -f "$(or $(CHECKPOINT),checkpoints/v6/runs/slim_moe_route_v1/v6_best.pt)" || \
+		(echo "Missing CHECKPOINT" && exit 1)
+	@mkdir -p checkpoints/v6/diagnostics
+	python3 -m experiments.diagnostics.residue_uncertainty_audit \
+		--checkpoint "$(or $(CHECKPOINT),checkpoints/v6/runs/slim_moe_route_v1/v6_best.pt)" \
+		--structures "$(or $(STRUCTURES),1MBN:A)" \
+		--pdb-dir "$(or $(PDB_DIR),/tmp/dtie_pdb_cache)" \
+		--pdb-local \
+		--device $(or $(DEVICE),cpu) \
+		--json-out "$(or $(JSON_OUT),checkpoints/v6/diagnostics/residue_uncertainty_audit.json)" \
+		--csv-out "$(or $(CSV_OUT),checkpoints/v6/diagnostics/residue_uncertainty_audit.csv)"
+
+train-v6-dehydron-rim-recovery: ## τ→rim cone recovery warm-start off production v6 (preserve disc occupancy)
+	$(MAKE) train-v6-benchmark RUN_ID=$(or $(RUN_ID),dehydron_rim_recovery_v1) EPOCHS=$(or $(EPOCHS),12) \
+		CORPUS=$(or $(CORPUS),v6_corpus_disc_target.json) \
+		PDB_DIR=/tmp/dtie_pdb_cache \
+		RESUME=$(or $(RESUME),checkpoints/v6/tokyo_eyes_v6.pt) \
+		DEHYDRON_RIM_RECOVERY=1 \
+		DEHYDRON_RIM_RECOVERY_LR=$(or $(LR),$(DEHYDRON_RIM_RECOVERY_LR),2e-5) \
+		LEGACY_DISC_PROJECTION=0 \
+		DISC_RADIAL_SOURCE=radial_depth \
+		V2_TEACHER_DEPTH=0 \
+		V2_TEACHER_EPISTEMIC=0 \
+		DISC_LINE_THICKNESS_FLOOR=$(or $(DISC_LINE_THICKNESS_FLOOR),0.025) \
+		DISC_SCATTER_INTERVAL=$(or $(DISC_SCATTER_INTERVAL),2) \
+		SAVE_EPOCH_SNAPSHOTS=1 $(if $(USE_MLFLOW),USE_MLFLOW=1,) DEVICE=$(or $(DEVICE),cuda) \
+		MAX_PROTEINS=$(or $(MAX_PROTEINS),3) \
+		TRAINING_LOAD_FROM_PDB=1
+	@echo "Dehydron rim recovery complete. Audit: make audit-dehydron-topology CHECKPOINT=checkpoints/v6/runs/$(or $(RUN_ID),dehydron_rim_recovery_v1)/v6_best.pt"
 
 diagnose-angular-shell: ## Step-2 angular geometry test — radius shells + perm null (CHECKPOINT=...)
 	@test -n "$(CHECKPOINT)" || (echo "Usage: make diagnose-angular-shell CHECKPOINT=checkpoints/v6/runs/shell_p2_hypmix_final/v6_best.pt" && exit 1)
@@ -1208,7 +1524,7 @@ mlflow-ui-logs: ## Tail MLflow UI container logs
 mlflow-repair-store: ## Fix local mlruns/ metadata that breaks mlflow ui (HTTP 500)
 	@python3 experiments/training/v6/repair_mlflow_store.py --store mlruns
 
-.PHONY: help up down kill build rebuild logs ps migrate psql dev dev-frontend test test-host test-docker test-integration test-integration-docker test-all lint format typecheck clean train-v6 train-v6-curriculum assess-v6 eval-v6 diagnose-embedding promote-v6 promote-v6-from-run promote-production-v6 verify-v6-gnn test-v6-gnn-integration mlflow-ui mlflow-ui-logs train-v6-theory-test-mlflow train-v6-mlflow-governance-smoke train-v6-stage-a-smoke train-v6-stage-a-curriculum test-stage-a-smoke auto-train-v6-corpus25 auto-train-v6-status sync-corpus-pins sync-p-curv-fixture seed-p-curv-fixture test-p-curv-01
+.PHONY: help up down kill build rebuild logs ps migrate psql dev dev-frontend test test-host test-docker test-integration test-integration-docker test-all lint format typecheck clean train-v6 train-v6-curriculum assess-v6 eval-v6 diagnose-embedding audit-dehydron-topology train-v6-dehydron-rim-recovery promote-v6 promote-v6-from-run promote-production-v6 verify-v6-gnn test-v6-gnn-integration mlflow-ui mlflow-ui-logs train-v6-theory-test-mlflow train-v6-mlflow-governance-smoke train-v6-stage-a-smoke train-v6-stage-a-curriculum test-stage-a-smoke auto-train-v6-corpus25 auto-train-v6-status sync-corpus-pins sync-p-curv-fixture seed-p-curv-fixture test-p-curv-01
 
 # ---------------------------------------------------------------------------
 # Docker Compose shortcuts
@@ -1435,6 +1751,12 @@ audit-structure: ## Query audit events for a structure (STRUCTURE_ID=4obe)
 	python scripts/audit_pipeline.py --structure-id "$(STRUCTURE_ID)" \
 		$(if $(SINCE),--since "$(SINCE)",) \
 		$(if $(SEVERITY),--severity "$(SEVERITY)",)
+
+shell-signal-gate: ## τ-rim shell + uncertainty gate (STRUCTURE_ID=4obe; STRICT=1 to fail)
+	@test -n "$(STRUCTURE_ID)" || (echo "Usage: make shell-signal-gate STRUCTURE_ID=4obe [STRICT=1]" && exit 1)
+	python -m experiments.diagnostics.shell_signal_ssot_gate \
+		--structure-id "$(STRUCTURE_ID)" \
+		$(if $(STRICT),--strict,)
 
 audit-summary: ## Summarize pipeline audit events (optional SINCE=7d JOB_NAME=gnn_inference)
 	python scripts/audit_pipeline.py --summary --limit 500 \

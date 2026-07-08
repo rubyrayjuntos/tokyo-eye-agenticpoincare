@@ -1,4 +1,26 @@
-"""V6 decoupled evidential uncertainty head (separate epi / ale trunks)."""
+"""V6 evidential uncertainty head (Deep Evidential Regression).
+
+Framework: **Deep Evidential Regression** (Amini et al.) — single forward pass,
+NIG prior over (μ, σ²). We do **not** use MC dropout or deep ensembles (multi-pass
+cost + checkpoint-provenance multiplication).
+
+Canonical closed-form (from evidence ``(γ, ν, α, β)``):
+
+    prediction = γ
+    aleatoric  = β / (α − 1)
+    epistemic  = β / (ν · (α − 1))   # = aleatoric / ν
+
+**Head output convention:** ``EvidentialHead`` reports ``epistemic = (1/ν) · temp``
+and aleatoric from ``β/(α−1)`` (log-clamped). That makes epistemic a pure
+"virtual observation count" signal; validate against canonical DER via
+``der_uncertainty_from_evidence`` when auditing.
+
+**Decoupled variant:** ``DecoupledEvidentialHead`` uses independent epi/ale trunks
+so r(ν_epi, ν_ale) can fall below 1 — required before trusting aleatoric gates.
+
+Validation: ``science/training/evidential_validation.py``,
+``docs/audit/EVIDENTIAL_UNCERTAINTY.md``.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +29,40 @@ from typing import Any, Dict, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
+def der_uncertainty_from_evidence(
+    evidence: dict[str, torch.Tensor],
+    *,
+    epistemic_temp_scaling: float = 1.0,
+) -> dict[str, torch.Tensor]:
+    """Amini et al. aleatoric / epistemic from NIG evidence (audit reference)."""
+    nu = evidence["nu"]
+    alpha = evidence["alpha"]
+    beta = evidence["beta"]
+    denom = alpha - 1.0 + 1e-6
+    aleatoric = beta / denom
+    epistemic = (beta / (nu * denom + 1e-6)) * epistemic_temp_scaling
+    return {
+        "aleatoric": aleatoric,
+        "epistemic": epistemic,
+        "total": aleatoric + epistemic,
+        "prediction": evidence["mu"],
+    }
+
+
+def der_uncertainty_numpy(
+    nu: float,
+    alpha: float,
+    beta: float,
+    *,
+    epistemic_temp_scaling: float = 1.0,
+) -> tuple[float, float]:
+    """Scalar DER formulas for diagnostics."""
+    denom = alpha - 1.0 + 1e-6
+    ale = float(beta / denom)
+    epi = float(beta / (nu * denom + 1e-6)) * epistemic_temp_scaling
+    return epi, ale
 
 
 def _make_trunk(total_input: int) -> nn.Sequential:

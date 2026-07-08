@@ -205,6 +205,40 @@ def cone_depth_anticollapse_loss(
     return torch.relu(min_std - depth.std()) * 10.0
 
 
+def shell_correlation_topology_loss(
+    cone_depth: torch.Tensor,
+    hyp_proj_2d: torch.Tensor,
+    *,
+    proj_depth_weight: float = 1.0,
+    disc_spread_weight: float = 0.5,
+    disc_spread_min_std: float = 0.15,
+) -> Dict[str, torch.Tensor]:
+    """Disc–depth coupling without SASA (topology / MASTER cold lineage)."""
+    depth = cone_depth.squeeze(-1)
+    disc_r = hyp_proj_2d.norm(dim=-1)
+
+    r_proj_depth = _pearson_corr(disc_r, depth)
+    proj_depth_loss = 1.0 - r_proj_depth
+    disc_std = disc_r.std()
+    disc_spread_loss = torch.relu(disc_spread_min_std - disc_std) * 5.0
+
+    total = proj_depth_weight * proj_depth_loss + disc_spread_weight * disc_spread_loss
+    z = torch.zeros((), device=depth.device, dtype=depth.dtype)
+    return {
+        "shell_corr_total": total,
+        "shell_corr_depth_sasa": z,
+        "shell_corr_epi_sasa": z,
+        "shell_corr_proj_depth": proj_depth_loss,
+        "shell_corr_disc_spread": disc_spread_loss,
+        "shell_corr_disc_sasa": z,
+        "shell_r_depth_sasa": z,
+        "shell_r_epi_sasa": z,
+        "shell_r_proj_depth": r_proj_depth.detach(),
+        "shell_r_disc_sasa": z,
+        "disc_r_std": disc_std.detach(),
+    }
+
+
 def shell_correlation_loss(
     cone_depth: torch.Tensor,
     epistemic: torch.Tensor,
@@ -334,6 +368,11 @@ def weighted_binary_cross_entropy(
     return F.binary_cross_entropy_with_logits(logits, targets, pos_weight=pos_weight)
 
 
+def _loss_cone_depth(output: Dict[str, Any]) -> torch.Tensor:
+    """Prefer decoupled per-expert mixed depth when the model emits it."""
+    return output.get("cone_depth_for_loss", output["cone_depth"])
+
+
 def gosp_loss_v6(
     output: Dict[str, Any],
     target_rho: torch.Tensor,
@@ -402,6 +441,7 @@ def gosp_loss_v6(
     leak_label_mask: Optional[torch.Tensor] = None,
     b_factor_ca: Optional[torch.Tensor] = None,
     b_factor_present: Optional[torch.Tensor] = None,
+    topology_depth: bool = False,
     # Neighborhood consistency params
     spatial_cutoff: float = 8.0,
     attract_margin: float = 1.0,
@@ -496,22 +536,31 @@ def gosp_loss_v6(
     shell_losses: Dict[str, torch.Tensor] = {}
     if cone_depth_anticollapse_coeff > 0 and "cone_depth" in output:
         anticollapse_loss = cone_depth_anticollapse_loss(
-            output["cone_depth"],
+            _loss_cone_depth(output),
             min_std=cone_depth_min_std,
         )
-    if shell_corr_coeff > 0 and sasa is not None and "cone_depth" in output:
-        shell_losses = shell_correlation_loss(
-            output["cone_depth"],
-            output["uncertainty"]["epistemic"],
-            sasa,
-            output["hyp_projections_2d"],
-            depth_sasa_weight=shell_corr_depth_sasa_weight,
-            epi_sasa_weight=shell_corr_epi_sasa_weight,
-            proj_depth_weight=shell_corr_proj_depth_weight,
-            disc_spread_weight=shell_corr_disc_spread_weight,
-            disc_sasa_weight=shell_corr_disc_sasa_weight,
-            disc_spread_min_std=disc_spread_min_std,
-        )
+    if shell_corr_coeff > 0 and "cone_depth" in output:
+        if topology_depth:
+            shell_losses = shell_correlation_topology_loss(
+                _loss_cone_depth(output),
+                output["hyp_projections_2d"],
+                proj_depth_weight=shell_corr_proj_depth_weight,
+                disc_spread_weight=shell_corr_disc_spread_weight,
+                disc_spread_min_std=disc_spread_min_std,
+            )
+        elif sasa is not None:
+            shell_losses = shell_correlation_loss(
+                _loss_cone_depth(output),
+                output["uncertainty"]["epistemic"],
+                sasa,
+                output["hyp_projections_2d"],
+                depth_sasa_weight=shell_corr_depth_sasa_weight,
+                epi_sasa_weight=shell_corr_epi_sasa_weight,
+                proj_depth_weight=shell_corr_proj_depth_weight,
+                disc_spread_weight=shell_corr_disc_spread_weight,
+                disc_sasa_weight=shell_corr_disc_sasa_weight,
+                disc_spread_min_std=disc_spread_min_std,
+            )
 
     disc_scale_loss = torch.tensor(0.0, device=device)
     if (
@@ -520,7 +569,7 @@ def gosp_loss_v6(
         and "hyp_projections_2d" in output
     ):
         disc_scale_loss = disc_depth_scale_loss(
-            output["cone_depth"],
+            _loss_cone_depth(output),
             output["hyp_projections_2d"],
             target_radius=disc_depth_scale_target,
         )
@@ -622,7 +671,8 @@ def gosp_loss_v6(
 
     shell_floor_loss = torch.tensor(0.0, device=device)
     if (
-        shell_floor_coeff > 0
+        not topology_depth
+        and shell_floor_coeff > 0
         and sasa is not None
         and "cone_depth" in output
     ):

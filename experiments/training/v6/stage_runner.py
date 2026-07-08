@@ -9,6 +9,7 @@ from typing import Any
 
 import torch
 
+from science.training.topology_depth import topology_depth_lineage
 from science.training.checkpoint import CheckpointData, CheckpointManager
 from science.training.checkpoint_score import score_checkpoint
 from science.training.config import (
@@ -17,7 +18,12 @@ from science.training.config import (
     apply_phase_coeff_ramp,
     apply_master_cold_dehydron_phases,
     apply_routing_load_floor_phase2,
+    apply_slim_moe_structural_ssot_phases,
     default_v6_phases,
+    dehydron_rim_recovery_phase_config,
+    topology_routing_recovery_phase_config,
+    topology_gate_disc_recovery_phase_config,
+    topology_crescent_recovery_phase_config,
     p1b_phase_config,
     p1c_phase_config,
     p1d_extend_defaults,
@@ -42,6 +48,7 @@ from science.training.config import (
     p2_rec_ablation_phase_config,
     p4_epistemic_decoupling_phase_config,
     p4_head_decouple_phase_config,
+    p4_head_decouple_decorr_only_phase_config,
     p4_corpus25_gate_phase_config,
     p4_corpus25_touchup_extended_phase_config,
     p4_gate_promotion_phase_config,
@@ -50,6 +57,7 @@ from science.training.config import (
     residue_stage1_phase_config,
     residue_stage2_phase_config,
     routing_save_max_for_epoch,
+    routing_save_ceiling_for_display,
 )
 from science.training.monitor import ConvergenceMonitor
 from science.training.p3_entry_gate import p3_entry_gate_verdict
@@ -105,9 +113,17 @@ class StageRunner:
         self._last_focus_summary: dict[str, Any] | None = None
         self._best_disc_sigma = -1.0
         self._best_disc_visual_score = -1.0
+        self._best_route_score = -math.inf
         holdout_raw = getattr(config, "epistemic_decoupling_holdouts", "") or ""
         self._epistemic_holdouts = frozenset(
             s.strip().upper() for s in holdout_raw.split(",") if s.strip()
+        )
+        self._topology_depth = topology_depth_lineage(
+            master_cold=config.master_cold_lineage
+            or config.slim_moe_structural_ssot
+            or config.topology_routing_recovery
+            or config.topology_gate_disc_recovery
+            or config.topology_crescent_recovery
         )
 
     def _resolve_disc_proj_recovery_phase(self) -> PhaseConfig:
@@ -369,6 +385,20 @@ class StageRunner:
                     epochs=epochs,
                 )
             ]
+        if self.config.p4_head_decouple_decorr_only:
+            epochs = self.config.epochs_override or 20
+            sasa_save = (
+                self.config.max_probe_r_epi_sasa_save
+                if self.config.max_probe_r_epi_sasa_save is not None
+                else 0.78
+            )
+            return [
+                p4_head_decouple_decorr_only_phase_config(
+                    lr=self.config.p4_epistemic_lr,
+                    epochs=epochs,
+                    max_probe_r_epi_sasa_save=sasa_save,
+                )
+            ]
         if self.config.p4_head_decouple:
             epochs = self.config.epochs_override or 20
             sasa_save = (
@@ -529,6 +559,51 @@ class StageRunner:
                     routing_save_ceiling_ramp_epochs=ramp,
                 )
             ]
+        if self.config.dehydron_rim_recovery:
+            epochs = self.config.epochs_override or 12
+            floor = self.config.p2_disc_line_thickness_floor or 0.025
+            return [
+                dehydron_rim_recovery_phase_config(
+                    lr=self.config.dehydron_rim_recovery_lr,
+                    epochs=epochs,
+                    min_disc_line_thickness_save=floor,
+                )
+            ]
+        if self.config.topology_crescent_recovery:
+            epochs = self.config.epochs_override or 25
+            ramp = self.config.p2_bridge_ramp_epochs
+            floor = self.config.p2_disc_line_thickness_floor or 0.03
+            return [
+                topology_crescent_recovery_phase_config(
+                    lr=self.config.topology_crescent_recovery_lr,
+                    epochs=epochs,
+                    routing_save_ceiling_ramp_epochs=ramp,
+                    disc_thickness_floor_min=floor,
+                )
+            ]
+        if self.config.topology_gate_disc_recovery:
+            epochs = self.config.epochs_override or 20
+            ramp = self.config.p2_bridge_ramp_epochs
+            return [
+                topology_gate_disc_recovery_phase_config(
+                    lr=self.config.topology_gate_disc_recovery_lr,
+                    epochs=epochs,
+                    routing_save_ceiling_ramp_epochs=ramp,
+                )
+            ]
+        if self.config.topology_routing_recovery:
+            epochs = self.config.epochs_override or 40
+            ramp = self.config.p2_bridge_ramp_epochs
+            phases = [
+                topology_routing_recovery_phase_config(
+                    lr=self.config.topology_routing_recovery_lr,
+                    epochs=epochs,
+                    routing_save_ceiling_ramp_epochs=ramp,
+                )
+            ]
+            if self.config.structural_disc_frozen:
+                phases = apply_slim_moe_structural_ssot_phases(phases)
+            return phases
         if self.config.p1d:
             return [self._resolve_p1d_phase()]
         if self.config.p1c:
@@ -548,7 +623,9 @@ class StageRunner:
                 coeff=self.config.routing_load_floor_coeff,
                 min_fraction=self.config.routing_load_floor_min,
             )
-        if self.config.master_cold_lineage:
+        if self.config.slim_moe_structural_ssot:
+            phases = apply_slim_moe_structural_ssot_phases(phases)
+        elif self.config.master_cold_lineage:
             phases = apply_master_cold_dehydron_phases(phases)
         if self.config.phase is not None:
             phases = [p for p in phases if p.phase == self.config.phase]
@@ -644,9 +721,15 @@ class StageRunner:
                     phase_cfg.coeffs.disc_depth_scale_coeff,
                 )
             if phase_cfg.freeze_radial_epochs > 0:
+                freeze_note = (
+                    "stabilize radial head"
+                    if self.config.master_cold_lineage
+                    else "protect depth×SASA"
+                )
                 logger.info(
-                    "  Freeze radial for first %d epochs (protect depth×SASA)",
+                    "  Freeze radial for first %d epochs (%s)",
                     phase_cfg.freeze_radial_epochs,
+                    freeze_note,
                 )
             if phase_cfg.min_probe_r_depth_sasa is not None:
                 logger.info(
@@ -681,6 +764,21 @@ class StageRunner:
                 logger.info("  Gate disc feature scale: %.2f", self.config.gate_disc_scale)
             if getattr(self.config, "gate_gumbel", False):
                 logger.info("  Gate routing: Gumbel-Softmax (hard)")
+            if getattr(self.config, "expert_depth_decouple", False):
+                logger.info("  Expert depth: per-expert radial offsets (decoupled)")
+            if getattr(self.config, "structure_gate", False):
+                logger.info("  Structure gate: pooled topo bias per protein")
+            if getattr(self.config, "topology_crescent_recovery", False):
+                logger.info(
+                    "  Crescent recovery: angular + fusion + hyp_proj_2d; "
+                    "radial + expert_depth_bias frozen; disc wedge floors on"
+                )
+            if getattr(self.config, "topology_gate_disc_recovery", False):
+                logger.info(
+                    "  Gate+disc recovery: gate + hyp_proj_2d trainable; expert_depth_bias frozen"
+                )
+            if getattr(self.config, "track_v6_best_route", False):
+                logger.info("  Route checkpoint: v6_best_route.pt (routing-first saves)")
             self._begin_phase_best_tracking(phase_cfg.phase)
             if phase_cfg.coeffs.routing_load_floor_coeff > 0:
                 logger.info(
@@ -793,6 +891,9 @@ class StageRunner:
                         if (
                             phase_cfg.epistemic_uncertainty_only_train
                             or phase_cfg.gate_only_train
+                            or phase_cfg.topology_gate_disc_recovery_train
+                            or phase_cfg.topology_crescent_recovery_train
+                            or phase_cfg.slim_moe_structural_ssot_train
                             or phase_cfg.path_alignment_train
                             or phase_cfg.rec_ablation_train
                             or phase_cfg.projection_recovery_train
@@ -808,13 +909,24 @@ class StageRunner:
                     ),
                     epistemic_uncertainty_only_train=phase_cfg.epistemic_uncertainty_only_train,
                     gate_only_train=phase_cfg.gate_only_train,
+                    topology_gate_disc_recovery_train=phase_cfg.topology_gate_disc_recovery_train,
+                    topology_crescent_recovery_train=phase_cfg.topology_crescent_recovery_train,
+                    slim_moe_structural_ssot_train=phase_cfg.slim_moe_structural_ssot_train,
+                    structural_disc_frozen=self.config.structural_disc_frozen,
+                    topology_depth=self._topology_depth,
                 )
 
                 missing = ConvergenceMonitor.validate_epoch_metrics(losses)
                 if missing:
                     logger.warning("Epoch metrics missing keys: %s", missing)
 
-                health = measure_geometry_health(self.model, self.proteins, self.config.device)
+                health = measure_geometry_health(
+                    self.model,
+                    self.proteins,
+                    self.config.device,
+                    topology_depth=self._topology_depth,
+                    structural_disc_frozen=self.config.structural_disc_frozen,
+                )
 
                 if phase_cfg.min_probe_r_depth_sasa is not None:
                     r_ds_guard = health.get("probe_r_depth_sasa")
@@ -838,6 +950,8 @@ class StageRunner:
 
                 pf = health.get("proj_frac_mean")
                 cr = health.get("cone_range_mean")
+                r_dt = health.get("probe_r_depth_tau")
+                r_dr = health.get("probe_r_depth_rho")
                 r_ds = health.get("probe_r_depth_sasa")
                 r_es = health.get("probe_r_epi_sasa")
                 r_pd = health.get("probe_r_proj_depth")
@@ -856,7 +970,14 @@ class StageRunner:
                 route_ceiling = routing_save_max_for_epoch(
                     phase_cfg, epoch, num_experts=_n_experts
                 )
-                skip_unc_gates = phase_cfg.gate_only_train
+                route_display, route_label = routing_save_ceiling_for_display(
+                    phase_cfg, epoch, num_experts=_n_experts
+                )
+                skip_unc_gates = (
+                    phase_cfg.gate_only_train
+                    or phase_cfg.topology_gate_disc_recovery_train
+                    or phase_cfg.topology_crescent_recovery_train
+                )
                 scored = score_checkpoint(
                     health,
                     losses,
@@ -880,6 +1001,12 @@ class StageRunner:
                     min_aleatoric_std_save=(
                         None if skip_unc_gates else phase_cfg.min_aleatoric_std_save
                     ),
+                    require_tau_ale_elevation_save=(
+                        False
+                        if skip_unc_gates
+                        else phase_cfg.require_tau_ale_elevation_save
+                    ),
+                    topology_depth=self._topology_depth,
                 )
                 score = scored.score
 
@@ -900,11 +1027,13 @@ class StageRunner:
                     routing_save_max=route_ceiling,
                     min_probe_r_depth_sasa_save=phase_cfg.min_probe_r_depth_sasa_save,
                     checkpoint_eligible=scored.eligible,
+                    topology_depth=self._topology_depth,
                 )
                 log_metrics.update(focus_mlflow_metrics(focus))
                 from science.training.mlflow_governance import (
                     governance_epoch_metrics,
                     stage_gate_passed,
+                    telemetry_track_metrics,
                 )
                 from science.training.routing_metrics import inference_mode_routing_metrics
 
@@ -916,9 +1045,12 @@ class StageRunner:
                     losses,
                     self.model,
                     inference_routing=infer_routing,
-                    master_cold_lineage=self.config.master_cold_lineage,
+                    master_cold_lineage=(
+                        self.config.master_cold_lineage or self.config.slim_moe_structural_ssot
+                    ),
                 )
                 log_metrics.update(gov)
+                log_metrics.update(telemetry_track_metrics(health))
                 from science.training.stage_a_stop import (
                     check_stage_a_inference_stop,
                     format_stop_message,
@@ -933,32 +1065,62 @@ class StageRunner:
                     self.tracker.log_metrics(log_metrics, step=self.global_epoch)
 
                 elig_tag = "ok" if scored.eligible else "skip"
-                logger.info(
-                    "  Ep %3d | loss=%.4f route_H=%.3f starve=%.0f | "
-                    "proj=%.3f cone_rng=%.4f score=%.4f [%s] | "
-                    "shell r(d,s)=%.3f r(e,s)=%.3f r(|p|,d)=%.3f | "
-                    "depth_std=%.4f disc_r_std=%.4f σ₂/σ₁=%.3f eff_rank=%.3f ang=%.3f disc_tgt=%.3f | "
-                    "route_max=%.3f | %.1fs",
-                    self.global_epoch,
-                    losses["total"],
-                    losses.get("routing_entropy", 0.0),
-                    losses.get("expert_starvation_count", 0.0),
-                    pf if pf is not None else -1.0,
-                    cr if cr is not None else -1.0,
-                    score,
-                    elig_tag,
-                    r_ds if r_ds is not None else float("nan"),
-                    r_es if r_es is not None else float("nan"),
-                    r_pd if r_pd is not None else float("nan"),
-                    cd_std if cd_std is not None else float("nan"),
-                    dr_std if dr_std is not None else float("nan"),
-                    disc_sigma if disc_sigma is not None else float("nan"),
-                    disc_eff if disc_eff is not None else float("nan"),
-                    ang_c if ang_c is not None else float("nan"),
-                    disc_target if disc_target is not None else float("nan"),
-                    route_ceiling if route_ceiling is not None else float("nan"),
-                    elapsed,
-                )
+                if self._topology_depth:
+                    logger.info(
+                        "  Ep %3d | loss=%.4f route_H=%.3f starve=%.0f | "
+                        "proj=%.3f cone_rng=%.4f score=%.4f [%s] | "
+                        "topo r(d,τ)=%.3f r(d,ρ)=%.3f r(|p|,d)=%.3f | "
+                        "depth_std=%.4f disc_r_std=%.4f σ₂/σ₁=%.3f eff_rank=%.3f ang=%.3f disc_tgt=%.3f | "
+                        "%s=%.3f | %.1fs",
+                        self.global_epoch,
+                        losses["total"],
+                        losses.get("routing_entropy", 0.0),
+                        losses.get("expert_starvation_count", 0.0),
+                        pf if pf is not None else -1.0,
+                        cr if cr is not None else -1.0,
+                        score,
+                        elig_tag,
+                        r_dt if r_dt is not None else float("nan"),
+                        r_dr if r_dr is not None else float("nan"),
+                        r_pd if r_pd is not None else float("nan"),
+                        cd_std if cd_std is not None else float("nan"),
+                        dr_std if dr_std is not None else float("nan"),
+                        disc_sigma if disc_sigma is not None else float("nan"),
+                        disc_eff if disc_eff is not None else float("nan"),
+                        ang_c if ang_c is not None else float("nan"),
+                        disc_target if disc_target is not None else float("nan"),
+                        route_label,
+                        route_display,
+                        elapsed,
+                    )
+                else:
+                    logger.info(
+                        "  Ep %3d | loss=%.4f route_H=%.3f starve=%.0f | "
+                        "proj=%.3f cone_rng=%.4f score=%.4f [%s] | "
+                        "shell r(d,s)=%.3f r(e,s)=%.3f r(|p|,d)=%.3f | "
+                        "depth_std=%.4f disc_r_std=%.4f σ₂/σ₁=%.3f eff_rank=%.3f ang=%.3f disc_tgt=%.3f | "
+                        "%s=%.3f | %.1fs",
+                        self.global_epoch,
+                        losses["total"],
+                        losses.get("routing_entropy", 0.0),
+                        losses.get("expert_starvation_count", 0.0),
+                        pf if pf is not None else -1.0,
+                        cr if cr is not None else -1.0,
+                        score,
+                        elig_tag,
+                        r_ds if r_ds is not None else float("nan"),
+                        r_es if r_es is not None else float("nan"),
+                        r_pd if r_pd is not None else float("nan"),
+                        cd_std if cd_std is not None else float("nan"),
+                        dr_std if dr_std is not None else float("nan"),
+                        disc_sigma if disc_sigma is not None else float("nan"),
+                        disc_eff if disc_eff is not None else float("nan"),
+                        ang_c if ang_c is not None else float("nan"),
+                        disc_target if disc_target is not None else float("nan"),
+                        route_label,
+                        route_display,
+                        elapsed,
+                    )
                 if phase_cfg.phase == 4 or float(losses.get("epistemic_decoupling", 0.0)) > 0.0:
                     logger.info(
                         "    decouple r(epi,bf_resid)=%.3f partial(epi,sasa|depth)=%.3f "
@@ -977,23 +1139,34 @@ class StageRunner:
                         "    expert_load=%s",
                         ", ".join(f"{float(loads[i]):.3f}" for i in range(min(4, loads.numel()))),
                     )
-                if self.config.full_hyp_moe_test or self.config.master_cold_lineage:
+                if self.config.full_hyp_moe_test or self._topology_depth:
                     expert_bits = []
+                    disc_std_bits = []
                     for e in range(len(self.model.experts)):
                         d = health.get(f"expert_{e}_depth_mean")
                         if d is None:
                             continue
                         r = health.get(f"expert_{e}_disc_r_mean", float("nan"))
-                        rs = health.get(f"expert_{e}_r_depth_sasa", float("nan"))
+                        rs = health.get(f"expert_{e}_disc_r_std", float("nan"))
+                        rt = health.get(f"expert_{e}_r_depth_tau", float("nan"))
                         tau_m = health.get(f"expert_{e}_tau_mean", float("nan"))
-                        sasa_m = health.get(f"expert_{e}_sasa_mean", float("nan"))
-                        coil = health.get(f"expert_{e}_ss_coil_frac", float("nan"))
+                        rho_m = health.get(f"expert_{e}_rho_mean", float("nan"))
+                        ss_h = health.get(f"expert_{e}_ss_helix_frac", float("nan"))
+                        ss_e = health.get(f"expert_{e}_ss_sheet_frac", float("nan"))
+                        ss_c = health.get(f"expert_{e}_ss_coil_frac", float("nan"))
                         expert_bits.append(
-                            f"e{e}: depth={d:.3f} disc_r={r:.3f} r(d,s)={rs:.3f} "
-                            f"τ={tau_m:.3f} sasa={sasa_m:.3f} coil={coil:.3f}"
+                            f"e{e}: depth={d:.3f} disc_r={r:.3f} r(d,τ)={rt:.3f} "
+                            f"τ={tau_m:.3f} ρ={rho_m:.1f} ss=H{ss_h:.2f}/E{ss_e:.2f}/C{ss_c:.2f}"
                         )
+                        if rs == rs:
+                            disc_std_bits.append(f"e{e}={rs:.3f}")
                     if expert_bits:
                         logger.info("    per_expert: %s", " | ".join(expert_bits))
+                    if disc_std_bits:
+                        logger.info("    expert_disc_r_std: %s", " ".join(disc_std_bits))
+                    e0_rdt = health.get("expert_0_r_depth_tau")
+                    if e0_rdt is not None and e0_rdt == e0_rdt:
+                        logger.info("    e0_r_depth_tau=%.3f", float(e0_rdt))
                 thick_pre = health.get("disc_line_thickness_pre_mean")
                 thick_post = health.get("disc_line_thickness_post_mean")
                 x_hyp_thick = health.get("x_hyp_line_thickness_mean")
@@ -1083,6 +1256,41 @@ class StageRunner:
                             sha256=sha or None,
                         )
                     logger.info("    ★ New best checkpoint (score=%.4f, eligible)", score)
+
+                if self.config.track_v6_best_route:
+                    from science.training.checkpoint_score import score_route_checkpoint
+
+                    route_scored = score_route_checkpoint(
+                        health,
+                        losses,
+                        routing_save_max=route_ceiling,
+                        topology_depth=self._topology_depth,
+                        inference_routing=infer_routing,
+                    )
+                    if route_scored.eligible and route_scored.score > self._best_route_score:
+                        self._best_route_score = route_scored.score
+                        route_path = self.checkpoint_mgr.save_best_route(
+                            self.model,
+                            optimizer,
+                            global_epoch=self.global_epoch,
+                            phase=phase_cfg.phase,
+                            phase_name=phase_cfg.name,
+                            metrics=log_metrics,
+                            training_config=self.config.model_dump(mode="json"),
+                            score=route_scored.score,
+                            routing_entropy=float(losses.get("routing_entropy", 0.0)),
+                        )
+                        logger.info(
+                            "    ★ New best route checkpoint (score=%.4f, H=%.3f) → %s",
+                            route_scored.score,
+                            float(losses.get("routing_entropy", 0.0)),
+                            route_path.name,
+                        )
+                    elif not route_scored.eligible and route_scored.reasons:
+                        logger.debug(
+                            "    route ineligible: %s",
+                            ", ".join(route_scored.reasons),
+                        )
 
                 disc_sigma = health.get("disc_sigma2_sigma1_mean")
                 disc_r_std = health.get("disc_r_std_mean")
@@ -1174,7 +1382,9 @@ class StageRunner:
                         losses,
                         inference_routing=infer_routing,
                         num_experts=len(self.model.experts),
-                        master_cold_lineage=self.config.master_cold_lineage,
+                        master_cold_lineage=(
+                        self.config.master_cold_lineage or self.config.slim_moe_structural_ssot
+                    ),
                     ),
                 }
                 if stop_verdict is not None:

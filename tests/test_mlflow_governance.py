@@ -131,6 +131,28 @@ def test_governance_epoch_metrics_maps_shell_probes() -> None:
     assert "stage_gate_passed" in metrics
 
 
+def test_telemetry_track_metrics_maps_health_and_flags_dead_ale() -> None:
+    from science.training.mlflow_governance import telemetry_track_metrics
+
+    alive = telemetry_track_metrics(
+        {
+            "epistemic_std_mean": 4.4,
+            "aleatoric_std_mean": 0.011,
+            "probe_r_epi_ale": 0.977,
+            "uncertainty_probe_alive_epi": 1.0,
+            "uncertainty_probe_alive_ale": 1.0,
+            "uncertainty_informative_ale": 0.0,
+            "edge_telemetry_alive_fraction": 1.0,
+            "same_expert_rate_mean": 0.784,
+            "same_expert_null_rate_mean": 0.322,
+        }
+    )
+    assert alive["track/epistemic_std"] == pytest.approx(4.4)
+    assert alive["track/uncertainty_alive_epi"] == pytest.approx(1.0)
+    assert alive["track/uncertainty_informative_ale"] == pytest.approx(0.0)
+    assert "track/edge_resistance_corr" not in alive
+
+
 def test_governance_epoch_metrics_prefers_inference_routing() -> None:
     model = _StubModel()
     health = {

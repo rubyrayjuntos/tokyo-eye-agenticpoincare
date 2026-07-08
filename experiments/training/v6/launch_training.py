@@ -53,10 +53,11 @@ def resolve_prior_checkpoint(output_dir: Path, phase: int, protein_count: int) -
 
 
 def build_model(config: TrainingConfig) -> torch.nn.Module:
+    from science.dtie.common.residue_features import gnn_input_dim
     from science.dtie.v6.gnn.model import GOSPConeMapperV6
 
     model = GOSPConeMapperV6(
-        node_dim=4,
+        node_dim=gnn_input_dim(),
         hidden=config.hidden,
         num_layers=config.num_layers,
         num_experts=config.num_experts,
@@ -73,6 +74,8 @@ def build_model(config: TrainingConfig) -> torch.nn.Module:
         radial_angular_recombine=config.radial_angular_recombine,
         disc_radial_source=config.disc_radial_source,
         decoupled_uncertainty_heads=config.decoupled_uncertainty_heads,
+        expert_depth_decouple=config.expert_depth_decouple,
+        structure_gate=config.structure_gate,
     )
     return model
 
@@ -96,6 +99,11 @@ def main() -> None:
         "--master-cold-lineage",
         action="store_true",
         help="MASTER-feature cold-start lineage root (MLflow: warm_start=none, parent_run_id=null)",
+    )
+    parser.add_argument(
+        "--slim-moe-structural-ssot",
+        action="store_true",
+        help="Cold-start: frozen structural disc SSOT + slim MoE (inference-aligned layout)",
     )
     parser.add_argument("--max-proteins", type=int, default=None)
     parser.add_argument(
@@ -346,6 +354,11 @@ def main() -> None:
         help="Phase 4: split evidential epi/ale trunks + r(epi,ale) loss (rs2 warm-start)",
     )
     parser.add_argument(
+        "--p4-head-decouple-decorr-only",
+        action="store_true",
+        help="G3 ablation A: head decouple + decorrelation only (no B-factor/SASA supervision)",
+    )
+    parser.add_argument(
         "--max-probe-r-epi-sasa-save",
         type=float,
         default=None,
@@ -412,6 +425,55 @@ def main() -> None:
         type=int,
         default=None,
         help="ResidueStage2 epoch count (default 30)",
+    )
+    parser.add_argument(
+        "--dehydron-rim-recovery",
+        action="store_true",
+        help="τ→rim cone recovery warm-start (freeze backbone+gate, SASA shell off)",
+    )
+    parser.add_argument(
+        "--dehydron-rim-recovery-lr",
+        type=float,
+        default=2e-5,
+        help="LR for --dehydron-rim-recovery (default 2e-5)",
+    )
+    parser.add_argument(
+        "--structural-disc-frozen",
+        action="store_true",
+        help="Attach structural SSOT disc at forward (resume-compatible with --topology-routing-recovery)",
+    )
+    parser.add_argument(
+        "--topology-routing-recovery",
+        action="store_true",
+        help="P2 routing extension off topology checkpoint (τ-depth, low balance, tight route ceiling)",
+    )
+    parser.add_argument(
+        "--topology-routing-recovery-lr",
+        type=float,
+        default=3e-5,
+        help="LR for --topology-routing-recovery (default 3e-5)",
+    )
+    parser.add_argument(
+        "--topology-gate-disc-recovery",
+        action="store_true",
+        help="Gate + light disc recovery off route_v3 (freeze expert_depth_bias, 20ep default)",
+    )
+    parser.add_argument(
+        "--topology-gate-disc-recovery-lr",
+        type=float,
+        default=2e-5,
+        help="LR for --topology-gate-disc-recovery (default 2e-5)",
+    )
+    parser.add_argument(
+        "--topology-crescent-recovery",
+        action="store_true",
+        help="Open collapsed 1D crescent: angular+disc wedge recovery (25ep default)",
+    )
+    parser.add_argument(
+        "--topology-crescent-recovery-lr",
+        type=float,
+        default=2e-5,
+        help="LR for --topology-crescent-recovery (default 2e-5)",
     )
     parser.add_argument(
         "--legacy-disc-projection",
@@ -494,11 +556,15 @@ def main() -> None:
         logger.warning("Both --p1c and --p1b set; using P1c (disc expansion preset)")
 
     v2_depth_coeff = args.v2_teacher_depth_coeff
-    if v2_depth_coeff is None:
+    if args.dehydron_rim_recovery or args.topology_routing_recovery:
+        v2_depth_coeff = 0.0
+    elif v2_depth_coeff is None:
         v2_depth_coeff = 0.30 if (args.p1c or args.p1d or args.p2_bridge) else 0.20
 
     v2_ckpt = args.v2_teacher_checkpoint
-    if v2_ckpt is None:
+    if args.dehydron_rim_recovery or args.topology_routing_recovery:
+        v2_ckpt = None
+    elif v2_ckpt is None:
         from experiments.training.v6.v2_teacher import resolve_default_v2_teacher_checkpoint
 
         v2_ckpt = resolve_default_v2_teacher_checkpoint()
@@ -525,7 +591,11 @@ def main() -> None:
         epochs_override=args.epochs,
         v2_teacher_checkpoint=v2_ckpt,
         v2_teacher_depth_coeff=v2_depth_coeff,
-        v2_teacher_epistemic_coeff=args.v2_teacher_epistemic_coeff,
+        v2_teacher_epistemic_coeff=(
+            0.0
+            if (args.dehydron_rim_recovery or args.topology_routing_recovery)
+            else args.v2_teacher_epistemic_coeff
+        ),
         gentle_phase2=args.gentle_phase2,
         phase2_lr=args.phase2_lr,
         save_epoch_snapshots=args.save_epoch_snapshots,
@@ -624,6 +694,7 @@ def main() -> None:
         p4_epistemic_staged=args.p4_epistemic_staged,
         p4_uncertainty_calibration=args.p4_uncertainty_calibration,
         p4_head_decouple=args.p4_head_decouple,
+        p4_head_decouple_decorr_only=args.p4_head_decouple_decorr_only,
         p4_gate_promotion=args.p4_gate_promotion,
         p4_corpus25_gate_promotion=args.p4_corpus25_gate_promotion,
         p4_corpus25_touchup_extended=args.p4_corpus25_touchup_extended,
@@ -633,6 +704,7 @@ def main() -> None:
         p4_gate_load_floor_min=args.p4_gate_load_floor_min,
         decoupled_uncertainty_heads=(
             args.p4_head_decouple
+            or args.p4_head_decouple_decorr_only
             or args.p4_gate_uncertainty_touchup
             or args.p4_corpus25_touchup_extended
         ),
@@ -644,8 +716,62 @@ def main() -> None:
         residue_stage2_lr=args.residue_stage2_lr,
         residue_stage2_epochs=args.residue_stage2_epochs,
         master_cold_lineage=args.master_cold_lineage,
+        slim_moe_structural_ssot=args.slim_moe_structural_ssot,
+        dehydron_rim_recovery=args.dehydron_rim_recovery,
+        dehydron_rim_recovery_lr=args.dehydron_rim_recovery_lr,
+        topology_routing_recovery=args.topology_routing_recovery,
+        topology_routing_recovery_lr=args.topology_routing_recovery_lr,
+        topology_gate_disc_recovery=args.topology_gate_disc_recovery,
+        topology_gate_disc_recovery_lr=args.topology_gate_disc_recovery_lr,
+        topology_crescent_recovery=args.topology_crescent_recovery,
+        topology_crescent_recovery_lr=args.topology_crescent_recovery_lr,
+        structural_disc_frozen=args.structural_disc_frozen,
     )
-    if config.master_cold_lineage:
+    if config.topology_crescent_recovery:
+        from science.training.config import apply_topology_crescent_recovery_config
+
+        config = apply_topology_crescent_recovery_config(config)
+        logger.info(
+            "Topology crescent recovery: angular+fusion+hyp_proj_2d trainable; "
+            "radial+expert_depth_bias frozen; disc thickness/PC2/eff_rank floors"
+        )
+    elif config.topology_gate_disc_recovery:
+        from science.training.config import apply_topology_gate_disc_recovery_config
+
+        config = apply_topology_gate_disc_recovery_config(config)
+        logger.info(
+            "Topology gate+disc recovery: gate + hyp_proj_2d trainable, "
+            "expert_depth_bias frozen, disc_occupancy=0.35"
+        )
+    elif config.topology_routing_recovery:
+        from science.training.config import apply_topology_routing_recovery_config
+
+        config = apply_topology_routing_recovery_config(config)
+        logger.info(
+            "Topology routing recovery: topology_only_gate=True, soft routing, "
+            "expert_depth_decouple=%s, structure_gate=%s, track_v6_best_route=True",
+            config.expert_depth_decouple,
+            config.structure_gate,
+        )
+        if config.structural_disc_frozen:
+            logger.info(
+                "Structural disc SSOT frozen — MoE routing + uncertainty only (resume-compatible)"
+            )
+    if config.slim_moe_structural_ssot and config.master_cold_lineage:
+        logger.error("Use --slim-moe-structural-ssot OR --master-cold-lineage, not both")
+        sys.exit(2)
+    if config.slim_moe_structural_ssot:
+        if config.resume is not None:
+            logger.error("--slim-moe-structural-ssot is incompatible with --resume")
+            sys.exit(2)
+        args.no_warm_start = True
+        from science.training.config import apply_slim_moe_structural_ssot_config
+
+        config = apply_slim_moe_structural_ssot_config(config)
+        logger.info(
+            "Slim MoE structural SSOT: frozen disc from ρ/τ/Cα, train MoE routing + uncertainty only"
+        )
+    elif config.master_cold_lineage:
         if config.resume is not None:
             logger.error("--master-cold-lineage is incompatible with --resume")
             sys.exit(2)
@@ -700,7 +826,11 @@ def main() -> None:
         sys.exit(1)
     logger.info("Loaded %d proteins (%d failed)", len(proteins), failed)
 
-    if proteins and config.master_cold_lineage:
+    if proteins and (
+        config.master_cold_lineage
+        or config.slim_moe_structural_ssot
+        or config.topology_routing_recovery
+    ):
         scatter_pdb = config.disc_scatter_structure.split(":")[0].upper()
         loaded_pdbs = {str(p.get("pdb_id", "")).upper() for p in proteins}
         if scatter_pdb not in loaded_pdbs:
@@ -822,6 +952,31 @@ def main() -> None:
                 )
     else:
         result = runner.run()
+
+    from experiments.training.v6.export_corpus_viewers import export_training_run_viewers
+
+    try:
+        viewer_paths = export_training_run_viewers(
+            model,
+            proteins,
+            output_dir=config.output_dir,
+            pdb_dir=config.pdb_dir,
+            device=device,
+            structural_disc_frozen=config.structural_disc_frozen,
+            checkpoint_label=str(config.output_dir / "v6_best_route.pt"),
+        )
+        if viewer_paths:
+            logger.info(
+                "Exported %d interactive viewer sets → %s/viewers/",
+                len(viewer_paths),
+                config.output_dir,
+            )
+            if tracker and tracker._active:
+                manifest = config.output_dir / "viewers" / "viewer_manifest.json"
+                if manifest.is_file():
+                    tracker.log_artifact(manifest, artifact_path="viewers")
+    except Exception as exc:
+        logger.warning("Training viewer export failed (non-fatal): %s", exc)
 
     logger.info("Training complete: %s", result)
 

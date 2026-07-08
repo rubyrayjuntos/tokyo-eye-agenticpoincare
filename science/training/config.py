@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -109,6 +109,9 @@ class PhaseConfig(BaseModel):
     epistemic_sasa_pen_coeff_final: float | None = None
     epistemic_uncertainty_only_train: bool = False
     gate_only_train: bool = False
+    topology_gate_disc_recovery_train: bool = False
+    topology_crescent_recovery_train: bool = False
+    slim_moe_structural_ssot_train: bool = False
     # Option B staged decoupling: λ₁-only phase, then capped/log λ₂ ramp
     epistemic_staged_decoupling: bool = False
     epistemic_bf_only_epochs: int = 10
@@ -118,6 +121,7 @@ class PhaseConfig(BaseModel):
     max_probe_r_epi_sasa_save: float | None = None
     min_epistemic_std_save: float | None = None
     min_aleatoric_std_save: float | None = None
+    require_tau_ale_elevation_save: bool = False
 
 
 def routing_save_max_for_epoch(
@@ -140,6 +144,27 @@ def routing_save_max_for_epoch(
         return final
     t = min(epoch, n - 1) / (n - 1)
     return start + t * (final - start)
+
+
+def routing_save_ceiling_for_display(
+    phase_cfg: PhaseConfig,
+    epoch: int,
+    *,
+    num_experts: int = 4,
+) -> tuple[float, str]:
+    """Return (value, label) for epoch logs — never NaN.
+
+    ``route_ceil`` when the phase defines a save ramp; ``route_ref`` otherwise
+    (P1 has no save ceiling — use promotion reference only).
+    """
+    ceiling = routing_save_max_for_epoch(phase_cfg, epoch, num_experts=num_experts)
+    if ceiling is not None:
+        return ceiling, "route_ceil"
+    from science.training.checkpoint_score import ROUTING_ENTROPY_PROMOTE_MAX
+
+    if phase_cfg.phase >= 2:
+        return ROUTING_ENTROPY_PROMOTE_MAX + 0.2, "route_ref"
+    return ROUTING_ENTROPY_PROMOTE_MAX, "route_ref"
 
 
 class TrainingConfig(BaseModel):
@@ -239,6 +264,7 @@ class TrainingConfig(BaseModel):
     p4_epistemic_staged: bool = False
     p4_uncertainty_calibration: bool = False
     p4_head_decouple: bool = False
+    p4_head_decouple_decorr_only: bool = False
     p4_gate_promotion: bool = False
     p4_corpus25_gate_promotion: bool = False
     p4_corpus25_touchup_extended: bool = False
@@ -255,6 +281,19 @@ class TrainingConfig(BaseModel):
     residue_stage2_lr: float = 1e-4
     residue_stage2_epochs: int | None = None
     master_cold_lineage: bool = False
+    dehydron_rim_recovery: bool = False
+    dehydron_rim_recovery_lr: float = 2e-5
+    topology_routing_recovery: bool = False
+    topology_routing_recovery_lr: float = 3e-5
+    topology_gate_disc_recovery: bool = False
+    topology_gate_disc_recovery_lr: float = 2e-5
+    topology_crescent_recovery: bool = False
+    topology_crescent_recovery_lr: float = 2e-5
+    expert_depth_decouple: bool = False
+    structure_gate: bool = False
+    track_v6_best_route: bool = False
+    structural_disc_frozen: bool = False
+    slim_moe_structural_ssot: bool = False
 
     def model_post_init(self, __context: object) -> None:
         self.output_dir = Path(self.output_dir)
@@ -267,8 +306,18 @@ class TrainingConfig(BaseModel):
 
     def phase_preset_name(self) -> str | None:
         """Stable curriculum preset id for MLflow tags."""
+        if self.slim_moe_structural_ssot:
+            return "slim_moe_structural_ssot"
         if self.master_cold_lineage:
             return "stage_a_small_master_cold"
+        if self.topology_routing_recovery:
+            return "topology_routing_recovery"
+        if self.topology_gate_disc_recovery:
+            return "topology_gate_disc_recovery"
+        if self.topology_crescent_recovery:
+            return "topology_crescent_recovery"
+        if self.dehydron_rim_recovery:
+            return "dehydron_rim_recovery"
         if self.full_hyp_moe_test:
             return "full_hyp_moe_test"
         if self.residue_stage2:
@@ -279,6 +328,8 @@ class TrainingConfig(BaseModel):
             return "p4_epistemic_decoupling"
         if self.p4_uncertainty_calibration:
             return "p4_uncertainty_calibration"
+        if self.p4_head_decouple_decorr_only:
+            return "p4_head_decouple_decorr_only"
         if self.p4_head_decouple:
             return "p4_head_decouple"
         if self.p4_corpus25_gate_promotion:
@@ -453,6 +504,251 @@ def apply_routing_load_floor_phase2(
     return out
 
 
+def dehydron_rim_recovery_phase_config(
+    lr: float = 2e-5,
+    epochs: int = 12,
+    *,
+    min_disc_line_thickness_save: float = 0.025,
+) -> PhaseConfig:
+    """Warm-start off production v6: τ→rim cone, SASA shell off, backbone+gate frozen."""
+    return PhaseConfig(
+        phase=1,
+        name="Dehydron rim recovery (τ→cone, SASA shell off)",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=True,
+        freeze_gate=True,
+        expert_dropout_p=0.0,
+        min_disc_line_thickness_save=min_disc_line_thickness_save,
+        min_disc_sigma2_sigma1_save=0.35,
+        coeffs=LossCoeffs(
+            balance_coeff=0.02,
+            cone_coeff=0.45,
+            neighborhood_coeff=0.08,
+            angular_coeff=0.05,
+            cone_target_mode="tau_dehydron_rim",
+            cone_depth_anticollapse_coeff=0.75,
+            cone_depth_min_std=0.06,
+            shell_corr_coeff=0.12,
+            shell_corr_depth_sasa_weight=0.0,
+            shell_corr_disc_sasa_weight=0.0,
+            shell_floor_coeff=0.0,
+            disc_occupancy_coeff=0.8,
+            disc_occupancy_min_sigma_ratio=0.35,
+        ),
+    )
+
+
+def topology_routing_recovery_phase_config(
+    lr: float = 3e-5,
+    epochs: int = 40,
+    *,
+    routing_save_ceiling_ramp_epochs: int | None = None,
+) -> PhaseConfig:
+    """P2 extension: Gumbel routing + expert depth decouple + structure gate."""
+    ramp = routing_save_ceiling_ramp_epochs if routing_save_ceiling_ramp_epochs is not None else epochs
+    return PhaseConfig(
+        phase=2,
+        name="Topology P2 routing recovery",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=False,
+        freeze_gate=False,
+        expert_dropout_p=0.12,
+        expert_dropout_ramp_epochs=6,
+        freeze_radial_epochs=2,
+        coeff_ramp_epochs=min(ramp, 15),
+        angular_coeff_final=0.18,
+        p2_bridge=True,
+        routing_save_ceiling_start=1.20,
+        routing_save_ceiling_final=1.14,
+        routing_save_ceiling_ramp_epochs=ramp,
+        angular_ramp_epochs=min(ramp, 15),
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        max_probe_r_epi_sasa_save=None,
+        coeffs=LossCoeffs(
+            balance_coeff=0.001,
+            cone_coeff=0.22,
+            cone_target_mode="tau_dehydron_rim",
+            neighborhood_coeff=0.10,
+            angular_coeff=0.10,
+            domain_sep_2d_coeff=0.08,
+            domain_sep_3d_coeff=0.08,
+            evidential_coeff=0.0003,
+            cone_depth_anticollapse_coeff=0.55,
+            cone_depth_min_std=0.08,
+            shell_corr_coeff=0.12,
+            shell_corr_depth_sasa_weight=0.0,
+            shell_corr_disc_sasa_weight=0.0,
+            shell_corr_epi_sasa_weight=0.0,
+            shell_floor_coeff=0.0,
+            routing_load_floor_coeff=0.12,
+            routing_load_floor_min=0.08,
+            disc_occupancy_coeff=0.35,
+            disc_occupancy_min_sigma_ratio=0.35,
+            disc_depth_scale_coeff=1.2,
+            disc_depth_scale_target=0.40,
+        ),
+    )
+
+
+def apply_topology_routing_recovery_config(config: TrainingConfig) -> TrainingConfig:
+    """Topology lineage + MoE routing recovery (resume-compatible, keep N=4).
+
+    Avoid Gumbel-hard and expert-count expansion on ep169 resume — both raised H and
+    starved experts in route_v2. Use structure_gate + depth decouple at 4 experts first;
+    try NUM_EXPERTS=6 only as a fresh cold start.
+    """
+    return apply_master_cold_dehydron_config(config).model_copy(
+        update={
+            "gate_gumbel": False,
+            "expert_depth_decouple": True,
+            "structure_gate": True,
+            "track_v6_best_route": True,
+        }
+    )
+
+
+def topology_gate_disc_recovery_phase_config(
+    lr: float = 2e-5,
+    epochs: int = 20,
+    *,
+    routing_save_ceiling_ramp_epochs: int | None = None,
+) -> PhaseConfig:
+    """Gate + light disc projection touch-up; depth biases frozen (post route_v3)."""
+    ramp = routing_save_ceiling_ramp_epochs if routing_save_ceiling_ramp_epochs is not None else epochs
+    return PhaseConfig(
+        phase=2,
+        name="Topology gate + disc recovery",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=True,
+        freeze_angular=True,
+        freeze_backbone=True,
+        freeze_gate=False,
+        topology_gate_disc_recovery_train=True,
+        expert_dropout_p=0.08,
+        expert_dropout_ramp_epochs=3,
+        p2_bridge=True,
+        routing_save_ceiling_start=1.22,
+        routing_save_ceiling_final=1.14,
+        routing_save_ceiling_ramp_epochs=ramp,
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        coeffs=LossCoeffs(
+            balance_coeff=0.001,
+            cone_coeff=0.05,
+            cone_target_mode="tau_dehydron_rim",
+            neighborhood_coeff=0.04,
+            angular_coeff=0.0,
+            domain_sep_2d_coeff=0.0,
+            domain_sep_3d_coeff=0.0,
+            evidential_coeff=0.0,
+            cone_depth_anticollapse_coeff=0.0,
+            shell_corr_coeff=0.08,
+            shell_corr_depth_sasa_weight=0.0,
+            shell_corr_disc_sasa_weight=0.0,
+            shell_floor_coeff=0.0,
+            routing_load_floor_coeff=0.12,
+            routing_load_floor_min=0.08,
+            disc_occupancy_coeff=0.35,
+            disc_occupancy_min_sigma_ratio=0.32,
+            disc_depth_scale_coeff=0.0,
+        ),
+    )
+
+
+def apply_topology_gate_disc_recovery_config(config: TrainingConfig) -> TrainingConfig:
+    """Resume route_v3: train gate + hyp_proj_2d only; freeze expert_depth_bias."""
+    base = apply_topology_routing_recovery_config(config)
+    return base.model_copy(
+        update={
+            "topology_routing_recovery": False,
+            "topology_gate_disc_recovery": True,
+        }
+    )
+
+
+def topology_crescent_recovery_phase_config(
+    lr: float = 2e-5,
+    epochs: int = 25,
+    *,
+    routing_save_ceiling_ramp_epochs: int | None = None,
+    disc_thickness_floor_min: float = 0.03,
+) -> PhaseConfig:
+    """
+    Open a collapsed 1D crescent without moving burial depth.
+
+    Trains angular_head + fusion + hyp_proj_2d (+ gate disc readout); radial frozen.
+    Strong PC2/thickness/eff_rank floors spread mass perpendicular to the streak.
+  """
+    ramp = routing_save_ceiling_ramp_epochs if routing_save_ceiling_ramp_epochs is not None else epochs
+    base = p2_disc_proj_recovery_v3_phase_config(
+        lr=lr,
+        epochs=epochs,
+        disc_thickness_floor_min=disc_thickness_floor_min,
+        disc_thickness_floor_coeff=6.0,
+    )
+    return base.model_copy(
+        update={
+            "name": "Topology crescent recovery (angular + disc wedge)",
+            "topology_crescent_recovery_train": True,
+            "fusion_path_recovery_train": False,
+            "projection_recovery_train": False,
+            "freeze_gate": True,
+            "min_disc_line_thickness_save": disc_thickness_floor_min,
+            "min_disc_effective_rank_save": 1.35,
+            "min_disc_sigma2_sigma1_save": 0.22,
+            "routing_save_ceiling_start": 1.22,
+            "routing_save_ceiling_final": 1.14,
+            "routing_save_ceiling_ramp_epochs": ramp,
+            "p2_bridge": True,
+            "coeffs": base.coeffs.model_copy(
+                update={
+                    "cone_coeff": 0.08,
+                    "cone_target_mode": "tau_dehydron_rim",
+                    "cone_depth_anticollapse_coeff": 0.35,
+                    "angular_coeff": 0.14,
+                    "neighborhood_coeff": 0.08,
+                    "shell_corr_coeff": 0.08,
+                    "shell_corr_depth_sasa_weight": 0.0,
+                    "shell_corr_disc_sasa_weight": 0.0,
+                    "disc_occupancy_coeff": 0.45,
+                    "disc_occupancy_min_sigma_ratio": 0.32,
+                    "disc_pc_repulsion_coeff": 2.5,
+                    "disc_pc2_min_std": 0.07,
+                    "disc_eff_rank_coeff": 1.2,
+                    "disc_eff_rank_min": 1.35,
+                    "disc_batch_diversity_coeff": 0.8,
+                    "disc_batch_min_pairwise_dist": 0.03,
+                    "disc_thickness_floor_coeff": 6.0,
+                    "disc_thickness_floor_min": disc_thickness_floor_min,
+                    "disc_origin_span_floor_coeff": 2.5,
+                    "disc_origin_span_min_spread": 0.14,
+                    "balance_coeff": 0.0,
+                    "routing_load_floor_coeff": 0.0,
+                }
+            ),
+        }
+    )
+
+
+def apply_topology_crescent_recovery_config(config: TrainingConfig) -> TrainingConfig:
+    """Resume after route_v3 / n6: spread angular wedge; keep radial depth + routing frozen."""
+    base = apply_topology_routing_recovery_config(config)
+    return base.model_copy(
+        update={
+            "topology_routing_recovery": False,
+            "topology_crescent_recovery": True,
+        }
+    )
+
+
 def apply_master_cold_dehydron_phases(phases: list[PhaseConfig]) -> list[PhaseConfig]:
     """Dehydron-rim cone contract for MASTER cold-start lineage (P_DEHYDRON_CONE_01)."""
     out: list[PhaseConfig] = []
@@ -461,12 +757,44 @@ def apply_master_cold_dehydron_phases(phases: list[PhaseConfig]) -> list[PhaseCo
             "cone_target_mode": "tau_dehydron_rim",
             "shell_corr_depth_sasa_weight": 0.0,
             "shell_corr_disc_sasa_weight": 0.0,
+            "shell_corr_epi_sasa_weight": 0.0,
             "shell_floor_coeff": 0.0,
+            "epistemic_sasa_pen_coeff": 0.0,
         }
         if phase_cfg.phase == 1:
             coeff_updates["shell_corr_coeff"] = 0.12
+        if phase_cfg.phase == 2:
+            coeff_updates.update(
+                {
+                    "disc_thickness_floor_coeff": max(
+                        phase_cfg.coeffs.disc_thickness_floor_coeff, 1.2
+                    ),
+                    "disc_thickness_floor_min": max(
+                        phase_cfg.coeffs.disc_thickness_floor_min, 0.022
+                    ),
+                    "disc_pc_repulsion_coeff": max(
+                        phase_cfg.coeffs.disc_pc_repulsion_coeff, 0.35
+                    ),
+                    "disc_eff_rank_coeff": max(phase_cfg.coeffs.disc_eff_rank_coeff, 0.4),
+                }
+            )
         new_coeffs = phase_cfg.coeffs.model_copy(update=coeff_updates)
-        out.append(phase_cfg.model_copy(update={"coeffs": new_coeffs}))
+        phase_updates: dict[str, Any] = {
+            "coeffs": new_coeffs,
+            "min_probe_r_depth_sasa": None,
+            "min_probe_r_depth_sasa_save": None,
+            "max_probe_r_epi_sasa_save": None,
+        }
+        if phase_cfg.phase == 2:
+            phase_updates.update(
+                {
+                    "routing_save_ceiling_start": 1.35,
+                    "routing_save_ceiling_final": 1.21,
+                    "routing_save_ceiling_ramp_epochs": min(phase_cfg.epochs, 20),
+                    "min_disc_line_thickness_save": 0.022,
+                }
+            )
+        out.append(phase_cfg.model_copy(update=phase_updates))
     return out
 
 
@@ -493,6 +821,94 @@ def apply_master_cold_dehydron_lineage(
     drive prototypes instead of fold-blind backbone embeddings.
     """
     return apply_master_cold_dehydron_config(config), apply_master_cold_dehydron_phases(phases)
+
+
+_SLIM_MOE_ZERO_DISC_COEFFS: dict[str, float] = {
+    "disc_occupancy_coeff": 0.0,
+    "disc_thickness_floor_coeff": 0.0,
+    "disc_pc_repulsion_coeff": 0.0,
+    "disc_eff_rank_coeff": 0.0,
+    "disc_batch_diversity_coeff": 0.0,
+    "disc_path_align_coeff": 0.0,
+    "disc_depth_scale_coeff": 0.0,
+    "disc_origin_span_floor_coeff": 0.0,
+    "x_hyp_thickness_floor_coeff": 0.0,
+    "angular_coeff": 0.0,
+    "shell_corr_disc_sasa_weight": 0.0,
+    "shell_corr_disc_spread_weight": 0.0,
+    "shell_corr_proj_depth_weight": 0.0,
+}
+
+
+def apply_slim_moe_structural_ssot_phases(phases: list[PhaseConfig]) -> list[PhaseConfig]:
+    """Frozen structural disc SSOT at train time — MoE + uncertainty only (matches ingest)."""
+    out: list[PhaseConfig] = []
+    for phase_cfg in phases:
+        coeff_updates: dict[str, float | str] = {
+            **_SLIM_MOE_ZERO_DISC_COEFFS,
+            "cone_target_mode": "tau_dehydron_rim",
+            "shell_corr_depth_sasa_weight": 0.0,
+            "shell_corr_epi_sasa_weight": 0.0,
+            "shell_floor_coeff": 0.0,
+            "epistemic_sasa_pen_coeff": 0.0,
+        }
+        if phase_cfg.phase == 1:
+            coeff_updates["shell_corr_coeff"] = max(phase_cfg.coeffs.shell_corr_coeff, 0.12)
+        if phase_cfg.phase == 2:
+            coeff_updates["routing_load_floor_coeff"] = max(
+                phase_cfg.coeffs.routing_load_floor_coeff, 0.12
+            )
+            coeff_updates["routing_load_floor_min"] = max(
+                phase_cfg.coeffs.routing_load_floor_min, 0.08
+            )
+        new_coeffs = phase_cfg.coeffs.model_copy(update=coeff_updates)
+        phase_updates: dict[str, Any] = {
+            "freeze_radial": True,
+            "freeze_angular": True,
+            "freeze_radial_epochs": 0,
+            "coeffs": new_coeffs,
+            "slim_moe_structural_ssot_train": True,
+            "min_probe_r_depth_sasa": None,
+            "min_probe_r_depth_sasa_save": None,
+            "max_probe_r_epi_sasa_save": None,
+            "min_disc_line_thickness_save": None,
+            "min_disc_effective_rank_save": None,
+            "min_disc_sigma2_sigma1_save": None,
+            "min_disc_r_std_save": None,
+        }
+        if phase_cfg.phase == 2:
+            phase_updates.update(
+                {
+                    "routing_save_ceiling_start": 1.35,
+                    "routing_save_ceiling_final": 1.21,
+                    "routing_save_ceiling_ramp_epochs": min(phase_cfg.epochs, 20),
+                }
+            )
+        out.append(phase_cfg.model_copy(update=phase_updates))
+    return out
+
+
+def apply_slim_moe_structural_ssot_config(config: TrainingConfig) -> TrainingConfig:
+    """Cold-start preset aligned with ingest: structural disc layout + slim MoE head."""
+    return apply_master_cold_dehydron_config(config).model_copy(
+        update={
+            "structural_disc_frozen": True,
+            "slim_moe_structural_ssot": True,
+            "expert_depth_decouple": True,
+            "structure_gate": True,
+            "gate_gumbel": False,
+            "track_v6_best_route": True,
+        }
+    )
+
+
+def apply_slim_moe_structural_ssot_lineage(
+    config: TrainingConfig,
+    phases: list[PhaseConfig],
+) -> tuple[TrainingConfig, list[PhaseConfig]]:
+    """Config + phase coeffs for structural SSOT cold training (inference-aligned)."""
+    cfg = apply_slim_moe_structural_ssot_config(config)
+    return cfg, apply_slim_moe_structural_ssot_phases(phases)
 
 
 def apply_phase_coeff_ramp(
@@ -1478,6 +1894,7 @@ def p4_head_decouple_phase_config(
         max_probe_r_epi_sasa_save=max_probe_r_epi_sasa_save,
         min_epistemic_std_save=0.05,
         min_aleatoric_std_save=0.5,
+        require_tau_ale_elevation_save=True,
         routing_save_ceiling_start=1.39,
         routing_save_ceiling_final=1.22,
         routing_save_ceiling_ramp_epochs=8,
@@ -1501,6 +1918,34 @@ def p4_head_decouple_phase_config(
             epistemic_anticollapse_coeff=0.15,
             epistemic_min_epi_std=0.03,
         ),
+    )
+
+
+def p4_head_decouple_decorr_only_phase_config(
+    lr: float = 5e-5,
+    epochs: int = 20,
+    *,
+    max_probe_r_epi_sasa_save: float = 0.78,
+) -> PhaseConfig:
+    """G3 ablation A: split epi/ale trunks + r(epi,ale) penalty — NO B-factor/SASA supervision."""
+    cfg = p4_head_decouple_phase_config(
+        lr=lr,
+        epochs=epochs,
+        max_probe_r_epi_sasa_save=max_probe_r_epi_sasa_save,
+        phase_name="Phase 4 head decouple decorr-only (G3 ablation A)",
+    )
+    return cfg.model_copy(
+        update={
+            "name": "Phase 4 head decouple decorr-only (G3 ablation A)",
+            "coeffs": cfg.coeffs.model_copy(
+                update={
+                    "epistemic_decoupling_coeff": 0.0,
+                    "epistemic_bf_align_coeff": 0.0,
+                    "epistemic_sasa_pen_coeff": 0.0,
+                }
+            ),
+            "require_tau_ale_elevation_save": True,
+        }
     )
 
 

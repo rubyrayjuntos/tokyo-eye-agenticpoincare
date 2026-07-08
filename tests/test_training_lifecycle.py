@@ -178,6 +178,22 @@ def test_infer_v6_model_kwargs_reads_gate_disc_scale_from_training_config() -> N
     assert kwargs["deep_hyperbolic_gate"] is True
 
 
+def test_infer_v6_model_kwargs_reads_node_dim_from_state_dict() -> None:
+    import torch
+    from science.dtie.v6.gnn.model import infer_v6_model_kwargs
+
+    state = {"node_emb.weight": torch.zeros(128, 3)}
+    kwargs = infer_v6_model_kwargs(state, architecture={}, training_config={})
+    assert kwargs["node_dim"] == 3
+
+    kwargs4 = infer_v6_model_kwargs(
+        {"node_emb.weight": torch.zeros(128, 4)},
+        architecture={"node_dim": 4},
+        training_config={},
+    )
+    assert kwargs4["node_dim"] == 4
+
+
 def test_p2_hypmix3_phase_config() -> None:
     from science.training.config import p2_hypmix3_phase_config
 
@@ -634,6 +650,10 @@ def test_phase_preset_name() -> None:
     assert TrainingConfig(p2_hypmix_final=True).phase_preset_name() == "p2_hypmix_final"
     assert TrainingConfig(p2_bridge=True).phase_preset_name() == "p2_bridge"
     assert TrainingConfig(phase=2).phase_preset_name() == "phase_2"
+    assert (
+        TrainingConfig(p4_head_decouple_decorr_only=True).phase_preset_name()
+        == "p4_head_decouple_decorr_only"
+    )
 
 
 def test_mlflow_resolve_run_checkpoint_from_tag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

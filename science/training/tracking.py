@@ -110,7 +110,7 @@ class TrainingTracker:
             self._active = True
             self.run_id = run.info.run_id
             parent_id: str | None = None
-            if self.config.master_cold_lineage:
+            if self.config.master_cold_lineage or self.config.slim_moe_structural_ssot:
                 mlf.set_tag("parent_run_id", "null")
                 mlf.set_tag("lineage_root", "true")
             elif self.config.resume is not None:
@@ -138,7 +138,16 @@ class TrainingTracker:
                 mlf.set_tag("phase_preset", preset)
             if self.config.resume is not None:
                 mlf.set_tag("resume_from", str(self.config.resume))
-            if parent_id and not self.config.master_cold_lineage:
+            from science.training.edge_telemetry import (
+                MLFLOW_TAG_NOT_GATE,
+                MLFLOW_TAG_TELEMETRY,
+            )
+
+            mlf.set_tag(MLFLOW_TAG_TELEMETRY, "true")
+            mlf.set_tag(MLFLOW_TAG_NOT_GATE, "true")
+            if parent_id and not (
+                self.config.master_cold_lineage or self.config.slim_moe_structural_ssot
+            ):
                 mlf.set_tag("parent_run_id", parent_id)
             try:
                 yield self

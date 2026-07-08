@@ -16,11 +16,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from science.dtie.common.curvature_loader import CANONICAL_V6_CURVATURE, V6_HYP_SPACE_NAME
+from science.dtie.common.residue_features import gnn_feature_set_id
 from science.training.config import PhaseConfig, TrainingConfig
 
 logger = logging.getLogger(__name__)
 
-SPEC_VERSION = "TRAINING_GOVERNANCE_AND_MLFLOW_SCHEMA:2026-07-02"
+SPEC_VERSION = "TRAINING_GOVERNANCE_AND_MLFLOW_SCHEMA:2026-07-07"
 
 GENE_TO_FAMILY: dict[str, str] = {
     "KRAS": "gtpase",
@@ -67,7 +68,15 @@ MANDATORY_METRICS = frozenset(
     }
 )
 
+from science.training.topology_depth import TOPOLOGY_MANDATORY_METRICS, topology_depth_lineage
 from science.training.routing_gate_bounds import model_num_experts
+
+
+def mandatory_metrics_for_lineage(*, master_cold_lineage: bool = False) -> frozenset[str]:
+    if topology_depth_lineage(master_cold=master_cold_lineage):
+        return TOPOLOGY_MANDATORY_METRICS
+    return MANDATORY_METRICS
+
 
 # Stage A→B routing gate (§5) — effective count scale, not routing fractions.
 # Reference band at N=4; use stage_a_effective_experts_bounds(num_experts) at runtime.
@@ -204,7 +213,7 @@ def build_governance_params(
 ) -> dict[str, str]:
     manifest = Path(config.corpus_manifest)
     corpus_size = len(proteins) if proteins is not None else corpus_enabled_count(manifest)
-    if config.master_cold_lineage:
+    if config.master_cold_lineage or config.slim_moe_structural_ssot:
         parent_value = "null"
         warm_start_value = "none"
         curvature_mode = "free"
@@ -220,7 +229,7 @@ def build_governance_params(
         "corpus_size": str(corpus_size),
         "curvature_mode": curvature_mode,
         "scale": "micro",
-        "feature_set": "master_four_vector",
+        "feature_set": gnn_feature_set_id(),
         "curriculum_schedule": build_curriculum_schedule_json(phases or []),
         "git_commit": _git_commit(),
         "spec_version": SPEC_VERSION,
@@ -237,10 +246,12 @@ def build_governance_params(
     )
     if config.num_experts != 4:
         params["capacity_outcome_discriminator"] = CAPACITY_OUTCOME_A_VS_C
-    if config.master_cold_lineage:
+    if config.master_cold_lineage or config.slim_moe_structural_ssot:
         params["lineage_root"] = "true"
         params["topology_only_gate"] = "true"
         params["v2_teacher"] = "disabled"
+    if config.structural_disc_frozen:
+        params["disc_layout_source"] = "structural_ssot_frozen"
     try:
         from science.training.p_feature_01_gate import (
             DEFAULT_STAMP_PATH,
@@ -280,10 +291,8 @@ def governance_epoch_metrics(
         **gate_routing,
         "sigma2_sigma1": float(health.get("disc_sigma2_sigma1_mean", float("nan"))),
         "disc_thick": float(disc_thick),
-        "r_d_s": float(health.get("probe_r_depth_sasa", float("nan"))),
         "r_d_tau": float(health.get("probe_r_depth_tau", float("nan"))),
         "r_d_rho": float(health.get("probe_r_depth_rho", float("nan"))),
-        "r_e_s": float(health.get("probe_r_epi_sasa", float("nan"))),
         "stage_gate_passed": float(
             stage_gate_passed(
                 health,
@@ -294,6 +303,11 @@ def governance_epoch_metrics(
             )
         ),
     }
+    if topology_depth_lineage(master_cold=master_cold_lineage):
+        pass  # SASA shell probes omitted on topology lineage
+    else:
+        metrics["r_d_s"] = float(health.get("probe_r_depth_sasa", float("nan")))
+        metrics["r_e_s"] = float(health.get("probe_r_epi_sasa", float("nan")))
     if inference_routing is not None:
         metrics["train_effective_experts"] = train_routing["effective_experts"]
         metrics["train_effective_experts_min"] = train_routing["effective_experts_min"]
@@ -308,6 +322,48 @@ def governance_epoch_metrics(
             metrics[key] = float(value)
 
     return {k: v for k, v in metrics.items() if v is not None and math.isfinite(v)}
+
+
+# Track-only telemetry (``telemetry/track`` tag — not P-entry gates). See §3.2 telemetry table.
+TELEMETRY_TRACK_HEALTH_TO_MLFLOW: dict[str, str] = {
+    "epistemic_std_mean": "track/epistemic_std",
+    "aleatoric_std_mean": "track/aleatoric_std",
+    "probe_r_epi_ale": "track/epi_ale_corr",
+    "uncertainty_probe_alive_epi": "track/uncertainty_alive_epi",
+    "uncertainty_probe_alive_ale": "track/uncertainty_alive_ale",
+    "uncertainty_informative_ale": "track/uncertainty_informative_ale",
+    "node_aleatoric_tau_lift": "track/node_tau_boundary_ale_lift",
+    "edge_embed_resistance_corr_mean": "track/edge_resistance_corr",
+    "edge_epistemic_var_std_mean": "track/edge_epistemic_std",
+    "edge_aleatoric_var_std_mean": "track/edge_aleatoric_std",
+    "same_expert_rate_mean": "track/same_expert_rate",
+    "same_expert_null_rate_mean": "track/same_expert_null_rate",
+    "same_expert_excess_mean": "track/same_expert_excess",
+    "flow_excess_high_minus_low_mean": "track/flow_excess_high_minus_low",
+    "edge_telemetry_alive_fraction": "track/edge_telemetry_alive",
+    "healthy_flow_alignment_fraction": "track/healthy_flow_alignment",
+    "edge_tau_boundary_aleatoric_lift_mean": "track/edge_tau_boundary_ale_lift",
+    "uncertainty_epistemic_non_degenerate": "track/epistemic_non_degenerate",
+    "uncertainty_tau_ale_elevated": "track/tau_ale_elevated",
+    "uncertainty_decomposition_valid": "track/decomposition_valid",
+    "evidence_nu_cv_mean": "track/nu_cv",
+}
+
+
+def telemetry_track_metrics(health: dict[str, float]) -> dict[str, float]:
+    """Map geometry health telemetry to MLflow ``track/*`` keys (not gate-critical)."""
+    out: dict[str, float] = {}
+    for health_key, mlflow_key in TELEMETRY_TRACK_HEALTH_TO_MLFLOW.items():
+        val = health.get(health_key)
+        if val is None:
+            continue
+        try:
+            fval = float(val)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(fval):
+            out[mlflow_key] = fval
+    return out
 
 
 def stage_a_gate_passed(
@@ -360,7 +416,7 @@ def master_cold_stage_gate_passed(
     inference_routing: dict[str, float] | None = None,
     num_experts: int = _REF_NUM_EXPERTS,
 ) -> int:
-    """MASTER cold lineage: routing + disc occupancy + P_DEHYDRON_CONE_01 (not SASA≈0.73)."""
+    """MASTER cold lineage: routing + disc occupancy + P_DEHYDRON_CONE_01 (τ-rim only)."""
     from science.training.dehydron_cone_gate import dehydron_cone_gate_passed
     from science.training.routing_gate_bounds import stage_a_effective_experts_bounds
     from science.training.routing_metrics import collapse_metrics_from_epoch_losses
@@ -404,8 +460,8 @@ def stage_gate_passed(
     num_experts: int = _REF_NUM_EXPERTS,
     master_cold_lineage: bool = False,
 ) -> int:
-    """Stage A→B gate — SASA shell (default) or dehydron-rim (MASTER cold)."""
-    if master_cold_lineage:
+    """Stage A→B gate — SASA shell (default) or dehydron-rim (topology lineage)."""
+    if master_cold_lineage or topology_depth_lineage():
         return master_cold_stage_gate_passed(
             health,
             losses,
@@ -432,12 +488,41 @@ def probe_curvature_sources_training(model: nn.Module) -> dict[str, Any]:
     }
 
 
+def _disc_scatter_candidates(
+    config: TrainingConfig,
+    proteins: list[dict[str, Any]] | None = None,
+) -> list[tuple[str, str]]:
+    """Structures to try for end-of-run disc governance overlay (config first, then corpus)."""
+    seen: set[tuple[str, str]] = set()
+    out: list[tuple[str, str]] = []
+
+    def _add(pdb_id: str, chain: str) -> None:
+        key = (pdb_id.upper(), chain or "A")
+        if key not in seen:
+            seen.add(key)
+            out.append(key)
+
+    spec = (config.disc_scatter_structure or "11QE:A").strip()
+    if ":" in spec:
+        pdb_id, chain = spec.split(":", 1)
+    else:
+        pdb_id, chain = spec, "A"
+    _add(pdb_id, chain)
+
+    for prot in proteins or []:
+        pdb = str(prot.get("pdb_id") or prot.get("structure_id") or "").strip()
+        if pdb:
+            _add(pdb, str(prot.get("chain") or "A"))
+    return out
+
+
 def export_disc_governance_artifacts(
     model: nn.Module,
     config: TrainingConfig,
     out_dir: Path,
     *,
     device: str = "cpu",
+    proteins: list[dict[str, Any]] | None = None,
 ) -> dict[str, Path]:
     """Write mandatory disc overlay + angular stats artifacts (§3.3)."""
     from experiments.diagnostics.crescent_biology_projection import (
@@ -449,15 +534,21 @@ def export_disc_governance_artifacts(
     )
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    spec = config.disc_scatter_structure.strip() or "11QE:A"
-    if ":" in spec:
-        pdb_id, chain = spec.split(":", 1)
-    else:
-        pdb_id, chain = spec, "A"
-    pdb_id = pdb_id.upper()
-
     curvature = _learned_curvature(model)
-    bio = _load_biology_arrays(pdb_id, chain, model, config.pdb_dir, device)
+    bio = None
+    pdb_id = ""
+    chain = "A"
+    last_err: Exception | None = None
+    for pdb_id, chain in _disc_scatter_candidates(config, proteins):
+        try:
+            bio = _load_biology_arrays(pdb_id, chain, model, config.pdb_dir, device)
+            break
+        except RuntimeError as exc:
+            last_err = exc
+            continue
+    if bio is None:
+        raise last_err or RuntimeError("No structure available for disc governance export")
+
     ang = _compute_angular_stats(bio)
     sites = PHARMACOPHORE_SITES.get(pdb_id, [])
 
@@ -469,6 +560,7 @@ def export_disc_governance_artifacts(
         "structure_id": pdb_id,
         "chain": chain,
         "checkpoint_curvature": curvature,
+        "disc_layout_source": "structural_ssot_frozen",
         "angular_distribution_stats": [_angular_stats_to_dict(ang)],
     }
     stats_path.write_text(json.dumps(stats_payload, indent=2), encoding="utf-8")
@@ -499,7 +591,9 @@ def finalize_governance_run(
     tracker.log_params({"curvature_final": f"{c_final:.16g}"})
 
     artifact_dir = config.output_dir / "mlflow_governance"
-    paths = export_disc_governance_artifacts(model, config, artifact_dir, device=device)
+    paths = export_disc_governance_artifacts(
+        model, config, artifact_dir, device=device, proteins=proteins
+    )
     for name, path in paths.items():
         tracker.log_artifact(path, artifact_path="governance")
 
@@ -518,6 +612,7 @@ def validate_finished_run(
     artifact_names: set[str],
     *,
     manifest_path: Path,
+    master_cold_lineage: bool = False,
 ) -> list[str]:
     """Return list of schema violations (empty = pass)."""
     errors: list[str] = []
@@ -526,7 +621,7 @@ def validate_finished_run(
         errors.append(f"missing params: {sorted(missing_params)}")
     if params.get("curvature_final", "").strip() == "":
         errors.append("curvature_final empty")
-    missing_metrics = MANDATORY_METRICS - metric_keys
+    missing_metrics = mandatory_metrics_for_lineage(master_cold_lineage=master_cold_lineage) - metric_keys
     if missing_metrics:
         errors.append(f"missing metrics: {sorted(missing_metrics)}")
     missing_artifacts = MANDATORY_ARTIFACTS - artifact_names
