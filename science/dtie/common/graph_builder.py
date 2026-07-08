@@ -21,6 +21,8 @@ from typing import Any, Protocol
 
 import numpy as np
 
+from science.dtie.common import ingest_master_features as imf
+from science.dtie.common import residue_features as rf
 from science.dtie.common.normalizer_payloads import GraphEdge
 
 logger = logging.getLogger(__name__)
@@ -32,8 +34,13 @@ DEFAULT_CONTACT_CUTOFF = 8.0
 # sequential residues (|i-j| <= 5) suggests a backbone hydrogen bond.
 HBOND_CA_DISTANCE_CUTOFF = 5.5
 
-# Secondary structure encoding
-SSE_ENCODING = {"H": 0.0, "E": 1.0, "C": 2.0, "": 2.0, None: 2.0}
+# Secondary structure one-hot mapping for geometric ss_type scalars (training path).
+# 0.0 = helix-like, 0.5 = sheet-like, 1.0 = coil (default).
+GEOMETRIC_SS_ONEHOT = {
+    0.0: 0,
+    0.5: 1,
+    1.0: 2,
+}
 
 
 class GraphDB(Protocol):
@@ -121,11 +128,17 @@ class GraphBuilder:
             residue_ids=[r.residue_id for r in residues],
         )
 
-    def to_pyg(self, graph: ProteinGraph) -> Any:
+    def to_pyg(
+        self,
+        graph: ProteinGraph,
+        *,
+        gnn_input_mode: rf.GnnInputMode | None = None,
+    ) -> Any:
         """Convert ProteinGraph to a torch_geometric Data object.
 
         Returns a Data object with:
-            x: [N, 4] node features (rho, tau_flag, ss_type, sasa)
+            x: [N, 3|4] node features (ρ, τ, ss_type [, sasa legacy])
+            sasa: [N] side-channel (always; for binding scan / training probes)
             edge_index: [2, E] graph connectivity
             edge_attr: [E, 4] edge features (rel_x, rel_y, rel_z, dist)
             degree: [N] node degree from contact graph
@@ -140,16 +153,18 @@ class GraphBuilder:
 
         num_nodes = len(graph.residues)
 
-        # Node features: [rho, tau_flag, ss_type, sasa]
-        x = torch.tensor(
-            [[r.rho, r.tau_flag, r.ss_type, r.sasa] for r in graph.residues],
-            dtype=torch.float32,
-        )
+        rho = np.array([r.rho for r in graph.residues], dtype=np.float64)
+        tau = np.array([r.tau_flag for r in graph.residues], dtype=np.float64)
+        ss = np.array([r.ss_type for r in graph.residues], dtype=np.float64)
+        sasa = np.array([r.sasa for r in graph.residues], dtype=np.float64)
+        x_np = rf.stack_gnn_node_features(rho, tau, ss, sasa, mode=gnn_input_mode)
+        x = torch.tensor(x_np, dtype=torch.float32)
 
         edge_index = torch.tensor(graph.edge_index, dtype=torch.long)
         edge_attr = torch.tensor(graph.edge_attr, dtype=torch.float32)
 
         data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
+        data.sasa = torch.tensor(sasa, dtype=torch.float32)
 
         # --- V6 topological features ---
 
@@ -162,14 +177,11 @@ class GraphBuilder:
             degree.scatter_add_(0, src_nodes, torch.ones_like(src_nodes, dtype=torch.long))
         data.degree = degree
 
-        # 2. SS one-hot: convert scalar ss_type (H=0, E=1, C=2) to one-hot [3]
+        # 2. SS one-hot: geometric ss_type scalar → [helix, sheet, coil]
         ss_onehot = torch.zeros(num_nodes, 3, dtype=torch.float32)
         for i, r in enumerate(graph.residues):
-            ss_idx = int(r.ss_type)  # 0=H, 1=E, 2=C
-            if 0 <= ss_idx <= 2:
-                ss_onehot[i, ss_idx] = 1.0
-            else:
-                ss_onehot[i, 2] = 1.0  # Default to coil
+            ss_idx = GEOMETRIC_SS_ONEHOT.get(r.ss_type, 2)
+            ss_onehot[i, ss_idx] = 1.0
         data.ss_onehot = ss_onehot
 
         # 3. Raw rho values for gate shortcut
@@ -246,18 +258,25 @@ class GraphBuilder:
 
         return edges
 
+    @staticmethod
+    def build_node_features_from_pdb(
+        pdb_path: str,
+        chain_id: str,
+        *,
+        mode: rf.FeatureMode = rf.FeatureMode.TRAINING_CURRENT,
+    ) -> list[rf.ResidueNodeFeatures]:
+        """Inference-side feature extraction from PDB (P_FEATURE_01 parity path)."""
+        return rf.build_from_pdb_chain(pdb_path, chain_id, mode=mode)
+
     async def _fetch_residues(
         self, structure_id: str, chain_filter: str | None
     ) -> list[ResidueFeatures]:
-        """Fetch residue features from the governed layer.
-
-        Computes per-residue burial depth (rho) and approximate SASA from
-        Cα neighbor counts when the governed tables don't have precomputed
-        values. This ensures the GNN always receives meaningful input features
-        regardless of whether the dehydron/SASA computation pipeline has run.
-        """
+        """Fetch persisted MASTER features from governed tables (read-only)."""
         chain_clause = ""
-        params: dict[str, Any] = {"structure_id": structure_id}
+        params: dict[str, Any] = {
+            "structure_id": structure_id,
+            "condition": imf.DEFAULT_CONDITION,
+        }
 
         if chain_filter:
             chain_clause = "AND c.chain_label = :chain_label"
@@ -269,15 +288,28 @@ class GraphBuilder:
                 r.residue_id,
                 r.residue_index,
                 c.chain_label,
-                COALESCE(r.sasa, 0.0) AS sasa,
-                COALESCE(r.sse_code, 'C') AS sse_code,
-                a.x AS ca_x, a.y AS ca_y, a.z AS ca_z
+                r.sasa,
+                r.sse_code,
+                f.rho,
+                f.tau_flag,
+                f.ss_type,
+                a.x AS ca_x,
+                a.y AS ca_y,
+                a.z AS ca_z
             FROM dim_residue r
             JOIN dim_chain c ON c.chain_id = r.chain_id
-            JOIN dim_structure s ON s.structure_id = c.structure_id
-            LEFT JOIN dim_atom a ON a.residue_id = r.residue_id AND a.atom_name = 'CA'
-            WHERE s.structure_id = :structure_id
+            JOIN fact_ingestion_features f
+              ON f.residue_id = r.residue_id
+             AND f.structure_id = c.structure_id
+             AND f.condition = :condition
+             AND f.is_current = TRUE
+            LEFT JOIN dim_atom a
+              ON a.residue_id = r.residue_id
+             AND a.atom_name = 'CA'
+            WHERE c.structure_id = :structure_id
               {chain_clause}
+              AND r.sasa IS NOT NULL
+              AND r.sse_code IS NOT NULL
               AND a.x IS NOT NULL
             ORDER BY c.chain_label, r.residue_index
             """,
@@ -287,77 +319,30 @@ class GraphBuilder:
         if not rows:
             return []
 
-        # Extract Cα coordinates for burial computation
-        ca_coords = np.array([[row["ca_x"], row["ca_y"], row["ca_z"]] for row in rows])
-
-        # Compute burial depth (rho) from Cα neighbor counts
-        # Burial = number of Cα atoms within 10Å sphere, normalized to [0, 1]
-        # This is a standard proxy for solvent burial: deeply buried residues
-        # have many neighbors, surface residues have few.
-        burial_counts = self._compute_burial_depth(ca_coords)
-
-        # Compute approximate SASA (inverse of burial): exposed = high SASA
-        # Normalized so max-burial residues get SASA ≈ 0, surface gets ≈ 1
-        max_burial = burial_counts.max() if burial_counts.max() > 0 else 1.0
-        approx_sasa = 1.0 - (burial_counts / max_burial)
-
-        residues = []
-        for i, row in enumerate(rows):
-            # Use computed burial as rho (matches original training semantics:
-            # high rho = deeply buried = high cone depth in Poincaré ball)
-            rho = float(burial_counts[i])
-
-            # Use DB SASA if available, otherwise use computed approximation
-            sasa = row["sasa"] if row["sasa"] and row["sasa"] > 0 else float(approx_sasa[i])
-
-            # Tau flag: 1 if burial > median (deeply buried), 0 otherwise
-            tau_flag = 1.0 if burial_counts[i] > np.median(burial_counts) else 0.0
-
+        residues: list[ResidueFeatures] = []
+        for row in rows:
+            sse = row.get("sse_code") or "C"
             residues.append(
                 ResidueFeatures(
                     residue_id=row["residue_id"],
-                    residue_index=row["residue_index"],
+                    residue_index=int(row["residue_index"]),
                     chain_label=row["chain_label"],
-                    rho=rho,
-                    tau_flag=tau_flag,
-                    ss_type=SSE_ENCODING.get(row["sse_code"], 2.0),
-                    sasa=sasa,
-                    ca_x=row["ca_x"],
-                    ca_y=row["ca_y"],
-                    ca_z=row["ca_z"],
+                    rho=float(row["rho"]),
+                    tau_flag=float(row["tau_flag"]),
+                    ss_type=float(row["ss_type"]),
+                    sasa=float(row["sasa"]),
+                    ca_x=float(row["ca_x"]),
+                    ca_y=float(row["ca_y"]),
+                    ca_z=float(row["ca_z"]),
                 )
             )
-
         return residues
 
     def _compute_burial_depth(
         self, ca_coords: np.ndarray, radius: float = 10.0
     ) -> np.ndarray:
-        """Compute per-residue burial depth from Cα neighbor counts.
-
-        Burial depth = number of other Cα atoms within a sphere of given radius.
-        This is a well-established proxy for solvent accessibility:
-        - Core residues: high count (many neighbors, deeply buried)
-        - Surface residues: low count (few neighbors, solvent-exposed)
-
-        Args:
-            ca_coords: [N, 3] array of Cα coordinates.
-            radius: Distance threshold in Ångströms (default 10Å).
-
-        Returns:
-            [N] array of neighbor counts (unnormalized burial depth).
-        """
-        n = len(ca_coords)
-        counts = np.zeros(n, dtype=np.float32)
-
-        # Pairwise distance computation
-        for i in range(n):
-            diffs = ca_coords - ca_coords[i]
-            dists = np.linalg.norm(diffs, axis=1)
-            # Count neighbors within radius (excluding self)
-            counts[i] = float(np.sum((dists < radius) & (dists > 0.1)))
-
-        return counts
+        """Legacy burial proxy — retained for diagnostics only, not feature path."""
+        return rf.compute_burial_rho_skew(ca_coords, radius=radius).astype(np.float32)
 
     async def _get_dehydron_density(self, residue_id: str) -> float:
         """Get dehydron density for a residue from governed facts."""

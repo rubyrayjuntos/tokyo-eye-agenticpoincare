@@ -1,13 +1,18 @@
 """
-_data.py — Standalone data-loading utilities for v6 retraining.
+_data.py — Training data loading via governed DB (single ingest writer path).
 
-Corpus manifest (preferred): manifests/v6_corpus_120.json via experiments.training.v6.corpus
-TRAINING_TARGETS below is retained for backward compatibility with retrain_v6.py.
+Corpus manifest: manifests/v6_corpus_120.json via experiments.training.v6.corpus
+
+Training loads protein graphs from the database only — ingest must complete first
+via POST /api/ingest. This module does not compute MASTER features at train time
+unless TRAINING_ALLOW_AUTO_INGEST=1 (dev escape hatch only).
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -18,38 +23,104 @@ from torch_geometric.data import Data
 logger = logging.getLogger(__name__)
 
 TRAINING_TARGETS = {
-    # ── KRAS / RAS family ────────────────────────────────────────────────────
     "4OBE": {"gene": "KRAS",  "desc": "WT GDP",           "chain": "A", "stage0": True},
     "4DSO": {"gene": "KRAS",  "desc": "G12D GDP",         "chain": "A", "stage0": False},
     "6OIM": {"gene": "KRAS",  "desc": "G12C GDP",         "chain": "A", "stage0": False},
     "5VQ2": {"gene": "KRAS",  "desc": "G12V GppNHp",      "chain": "A", "stage0": False},
     "3CON": {"gene": "NRAS",  "desc": "Q61R GDP",         "chain": "A", "stage0": False},
     "4G0N": {"gene": "HRAS",  "desc": "WT GppNHp",        "chain": "A", "stage0": False},
-
-    # ── Kinases ──────────────────────────────────────────────────────────────
     "4MNE": {"gene": "BRAF",  "desc": "V600E",            "chain": "A", "stage0": False},
     "1IVO": {"gene": "EGFR",  "desc": "WT kinase",        "chain": "A", "stage0": False},
     "2ITV": {"gene": "EGFR",  "desc": "L858R",            "chain": "A", "stage0": False},
     "4NST": {"gene": "CDK12", "desc": "cyclin binding",   "chain": "A", "stage0": False},
     "3PP0": {"gene": "SRC",   "desc": "active kinase",    "chain": "A", "stage0": False},
     "2OIQ": {"gene": "ABL1",  "desc": "imatinib-bound",   "chain": "A", "stage0": False},
-
-    # ── Phosphatases / adaptors ──────────────────────────────────────────────
     "2SHP": {"gene": "SHP2",  "desc": "WT phosphatase",   "chain": "A", "stage0": False},
-
-    # ── Transcription factors / scaffolds ────────────────────────────────────
-    "1BG1": {"gene": "STAT3", "desc": "SH2 domain",       "chain": "A", "stage0": False},
+    "1BG1": {"gene": "STAT3", "desc": "multidomain (coiled-coil+SH2)", "chain": "A", "stage0": False},
     "2Z6H": {"gene": "CTNNB1","desc": "ARM repeats",      "chain": "A", "stage0": False},
-
-    # ── Methyltransferase ────────────────────────────────────────────────────
     "4GQB": {"gene": "PRMT5", "desc": "methyltransferase","chain": "A", "stage0": False},
-
-    # ── Allosteric exemplar ──────────────────────────────────────────────────
     "2HHB": {"gene": "HBB",   "desc": "deoxy haemoglobin","chain": "B", "stage0": False},
 }
 
 TAU = 13.0
 EDGE_CUTOFF = 8.0
+
+from science.dtie.common import residue_features as rf
+
+
+def _use_db_load() -> bool:
+    return os.environ.get("TRAINING_LOAD_FROM_PDB", "").lower() not in ("1", "true", "yes")
+
+
+def _run_async(coro):
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    raise RuntimeError(
+        "load_protein_graph cannot be called from a running event loop; "
+        "use load_protein_graph_async instead"
+    )
+
+
+async def load_protein_graph_async(
+    pdb_id: str,
+    chain: str,
+    pdb_dir: Path,
+    *,
+    force_reingest: bool = False,
+) -> Optional[Dict]:
+    """Read training graph from governed DB (read-only after ingest).
+
+    Production training must not re-ingest or re-persist MASTER features.
+    Run ``make gate-p-feature-01`` after ingest to prove DB round-trip parity.
+    """
+    from data.db import DBAdapter, get_connection
+    from science.dtie.common.keys import make_structure_id
+    from science.dtie.common.load_graph_from_db import load_protein_graph_from_db
+    from science.dtie.common.structure_readiness import (
+        check_master_features_ready,
+        ensure_structure_ready,
+    )
+
+    pdb_id = pdb_id.upper()
+    allow_auto_ingest = os.environ.get("TRAINING_ALLOW_AUTO_INGEST", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+    async with get_connection() as conn:
+        db = DBAdapter(conn)
+        if allow_auto_ingest or force_reingest:
+            structure_id = await ensure_structure_ready(
+                db,
+                pdb_id,
+                chain,
+                pdb_dir,
+                force_reingest=force_reingest,
+            )
+        else:
+            structure_id = make_structure_id(pdb_id=pdb_id, source="rcsb")
+            readiness = await check_master_features_ready(db, structure_id, chain)
+            if not readiness.ready:
+                logger.error(
+                    "%s:%s not ingestion-complete (%s) — run POST /api/ingest, "
+                    "then make gate-p-feature-01 before training",
+                    pdb_id,
+                    chain,
+                    readiness.reason,
+                )
+                return None
+        graph = await load_protein_graph_from_db(db, structure_id, pdb_id, chain)
+        return graph
+
+
+def load_protein_graph(pdb_id: str, chain: str, pdb_dir: Path) -> Optional[Dict]:
+    """Load protein graph for training — read-only from DB after ingest."""
+    if not _use_db_load():
+        return load_protein_graph_from_pdb_legacy(pdb_id, chain, pdb_dir)
+    return _run_async(load_protein_graph_async(pdb_id, chain, pdb_dir))
 
 
 def _download_pdb(pdb_id: str, pdb_dir: Path) -> Path:
@@ -94,60 +165,8 @@ def _extract_chain(pdb_path: Path, chain_id: str, cache_dir: Path | None = None)
     return out_path
 
 
-def _compute_rho(residue, all_atoms, wrapping_radius: float = 6.5) -> float:
-    from Bio.PDB import NeighborSearch
-    try:
-        n_atom = residue["N"]
-        o_atom = residue["O"]
-    except KeyError:
-        return -1.0
-    mid = (n_atom.get_coord() + o_atom.get_coord()) / 2.0
-    ns = NeighborSearch(all_atoms)
-    neighbours = ns.search(mid, wrapping_radius, level="A")
-    POLAR = {"ARG", "ASN", "ASP", "GLN", "GLU", "HIS", "LYS", "SER", "THR", "TYR", "TRP"}
-    count = 0
-    for a in neighbours:
-        if a.element != "C":
-            continue
-        if a.get_parent().get_resname().strip() in POLAR:
-            continue
-        if a.name == "C":
-            continue
-        count += 1
-    return float(count)
-
-
-def _compute_sasa_proxy(ca_coords: np.ndarray, cutoff: float = 10.0) -> np.ndarray:
-    from scipy.spatial.distance import cdist
-    dists = cdist(ca_coords, ca_coords)
-    neighbor_counts = ((dists < cutoff) & (dists > 0.1)).sum(axis=1).astype(np.float64)
-    max_count = neighbor_counts.max()
-    if max_count > 0:
-        sasa = 1.0 - (neighbor_counts / max_count)
-    else:
-        sasa = np.full(len(ca_coords), 0.5)
-    return sasa
-
-
-def _compute_ss_geometric(ca_coords: np.ndarray) -> np.ndarray:
-    n = len(ca_coords)
-    ss = np.ones(n, dtype=np.float64)
-    for i in range(2, n - 2):
-        v1 = ca_coords[i] - ca_coords[i - 2]
-        v2 = ca_coords[i + 2] - ca_coords[i]
-        d1 = np.linalg.norm(v1)
-        d2 = np.linalg.norm(v2)
-        if d1 < 1e-6 or d2 < 1e-6:
-            continue
-        cos_angle = np.clip(np.dot(v1, v2) / (d1 * d2), -1.0, 1.0)
-        if cos_angle < 0.5 and d1 < 7.0:
-            ss[i] = 0.0
-        elif cos_angle > 0.8:
-            ss[i] = 0.5
-    return ss
-
-
-def load_protein_graph(pdb_id: str, chain: str, pdb_dir: Path) -> Optional[Dict]:
+def load_protein_graph_from_pdb_legacy(pdb_id: str, chain: str, pdb_dir: Path) -> Optional[Dict]:
+    """Legacy PDB-local load (TRAINING_LOAD_FROM_PDB=1 only — not for production training)."""
     from Bio.PDB import PDBParser
     from science.dtie.v5.gnn.model import precompute_clustering
     from scipy.spatial.distance import cdist
@@ -155,42 +174,41 @@ def load_protein_graph(pdb_id: str, chain: str, pdb_dir: Path) -> Optional[Dict]
     pdb_path = _download_pdb(pdb_id, pdb_dir)
     chain_path = _extract_chain(pdb_path, chain, _chain_cache_dir(pdb_dir))
 
-    parser = PDBParser(QUIET=True)
-    structure = parser.get_structure(pdb_id, str(chain_path))
-
-    residues = [r for r in structure.get_residues() if r.get_id()[0] == " "]
-    if len(residues) < 10:
-        logger.warning("%s chain %s: only %d residues, skipping", pdb_id, chain, len(residues))
+    node_feats = rf.build_from_pdb_chain(chain_path, chain, mode=rf.FeatureMode.MASTER)
+    if len(node_feats) < 10:
+        logger.warning("%s chain %s: fewer than 10 valid residues after filtering", pdb_id, chain)
         return None
 
-    all_atoms = [a for r in residues for a in r.get_atoms()]
+    parser = PDBParser(QUIET=True)
+    structure = parser.get_structure(pdb_id, str(chain_path))
+    res_by_idx = {
+        int(r.get_id()[1]): r
+        for r in structure.get_residues()
+        if r.get_id()[0] == " " and r.parent.id == chain
+    }
 
-    rho_list, ca_list, bf_list, bf_present, res_ids = [], [], [], [], []
-    for res in residues:
-        rho = _compute_rho(res, all_atoms)
-        if rho < 0 or "CA" not in res:
-            continue
+    ca_list, bf_list, bf_present, res_ids = [], [], [], []
+    for feat in node_feats:
+        res = res_by_idx.get(feat.residue_index)
+        if res is None or "CA" not in res:
+            logger.warning("%s: missing CA for residue %s", pdb_id, feat.residue_index)
+            return None
         ca = res["CA"]
         bf = float(ca.get_bfactor())
         has_bf = np.isfinite(bf)
-        rho_list.append(rho)
         ca_list.append(ca.get_coord())
         bf_list.append(bf if has_bf else float("nan"))
         bf_present.append(has_bf)
-        res_ids.append(f"{chain}:{res.get_id()[1]}:")
+        res_ids.append(f"{chain}:{feat.residue_index}:")
 
-    if len(rho_list) < 10:
-        logger.warning("%s: fewer than 10 valid residues after filtering", pdb_id)
-        return None
-
-    rho_arr = np.array(rho_list, dtype=np.float64)
+    rho_arr = np.array([f.rho for f in node_feats], dtype=np.float64)
     ca_coords = np.array(ca_list, dtype=np.float64)
     n = len(rho_arr)
 
-    tau_flag = (rho_arr < TAU).astype(np.float64)
-    ss_type = _compute_ss_geometric(ca_coords)
-    sasa = _compute_sasa_proxy(ca_coords)
-    x = np.stack([rho_arr, tau_flag, ss_type, sasa], axis=1).astype(np.float32)
+    tau_flag = np.array([f.tau_flag for f in node_feats], dtype=np.float64)
+    ss_type = np.array([f.ss_type for f in node_feats], dtype=np.float64)
+    sasa = np.array([f.sasa for f in node_feats], dtype=np.float64)
+    x = rf.stack_gnn_node_features(rho_arr, tau_flag, ss_type, sasa)
 
     dists = cdist(ca_coords, ca_coords)
     src, dst = np.where((dists < EDGE_CUTOFF) & (dists > 0.1))
@@ -204,28 +222,32 @@ def load_protein_graph(pdb_id: str, chain: str, pdb_dir: Path) -> Optional[Dict]
         edge_index=edge_index,
         edge_attr=torch.tensor(edge_attr, dtype=torch.float32),
     )
+    data.sasa = torch.tensor(sasa, dtype=torch.float32)
     data = precompute_clustering(data)
 
     target_rho = torch.tensor(rho_arr, dtype=torch.float32).unsqueeze(1)
     target_dehydron = torch.tensor(tau_flag, dtype=torch.float32).unsqueeze(1)
     ca_tensor = torch.tensor(ca_coords, dtype=torch.float32)
-
-    # SASA as direct training target for cone_depth (surface = disc periphery)
     target_sasa = torch.tensor(sasa, dtype=torch.float32).unsqueeze(1)
     b_factor_ca = torch.tensor(bf_list, dtype=torch.float32).unsqueeze(1)
     b_factor_present = torch.tensor(bf_present, dtype=torch.bool)
 
     domain_labels = torch.full((n,), -1, dtype=torch.long)
-    # RAS-family domain annotations (P-loop, Switch-I/II, α3, α4, C-term)
     if pdb_id in ("4OBE", "4DSO", "6OIM", "5VQ2", "3CON", "4G0N"):
         for i, rid in enumerate(res_ids):
             resnum = int(rid.split(":")[1])
-            if 10 <= resnum <= 17:    domain_labels[i] = 0  # P-loop
-            elif 25 <= resnum <= 40:  domain_labels[i] = 1  # Switch-I
-            elif 57 <= resnum <= 75:  domain_labels[i] = 2  # Switch-II
-            elif 87 <= resnum <= 104: domain_labels[i] = 3  # α3
-            elif 116 <= resnum <= 126: domain_labels[i] = 4 # α4
-            elif 145 <= resnum <= 170: domain_labels[i] = 5 # C-terminal
+            if 10 <= resnum <= 17:
+                domain_labels[i] = 0
+            elif 25 <= resnum <= 40:
+                domain_labels[i] = 1
+            elif 57 <= resnum <= 75:
+                domain_labels[i] = 2
+            elif 87 <= resnum <= 104:
+                domain_labels[i] = 3
+            elif 116 <= resnum <= 126:
+                domain_labels[i] = 4
+            elif 145 <= resnum <= 170:
+                domain_labels[i] = 5
 
     return {
         "pdb_id": pdb_id,
@@ -240,4 +262,5 @@ def load_protein_graph(pdb_id: str, chain: str, pdb_dir: Path) -> Optional[Dict]
         "domain_labels": domain_labels if (domain_labels >= 0).any() else None,
         "residue_ids": res_ids,
         "n_residues": n,
+        "source": "pdb_legacy",
     }

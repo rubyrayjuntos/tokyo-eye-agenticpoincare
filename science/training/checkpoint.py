@@ -11,6 +11,13 @@ from typing import Any
 import torch
 
 
+def _node_dim_from_model(model: torch.nn.Module) -> int:
+    emb = getattr(model, "node_emb", None)
+    if emb is not None and hasattr(emb, "in_features"):
+        return int(emb.in_features)
+    return 4
+
+
 @dataclass
 class CheckpointData:
     model_state_dict: dict[str, Any]
@@ -58,7 +65,7 @@ class CheckpointManager:
             "curvature": curvature,
             "architecture": {
                 "version": "v6",
-                "node_dim": 4,
+                "node_dim": _node_dim_from_model(model),
                 "hidden": getattr(model, "hidden", 128),
                 "num_experts": len(model.experts) if hasattr(model, "experts") else 4,
                 "hyperbolic_gate": getattr(model, "hyperbolic_gate", False),
@@ -68,6 +75,48 @@ class CheckpointManager:
                 "gate_gumbel": getattr(model, "gate_gumbel", False),
                 "gate_disc_scale": getattr(model, "gate_disc_scale", 1.0),
                 "disc_radial_source": getattr(model, "disc_radial_source", "mobius"),
+                "topology_only_gate": getattr(getattr(model, "gate", None), "topology_only", False),
+            },
+        }
+        torch.save(payload, path)
+        return path
+
+    def save_best_route(
+        self,
+        model: torch.nn.Module,
+        optimizer: torch.optim.Optimizer | None,
+        *,
+        global_epoch: int,
+        phase: int,
+        phase_name: str,
+        metrics: dict[str, Any],
+        training_config: dict[str, Any],
+        score: float,
+        routing_entropy: float,
+    ) -> Path:
+        """Best MoE routing snapshot — independent of geometry-tier v6_best.pt."""
+        path = self.output_dir / "v6_best_route.pt"
+        curvature = float(model.curvature.item()) if hasattr(model, "curvature") else 0.0
+        payload = {
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict() if optimizer else None,
+            "global_epoch": global_epoch,
+            "phase": phase,
+            "phase_name": phase_name,
+            "metrics": metrics,
+            "training_config": training_config,
+            "score": score,
+            "routing_entropy": routing_entropy,
+            "curvature": curvature,
+            "architecture": {
+                "version": "v6",
+                "node_dim": _node_dim_from_model(model),
+                "hidden": getattr(model, "hidden", 128),
+                "num_experts": len(model.experts) if hasattr(model, "experts") else 4,
+                "hyperbolic_gate": getattr(model, "hyperbolic_gate", False),
+                "gate_gumbel": getattr(model, "gate_gumbel", False),
+                "expert_depth_decouple": getattr(model, "expert_depth_decouple", False),
+                "structure_gate": getattr(model, "structure_gate", False),
                 "topology_only_gate": getattr(getattr(model, "gate", None), "topology_only", False),
             },
         }
@@ -110,7 +159,7 @@ class CheckpointManager:
             payload["training_config"] = training_config
             payload["architecture"] = {
                 "version": "v6",
-                "node_dim": 4,
+                "node_dim": _node_dim_from_model(model),
                 "hidden": getattr(model, "hidden", 128),
                 "num_experts": len(model.experts) if hasattr(model, "experts") else 4,
                 "hyperbolic_gate": getattr(model, "hyperbolic_gate", False),

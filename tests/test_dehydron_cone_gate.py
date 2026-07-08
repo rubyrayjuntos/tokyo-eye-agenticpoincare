@@ -23,7 +23,6 @@ from science.training.mlflow_governance import master_cold_stage_gate_passed, st
 def test_dehydron_cone_gate_passes_when_tau_aligned() -> None:
     health = {
         "probe_r_depth_tau": 0.22,
-        "probe_r_depth_sasa": 0.10,
         "probe_r_depth_rho": -0.05,
     }
     verdict = dehydron_cone_gate_verdict(health)
@@ -31,25 +30,24 @@ def test_dehydron_cone_gate_passes_when_tau_aligned() -> None:
     assert dehydron_cone_gate_passed(health) is True
 
 
+def test_dehydron_cone_gate_passes_despite_high_sasa_correlation() -> None:
+    """SASA is not part of P_DEHYDRON_CONE_01 — τ alignment alone decides pass."""
+    health = {
+        "probe_r_depth_tau": 0.641,
+        "probe_r_depth_rho": -0.586,
+    }
+    verdict = dehydron_cone_gate_verdict(health)
+    assert verdict.passed is True
+
+
 def test_dehydron_cone_gate_fails_low_tau_correlation() -> None:
     health = {
         "probe_r_depth_tau": 0.03,
-        "probe_r_depth_sasa": 0.10,
     }
     verdict = dehydron_cone_gate_verdict(health)
     assert verdict.passed is False
     assert MIN_R_CONE_DEPTH_TAU == 0.15
     assert "dehydron rim" in verdict.reason.lower() or "τ" in verdict.reason
-
-
-def test_dehydron_cone_gate_fails_sasa_dominance() -> None:
-    health = {
-        "probe_r_depth_tau": 0.20,
-        "probe_r_depth_sasa": 0.62,
-    }
-    verdict = dehydron_cone_gate_verdict(health)
-    assert verdict.passed is False
-    assert verdict.sasa_dominates_tau is True
 
 
 def test_cone_alignment_loss_tau_mode_prefers_dehydron_depth() -> None:
@@ -71,6 +69,109 @@ def test_apply_master_cold_dehydron_phases() -> None:
     assert phases[0].coeffs.shell_corr_depth_sasa_weight == 0.0
     assert phases[0].coeffs.shell_corr_disc_sasa_weight == 0.0
     assert phases[0].coeffs.shell_corr_coeff == 0.12
+    assert phases[0].min_probe_r_depth_sasa is None
+    assert phases[0].min_probe_r_depth_sasa_save is None
+    p2 = next(p for p in phases if p.phase == 2)
+    assert p2.routing_save_ceiling_start == 1.35
+    assert p2.routing_save_ceiling_final == 1.21
+
+
+def test_routing_save_ceiling_for_display_no_nan_on_p1() -> None:
+    from science.training.config import routing_save_ceiling_for_display
+
+    p1 = default_v6_phases()[0]
+    val, label = routing_save_ceiling_for_display(p1, epoch=0)
+    assert val == val  # not NaN
+    assert label == "route_ref"
+
+
+def test_topology_routing_recovery_phase_config() -> None:
+    from science.training.config import topology_routing_recovery_phase_config
+
+    phase = topology_routing_recovery_phase_config()
+    assert phase.phase == 2
+    assert phase.epochs == 40
+    assert phase.coeffs.balance_coeff == 0.001
+    assert phase.coeffs.cone_target_mode == "tau_dehydron_rim"
+    assert phase.routing_save_ceiling_final == 1.14
+
+
+def test_topology_gate_disc_recovery_phase_config() -> None:
+    from science.training.config import topology_gate_disc_recovery_phase_config
+
+    phase = topology_gate_disc_recovery_phase_config()
+    assert phase.topology_gate_disc_recovery_train is True
+    assert phase.epochs == 20
+    assert phase.coeffs.cone_depth_anticollapse_coeff == 0.0
+    assert phase.coeffs.disc_occupancy_coeff == 0.35
+    assert phase.freeze_backbone is True
+
+
+def test_topology_gate_disc_recovery_freeze() -> None:
+    from experiments.training.v6.train_loop import set_topology_gate_disc_recovery_freeze
+    from science.dtie.v6.gnn.model import GOSPConeMapperV6
+
+    model = GOSPConeMapperV6(
+        node_dim=3,
+        hidden=32,
+        num_layers=2,
+        num_experts=4,
+        expert_depth_decouple=True,
+        structure_gate=True,
+        topology_only_gate=True,
+    )
+    set_topology_gate_disc_recovery_freeze(model)
+    trainable = {n for n, p in model.named_parameters() if p.requires_grad}
+    assert any(n.startswith("gate.") for n in trainable)
+    assert any(n.startswith("hyp_proj_head_2d.") for n in trainable)
+    assert not any(n.startswith("experts.") for n in trainable)
+    assert not any(n.startswith("radial_head.") for n in trainable)
+    assert model.expert_depth_bias is not None
+    assert not model.expert_depth_bias.requires_grad
+
+
+def test_score_route_checkpoint_prefers_low_entropy() -> None:
+    from science.training.checkpoint_score import score_route_checkpoint
+
+    good = score_route_checkpoint(
+        {"probe_r_depth_tau": 0.9},
+        {
+            "routing_entropy": 1.15,
+            "expert_load_0": 0.1,
+            "expert_load_1": 0.35,
+            "expert_load_2": 0.35,
+            "expert_load_3": 0.2,
+            "min_routing_fraction": 0.10,
+        },
+        routing_save_max=1.20,
+        topology_depth=True,
+    )
+    bad = score_route_checkpoint(
+        {"probe_r_depth_tau": 0.9},
+        {
+            "routing_entropy": 1.32,
+            "expert_load_0": 0.25,
+            "expert_load_1": 0.25,
+            "expert_load_2": 0.25,
+            "expert_load_3": 0.25,
+            "min_routing_fraction": 0.10,
+        },
+        routing_save_max=1.20,
+        topology_depth=True,
+    )
+    assert good.eligible
+    assert not bad.eligible
+    assert good.score > bad.score
+
+
+def test_dehydron_rim_recovery_phase_config() -> None:
+    from science.training.config import dehydron_rim_recovery_phase_config
+
+    phase = dehydron_rim_recovery_phase_config()
+    assert phase.coeffs.cone_target_mode == "tau_dehydron_rim"
+    assert phase.freeze_backbone is True
+    assert phase.freeze_gate is True
+    assert phase.coeffs.shell_corr_depth_sasa_weight == 0.0
 
 
 def test_apply_master_cold_dehydron_lineage_topology_only_no_v2() -> None:

@@ -71,6 +71,7 @@ def assess_training_focus(
     routing_save_max: float | None = None,
     min_probe_r_depth_sasa_save: float | None = None,
     checkpoint_eligible: bool | None = None,
+    topology_depth: bool = False,
 ) -> dict[str, Any]:
     """
     Classify metrics into: needs work (and how much it matters), watch, healthy.
@@ -80,6 +81,7 @@ def assess_training_focus(
     items: list[FocusItem] = []
     route_max = routing_save_max if routing_save_max is not None else ROUTING_ENTROPY_SAVE_MAX
     save_floor = min_probe_r_depth_sasa_save if min_probe_r_depth_sasa_save is not None else 0.65
+    tau_floor = 0.15
 
     route_h = _finite(losses.get("routing_entropy"))
     if route_h is not None and phase >= 2:
@@ -173,44 +175,84 @@ def assess_training_focus(
                 )
             )
 
-    r_ds = _finite(health.get("probe_r_depth_sasa"))
-    if r_ds is not None:
-        if r_ds < save_floor:
-            items.append(
-                FocusItem(
-                    metric="probe_r_depth_sasa",
-                    value=r_ds,
-                    priority="critical",
-                    matters=True,
-                    status="needs_work",
-                    target=f"≥ {save_floor:.2f} (save gate)",
-                    note="Core shell signal weak — depth not aligned with SASA.",
+    if topology_depth:
+        r_dt = _finite(health.get("probe_r_depth_tau"))
+        if r_dt is not None:
+            if r_dt < tau_floor:
+                items.append(
+                    FocusItem(
+                        metric="probe_r_depth_tau",
+                        value=r_dt,
+                        priority="critical",
+                        matters=True,
+                        status="needs_work",
+                        target=f"≥ {tau_floor:.2f} (P_DEHYDRON)",
+                        note="Hyperbolic depth not aligned with dehydron τ.",
+                    )
                 )
-            )
-        elif r_ds < STRETCH_DEPTH_SASA:
-            items.append(
-                FocusItem(
-                    metric="probe_r_depth_sasa",
-                    value=r_ds,
-                    priority="important",
-                    matters=True,
-                    status="watch",
-                    target=f"≥ {STRETCH_DEPTH_SASA:.2f} (strong shell)",
-                    note="Passes save gate but below production stretch.",
+            elif r_dt < 0.45:
+                items.append(
+                    FocusItem(
+                        metric="probe_r_depth_tau",
+                        value=r_dt,
+                        priority="important",
+                        matters=True,
+                        status="watch",
+                        target="≥ 0.45 (strong rim)",
+                        note="τ alignment present but depth rim weak.",
+                    )
                 )
-            )
-        else:
-            items.append(
-                FocusItem(
-                    metric="probe_r_depth_sasa",
-                    value=r_ds,
-                    priority="healthy",
-                    matters=True,
-                    status="healthy",
-                    target=f"≥ {STRETCH_DEPTH_SASA:.2f}",
-                    note="Shell geometry production-grade — protect during MoE training.",
+            else:
+                items.append(
+                    FocusItem(
+                        metric="probe_r_depth_tau",
+                        value=r_dt,
+                        priority="healthy",
+                        matters=True,
+                        status="healthy",
+                        target="≥ 0.45",
+                        note="Dehydron-rim depth alignment healthy.",
+                    )
                 )
-            )
+    else:
+        r_ds = _finite(health.get("probe_r_depth_sasa"))
+        if r_ds is not None:
+            if r_ds < save_floor:
+                items.append(
+                    FocusItem(
+                        metric="probe_r_depth_sasa",
+                        value=r_ds,
+                        priority="critical",
+                        matters=True,
+                        status="needs_work",
+                        target=f"≥ {save_floor:.2f} (save gate)",
+                        note="Core shell signal weak — depth not aligned with SASA.",
+                    )
+                )
+            elif r_ds < STRETCH_DEPTH_SASA:
+                items.append(
+                    FocusItem(
+                        metric="probe_r_depth_sasa",
+                        value=r_ds,
+                        priority="important",
+                        matters=True,
+                        status="watch",
+                        target=f"≥ {STRETCH_DEPTH_SASA:.2f} (strong shell)",
+                        note="Passes save gate but below production stretch.",
+                    )
+                )
+            else:
+                items.append(
+                    FocusItem(
+                        metric="probe_r_depth_sasa",
+                        value=r_ds,
+                        priority="healthy",
+                        matters=True,
+                        status="healthy",
+                        target=f"≥ {STRETCH_DEPTH_SASA:.2f}",
+                        note="Shell geometry production-grade — protect during MoE training.",
+                    )
+                )
 
     r_pd = _finite(health.get("probe_r_proj_depth"))
     if r_pd is not None:
@@ -251,44 +293,45 @@ def assess_training_focus(
                 )
             )
 
-    r_es = _finite(health.get("probe_r_epi_sasa"))
-    if r_es is not None:
-        if r_es < 0.20:
-            items.append(
-                FocusItem(
-                    metric="probe_r_epi_sasa",
-                    value=r_es,
-                    priority="critical",
-                    matters=True,
-                    status="needs_work",
-                    target="≥ 0.20 (alive)",
-                    note="Uncertainty shell signal absent.",
+    if not topology_depth:
+        r_es = _finite(health.get("probe_r_epi_sasa"))
+        if r_es is not None:
+            if r_es < 0.20:
+                items.append(
+                    FocusItem(
+                        metric="probe_r_epi_sasa",
+                        value=r_es,
+                        priority="critical",
+                        matters=True,
+                        status="needs_work",
+                        target="≥ 0.20 (alive)",
+                        note="Uncertainty shell signal absent.",
+                    )
                 )
-            )
-        elif r_es < STRETCH_EPI_SASA:
-            items.append(
-                FocusItem(
-                    metric="probe_r_epi_sasa",
-                    value=r_es,
-                    priority="monitor",
-                    matters=False,
-                    status="watch",
-                    target=f"≥ {STRETCH_EPI_SASA:.2f}",
-                    note="Secondary shell probe; often already strong in your runs.",
+            elif r_es < STRETCH_EPI_SASA:
+                items.append(
+                    FocusItem(
+                        metric="probe_r_epi_sasa",
+                        value=r_es,
+                        priority="monitor",
+                        matters=False,
+                        status="watch",
+                        target=f"≥ {STRETCH_EPI_SASA:.2f}",
+                        note="Secondary shell probe; often already strong in your runs.",
+                    )
                 )
-            )
-        else:
-            items.append(
-                FocusItem(
-                    metric="probe_r_epi_sasa",
-                    value=r_es,
-                    priority="healthy",
-                    matters=False,
-                    status="healthy",
-                    target=f"≥ {STRETCH_EPI_SASA:.2f}",
-                    note="Saturated for ingest quality.",
+            else:
+                items.append(
+                    FocusItem(
+                        metric="probe_r_epi_sasa",
+                        value=r_es,
+                        priority="healthy",
+                        matters=False,
+                        status="healthy",
+                        target=f"≥ {STRETCH_EPI_SASA:.2f}",
+                        note="Saturated for ingest quality.",
+                    )
                 )
-            )
 
     cr = _finite(health.get("cone_range_mean"))
     if cr is not None and cr < STRETCH_CONE_RANGE:
@@ -333,21 +376,36 @@ def assess_training_focus(
             )
         )
 
-    # Per-expert shell weak spots (theory test monitoring)
-    for e in range(4):
-        r_e = _finite(health.get(f"expert_{e}_r_depth_sasa"))
-        if r_e is not None and r_e < 0.45:
-            items.append(
-                FocusItem(
-                    metric=f"expert_{e}_r_depth_sasa",
-                    value=r_e,
-                    priority="monitor",
-                    matters=False,
-                    status="watch",
-                    target="≥ 0.45 per expert",
-                    note=f"Expert {e} residues weak on depth↔SASA (often surface specialist).",
+    if topology_depth:
+        for e in range(4):
+            r_e = _finite(health.get(f"expert_{e}_r_depth_tau"))
+            if r_e is not None and r_e < 0.15:
+                items.append(
+                    FocusItem(
+                        metric=f"expert_{e}_r_depth_tau",
+                        value=r_e,
+                        priority="monitor",
+                        matters=False,
+                        status="watch",
+                        target="≥ 0.15 per expert",
+                        note=f"Expert {e} weak on depth↔τ within routed residues.",
+                    )
                 )
-            )
+    else:
+        for e in range(4):
+            r_e = _finite(health.get(f"expert_{e}_r_depth_sasa"))
+            if r_e is not None and r_e < 0.45:
+                items.append(
+                    FocusItem(
+                        metric=f"expert_{e}_r_depth_sasa",
+                        value=r_e,
+                        priority="monitor",
+                        matters=False,
+                        status="watch",
+                        target="≥ 0.45 per expert",
+                        note=f"Expert {e} residues weak on depth↔SASA (often surface specialist).",
+                    )
+                )
 
     total = _finite(losses.get("total"))
     if total is not None:

@@ -117,6 +117,7 @@ def load_training_proteins(
     for entry in entries:
         pdb_id = str(entry["pdb_id"]).upper()
         chain = str(entry.get("chain", "A"))
+        logger.info("Loading %s:%s from governed DB...", pdb_id, chain)
         prot = load_protein_graph(pdb_id, chain, pdb_dir)
         if prot is None or int(prot.get("n_residues", 0)) <= 0:
             failed += 1

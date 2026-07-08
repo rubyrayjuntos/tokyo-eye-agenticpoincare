@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -48,6 +49,27 @@ async def run_gnn_inference(
         device=device,
         curvature_override=config.curvature_override,
     )
+
+    structural_frozen = getattr(config, "structural_disc_frozen", True)
+    structural_artifact = None
+    if structural_frozen:
+        from science.dtie.common.structural_disc_compose import (
+            attach_structural_disc_to_pyg,
+            compose_from_protein_graph,
+        )
+
+        await runner._ensure_model_loaded()
+        curvature_c = config.curvature_override
+        if curvature_c is None:
+            curvature_c = float(runner._model.curvature.detach().cpu().item())
+        structural_artifact = compose_from_protein_graph(graph, curvature_c)
+        attach_structural_disc_to_pyg(pyg_data, structural_artifact, residue_ids=graph.residue_ids)
+        logger.info(
+            "Structural disc SSOT attached (%s nodes, c=%.6f)",
+            len(graph.residue_ids),
+            curvature_c,
+        )
+
     result = await runner.run_inference(structure_id, pyg_data)
 
     normalizer = Normalizer(db=db, caller_identity=caller_identity)
@@ -106,11 +128,30 @@ async def run_gnn_inference(
         "curvature": result.curvature,
         "deep_hyperbolic_gate": result.metadata.get("deep_hyperbolic_gate"),
         "gate_disc_scale": result.metadata.get("gate_disc_scale"),
+        "structural_disc_frozen": result.metadata.get("structural_disc_frozen"),
+        "structural_disc_layout": result.metadata.get("structural_disc_layout"),
+        "hyp_projections_2d_source": result.metadata.get("hyp_projections_2d_source"),
     }
     if hyp_dist_outputs:
         outputs["hyperbolic_distances"] = hyp_dist_outputs
     if viewer_outputs:
         outputs["interactive_viewer"] = viewer_outputs
+        if viewer_outputs.get("shell_signal_gate") is not None:
+            outputs["shell_signal_gate"] = viewer_outputs["shell_signal_gate"]
+
+    if structural_artifact is not None:
+        from science.dtie.common.structural_disc_compose import export_viewer_json
+        from shared.gnn_viewer_paths import viewer_output_dir
+
+        ssot_path = (
+            viewer_output_dir() / structure_id.strip().lower() / "structural_disc_ssot.json"
+        )
+        ssot_path.parent.mkdir(parents=True, exist_ok=True)
+        ssot_path.write_text(
+            json.dumps(export_viewer_json(structural_artifact), indent=2),
+            encoding="utf-8",
+        )
+        outputs["structural_disc_ssot_path"] = str(ssot_path)
 
     return (
         PhaseResult(

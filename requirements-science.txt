@@ -29,6 +29,7 @@ gudhi==3.10.1
 # Structural biology
 biotite==1.0.1
 biopython==1.84
+freesasa>=2.2,<3
 
 # Cheminformatics (Phase 5, 6)
 rdkit==2024.03.5

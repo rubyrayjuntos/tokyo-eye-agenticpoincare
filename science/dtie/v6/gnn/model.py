@@ -72,6 +72,21 @@ from science.dtie.v6.gnn.evidential import (
 from science.training.routing_metrics import routing_load_floor_penalty
 
 
+def resolve_message_passing_edges(data: Data) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return edges for EquivariantConv — explicit hyperbolic graph when attached.
+
+    ``edge_index`` / ``edge_attr`` remain the Cα contact graph for provenance,
+    resistance profiler, and clustering precompute. Message passing uses
+    ``hyperbolic_edge_index`` / ``hyperbolic_edge_attr`` when ``hyperbolic_graph``.
+    """
+    if bool(getattr(data, "hyperbolic_graph", False)):
+        hei = getattr(data, "hyperbolic_edge_index", None)
+        hea = getattr(data, "hyperbolic_edge_attr", None)
+        if hei is not None and hea is not None:
+            return hei, hea
+    return data.edge_index, data.edge_attr
+
+
 # ==================== 1. TOPOLOGICAL MoE GATE V6 ====================
 
 class TopologicalMoEGateV6(nn.Module):
@@ -290,7 +305,12 @@ def infer_v6_model_kwargs(
         topology_only = not any(k.startswith("gate.mobius1") for k in state_dict)
     elif not hyperbolic_gate and gate_key in state_dict:
         topology_only = int(state_dict[gate_key].shape[1]) == 8
+    node_dim = int(arch.get("node_dim", tc.get("node_dim", 0)))
+    if not node_dim:
+        w = state_dict.get("node_emb.weight")
+        node_dim = int(w.shape[1]) if w is not None else 4
     return {
+        "node_dim": node_dim,
         "hidden": int(arch.get("hidden", 128)),
         "num_experts": int(arch.get("num_experts", 4)),
         "hyperbolic_gate": bool(hyperbolic_gate),
@@ -300,6 +320,10 @@ def infer_v6_model_kwargs(
         "deep_hyperbolic_gate": deep_hyperbolic_gate,
         "gate_disc_scale": gate_disc_scale,
         "gate_gumbel": gate_gumbel,
+        "expert_depth_decouple": bool(
+            arch.get("expert_depth_decouple", tc.get("expert_depth_decouple", False))
+        ),
+        "structure_gate": bool(arch.get("structure_gate", tc.get("structure_gate", False))),
         "legacy_disc_projection": infer_legacy_disc_projection_from_checkpoint(
             training_config=tc,
         ),
@@ -367,6 +391,32 @@ def resolve_disc_radial_source(disc_radial_source: str | None) -> str:
             f"disc_radial_source must be one of {DISC_RADIAL_SOURCES}, got {source!r}"
         )
     return source
+
+
+def structural_ball_lift_from_disc(
+    z_disc: torch.Tensor,
+    hidden: int,
+    c: torch.Tensor,
+    k: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Lift frozen 2D structural disc positions to hidden-dim ball embeddings.
+
+    Embeds ``z_disc`` in the first two tangent coordinates, zero-pads to
+    ``hidden``, and applies ``expmap0`` so MoE/uncertainty operate on a ball
+    point anchored to the structural SSOT layout.
+    """
+    from geoopt.manifolds.stereographic import math as pmath
+
+    n = z_disc.shape[0]
+    device, dtype = z_disc.device, z_disc.dtype
+    z2 = z_disc[:, :2]
+    tangent2 = pmath.logmap0(z2, k=k)
+    tangent = torch.zeros(n, hidden, device=device, dtype=dtype)
+    tangent[:, :2] = tangent2
+    tangent = rescale_tangent_before_expmap(tangent, c)
+    x_hyp = pmath.expmap0(tangent, k=k)
+    depth = pmath.dist0(x_hyp, k=k, keepdim=True)
+    return x_hyp, tangent, depth
 
 
 def apply_disc_radial_override(
@@ -453,6 +503,8 @@ class GOSPConeMapperV6(nn.Module):
         gate_disc_scale: float = 1.0,
         gate_gumbel: bool = False,
         deep_hyperbolic_gate: bool = False,
+        expert_depth_decouple: bool = False,
+        structure_gate: bool = False,
         legacy_disc_projection: bool = False,
         disc_projection_path: str | None = None,
         radial_angular_recombine: str = "multiply",
@@ -470,6 +522,8 @@ class GOSPConeMapperV6(nn.Module):
         self.gate_disc_scale = gate_disc_scale
         self.gate_gumbel = gate_gumbel
         self.deep_hyperbolic_gate = deep_hyperbolic_gate
+        self.expert_depth_decouple = expert_depth_decouple
+        self.structure_gate = structure_gate
         # Softer than 0.99 — aggressive clamping collapses angular spread on the disc.
         self.disc_proj_softness = 0.95
         self.disc_projection_path = resolve_disc_projection_path(
@@ -525,6 +579,7 @@ class GOSPConeMapperV6(nn.Module):
                 disc_feature_scale=gate_disc_scale,
                 use_gumbel=gate_gumbel,
                 deep_gate=deep_hyperbolic_gate,
+                structure_gate=structure_gate,
             )
         else:
             self.gate = TopologicalMoEGateV6(
@@ -545,6 +600,11 @@ class GOSPConeMapperV6(nn.Module):
             )
             for _ in range(num_experts)
         ])
+        if expert_depth_decouple:
+            init = torch.linspace(-0.20, 0.20, num_experts)
+            self.expert_depth_bias = nn.Parameter(init.unsqueeze(-1))
+        else:
+            self.expert_depth_bias = None
 
         # Uncertainty head — hidden + 2 (tangent + depth + cone_width)
         head_cls = DecoupledEvidentialHead if decoupled_uncertainty_heads else EvidentialHead
@@ -648,45 +708,63 @@ class GOSPConeMapperV6(nn.Module):
         x = self.node_emb(data.x)
 
         # ── Step 2: Equivariant message passing ───────────────────────────
+        mp_edge_index, mp_edge_attr = resolve_message_passing_edges(data)
         for conv, norm in zip(self.convs, self.norms):
             x_res = x
-            x = conv(x, data.edge_index, data.edge_attr)
+            x = conv(x, mp_edge_index, mp_edge_attr)
             x = F.silu(norm(x))
             x = x + x_res
 
-        # ── Step 3: DECOUPLED Hyperbolic Lift (preserved from v5) ─────────
+        # ── Step 3: Hyperbolic lift (learned or structural SSOT) ────────
         c = self.curvature
         k = -c
 
-        # Radial pathway — controls depth in hierarchy
-        radial_depth = self.radial_head(x)  # [N, 1] positive
+        structural_frozen = bool(
+            getattr(data, "structural_z_disc_frozen", False)
+        ) and hasattr(data, "structural_z_disc") and data.structural_z_disc is not None
 
-        # Angular pathway — controls direction/clustering
-        angular_direction = self.angular_head(x)  # [N, hidden] unit vectors
-
-        # Recombine into tangent vector (cone multiply or residual fusion ablation)
-        tangent_vector = self._tangent_from_radial_angular(radial_depth, angular_direction)
-        tangent_vector = rescale_tangent_before_expmap(tangent_vector, c)
-
-        # Lift to Poincaré ball
-        x_hyp = pmath.expmap0(tangent_vector, k=k)
-        x_hyp, proj_count_s1, proj_frac_s1 = self._project_with_audit(x_hyp, k=k)
+        if structural_frozen:
+            structural_z = data.structural_z_disc.to(dtype=x.dtype, device=x.device)
+            if structural_z.shape[0] != x.shape[0]:
+                raise ValueError(
+                    f"structural_z_disc rows ({structural_z.shape[0]}) "
+                    f"!= graph nodes ({x.shape[0]})"
+                )
+            x_hyp, tangent_vector, radial_depth = structural_ball_lift_from_disc(
+                structural_z, hidden=self.hidden, c=c, k=k
+            )
+            x_hyp, proj_count_s1, proj_frac_s1 = self._project_with_audit(x_hyp, k=k)
+            angular_direction = self.angular_head(x)
+        else:
+            radial_depth = self.radial_head(x)
+            angular_direction = self.angular_head(x)
+            tangent_vector = self._tangent_from_radial_angular(radial_depth, angular_direction)
+            tangent_vector = rescale_tangent_before_expmap(tangent_vector, c)
+            x_hyp = pmath.expmap0(tangent_vector, k=k)
+            x_hyp, proj_count_s1, proj_frac_s1 = self._project_with_audit(x_hyp, k=k)
 
         # Compute depth and cone_width from the ball position
         depth = pmath.dist0(x_hyp, k=k, keepdim=True)  # [N, 1]
         cone_width = torch.exp(-depth)  # [N, 1]
+        cone_depth_for_loss = depth
+        if self.expert_depth_bias is not None:
+            # Per-expert depth offsets mixed by routing — breaks shared-depth collapse.
+            expert_depths = depth.unsqueeze(1) + self.expert_depth_bias.view(1, -1, 1)
 
         disc_softness = self.disc_proj_softness
         gate_disc_kw: dict[str, torch.Tensor] = {}
 
         # Pre-routing disc (always computed for audit + optional gate enrichment)
-        hyp_proj_2d_pre_raw = self._pre_routing_disc_raw(
-            x_hyp,
-            radial_depth=radial_depth,
-            depth=depth,
-            c=c,
-            k=k,
-        )
+        if structural_frozen:
+            hyp_proj_2d_pre_raw = structural_z[:, :2]
+        else:
+            hyp_proj_2d_pre_raw = self._pre_routing_disc_raw(
+                x_hyp,
+                radial_depth=radial_depth,
+                depth=depth,
+                c=c,
+                k=k,
+            )
         hyp_proj_2d_pre, disc_r_pre = project_disc_2d(
             hyp_proj_2d_pre_raw, k=k, softness=disc_softness
         )
@@ -781,6 +859,9 @@ class GOSPConeMapperV6(nn.Module):
             )
 
         depth_routed = pmath.dist0(x_routed_hyp, k=k, keepdim=True)
+        if self.expert_depth_bias is not None:
+            cone_depth_for_loss = (scores.unsqueeze(-1) * expert_depths).sum(dim=1)
+            depth_routed = cone_depth_for_loss
         x_routed_tangent_out = pmath.logmap0(x_routed_hyp, k=k)
         unc_source = x_tangent if self.uncertainty_from_backbone else x_routed_tangent_out
         x_for_unc = torch.cat([unc_source, depth, cone_width], dim=-1)
@@ -799,7 +880,12 @@ class GOSPConeMapperV6(nn.Module):
         with torch.no_grad():
             hyp_proj_2d_post_legacy, _ = project_disc_2d_legacy(hyp_proj_2d_post_raw, k=k)
 
-        if self.disc_projection_path == "pre_routing":
+        if structural_frozen:
+            hyp_proj_2d = hyp_proj_2d_pre
+            disc_projection_source = "structural_ssot_frozen"
+            hyp_proj_3d_raw = self.hyp_proj_head_3d(x_routed_hyp, c=c)
+            hyp_proj_3d, _ = project_ball(hyp_proj_3d_raw, k=k, softness=disc_softness)
+        elif self.disc_projection_path == "pre_routing":
             hyp_proj_2d = hyp_proj_2d_pre
             disc_projection_source = "pre_routing_x_hyp"
             hyp_proj_3d_raw = self.hyp_proj_head_3d(x_routed_hyp, c=c)
@@ -838,6 +924,10 @@ class GOSPConeMapperV6(nn.Module):
             "gate_disc_input": getattr(self, "gate_disc_input", False),
             "deep_hyperbolic_gate": getattr(self, "deep_hyperbolic_gate", False),
             "disc_projection_source": disc_projection_source,
+            "structural_disc_frozen": structural_frozen,
+            "structural_disc_layout": (
+                getattr(data, "structural_disc_layout", None) if structural_frozen else None
+            ),
             "disc_projection_path": self.disc_projection_path,
             "disc_path_used": self.disc_projection_path,
             "gate_mode": self.gate_mode,
@@ -887,6 +977,7 @@ class GOSPConeMapperV6(nn.Module):
             "projections": projections,
             "uncertainty": uncertainty,
             "cone_depth": depth,
+            "cone_depth_for_loss": cone_depth_for_loss,
             "cone_depth_routed": depth_routed,
             "cone_width": cone_width,
             "expert_weights": scores,
@@ -918,6 +1009,58 @@ class GOSPConeMapperV6(nn.Module):
         }
 
 
+def _checkpoint_num_experts(state_dict: dict[str, torch.Tensor]) -> int | None:
+    for key in ("gate.expert_bias", "gate.prototype_bank.prototype_tangent"):
+        tensor = state_dict.get(key)
+        if tensor is not None and tensor.ndim >= 1:
+            return int(tensor.shape[0])
+    return None
+
+
+def _expand_expert_axis0(old: torch.Tensor, template: torch.Tensor) -> torch.Tensor:
+    """Copy checkpoint expert rows into a wider model tensor; new rows keep template init."""
+    if old.shape[0] >= template.shape[0]:
+        return old
+    if old.shape[1:] != template.shape[1:]:
+        return template
+    expanded = template.clone()
+    expanded[: old.shape[0]] = old
+    return expanded
+
+
+def adapt_checkpoint_expert_count(
+    state_dict: dict[str, torch.Tensor],
+    model_state: dict[str, torch.Tensor],
+) -> dict[str, torch.Tensor]:
+    """Widen MoE tensors when resuming a 4-expert checkpoint into a 6-expert model."""
+    old_e = _checkpoint_num_experts(state_dict)
+    new_e = _checkpoint_num_experts(model_state)
+    if old_e is None or new_e is None or old_e >= new_e:
+        return dict(state_dict)
+
+    adapted: dict[str, torch.Tensor] = {}
+    for key, old_t in state_dict.items():
+        if key not in model_state:
+            adapted[key] = old_t
+            continue
+        new_t = model_state[key]
+        if key.startswith("experts."):
+            parts = key.split(".")
+            if len(parts) > 1 and parts[1].isdigit() and int(parts[1]) >= old_e:
+                continue
+        if (
+            old_t.ndim >= 1
+            and new_t.ndim >= 1
+            and old_t.shape[0] == old_e
+            and new_t.shape[0] == new_e
+            and old_t.shape[1:] == new_t.shape[1:]
+        ):
+            adapted[key] = _expand_expert_axis0(old_t, new_t)
+        elif old_t.shape == new_t.shape:
+            adapted[key] = old_t
+    return adapted
+
+
 def load_v6_state_dict(
     model: GOSPConeMapperV6,
     state_dict: dict[str, torch.Tensor],
@@ -935,6 +1078,7 @@ def load_v6_state_dict(
             expanded = new_w.clone()
             expanded[:, : old_w.shape[1]] = old_w
             adapted[topo_key] = expanded
+    adapted = adapt_checkpoint_expert_count(adapted, model_state)
     incompatible = model.load_state_dict(adapted, strict=False)
     missing = list(getattr(incompatible, "missing_keys", incompatible[0] if isinstance(incompatible, tuple) else []))
     unexpected = list(getattr(incompatible, "unexpected_keys", incompatible[1] if isinstance(incompatible, tuple) else []))
@@ -970,7 +1114,8 @@ def verify_v6_checkpoint(
         architecture = training_config = None
 
     kwargs = infer_v6_model_kwargs(state_dict, architecture, training_config)
-    model = GOSPConeMapperV6(node_dim=4, **kwargs)
+    node_dim = int(kwargs.pop("node_dim", 4))
+    model = GOSPConeMapperV6(node_dim=node_dim, **kwargs)
     missing, unexpected = load_v6_state_dict(model, state_dict)
 
     return {

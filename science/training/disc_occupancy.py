@@ -1,4 +1,13 @@
-"""Centered disc occupancy metrics — primary signal for 2D Poincaré spread."""
+"""Centered disc occupancy metrics — primary signal for 2D Poincaré spread.
+
+Convention (centered SVD on [N, 2] disc coordinates):
+  disc_sigma2_sigma1 = σ₂ / σ₁ = s[1] / s[0]  with s[0] ≥ s[1]
+
+  → 1.0  healthy 2D spread (both principal axes carry variance)
+  → 0.0  rank-1 streak / collapse (PC2 ≪ PC1)
+
+Promote floors penalize *low* σ₂/σ₁ (see DISC_SIGMA2_SIGMA1_PROMOTE_MIN).
+"""
 
 from __future__ import annotations
 
@@ -14,6 +23,49 @@ DISC_EFFECTIVE_RANK_PROMOTE_MIN = 1.6
 DISC_R_STD_PROMOTE_MIN = 0.02
 DISC_LINE_THICKNESS_PROMOTE_MIN = 0.02
 DISC_MIN_R_MEAN_FOR_OCCUPANCY = 0.05
+
+# Tier 2 biology gate — block angular emergence claims on rank-1 crescent streaks.
+CRESCENT_TIER2_BLOCK_MIN_EFFECTIVE_RANK = 1.35
+CRESCENT_TIER2_BLOCK_MIN_LINE_THICKNESS = 0.02
+CRESCENT_TIER2_BLOCK_MIN_SIGMA2_SIGMA1 = 0.22
+CRESCENT_TIER2_BLOCK_MAX_R_SPAN = 0.12  # narrow radial band + low thickness ⇒ 1D arc
+
+
+def crescent_geometry_metrics(xy: np.ndarray) -> dict[str, float]:
+    """Occupancy metrics on disc xy for crescent-collapse detection."""
+    pts = np.asarray(xy, dtype=np.float64)
+    occ = disc_occupancy_from_numpy(pts)
+    r_span = 0.0
+    if pts.ndim == 2 and pts.shape[0] >= 2:
+        r = np.linalg.norm(pts, axis=1)
+        r_span = float(r.max() - r.min())
+    occ["disc_r_span"] = r_span
+    return occ
+
+
+def is_crescent_collapsed(
+    xy: np.ndarray,
+    *,
+    min_effective_rank: float = CRESCENT_TIER2_BLOCK_MIN_EFFECTIVE_RANK,
+    min_line_thickness: float = CRESCENT_TIER2_BLOCK_MIN_LINE_THICKNESS,
+    min_sigma2_sigma1: float = CRESCENT_TIER2_BLOCK_MIN_SIGMA2_SIGMA1,
+    max_r_span: float = CRESCENT_TIER2_BLOCK_MAX_R_SPAN,
+) -> tuple[bool, dict[str, float]]:
+    """
+  Return True when disc occupancy is a thin 1D crescent (r–θ entangled).
+
+  Blocked if effective rank is low AND (thin streak OR narrow radial band).
+  """
+    metrics = crescent_geometry_metrics(xy)
+    eff = metrics["disc_effective_rank"]
+    thick = metrics["disc_line_thickness_rms"]
+    s21 = metrics["disc_sigma2_sigma1"]
+    r_span = metrics["disc_r_span"]
+    rank_collapsed = eff < min_effective_rank
+    thin_streak = thick < min_line_thickness or s21 < min_sigma2_sigma1
+    narrow_r = r_span < max_r_span
+    blocked = rank_collapsed and (thin_streak or narrow_r)
+    return blocked, metrics
 
 
 def _effective_rank_np(s: np.ndarray) -> float:

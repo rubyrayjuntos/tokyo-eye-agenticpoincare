@@ -238,6 +238,35 @@ Every training run MUST emit the following. Fields are tagged:
 
 **Geometry baseline caveat:** σ₂/σ₁, disc_thick, r(d,s), r(e,s) targets in §5 were originally set from the **3-protein training-eval baseline** (11QE+4OBE+1IVO). **Corpus-transfer check (2026-07-03):** σ₂/σ₁ ≈ 0.665 **transfers** to the 25-fold Stage A corpus (lever_a@25 → 0.676). r(d,s) ≈ 0.730 does **not** transfer (lever_a@25 → 0.784). See §5.1 and the r(d,s) re-pin open item. Do not read a 1-epoch smoke or single-phase σ₂/σ₁ in isolation as regression from 0.665 without corpus context.
 
+**σ₂/σ₁ convention (2026-07-07):** `sigma2_sigma1` in MLflow maps from health `disc_sigma2_sigma1_mean` = σ₂/σ₁ from disc occupancy SVD (**higher = healthier spread**, not rank-1 streak). Source: `science/training/disc_occupancy.py`.
+
+**Telemetry track metrics** (logged per epoch via `telemetry_track_metrics`; MLflow tag `telemetry/track`; **not** P-entry gates):
+
+
+| MLflow key | Health source | Purpose |
+| ---------- | ------------- | ------- |
+| `track/epistemic_std` | `epistemic_std_mean` | Node epistemic spread (alive if ≥ 1e-4) |
+| `track/aleatoric_std` | `aleatoric_std_mean` | Node aleatoric spread |
+| `track/epi_ale_corr` | `probe_r_epi_ale` | Mean per-protein r(ν_epi, ν_ale) — coupled head → ~1 |
+| `track/uncertainty_alive_epi` | 0\|1 | Technical alive floor (1e-4) |
+| `track/uncertainty_alive_ale` | 0\|1 | Technical alive floor (1e-4) |
+| `track/uncertainty_informative_ale` | 0\|1 | Informative floor (0.05); coupled route_v1 ≈ 0.01 → **0** |
+| `track/node_tau_boundary_ale_lift` | `node_aleatoric_tau_lift` | Mean ale at \|ρ−τ\|≤1 vs elsewhere |
+| `track/edge_resistance_corr` | `edge_embed_resistance_corr_mean` | r(edge MLP norm, R_eff) |
+| `track/edge_epistemic_std` | `edge_epistemic_var_std_mean` | Edge epistemic spread |
+| `track/edge_aleatoric_std` | `edge_aleatoric_var_std_mean` | Edge aleatoric spread |
+| `track/same_expert_rate` | `same_expert_rate_mean` | Fraction same-expert edges |
+| `track/same_expert_null_rate` | `same_expert_null_rate_mean` | Σp² null baseline |
+| `track/same_expert_excess` | `same_expert_excess_mean` | same − null |
+| `track/flow_excess_high_minus_low` | `flow_excess_high_minus_low_mean` | Flow-stratified excess delta |
+| `track/edge_telemetry_alive` | `edge_telemetry_alive_fraction` | Fraction structures with alive edge probes |
+| `track/healthy_flow_alignment` | `healthy_flow_alignment_fraction` | Fraction with high-flow excess > low-flow |
+| `track/edge_tau_boundary_ale_lift` | `edge_tau_boundary_aleatoric_lift_mean` | Edge-level τ-boundary ale lift |
+
+Edge telemetry requires `edge_telemetry=True` in `measure_geometry_health` (default on). See `docs/audit/EDGE_TELEMETRY.md`.
+
+**Dead probe discipline:** If `track/uncertainty_informative_ale=0` or `track/edge_telemetry_alive<1`, do not gate training on aleatoric or edge-flow signals until heads are decoupled and spreads recover.
+
 **Routing metric caveat:** Do **not** gate on mean per-expert routing fraction — it is always `1/N` by construction and cannot detect collapse. The Stage gate uses `effective_experts = exp(entropy)` and `min_routing_fraction`.
 
 **Curvature logs as both:** `log_c` per-epoch metric (the trajectory, to watch stabilization) AND `curvature_final` param (the converged value that gets pinned). One is the path, one is the artifact. Both required.

@@ -125,6 +125,7 @@ class HyperbolicPrototypeGate(nn.Module):
         use_gumbel: bool = False,
         gumbel_temperature: float = 1.0,
         deep_gate: bool = False,
+        structure_gate: bool = False,
         init_scale: float = 1e-3,
     ) -> None:
         super().__init__()
@@ -159,6 +160,10 @@ class HyperbolicPrototypeGate(nn.Module):
         self.prototype_bank = HyperbolicPrototypeBank(num_experts, hidden_dim, init_scale=init_scale)
         self.expert_bias = nn.Parameter(torch.zeros(num_experts))
         self.logit_scale = nn.Parameter(torch.tensor(1.0))
+        self.structure_gate = structure_gate
+        if structure_gate:
+            self.structure_proj = nn.Linear(hidden_dim, num_experts, bias=False)
+            nn.init.zeros_(self.structure_proj.weight)
 
         self.register_buffer("degree_mean", torch.tensor(0.0))
         self.register_buffer("degree_var", torch.tensor(1.0))
@@ -267,6 +272,10 @@ class HyperbolicPrototypeGate(nn.Module):
         proto_expand = proto_hyp.unsqueeze(0).expand(fused_hyp.size(0), -1, -1)
         dists = pmath.dist(fused_expand, proto_expand, k=k)
         raw_logits = -F.softplus(self.logit_scale) * dists + self.expert_bias
+        if self.structure_gate:
+            # Per-structure pooling: one protein per forward pass in training.
+            struct_pool = topo_tangent.mean(dim=0, keepdim=True)
+            raw_logits = raw_logits + self.structure_proj(struct_pool).expand_as(raw_logits)
 
         scores_initial = F.softmax(raw_logits, dim=-1)
         expected_load = scores_initial.mean(dim=0)

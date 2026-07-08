@@ -47,6 +47,15 @@ def resolve_disc_html_path(structure_id: str) -> Path | None:
     return path if path.is_file() else None
 
 
+def resolve_split_html_path(structure_id: str) -> Path | None:
+    """Return split-screen structure+disc HTML for a structure, if present."""
+    sid = structure_id.strip().lower()
+    if not _STRUCTURE_ID_RE.match(sid):
+        return None
+    path = viewer_output_dir() / sid / f"{sid}_split_viewer.html"
+    return path if path.is_file() else None
+
+
 def structure_viewer_paths(structure_id: str) -> dict[str, Path]:
     """Return on-disk viewer artifacts for a structure (empty if missing)."""
     sid = structure_id.strip().lower()
@@ -55,7 +64,9 @@ def structure_viewer_paths(structure_id: str) -> dict[str, Path]:
     for key, name in (
         ("structure", f"{sid}_interactive.html"),
         ("disc", f"{sid}_poincare_disc.html"),
+        ("split", f"{sid}_split_viewer.html"),
         ("pdb", f"{sid}_gosp_native.pdb"),
+        ("shell_gate", f"{sid}_shell_signal_gate.json"),
     ):
         path = root / name
         if path.is_file():

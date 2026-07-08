@@ -154,6 +154,9 @@ class PipelineConfig:
     populate_hyperbolic_distances: bool = True
     strict_geometric_governance: bool = False
 
+    # Structural SSOT: Tier-1 ρ/τ disc from structural_disc_compose (not GNN-learned layout)
+    structural_disc_frozen: bool = True
+
     def __post_init__(self) -> None:
         # Canonical storage key used by ingestion is lowercase.
         self.structure_id = self.structure_id.strip().lower()

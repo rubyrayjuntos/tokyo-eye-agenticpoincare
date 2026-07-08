@@ -118,7 +118,7 @@ def precompute_clustering(data: Data) -> Data:
         src, dst = edge_index[0, i].item(), edge_index[1, i].item()
         adj[src].add(dst)
         adj[dst].add(src)
-    clustering = torch.zeros(num_nodes, dtype=torch.float)
+    clustering = torch.zeros(num_nodes, dtype=torch.float, device=data.x.device)
     for node in range(num_nodes):
         neighbors = list(adj[node])
         k = len(neighbors)

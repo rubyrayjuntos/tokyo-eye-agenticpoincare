@@ -11,10 +11,11 @@ Usage:
 
   python -m experiments.diagnostics.embedding_occupancy_audit \\
       --compare-checkpoints \\
-        checkpoints/v6/runs/shell_p2_hypmix2/v6_best.pt \\
-        checkpoints/v6/runs/shell_p2_hypmix_final/v6_best.pt \\
+        checkpoints/v5/tokyo_eyes_v5.pt \\
         checkpoints/v6/tokyo_eyes_v6.pt \\
-      --structures 11QE:A
+      --structures 11QE:A \\
+      --pdb-dir /tmp/dtie_pdb_cache \\
+      --pdb-local
 
   python -m experiments.diagnostics.embedding_occupancy_audit \\
       --checkpoint checkpoints/v6/runs/shell_p2_hypmix2/v6_best.pt \\
@@ -54,13 +55,27 @@ def _training_config_dict(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def _is_v6_checkpoint(raw: dict[str, Any]) -> bool:
-    state = raw.get("model_state_dict", raw)
-    if not isinstance(state, dict):
-        return False
-    keys = list(state.keys())
-    return any(k.startswith("gate.") for k in keys) or any(
-        k.startswith("experts.") for k in keys
+  """Distinguish v6 MoE from v5 (both have experts.*; v5 gate is topology_compressor)."""
+  arch = raw.get("architecture") or {}
+  if isinstance(arch, dict) and str(arch.get("version", "")).lower() == "v6":
+    return True
+  state = raw.get("model_state_dict", raw)
+  if not isinstance(state, dict):
+    return False
+  keys = list(state.keys())
+  if any(k.startswith("gate.topology_compressor") for k in keys):
+    return False
+  return any(
+    k.startswith(prefix)
+    for k in keys
+    for prefix in (
+      "gate.mobius1",
+      "gate.topo_encoder",
+      "gate.prototype_bank",
+      "gate.gate_net",
+      "gate.gate_disc_proj",
     )
+  )
 
 
 def load_audit_model(
@@ -70,6 +85,12 @@ def load_audit_model(
     legacy_disc_projection: bool | None = None,
 ) -> tuple[torch.nn.Module, str]:
     """Load v5 or v6 checkpoint for occupancy audit."""
+    checkpoint_path = Path(checkpoint_path)
+    if not checkpoint_path.is_file():
+        siblings = sorted(checkpoint_path.parent.glob("*.pt")) if checkpoint_path.parent.is_dir() else []
+        names = [p.name for p in siblings]
+        hint = f" Available in {checkpoint_path.parent}: {names}" if names else ""
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}.{hint}")
     raw = torch.load(checkpoint_path, map_location=device, weights_only=False)
     if _is_v6_checkpoint(raw):
         return (
@@ -90,10 +111,19 @@ def _forward_audit(
     version: str,
     prot: dict[str, Any],
     device: str,
+    *,
+    use_structural_disc_ssot: bool = True,
 ) -> dict[str, Any]:
-    data = prot["data"].to(device)
+    data = prot["data"].clone().to(device)
     if version == "v6":
         data = attach_v6_features(data)
+        if use_structural_disc_ssot:
+            from science.dtie.common.structural_disc_compose import (
+                attach_structural_disc_for_forward,
+            )
+
+            curvature_c = float(model.curvature.detach().cpu().item())
+            data = attach_structural_disc_for_forward(data, prot, curvature_c)
         with torch.no_grad():
             return model(data)
     from science.dtie.v5.gnn.model import precompute_clustering
@@ -178,7 +208,7 @@ def _line_thickness(xy: np.ndarray) -> tuple[float, float]:
 def _layer_occupancy(layer: str, pts: np.ndarray) -> LayerOccupancy:
     X = pts - pts.mean(axis=0, keepdims=True)
     s = np.linalg.svd(X, compute_uv=False)
-    sn = (s / (s[0] + 1e-12)).tolist()
+    sn = (s / (s[0] + 1e-12)).tolist()  # sigma_ratio[1] == σ₂/σ₁ (higher = healthier)
     origin_span = centroid_span = None
     thickness_rms = thickness_max = None
     n_near_origin = None
@@ -424,6 +454,11 @@ def main() -> None:
         help="Comma-separated PDB:chain list",
     )
     parser.add_argument("--pdb-dir", default="/tmp/dtie_pdb_cache")
+    parser.add_argument(
+        "--pdb-local",
+        action="store_true",
+        help="Build graphs from PDB files (TRAINING_LOAD_FROM_PDB=1); no DB pool required",
+    )
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--json-out", default=None, help="Optional JSON dump of full audit")
     parser.add_argument(
@@ -442,6 +477,11 @@ def main() -> None:
         help="Force new pre-routing disc projection at inference",
     )
     args = parser.parse_args()
+
+    if args.pdb_local:
+        import os
+
+        os.environ["TRAINING_LOAD_FROM_PDB"] = "1"
 
     legacy_override: bool | None = None
     if args.legacy_disc_projection:

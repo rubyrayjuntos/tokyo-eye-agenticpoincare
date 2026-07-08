@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from science.training.topology_depth import TOPOLOGY_MANDATORY_METRICS
 from science.training.mlflow_governance import (
     MANDATORY_METRICS,
     corpus_fold_ids,
@@ -57,7 +58,7 @@ def validate_master_cold_smoke_run(
         ("warm_start", "none"),
         ("parent_run_id", "null"),
         ("lineage_root", "true"),
-        ("feature_set", "master_four_vector"),
+        ("feature_set", "master_topology_three_vector"),
         ("curvature_mode", "free"),
         ("p_feature_01_passed", "true"),
     ):
@@ -93,6 +94,7 @@ def validate_master_cold_smoke_run(
         metric_keys,
         artifact_names,
         manifest_path=manifest_path,
+        master_cold_lineage=True,
     )
     if not full_corpus:
         mlflow_errors = [
@@ -102,7 +104,7 @@ def validate_master_cold_smoke_run(
         ]
     errors.extend(mlflow_errors)
 
-    missing_core = MANDATORY_METRICS - metric_keys
+    missing_core = TOPOLOGY_MANDATORY_METRICS - metric_keys
     if missing_core:
         errors.append(f"missing mandatory metrics: {sorted(missing_core)}")
 
@@ -120,7 +122,7 @@ def smoke_assertions_doc() -> dict[str, Any]:
         "epochs": 1,
         "assertions": [
             "warm_start=none, parent_run_id=null, lineage_root=true",
-            "feature_set=master_four_vector, curvature_mode=free",
+            "feature_set=master_topology_three_vector, curvature_mode=free",
             "p_feature_01_passed=true with stamp-derived rho/ss/sasa/tau defs + feature_module_sha256",
             "corpus_manifest_hash matches v6_corpus_stage_a_small_v1.json",
             "corpus_size=12 — all enabled structures loaded",

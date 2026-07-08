@@ -26,6 +26,7 @@ training = [
     "mlflow>=2.14,<3",
     "optuna>=3.6,<5",
     "tmtools>=0.3,<1",
+    "freesasa>=2.2,<3",
 ]
 science = [
     "torch>=2.3,<3",
@@ -37,6 +38,7 @@ science = [
     "gudhi>=3.10,<4",
     "biotite>=1.0,<2",
     "biopython>=1.84,<2",
+    "freesasa>=2.2,<3",
     "rdkit>=2024.03",
     "scipy>=1.13,<2",
     "scikit-learn>=1.5,<2",

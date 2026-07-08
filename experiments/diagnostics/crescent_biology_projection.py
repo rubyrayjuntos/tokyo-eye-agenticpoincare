@@ -40,6 +40,7 @@ from experiments.diagnostics.embedding_occupancy_audit import (
     _forward_audit,
     load_audit_model,
 )
+from science.training.disc_occupancy import is_crescent_collapsed
 from experiments.training.v6._data import TAU, load_protein_graph
 from experiments.training.v6.train_loop import attach_v6_features
 
@@ -103,6 +104,7 @@ class ResidueBiology:
     dehydron: list[bool]
     res_ids: list[str]
     cone_depth: list[float]
+    disc_layout_source: str = "structural_ssot"
 
 
 @dataclass
@@ -147,6 +149,11 @@ class AngularStats:
     tier2_interpretation: str
     tier2_sbir_framing: str
     tier1_note: str
+    disc_effective_rank: float
+    disc_line_thickness_rms: float
+    disc_sigma2_sigma1: float
+    disc_r_span: float
+    crescent_geometry_blocked: bool
 
 
 MIN_GROUP = 5
@@ -321,7 +328,15 @@ def _tier2_verdict(
     quartile_results: list[QuartileKs],
     *,
     within_quartile_max_perm_p: float,
+    crescent_geometry_blocked: bool = False,
 ) -> tuple[str, str]:
+    if crescent_geometry_blocked:
+        return (
+            "crescent_blocked",
+            "disc collapsed to a thin 1D crescent — r and θ are entangled; "
+            "angular KS is not interpretable as independent topology",
+        )
+
     sig_perm_q = sum(
         1
         for q in quartile_results
@@ -396,15 +411,31 @@ def _load_biology_arrays(
     model: torch.nn.Module,
     pdb_dir: Path,
     device: str,
+    *,
+    use_structural_disc_ssot: bool = True,
 ) -> ResidueBiology:
     prot = load_protein_graph(structure_id, chain, pdb_dir)
     if prot is None:
         raise RuntimeError(f"Could not load {structure_id}:{chain}")
 
-    out = _forward_audit(model, "v6", prot, device)
+    out = _forward_audit(
+        model,
+        "v6",
+        prot,
+        device,
+        use_structural_disc_ssot=use_structural_disc_ssot,
+    )
 
     data = attach_v6_features(prot["data"])
-    xy = out["hyp_projections_2d"].detach().cpu().numpy()
+    from science.dtie.v6.visualization.interactive_viewer import disc_xy_from_model_output
+
+    xy = disc_xy_from_model_output(out).detach().cpu().numpy()
+    audit = out.get("audit_trail") or {}
+    disc_source = str(
+        audit.get("disc_projection_source", "structural_ssot_frozen")
+        if use_structural_disc_ssot
+        else audit.get("disc_projection_source", "gnn_learned")
+    )
     depth = out["cone_depth"].detach().cpu().numpy().reshape(-1)
     x = data.x.cpu().numpy()
     rho = x[:, 0]
@@ -432,6 +463,7 @@ def _load_biology_arrays(
         dehydron=dehydron.astype(bool).tolist(),
         res_ids=res_ids,
         cone_depth=depth.tolist(),
+        disc_layout_source=disc_source,
     )
 
 
@@ -464,15 +496,26 @@ def _compute_angular_stats(bio: ResidueBiology) -> AngularStats:
     corr_rd = float(np.corrcoef(r, depth)[0, 1]) if len(r) > 2 else float("nan")
     corr_rd_sp = float(stats.spearmanr(r, depth).statistic) if len(r) > 2 else float("nan")
 
+    crescent_blocked, geom = is_crescent_collapsed(np.array(bio.disc_xy))
+
     gate_status, interp = _tier2_verdict(
-        p_res, q_ks, within_quartile_max_perm_p=max_perm_p
+        p_res,
+        q_ks,
+        within_quartile_max_perm_p=max_perm_p,
+        crescent_geometry_blocked=crescent_blocked,
     )
 
     radial_note = (
-        "lever_a uses disc_radial_source=radial_depth: disc_r (=||disc_2d||) is set by "
-        "apply_disc_radial_override from radial_depth, not independently learned. "
-        "cone_depth = hyperbolic dist0(x_hyp). High corr(disc_r, cone_depth) means radial "
-        "disc position and burial depth are one monotonic family — state once in SBIR text."
+        "structural_ssot: disc_r from Tier-1 ρ/τ + Cα PCA (mobius macro⊕micro); "
+        "not GNN radial_head / radial_depth override. "
+        "cone_depth = hyperbolic dist0(x_hyp) from MoE stack on frozen layout."
+        if bio.disc_layout_source == "structural_ssot_frozen"
+        else (
+            "lever_a uses disc_radial_source=radial_depth: disc_r (=||disc_2d||) is set by "
+            "apply_disc_radial_override from radial_depth, not independently learned. "
+            "cone_depth = hyperbolic dist0(x_hyp). High corr(disc_r, cone_depth) means radial "
+            "disc position and burial depth are one monotonic family — state once in SBIR text."
+        )
     )
 
     return AngularStats(
@@ -504,6 +547,11 @@ def _compute_angular_stats(bio: ResidueBiology) -> AngularStats:
             "ρ vs disc_r reflects trained radial organization (ρ ∈ data.x[:,0]); "
             "confirms physics encoded — not an emergence claim"
         ),
+        disc_effective_rank=float(geom["disc_effective_rank"]),
+        disc_line_thickness_rms=float(geom["disc_line_thickness_rms"]),
+        disc_sigma2_sigma1=float(geom["disc_sigma2_sigma1"]),
+        disc_r_span=float(geom["disc_r_span"]),
+        crescent_geometry_blocked=crescent_blocked,
     )
 
 
@@ -672,10 +720,20 @@ def _plot_composite(
 
     axes[1].scatter(xy[~dehyd, 0], xy[~dehyd, 1], s=8, c="#ccc", alpha=0.5)
     axes[1].scatter(xy[dehyd, 0], xy[dehyd, 1], s=20, c="#e74c3c", marker="*", alpha=0.9)
-    axes[1].set_title(
-        f"dehydrons resid p={ang.ks_pvalue_theta_residual:.3f} | "
-        f"within-Q perm p={ang.within_quartile_max_ks_perm_p:.3f} [{ang.tier2_gate_status}]"
-    )
+    if ang.crescent_geometry_blocked:
+        dehyd_title = (
+            f"dehydrons BLOCKED: 1D crescent "
+            f"(eff_rank={ang.disc_effective_rank:.2f}, "
+            f"thick={ang.disc_line_thickness_rms:.3f}) "
+            f"[{ang.tier2_gate_status}]"
+        )
+    else:
+        dehyd_title = (
+            f"dehydrons resid p={ang.ks_pvalue_theta_residual:.3f} | "
+            f"within-Q perm p={ang.within_quartile_max_ks_perm_p:.3f} "
+            f"[{ang.tier2_gate_status}]"
+        )
+    axes[1].set_title(dehyd_title, fontsize=9)
 
     axes[2].scatter(xy[:, 0], xy[:, 1], s=8, c="#eca53a", alpha=0.6)
     if site_mask.any():
@@ -689,7 +747,10 @@ def _plot_composite(
         )
     axes[2].set_title("pharmacophore (downstream of Tier 2 gate)")
 
-    fig.suptitle(f"{bio.structure_id} crescent biology — lever_a", fontsize=12)
+    fig.suptitle(
+        f"{bio.structure_id} biology overlay — {bio.disc_layout_source}",
+        fontsize=12,
+    )
     fig.savefig(output, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
@@ -799,10 +860,20 @@ def main() -> int:
         default="rho,dehydron,pharmacophore,composite",
         help="Comma-separated: rho,dehydron,pharmacophore,interface,composite",
     )
+    ap.add_argument(
+        "--pdb-local",
+        action="store_true",
+        help="Load graphs from PDB cache (TRAINING_LOAD_FROM_PDB=1); no DB required",
+    )
     args = ap.parse_args()
     if not args.run and not args.structures:
         ap.print_help()
         return 0
+
+    if args.pdb_local:
+        import os
+
+        os.environ["TRAINING_LOAD_FROM_PDB"] = "1"
 
     structure_ids = [s.strip().upper() for s in args.structures.split(",") if s.strip()]
     layers = [x.strip() for x in args.layers.split(",") if x.strip()]

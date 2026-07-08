@@ -69,6 +69,23 @@ def _integration_db_skip_reason() -> str | None:
     return None
 
 
+def integration_db_skip_reason() -> str | None:
+    """Public skip reason for integration tests (missing or unreachable DB)."""
+    reason = _integration_db_skip_reason()
+    if reason:
+        return reason
+    url = _get_test_db_url()
+    assert url is not None
+    try:
+        import psycopg
+
+        with psycopg.connect(url, connect_timeout=2) as conn:
+            conn.execute("SELECT 1")
+    except Exception as exc:
+        return f"Database unreachable ({exc}) — skipping integration test"
+    return None
+
+
 @pytest.fixture
 async def integration_db():
     """Provide a real DB connection for integration tests.

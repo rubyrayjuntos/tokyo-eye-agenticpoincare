@@ -140,7 +140,8 @@ class V6GNNRunner:
                 override=self._legacy_disc_projection_override,
             )
 
-            self._model = GOSPConeMapperV6(node_dim=4, **kwargs)
+            node_dim = int(kwargs.pop("node_dim", 4))
+            self._model = GOSPConeMapperV6(node_dim=node_dim, **kwargs)
 
             incompatible = load_v6_state_dict(self._model, state_dict)
             missing = getattr(incompatible, "missing_keys", incompatible[0] if isinstance(incompatible, tuple) else [])
@@ -284,12 +285,18 @@ class V6GNNRunner:
             graph_data, "residue_indices", list(range(1, num_nodes + 1))
         )
 
-        # Use radial_features as cone_depth (decoupled from angular expmap)
-        # Normalize to [0, ~8] range for downstream phase threshold compat
-        raw_depth = output["radial_features"].squeeze(-1).detach()
-        depth_max = raw_depth.max() + 1e-8
-        normalized_depth = (raw_depth / depth_max) * 8.0  # Scale to [0, 8]
-        cone_width = torch.exp(-normalized_depth)
+        # Cone depth: structural SSOT uses hyperbolic geodesic dist₀ on frozen disc;
+        # otherwise radial head output (normalized for phase threshold compat).
+        if bool(getattr(graph_data, "structural_z_disc_frozen", False)) and hasattr(
+            graph_data, "structural_cone_depth"
+        ):
+            cone_depth_tensor = graph_data.structural_cone_depth.detach().float()
+        else:
+            raw_depth = output["radial_features"].squeeze(-1).detach()
+            depth_max = raw_depth.max() + 1e-8
+            cone_depth_tensor = (raw_depth / depth_max) * 8.0
+
+        cone_width = torch.exp(-cone_depth_tensor)
 
         nodes = []
         for i in range(num_nodes):
@@ -298,7 +305,7 @@ class V6GNNRunner:
                 chain_label=str(chain_ids[i]),
                 input_features=graph_data.x[i].detach().cpu().numpy(),
                 projections=output["projections"][i].detach().cpu().numpy(),
-                cone_depth=float(normalized_depth[i]),
+                cone_depth=float(cone_depth_tensor[i]),
                 cone_width=float(cone_width[i]),
                 epistemic_uncertainty=float(
                     output["uncertainty"]["epistemic"][i].detach()
@@ -348,6 +355,12 @@ class V6GNNRunner:
                 "gate_disc_scale": getattr(self._model, "gate_disc_scale", 1.0),
                 "hyp_projections_2d_source": output.get("audit_trail", {}).get(
                     "disc_projection_source", "pre_routing_x_hyp"
+                ),
+                "structural_disc_frozen": output.get("audit_trail", {}).get(
+                    "structural_disc_frozen", False
+                ),
+                "structural_disc_layout": output.get("audit_trail", {}).get(
+                    "structural_disc_layout"
                 ),
                 "legacy_disc_projection": bool(
                     getattr(self._model, "legacy_disc_projection", False)

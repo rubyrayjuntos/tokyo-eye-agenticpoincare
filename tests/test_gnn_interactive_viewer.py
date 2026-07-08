@@ -131,6 +131,9 @@ async def test_generate_gnn_interactive_viewer_registers_asset(tmp_path: Path, m
     monkeypatch.setenv("GNN_VIEWER_OUTPUT_DIR", str(tmp_path))
 
     nodes = [_sample_node(i, epistemic=1.0 + i * 0.1, depth=float(i)) for i in range(1, 4)]
+    for i, node in enumerate(nodes, start=1):
+        node.hyp_projections = np.array([0.1 * i, 0.05 * i])
+        node.aleatoric_uncertainty = 0.1 * i
     gnn_result = GNNInferenceResult(
         structure_id="9est",
         model_version="GOSPConeMapper-v6",
@@ -175,9 +178,15 @@ async def test_generate_gnn_interactive_viewer_registers_asset(tmp_path: Path, m
     html_path = Path(meta["html_path"])
     pdb_path = Path(meta["pdb_path"])
     disc_path = Path(meta["disc_html_path"])
+    split_path = Path(meta["split_html_path"])
+    gate_path = Path(meta["shell_gate_path"])
     assert html_path.is_file()
     assert pdb_path.is_file()
     assert disc_path.is_file()
+    assert split_path.is_file()
+    assert gate_path.is_file()
     assert meta["viewer_url"] == "/api/structures/9est/gnn-viewer"
     assert meta["disc_viewer_url"] == "/api/structures/9est/gnn-viewer/disc"
+    assert meta["split_viewer_url"] == "/api/structures/9est/gnn-viewer/split"
+    assert "passed" in meta["shell_signal_gate"]
     normalizer.register_file_asset.assert_awaited_once()
