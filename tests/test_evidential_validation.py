@@ -84,6 +84,19 @@ def test_p8_tau_boundary_aleatoric_elevation() -> None:
     result = tau_boundary_aleatoric_elevation(rows)
     assert result["ok"], result["reason"]
     assert result["aleatoric_tau_lift"] > 0.0
+    assert result["aleatoric_tau_lift_relative"] >= 0.20
+    assert result["strata_basis"] == "continuous_rho"
+
+
+def test_p8_g4a_rejects_flat_ale_direction_only() -> None:
+    """Tiny positive lift on near-constant ale must not pass (route_v1 failure shape)."""
+    rows = _synthetic_rows()
+    for r in rows:
+        r["aleatoric"] = 0.010 + (0.0002 if abs(r["rho"] - TAU) <= 1.0 else 0.0)
+    result = tau_boundary_aleatoric_elevation(rows)
+    assert not result["ok"]
+    assert result["aleatoric_tau_lift"] > 0.0
+    assert "informative" in result["reason"] or "relative" in result["reason"]
 
 
 def test_p9_sparsification_monotone_synthetic() -> None:
@@ -217,7 +230,9 @@ def test_checkpoint_s6_joint_save_blocks_without_tau_lift() -> None:
         "probe_r_epi_ale": 0.5,
         "epistemic_std_mean": 0.1,
         "aleatoric_std_mean": 0.6,
-        "node_aleatoric_tau_lift": -0.01,
+        "uncertainty_informative_ale": 1.0,
+        "node_aleatoric_tau_lift": 0.05,
+        "node_aleatoric_tau_lift_relative": -0.01,
         "uncertainty_tau_ale_elevated": 0.0,
     }
     reasons = uncertainty_save_ineligibility_reasons(

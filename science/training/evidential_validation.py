@@ -27,8 +27,12 @@ EPISTEMIC_CORPUS_STD_FLOOR = 1e-3
 ALEATORIC_CORPUS_STD_FLOOR = 1e-3
 # Scale-invariant exposure guard: std(ν)/mean(ν) on evidence ν (temp-independent).
 NU_CV_FLOOR = 0.02
-# Aleatoric must exceed non-τ mean by this margin for τ-boundary elevation check.
+# Aleatoric must exceed non-τ mean by this absolute margin (legacy; insufficient alone).
 TAU_ALE_LIFT_MIN = 0.0
+# G4a — magnitude-relative τ lift: (ale_τ − ale_baseline) / std(ale). Analogous to nu_cv for epi.
+TAU_ALE_RELATIVE_LIFT_MIN = 0.20
+# P8 requires informative aleatoric spread before τ-boundary claims count.
+TAU_ALE_REQUIRE_INFORMATIVE_STD = True
 # Corpus expansion: epistemic should shrink more than aleatoric on shared residues.
 EXPANSION_EPI_SHRINK_RATIO_MIN = 1.5
 # OOD policy — see docs/audit/EVIDENTIAL_UNCERTAINTY.md § P11
@@ -40,7 +44,8 @@ OOD_EPI_RATIO_MIN = 1.1
 
 # S6 joint uncertainty save gate (Phase 4) — decoupling AND biophysical aleatoric.
 S6_MAX_R_EPI_ALE = 0.70
-S6_MIN_TAU_ALE_LIFT = 0.0  # strict: > 0
+S6_MIN_TAU_ALE_LIFT = TAU_ALE_LIFT_MIN
+S6_MIN_TAU_ALE_RELATIVE_LIFT = TAU_ALE_RELATIVE_LIFT_MIN
 
 # G3 ablation variant names (pre-retrain circularity gate).
 G3_VARIANT_DECORR_ONLY = "p4_head_decouple_decorr_only"
@@ -224,32 +229,71 @@ def tau_boundary_aleatoric_elevation(
     *,
     rho_band: float = 1.0,
     min_lift: float = TAU_ALE_LIFT_MIN,
+    min_relative_lift: float = TAU_ALE_RELATIVE_LIFT_MIN,
+    require_informative_std: bool = TAU_ALE_REQUIRE_INFORMATIVE_STD,
+    informative_std_floor: float = NODE_ALE_INFORMATIVE_FLOOR,
 ) -> dict[str, Any]:
-    """P8 domain check — aleatoric higher near ρ≈TAU (biophysical ambiguity)."""
+    """P8 — τ-boundary aleatoric elevation (G4a-hardened).
+
+  Strata use **continuous ρ** (``|ρ − TAU| ≤ band``), not ``tau_flag``.
+
+  Pass requires ALL of:
+    - absolute lift > ``min_lift`` (default 0 — legacy sign check),
+    - **relative lift** ``(ale_τ − ale_non) / std(ale)`` ≥ ``min_relative_lift``,
+    - corpus ``std(ale)`` ≥ informative floor when ``require_informative_std``.
+  """
     if not rows:
         return {"ok": False, "reason": "empty", "aleatoric_tau_lift": float("nan")}
     rho = _col(rows, "rho")
     ale = _col(rows, "aleatoric")
+    ale_std = float(np.std(ale))
     tau_mask = np.abs(rho - TAU) <= rho_band
     if not tau_mask.any() or not (~tau_mask).any():
         return {
             "ok": False,
             "reason": "insufficient_tau_strata",
+            "strata_basis": "continuous_rho",
             "tau_boundary_n": int(tau_mask.sum()),
             "aleatoric_tau_lift": float("nan"),
+            "aleatoric_tau_lift_relative": float("nan"),
         }
     ale_tau = float(np.mean(ale[tau_mask]))
     ale_non = float(np.mean(ale[~tau_mask]))
     lift = ale_tau - ale_non
-    ok = lift > min_lift
+    relative_lift = lift / ale_std if ale_std > 1e-12 else float("nan")
+
+    informative_ok = (not require_informative_std) or ale_std >= informative_std_floor
+    relative_ok = math.isfinite(relative_lift) and relative_lift >= min_relative_lift
+    absolute_ok = lift > min_lift
+    ok = informative_ok and relative_ok and absolute_ok
+
+    reasons: list[str] = []
+    if not informative_ok:
+        reasons.append(
+            f"aleatoric_std={ale_std:.4f}<{informative_std_floor} (not informative; P8 blocked)"
+        )
+    if not relative_ok:
+        reasons.append(
+            f"aleatoric_tau_lift_relative={relative_lift:.4f}<{min_relative_lift}"
+            if math.isfinite(relative_lift)
+            else "aleatoric_tau_lift_relative=nan"
+        )
+    if not absolute_ok:
+        reasons.append(f"aleatoric_tau_lift={lift:.4f}<={min_lift}")
+
     return {
         "ok": ok,
-        "reason": "ok" if ok else f"aleatoric_tau_lift={lift:.4f}<={min_lift}",
+        "reason": "ok" if ok else ";".join(reasons),
+        "strata_basis": "continuous_rho",
         "tau_boundary_n": int(tau_mask.sum()),
         "non_tau_n": int((~tau_mask).sum()),
+        "aleatoric_std": ale_std,
         "aleatoric_mean_tau_boundary": ale_tau,
         "aleatoric_mean_non_tau_boundary": ale_non,
         "aleatoric_tau_lift": lift,
+        "aleatoric_tau_lift_relative": relative_lift,
+        "informative_aleatoric": informative_ok,
+        "g4a_relative_lift_min": min_relative_lift,
     }
 
 

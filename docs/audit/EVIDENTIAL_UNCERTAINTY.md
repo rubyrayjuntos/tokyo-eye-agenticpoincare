@@ -77,20 +77,27 @@ Analytical module: `science/training/nig_identifiability.py`
 **Cheap pre-retrain check:** confirm Phase 4 enables decorrelation and/or epistemic
 decoupling coeffs — not `decoupled_uncertainty_heads=True` alone.
 
-## Phase 4 / retrain gates (G1, G3, S6)
+## Phase 4 / retrain gates (G1, G3–G5, S6)
 
 Full criteria: **`docs/audit/GNNV7_SUCCESS_CRITERIA.md`**
 
 - **G1 (resolved):** Loss-level coupling — head split insufficient.
-- **G3 (required):** A/B `p4_head_decouple_decorr_only` vs full — P8/P11 must not be supervision-only (`g3_supervision_circularity_report`).
-- **S6 (joint):** `|r| ≤ 0.70` **and** P8 τ-ale lift **and** informative aleatoric — wired in save gate via `require_tau_ale_elevation_save`.
+- **G3 (required):** A/B epistemic B-factor/SASA — `g3_supervision_circularity_report`.
+- **G4a (required before G4):** P8 relative lift `(ale_τ−ale_non)/std(ale)` ≥ 0.20 + informative ale — not sign-only.
+- **G4 (after G4a):** Holdout split for v3 `var_penalty` / hinge; P8 on holdout only.
+- **G5 (provenance):** v3 teacher vs v6-native epistemic — before crediting P7 to v6.
+- **S6 (joint):** `|r| ≤ 0.70` **and** P8 τ-ale lift **and** informative aleatoric — wired in save gate.
+
+**Two mechanisms:** G1 (NIG coupling) and missing v3 shaping are independent — see v7 doc § Two mechanisms.
+
+**Loss philosophy:** `loss_philosophy_options()` in `nig_identifiability.py` — decide before `p4_v3_aleatoric_recovery`.
 
 ## Validation checks
 
 | # | Check | Function | Test |
 | - | ----- | -------- | ---- |
 | P7 | Epistemic + ν_cv non-degenerate | `epistemic_var_non_degenerate`, `exposure_non_degenerate` | unit + corpus |
-| P8 | Aleatoric elevated at ρ≈TAU | `tau_boundary_aleatoric_elevation` | unit |
+| P8 | Aleatoric elevated at ρ≈TAU | `tau_boundary_aleatoric_elevation` | unit + corpus; **G4a:** relative lift + informative std |
 | P9 | Sparsification monotonicity | `sparsification_curve` | synthetic + **corpus** |
 | P10 | Corpus-expansion sensitivity | `corpus_expansion_sensitivity` | stub until expansion |
 | P11 | OOD epistemic > aleatoric ratio | `out_of_corpus_epistemic_contrast` | synthetic + **pinned OOD** |

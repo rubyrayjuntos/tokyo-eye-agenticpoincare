@@ -13,10 +13,36 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from science.dtie.ingest.metadata import StructureMetadata
+from science.dtie.ingest.chain_eligibility import (
+    DUPLICATE_REPRESENTATIVE_SCORE_EPSILON,
+    PROTEIN_CHAIN_MIN_CA_COUNT,
+    PROTEIN_CHAIN_MIN_CA_FRACTION,
+    ca_fraction,
+    count_ca_residues,
+    passes_ca_eligibility,
+)
+from science.dtie.ingest.metadata import EntityMetadata, StructureMetadata
 from science.dtie.ingest.parser import ParsedChain, ParsedStructure
 
 logger = logging.getLogger(__name__)
+
+
+class NoEligibleProteinChainError(ValueError):
+    """Raised when no chain passes protein + Cα eligibility for scope selection."""
+
+    def __init__(
+        self,
+        pdb_id: str,
+        chain_summaries: list[dict[str, object]],
+    ) -> None:
+        self.pdb_id = pdb_id
+        self.chain_summaries = chain_summaries
+        super().__init__(
+            f"No eligible protein chain for {pdb_id} "
+            f"(min_ca_count={PROTEIN_CHAIN_MIN_CA_COUNT}, "
+            f"min_ca_fraction={PROTEIN_CHAIN_MIN_CA_FRACTION}); "
+            f"chains={chain_summaries}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -88,24 +114,22 @@ def score_chains(
     parsed: ParsedStructure,
     metadata: StructureMetadata | None = None,
 ) -> ComputationScope:
-    """Score all chains and select primary + reference for computation scope.
+    """Score all chains and select primary + reference for computation scope."""
+    scope, _ = score_chains_detailed(parsed, metadata)
+    return scope
 
-    Algorithm:
-    1. Detect duplicate entity instances (multiple chains with same entity_id)
-    2. Score each chain on multiple quality factors
-    3. Collapse duplicates → pick highest scoring per entity_id as representative
-    4. Primary chain = highest scoring protein representative
-    5. Exclude = non-protein chains + non-representative duplicates
 
-    Args:
-        parsed: ParsedStructure from the BinaryCIF parser.
-        metadata: Optional StructureMetadata from RCSB Data API enrichment.
+def score_chains_detailed(
+    parsed: ParsedStructure,
+    metadata: StructureMetadata | None = None,
+) -> tuple[ComputationScope, list[ChainScore]]:
+    """Score all chains; returns scope and per-chain scores.
 
-    Returns:
-        ComputationScope with primary_chain_ids, reference_chain, exclusions.
+    Raises:
+        NoEligibleProteinChainError: No chain passes protein + Cα eligibility.
     """
     if not parsed.chains:
-        return ComputationScope(
+        empty = ComputationScope(
             primary_chain_ids=[],
             reference_chain="",
             exclude_chain_ids=[],
@@ -113,6 +137,7 @@ def score_chains(
             selection_reason="no chains in structure",
             normalization_protocol="graph_default",
         )
+        return empty, []
 
     # Build metadata lookups
     entity_uniprot = _build_entity_uniprot_map(metadata)
@@ -132,30 +157,18 @@ def score_chains(
     for cs in chain_scores:
         cs.is_representative = cs.auth_asym_id in rep_set
 
-    # Select primary chain: highest scoring protein representative
-    protein_reps = [
-        cs for cs in representatives
-        if _is_protein_chain(
-            next(c for c in parsed.chains if c.auth_asym_id == cs.auth_asym_id)
-        )
-    ]
+    # Select primary chain: highest scoring eligible protein representative
+    protein_reps = _eligible_protein_representatives(parsed.chains, representatives)
 
     if not protein_reps:
-        # No protein chains — fall back to highest scoring overall
-        protein_reps = representatives
+        summaries = [_chain_eligibility_summary(c) for c in parsed.chains]
+        raise NoEligibleProteinChainError(parsed.pdb_id, summaries)
 
     protein_reps.sort(key=lambda cs: cs.score, reverse=True)
-
-    primary = protein_reps[0] if protein_reps else chain_scores[0]
+    primary = protein_reps[0]
     primary_chain_ids = [primary.auth_asym_id]
 
-    # Build exclusion list: non-representative duplicates + non-protein
-    all_chain_ids = {c.auth_asym_id for c in parsed.chains}
-    included = set(primary_chain_ids)
-    exclude_chain_ids = sorted(all_chain_ids - included - rep_set | (rep_set - included))
-
-    # Actually: exclude = everything not selected as primary
-    # More precisely: exclude non-representatives from duplicate groups
+    # Exclude non-representatives from duplicate groups
     exclude_chain_ids = []
     for chain in parsed.chains:
         if chain.auth_asym_id == primary.auth_asym_id:
@@ -176,7 +189,7 @@ def score_chains(
         )
     selection_reason = "; ".join(reason_parts)
 
-    return ComputationScope(
+    scope = ComputationScope(
         primary_chain_ids=primary_chain_ids,
         reference_chain=primary.auth_asym_id,
         exclude_chain_ids=sorted(exclude_chain_ids),
@@ -185,6 +198,7 @@ def score_chains(
         normalization_protocol="graph_default",
         quality_filters=QualityFilters(),
     )
+    return scope, chain_scores
 
 
 def score_chains_interface(
@@ -222,17 +236,14 @@ def score_chains_interface(
         score = _score_single_chain(chain, entity_uniprot, duplicate_entity_ids)
         chain_scores.append(score)
 
-    # For interface: include all protein chains (no entity collapse)
-    protein_scores = [
-        cs for cs in chain_scores
-        if _is_protein_chain(
-            next(c for c in parsed.chains if c.auth_asym_id == cs.auth_asym_id)
-        )
-    ]
-    protein_scores.sort(key=lambda cs: cs.score, reverse=True)
+    # For interface: include all eligible protein chains (no entity collapse)
+    protein_scores = _eligible_protein_scores(parsed.chains, chain_scores)
 
     if not protein_scores:
-        protein_scores = chain_scores
+        summaries = [_chain_eligibility_summary(c) for c in parsed.chains]
+        raise NoEligibleProteinChainError(parsed.pdb_id, summaries)
+
+    protein_scores.sort(key=lambda cs: cs.score, reverse=True)
 
     primary_chain_ids = [cs.auth_asym_id for cs in protein_scores]
     reference_chain = primary_chain_ids[0] if primary_chain_ids else ""
@@ -359,7 +370,9 @@ def _select_representatives(
     """Select one representative chain per entity_id from duplicates.
 
     For non-duplicate entities, the chain is automatically a representative.
-    For duplicate entities, pick the highest-scoring chain.
+    For duplicate entities, pick the highest-scoring chain; when scores are
+    within DUPLICATE_REPRESENTATIVE_SCORE_EPSILON, prefer lexicographically
+    first auth_asym_id (deterministic, no caller hints).
     """
     # Build score lookup
     score_by_chain = {cs.auth_asym_id: cs for cs in chain_scores}
@@ -373,10 +386,8 @@ def _select_representatives(
 
     for entity_id, entity_chain_list in entity_chains.items():
         if entity_id in duplicate_entity_ids:
-            # Pick highest scoring chain from this entity group
             group_scores = [score_by_chain[c.auth_asym_id] for c in entity_chain_list]
-            group_scores.sort(key=lambda cs: cs.score, reverse=True)
-            representatives.append(group_scores[0])
+            representatives.append(_pick_near_tied_representative(group_scores))
         else:
             # Single chain for this entity — it's automatically representative
             representatives.append(score_by_chain[entity_chain_list[0].auth_asym_id])
@@ -389,9 +400,61 @@ def _select_representatives(
 # ---------------------------------------------------------------------------
 
 
+def _pick_near_tied_representative(group_scores: list[ChainScore]) -> ChainScore:
+    """Pick representative; near-tied duplicate instances prefer first auth_asym_id."""
+    if not group_scores:
+        raise ValueError("group_scores must not be empty")
+    max_score = max(cs.score for cs in group_scores)
+    near_top = [
+        cs for cs in group_scores
+        if max_score - cs.score <= DUPLICATE_REPRESENTATIVE_SCORE_EPSILON
+    ]
+    near_top.sort(key=lambda cs: cs.auth_asym_id)
+    return near_top[0]
+
+
 def _is_protein_chain(chain: ParsedChain) -> bool:
     """Check if a chain is a protein chain based on entity_type."""
     return chain.entity_type.lower() in _PROTEIN_ENTITY_TYPES
+
+
+def _is_eligible_protein_chain(chain: ParsedChain) -> bool:
+    """Protein entity type plus Cα count/fraction floors."""
+    return _is_protein_chain(chain) and passes_ca_eligibility(chain)
+
+
+def _eligible_protein_representatives(
+    chains: list[ParsedChain],
+    representatives: list[ChainScore],
+) -> list[ChainScore]:
+    chain_by_label = {c.auth_asym_id: c for c in chains}
+    return [
+        cs for cs in representatives
+        if _is_eligible_protein_chain(chain_by_label[cs.auth_asym_id])
+    ]
+
+
+def _eligible_protein_scores(
+    chains: list[ParsedChain],
+    chain_scores: list[ChainScore],
+) -> list[ChainScore]:
+    chain_by_label = {c.auth_asym_id: c for c in chains}
+    return [
+        cs for cs in chain_scores
+        if _is_eligible_protein_chain(chain_by_label[cs.auth_asym_id])
+    ]
+
+
+def _chain_eligibility_summary(chain: ParsedChain) -> dict[str, object]:
+    return {
+        "label": chain.auth_asym_id,
+        "entity_type": chain.entity_type,
+        "residue_count": len(chain.residues),
+        "ca_count": count_ca_residues(chain),
+        "ca_fraction": round(ca_fraction(chain), 4),
+        "is_protein_entity": _is_protein_chain(chain),
+        "eligible": _is_eligible_protein_chain(chain),
+    }
 
 
 def _build_entity_uniprot_map(

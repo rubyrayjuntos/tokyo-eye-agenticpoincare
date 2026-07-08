@@ -892,11 +892,20 @@ def measure_geometry_health(
             rho_cat = np.concatenate(all_rho_vals)
             tau_mask = np.abs(rho_cat - TAU) <= 1.0
             if tau_mask.any() and (~tau_mask).any():
-                ale_tau = float(np.mean(ale_cat[tau_mask]))
-                ale_non = float(np.mean(ale_cat[~tau_mask]))
-                lift = ale_tau - ale_non
-                result["node_aleatoric_tau_lift"] = lift
-                result["uncertainty_tau_ale_elevated"] = 1.0 if lift > 0.0 else 0.0
+                from science.training.evidential_validation import (
+                    tau_boundary_aleatoric_elevation,
+                )
+
+                mini_rows = [
+                    {"rho": float(r), "aleatoric": float(a)}
+                    for r, a in zip(rho_cat, ale_cat)
+                ]
+                tau = tau_boundary_aleatoric_elevation(mini_rows)
+                result["node_aleatoric_tau_lift"] = tau["aleatoric_tau_lift"]
+                result["node_aleatoric_tau_lift_relative"] = tau.get(
+                    "aleatoric_tau_lift_relative", float("nan")
+                )
+                result["uncertainty_tau_ale_elevated"] = 1.0 if tau["ok"] else 0.0
 
     if edge_telemetry and edge_telemetry_records:
         from science.training.edge_telemetry import (

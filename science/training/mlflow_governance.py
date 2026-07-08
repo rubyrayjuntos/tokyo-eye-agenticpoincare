@@ -333,6 +333,7 @@ TELEMETRY_TRACK_HEALTH_TO_MLFLOW: dict[str, str] = {
     "uncertainty_probe_alive_ale": "track/uncertainty_alive_ale",
     "uncertainty_informative_ale": "track/uncertainty_informative_ale",
     "node_aleatoric_tau_lift": "track/node_tau_boundary_ale_lift",
+    "node_aleatoric_tau_lift_relative": "track/node_tau_boundary_ale_lift_relative",
     "edge_embed_resistance_corr_mean": "track/edge_resistance_corr",
     "edge_epistemic_var_std_mean": "track/edge_epistemic_std",
     "edge_aleatoric_var_std_mean": "track/edge_aleatoric_std",

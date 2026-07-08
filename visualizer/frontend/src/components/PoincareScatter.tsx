@@ -6,6 +6,7 @@ import { buildHydrationView } from "../lib/hydrationView";
 import { getArtifactSurfaceState } from "../lib/artifactAvailability";
 import type { EmbeddingData, ResidueEmbedding, SelectedResidueInfo, PoincareColorMode } from "../lib/types";
 import { THERAPEUTIC_GOALS } from "../lib/therapeuticCompiler";
+import { mobiusRecenter2D } from "../lib/math";
 
 // --- Hyperbolic math utilities ---
 
@@ -14,18 +15,10 @@ function atanhSafe(x: number): number {
   return 0.5 * Math.log((1 + clamped) / (1 - clamped));
 }
 
-function mobiusTransform(
-  x: number, y: number, ax: number, ay: number
-): { x: number; y: number } {
-  const numRe = x - ax;
-  const numIm = y - ay;
-  const denRe = 1 - (ax * x + ay * y);
-  const denIm = -(ax * y - ay * x);
-  const denMagSq = denRe * denRe + denIm * denIm + 1e-8;
-  return {
-    x: (numRe * denRe + numIm * denIm) / denMagSq,
-    y: (numIm * denRe - numRe * denIm) / denMagSq,
-  };
+function hyperbolicRadiusFromOrigin(euclidR: number, curvature: number): number {
+  const c = curvature > 0 ? curvature : 1;
+  const sqrtC = Math.sqrt(c);
+  return (2 / sqrtC) * atanhSafe(sqrtC * euclidR);
 }
 
 function toScreen(
@@ -351,29 +344,31 @@ export default function PoincareScatter({
       .finally(() => setResistanceLoading(false));
   }, [showResistanceLayer, activeStructure, ctxCompilerState]);
 
-  // Compute transformed points with Möbius recentering
+  // Compute transformed points with Möbius recentering (⊕_c, geoopt-consistent)
   const transformedPoints = useMemo<TransformedPoint[]>(() => {
     if (!data) return [];
+    const curvature = data.curvature > 0 ? data.curvature : 1;
     const anchor = data.residues.find((p) => p.residue_id === selectedId);
     const ax = anchor?.x ?? 0;
     const ay = anchor?.y ?? 0;
     return data.residues.map((p) => {
-      const coords =
+      const [tx, ty] =
         mobiusFocus && anchor
-          ? mobiusTransform(p.x, p.y, ax, ay)
-          : { x: p.x, y: p.y };
+          ? mobiusRecenter2D(p.x, p.y, ax, ay, curvature)
+          : [p.x, p.y];
       const euclidR = Math.sqrt(p.x * p.x + p.y * p.y);
-      const hyperbolicR = 2 * atanhSafe(euclidR);
-      return { ...p, tx: coords.x, ty: coords.y, euclidR, hyperbolicR };
+      const hyperbolicR = hyperbolicRadiusFromOrigin(euclidR, curvature);
+      return { ...p, tx, ty, euclidR, hyperbolicR };
     });
   }, [data, selectedId, mobiusFocus]);
 
   // Compute transformed points for secondary data (overlay)
   const secondaryTransformedPoints = useMemo<TransformedPoint[]>(() => {
     if (!secondaryData || !overlayEnabled) return [];
+    const curvature = secondaryData.curvature > 0 ? secondaryData.curvature : 1;
     return secondaryData.residues.map((p) => {
       const euclidR = Math.sqrt(p.x * p.x + p.y * p.y);
-      const hyperbolicR = 2 * atanhSafe(euclidR);
+      const hyperbolicR = hyperbolicRadiusFromOrigin(euclidR, curvature);
       return { ...p, tx: p.x, ty: p.y, euclidR, hyperbolicR };
     });
   }, [secondaryData, overlayEnabled]);

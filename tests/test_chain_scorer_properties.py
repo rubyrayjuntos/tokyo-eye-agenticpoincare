@@ -15,6 +15,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from science.dtie.ingest.chain_eligibility import PROTEIN_CHAIN_MIN_CA_COUNT
 from science.dtie.ingest.chain_scorer import (
     ComputationScope,
     score_chains,
@@ -73,7 +74,7 @@ def st_protein_chain(
     draw: st.DrawFn,
     auth_asym_id: str | None = None,
     entity_id: str | None = None,
-    min_residues: int = 5,
+    min_residues: int = PROTEIN_CHAIN_MIN_CA_COUNT + 5,
     max_residues: int = 50,
     b_factor_range: tuple[float, float] = (5.0, 150.0),
 ) -> ParsedChain:
@@ -133,7 +134,7 @@ def st_structure_with_duplicates(draw: st.DrawFn) -> ParsedStructure:
         chain = draw(st_protein_chain(
             auth_asym_id=label,
             entity_id=dup_entity_id,
-            min_residues=10,
+            min_residues=PROTEIN_CHAIN_MIN_CA_COUNT + 5,
             max_residues=40,
         ))
         dup_chains.append(chain)
@@ -145,7 +146,7 @@ def st_structure_with_duplicates(draw: st.DrawFn) -> ParsedStructure:
         extra_chain = draw(st_protein_chain(
             auth_asym_id=extra_label,
             entity_id="2",
-            min_residues=5,
+            min_residues=PROTEIN_CHAIN_MIN_CA_COUNT + 5,
             max_residues=30,
         ))
         extra_chains.append(extra_chain)
@@ -188,7 +189,7 @@ def st_multi_chain_structure(draw: st.DrawFn) -> tuple[ParsedStructure, Structur
         else:
             entity_type = draw(st.sampled_from(_PROTEIN_TYPES + _NON_PROTEIN_TYPES))
 
-        n_residues = draw(st.integers(min_value=5, max_value=40))
+        n_residues = draw(st.integers(min_value=PROTEIN_CHAIN_MIN_CA_COUNT + 5, max_value=40))
         bf_range = draw(st.tuples(
             st.floats(5.0, 50.0, allow_nan=False, allow_infinity=False),
             st.floats(51.0, 150.0, allow_nan=False, allow_infinity=False),
@@ -373,16 +374,17 @@ class TestProperty8ChainScorerSelectsHighestQuality:
 
         scope = score_chains(parsed, metadata)
 
-        # Primary chain must be protein
+        # Primary chain must be eligible protein (entity type + Cα floors)
         if scope.primary_chain_ids:
             primary_label = scope.primary_chain_ids[0]
             primary_chain = next(
                 c for c in parsed.chains if c.auth_asym_id == primary_label
             )
-            assert _is_protein_chain(primary_chain), (
-                f"Primary chain {primary_label} has entity_type='{primary_chain.entity_type}' "
-                f"which is NOT a protein type. Protein chains available: "
-                f"{[c.auth_asym_id for c in protein_chains]}"
+            from science.dtie.ingest.chain_scorer import _is_eligible_protein_chain
+
+            assert _is_eligible_protein_chain(primary_chain), (
+                f"Primary chain {primary_label} is not an eligible protein chain "
+                f"(entity_type='{primary_chain.entity_type}')"
             )
 
     @settings(max_examples=100)
@@ -423,10 +425,12 @@ class TestProperty8ChainScorerSelectsHighestQuality:
         reps = _select_representatives(parsed.chains, all_scores, duplicate_eids)
         rep_labels = {r.auth_asym_id for r in reps}
 
-        # Filter to protein representatives only
+        # Filter to eligible protein representatives only
+        from science.dtie.ingest.chain_scorer import _is_eligible_protein_chain
+
         protein_rep_scores = [
             s for s in reps
-            if _is_protein_chain(
+            if _is_eligible_protein_chain(
                 next(c for c in parsed.chains if c.auth_asym_id == s.auth_asym_id)
             )
         ]

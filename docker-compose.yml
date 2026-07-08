@@ -40,6 +40,9 @@ services:
       MLFLOW_ALLOW_FILE_STORE: "true"
       PYTHONUNBUFFERED: "1"
       PYTHONDONTWRITEBYTECODE: "1"
+      DB_POOL_MIN_SIZE: "2"
+      DB_POOL_MAX_SIZE: "10"
+      MPLCONFIGDIR: /tmp/matplotlib
       GNN_INTERACTIVE_HTML: "true"
       GNN_VIEWER_OUTPUT_DIR: /app/data/local_objects/gnn_viewer
       OMP_NUM_THREADS: "1"
@@ -122,6 +125,29 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    restart: unless-stopped
+
+  mlflow-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.science
+      cache_from:
+        - tokyoeye-science:latest
+    image: tokyoeye-science:latest
+    container_name: tokyoeye_mlflow_ui
+    command:
+      - sh
+      - -c
+      - |
+        python3 /app/experiments/training/v6/repair_mlflow_store.py --store /app/mlruns
+        exec mlflow ui --host 0.0.0.0 --port 5000 --backend-store-uri file:/app/mlruns
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./experiments:/app/experiments
+      - ./mlruns:/app/mlruns
+    networks:
+      - tokyoeye_net
     restart: unless-stopped
 
 networks:

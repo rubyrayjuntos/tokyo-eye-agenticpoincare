@@ -11,6 +11,7 @@ from science.training.disc_occupancy import (
     DISC_R_STD_PROMOTE_MIN,
     disc_occupancy_ineligibility_reasons,
 )
+from science.training.evidential_validation import S6_MIN_TAU_ALE_RELATIVE_LIFT
 
 # Shared with experiments.training.v6.assess_checkpoint promotion_gate
 ROUTING_ENTROPY_PROMOTE_MAX = 1.2
@@ -182,9 +183,18 @@ def uncertainty_save_ineligibility_reasons(
         )
     if require_tau_ale_elevation:
         lift = _finite_probe(health.get("node_aleatoric_tau_lift"))
+        rel_lift = _finite_probe(health.get("node_aleatoric_tau_lift_relative"))
         elevated = health.get("uncertainty_tau_ale_elevated")
+        informative = health.get("uncertainty_informative_ale")
+        if informative is not None and float(informative) < 1.0:
+            reasons.append("uncertainty_informative_ale=0 (P8/G4a blocked)")
         if elevated is not None and float(elevated) < 1.0:
-            reasons.append("tau_ale_elevation=0 (P8 fail; S6 joint gate)")
+            reasons.append("tau_ale_elevation=0 (P8/G4a fail; S6 joint gate)")
+        elif rel_lift is not None and rel_lift < S6_MIN_TAU_ALE_RELATIVE_LIFT:
+            reasons.append(
+                f"node_aleatoric_tau_lift_relative={rel_lift:.4f}"
+                f"<{S6_MIN_TAU_ALE_RELATIVE_LIFT} (P8/G4a fail; S6 joint)"
+            )
         elif lift is not None and lift <= min_tau_ale_lift:
             reasons.append(
                 f"node_aleatoric_tau_lift={lift:.4f}<={min_tau_ale_lift} (P8 fail; S6 joint)"

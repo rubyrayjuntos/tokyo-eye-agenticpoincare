@@ -290,8 +290,28 @@ def score_chains(
     Algorithm:
     1. Collapse duplicate entity instances (same entity_id) → pick highest scorer
     2. Score each unique entity representative
-    3. Primary = highest scoring protein chain
+    3. Primary = highest scoring *eligible* protein chain (Cα count + fraction floors)
     4. Exclude = non-protein + duplicate instances
+
+    ### 4.1 Protein chain Cα eligibility (P_CHAIN_SELECT)
+
+    A chain is eligible for primary protein selection only when **both**:
+
+    | Gate | Constant | Value | Rationale |
+    |------|----------|-------|-----------|
+    | Minimum Cα residue count | `PROTEIN_CHAIN_MIN_CA_COUNT` | **15** | Rejects peptide ligands; accepts 1UBQ (76) |
+    | Minimum Cα fraction | `PROTEIN_CHAIN_MIN_CA_FRACTION` | **0.25** | Rejects long nucleic-acid chains with zero Cα (1BG1 DNA) |
+
+    SSOT implementation: `science/dtie/ingest/chain_eligibility.py`. Ineligible
+    structures raise `NoEligibleProteinChainError` (HTTP 422) instead of silently
+    persisting blank features.
+
+    ### 4.2 Duplicate entity near-tie (deterministic, no caller hints)
+
+    When duplicate entity instances score within `DUPLICATE_REPRESENTATIVE_SCORE_EPSILON`
+    (**0.05**), they are treated as equivalent; lexicographically first
+    `auth_asym_id` wins (4OBE KRAS A vs B: Δscore≈0.001 → A). No manifest or
+    per-request chain override — vanilla `POST /api/ingest` only.
     """
     ...
 ```

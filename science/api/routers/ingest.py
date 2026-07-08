@@ -281,9 +281,15 @@ async def ingest_full(
     rcsbapi_version = _get_rcsbapi_version()
 
     # Step 6: Compute chain scores → scope
-    from science.dtie.ingest.chain_scorer import score_chains
+    from science.dtie.ingest.chain_scorer import NoEligibleProteinChainError, score_chains
 
-    scope = score_chains(parsed, metadata)
+    try:
+        scope = score_chains(parsed, metadata)
+    except NoEligibleProteinChainError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        ) from exc
 
     # Step 7: Quality flags already computed during parsing (partial_backbone,
     # max_b_factor, low_confidence_coords are on ParsedResidue)
@@ -390,6 +396,28 @@ async def ingest_full(
                 status_code=500,
                 detail=f"Computation scope write failed: {e}",
             )
+
+        # MASTER input features: single writer path (dim_atom → residue_features → DB)
+        from science.dtie.common.structure_readiness import persist_master_features_for_chain
+
+        chains_for_features = scope.primary_chain_ids or [
+            c.auth_asym_id for c in chain_dims
+        ]
+        master_ingest_summary: list[dict[str, Any]] = []
+        for chain_label in chains_for_features:
+            try:
+                summary = await persist_master_features_for_chain(
+                    db, structure_id, chain_label
+                )
+                master_ingest_summary.append(summary)
+            except Exception as exc:
+                logger.warning(
+                    "MASTER feature persist failed for %s chain %s: %s",
+                    structure_id,
+                    chain_label,
+                    exc,
+                )
+        await db.commit()
 
     # Step 10: Fire alignment sidecar (background, non-blocking)
     alignment_status = "pending"
