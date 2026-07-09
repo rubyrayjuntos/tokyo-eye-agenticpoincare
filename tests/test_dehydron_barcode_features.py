@@ -1,6 +1,8 @@
-"""Unit tests for dehydron barcode features (Tasks 1–3)."""
+"""Unit tests for dehydron barcode features (Tasks 1–4)."""
 
 from __future__ import annotations
+
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -194,3 +196,53 @@ def test_aggregate_structure_stats_not_kfold_duplicated(simple_bars):
     assert scalars[0, 0] == pytest.approx(np.log1p(len(simple_bars)))
     assert scalars[0, 0] != pytest.approx(np.log1p(2 * len(simple_bars)))
     assert scalars[0, 10] == pytest.approx(np.log1p(2))
+
+
+def test_stack_dims_scalars_only():
+    from science.dtie.common.dehydron_barcode_features import stack_node_features_with_barcode
+
+    x = np.zeros((8, 3), np.float32)
+    barcode = {
+        "scalars": np.zeros((8, 11), np.float32),
+        "binned": None,
+        "missing": np.ones((8, 1), np.float32),
+    }
+    y = stack_node_features_with_barcode(x, barcode, use_binned=False)
+    assert y.shape == (8, 15)
+
+
+def test_stack_dims_full():
+    from science.dtie.common.dehydron_barcode_features import stack_node_features_with_barcode
+
+    x = np.zeros((8, 3), np.float32)
+    barcode = {
+        "scalars": np.zeros((8, 11), np.float32),
+        "binned": np.zeros((8, 40), np.float32),
+        "missing": np.zeros((8, 1), np.float32),
+    }
+    y = stack_node_features_with_barcode(x, barcode, use_binned=True)
+    assert y.shape == (8, 55)
+
+
+FOUROBE_PDB = Path(
+    "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/"
+    "checkpoints/v6/runs/slim_moe_structural_ssot_cold_v1/viewers/4obe/4obe_gosp_native.pdb"
+)
+
+
+@pytest.mark.skipif(not FOUROBE_PDB.is_file(), reason="4obe PDB not available")
+def test_featurize_4obe_chain_a_smoke():
+    from science.dtie.common.dehydron_barcode_features import (
+        BARCODE_FEATURE_VERSION,
+        featurize_chain_dehydron_barcode,
+    )
+
+    out = featurize_chain_dehydron_barcode(FOUROBE_PDB, "A")
+    assert out["metadata"]["version"] == BARCODE_FEATURE_VERSION
+    assert out["metadata"]["n_midpoints"] >= 1
+    assert out["metadata"]["n_bars"] >= 0
+    n = out["scalars"].shape[0]
+    assert out["scalars"].shape == (n, 11)
+    assert out["missing"].shape == (n, 1)
+    assert np.all(np.isfinite(out["scalars"]))
+    assert np.all(np.isfinite(out["missing"]))

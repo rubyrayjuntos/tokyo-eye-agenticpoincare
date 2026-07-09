@@ -35,7 +35,8 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Mapping, Sequence, TypeAlias
+from pathlib import Path
+from typing import Any, Mapping, Sequence, TypeAlias
 
 import numpy as np
 from gudhi import WitnessComplex
@@ -428,3 +429,158 @@ def extract_dehydron_midpoints(
             )
 
     return midpoints
+
+
+def _load_chain_structure_atoms(
+    pdb_path: Path | str,
+    chain_id: str,
+) -> tuple[list[StructureAtom], dict[ResidueMapKey, int]]:
+    """Parse one PDB chain into ``StructureAtom`` list and training-graph index map.
+
+    Residue order matches ``residue_features.build_from_pdb_chain`` (standard
+    residues on ``chain_id``, PDB iteration order).
+    """
+    from Bio.PDB import PDBParser
+
+    parser = PDBParser(QUIET=True)
+    structure = parser.get_structure("dehydron_barcode", str(pdb_path))
+    residues_raw = [
+        res
+        for res in structure.get_residues()
+        if res.get_id()[0] == " " and res.parent.id == chain_id
+    ]
+
+    structure_atoms: list[StructureAtom] = []
+    residue_index_map: dict[ResidueMapKey, int] = {}
+    for residue_idx, res in enumerate(residues_raw):
+        res_name = res.get_resname().strip().upper()
+        resseq = int(res.get_id()[1])
+        residue_index_map[residue_map_key(chain_id, resseq)] = residue_idx
+        for atom in res.get_atoms():
+            structure_atoms.append(
+                StructureAtom(
+                    atom_name=atom.name,
+                    element=(atom.element or "").upper(),
+                    coord=np.asarray(atom.coord, dtype=np.float64),
+                    parent_residue_name=res_name,
+                    chain_label=chain_id,
+                    residue_index=resseq,
+                )
+            )
+
+    return structure_atoms, residue_index_map
+
+
+def featurize_chain_dehydron_barcode(
+    pdb_path: Path | str,
+    chain: str,
+    *,
+    use_binned: bool = False,
+    **kwargs: Any,
+) -> dict[str, np.ndarray | None | dict[str, Any]]:
+    """End-to-end dehydron barcode features for one PDB chain."""
+    extract_kwargs = {
+        key: kwargs[key]
+        for key in ("wrapping_radius", "tau", "max_no_dist")
+        if key in kwargs
+    }
+    persistence_kwargs = {
+        key: kwargs[key]
+        for key in (
+            "max_alpha_angstrom",
+            "min_persistence_angstrom",
+            "n_landmarks",
+            "random_state",
+        )
+        if key in kwargs
+    }
+    aggregate_kwargs = {
+        key: kwargs[key]
+        for key in ("long_lived_persistence_angstrom", "bin_width", "bin_max")
+        if key in kwargs
+    }
+
+    structure_atoms, residue_index_map = _load_chain_structure_atoms(pdb_path, chain)
+    n_residues = len(residue_index_map)
+
+    midpoints = extract_dehydron_midpoints(
+        structure_atoms,
+        residue_index_map,
+        **extract_kwargs,
+    )
+    bars = compute_witness_persistence(midpoints, **persistence_kwargs)
+    features = aggregate_residue_barcode_features(
+        n_residues,
+        midpoints,
+        bars,
+        use_binned=use_binned,
+        **aggregate_kwargs,
+    )
+
+    params = {
+        "chain": chain,
+        "use_binned": use_binned,
+        "wrapping_radius": extract_kwargs.get("wrapping_radius", WRAPPING_RADIUS),
+        "tau": extract_kwargs.get("tau", TAU),
+        "max_no_dist": extract_kwargs.get("max_no_dist", 3.5),
+        "max_alpha_angstrom": persistence_kwargs.get("max_alpha_angstrom", 20.0),
+        "min_persistence_angstrom": persistence_kwargs.get(
+            "min_persistence_angstrom", 0.1
+        ),
+        "n_landmarks": persistence_kwargs.get("n_landmarks", 30),
+        "random_state": persistence_kwargs.get("random_state", 42),
+        "long_lived_persistence_angstrom": aggregate_kwargs.get(
+            "long_lived_persistence_angstrom", 2.0
+        ),
+        "bin_width": aggregate_kwargs.get("bin_width", 0.25),
+        "bin_max": aggregate_kwargs.get("bin_max", 10.0),
+    }
+
+    return {
+        "scalars": features["scalars"],
+        "binned": features["binned"],
+        "missing": features["missing"],
+        "metadata": {
+            "version": BARCODE_FEATURE_VERSION,
+            "params": params,
+            "n_midpoints": len(midpoints),
+            "n_bars": len(bars),
+        },
+    }
+
+
+def stack_node_features_with_barcode(
+    base_x: np.ndarray,
+    barcode: Mapping[str, np.ndarray | None],
+    *,
+    use_binned: bool = False,
+) -> np.ndarray:
+    """Concatenate topology-three-vector with per-residue barcode features."""
+    scalars = np.asarray(barcode["scalars"], dtype=np.float32)
+    missing = np.asarray(barcode["missing"], dtype=np.float32)
+    base = np.asarray(base_x, dtype=np.float32)
+
+    if base.ndim != 2 or base.shape[1] != 3:
+        raise ValueError(f"base_x must be [N, 3], got {base.shape}")
+    if scalars.shape != (base.shape[0], SCALAR_DIM):
+        raise ValueError(
+            f"barcode scalars must be [{base.shape[0]}, {SCALAR_DIM}], got {scalars.shape}"
+        )
+    if missing.shape != (base.shape[0], 1):
+        raise ValueError(
+            f"barcode missing must be [{base.shape[0]}, 1], got {missing.shape}"
+        )
+
+    parts: list[np.ndarray] = [base, scalars]
+    if use_binned:
+        binned = barcode.get("binned")
+        if binned is None:
+            raise ValueError("use_binned=True requires barcode['binned']")
+        binned_arr = np.asarray(binned, dtype=np.float32)
+        if binned_arr.shape != (base.shape[0], BINNED_DIM):
+            raise ValueError(
+                f"barcode binned must be [{base.shape[0]}, {BINNED_DIM}], got {binned_arr.shape}"
+            )
+        parts.append(binned_arr)
+    parts.append(missing)
+    return np.concatenate(parts, axis=1).astype(np.float32, copy=False)
