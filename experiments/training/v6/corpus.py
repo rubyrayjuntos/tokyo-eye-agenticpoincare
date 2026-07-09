@@ -58,19 +58,19 @@ def iter_corpus_entries(
 
 def _barcode_cache_suffix(
     *,
-    use_dehydron_barcode: bool = False,
-    use_binned_dehydron: bool = False,
+    use_dehydron_barcode: bool | None = None,
+    use_binned_dehydron: bool | None = None,
 ) -> str:
     """Cache-key tag when barcode sidecars widen ``data.x`` (Task 5 / Task 6)."""
     import os
 
-    if not use_dehydron_barcode:
+    if use_dehydron_barcode is None:
         use_dehydron_barcode = os.environ.get("USE_DEHYDRON_BARCODE", "").lower() in (
             "1",
             "true",
             "yes",
         )
-    if not use_binned_dehydron:
+    if use_binned_dehydron is None:
         use_binned_dehydron = os.environ.get("USE_BINNED_DEHYDRON", "").lower() in (
             "1",
             "true",
@@ -90,8 +90,8 @@ def load_training_proteins(
     max_proteins: int | None = None,
     max_residues: int | None = None,
     use_cache: bool = True,
-    use_dehydron_barcode: bool = False,
-    use_binned_dehydron: bool = False,
+    use_dehydron_barcode: bool | None = None,
+    use_binned_dehydron: bool | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """
     Load protein graphs from corpus manifest.
