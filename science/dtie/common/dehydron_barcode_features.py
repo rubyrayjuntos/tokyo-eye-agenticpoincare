@@ -1,4 +1,4 @@
-"""Dehydron barcode input channel — midpoint extraction (Task 1).
+"""Dehydron barcode input channel — midpoint extraction (Task 1) and witness persistence (Task 2).
 
 Witness points for Euclidean witness persistence are midpoints of **inter-residue**
 backbone H-bonds (donor N … acceptor O), not per-residue local N–O midpoints used
@@ -13,10 +13,14 @@ tuple to ``(chain_label, residue_index, icode)`` if icode-aware graphs are added
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Mapping, Sequence, TypeAlias
 
 import numpy as np
+from gudhi import WitnessComplex
+from scipy.spatial.distance import cdist
+from sklearn.cluster import KMeans
 
 from science.dtie.common.residue_features import (
     POLAR_SIDECHAINS,
@@ -59,6 +63,89 @@ class DehydronMidpoint:
     donor_idx: int
     acceptor_idx: int
     wrapping_count: float
+
+
+@dataclass(frozen=True)
+class PersistenceBar:
+    dim: int
+    birth: float
+    death: float
+    persistence: float
+
+
+def _compute_nearest_landmark_table(
+    landmarks: np.ndarray,
+    witnesses: np.ndarray,
+) -> list[list[tuple[int, float]]]:
+    """Full sorted nearest-landmark table for ``gudhi.WitnessComplex``."""
+    dist_matrix = cdist(witnesses, landmarks)
+    nearest_table: list[list[tuple[int, float]]] = []
+    for i in range(len(witnesses)):
+        sorted_indices = np.argsort(dist_matrix[i])
+        row = [(int(j), float(dist_matrix[i, j])) for j in sorted_indices]
+        nearest_table.append(row)
+    return nearest_table
+
+
+def _effective_death(death: float, *, max_alpha_angstrom: float) -> float:
+    if math.isinf(death):
+        return max_alpha_angstrom
+    return float(death)
+
+
+def compute_witness_persistence(
+    midpoints: list[DehydronMidpoint],
+    *,
+    max_alpha_angstrom: float = 20.0,
+    min_persistence_angstrom: float = 0.1,
+    n_landmarks: int = 30,
+    random_state: int = 42,
+) -> list[PersistenceBar]:
+    """Euclidean witness complex persistence on dehydron midpoints (H0 + H1)."""
+    if len(midpoints) < 2:
+        return []
+
+    witnesses = np.asarray([mp.coord for mp in midpoints], dtype=np.float64)
+    n_witnesses = len(witnesses)
+    n_clusters = min(n_landmarks, n_witnesses)
+
+    landmarks = KMeans(
+        n_clusters=n_clusters,
+        random_state=random_state,
+        n_init="auto",
+    ).fit(witnesses).cluster_centers_
+
+    w_complex = WitnessComplex(
+        nearest_landmark_table=_compute_nearest_landmark_table(landmarks, witnesses)
+    )
+    max_alpha_square = max_alpha_angstrom**2
+    simplex_tree = w_complex.create_simplex_tree(
+        max_alpha_square=max_alpha_square,
+        limit_dimension=2,
+    )
+    simplex_tree.persistence(homology_coeff_field=2, min_persistence=0)
+
+    bars: list[PersistenceBar] = []
+    for dim, (birth, death) in simplex_tree.persistence():
+        if dim not in (0, 1):
+            continue
+
+        birth_f = float(birth)
+        death_f = _effective_death(float(death), max_alpha_angstrom=max_alpha_angstrom)
+        persistence = death_f - birth_f
+        if persistence < min_persistence_angstrom:
+            continue
+
+        bars.append(
+            PersistenceBar(
+                dim=int(dim),
+                birth=birth_f,
+                death=death_f,
+                persistence=persistence,
+            )
+        )
+
+    return bars
 
 
 def _residue_key(atom: StructureAtom | AtomRecord) -> ResidueMapKey | None:

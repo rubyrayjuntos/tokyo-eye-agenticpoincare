@@ -1,8 +1,9 @@
-"""Unit tests for dehydron barcode midpoint extraction (Task 1)."""
+"""Unit tests for dehydron barcode midpoint extraction (Task 1) and witness persistence (Task 2)."""
 
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from science.dtie.common.dehydron_barcode_features import (
     BARCODE_FEATURE_VERSION,
@@ -95,3 +96,50 @@ def test_extract_midpoints_skips_same_residue_n_o():
 
     midpoints = extract_dehydron_midpoints(atoms, residue_index_map)
     assert midpoints == []
+
+
+@pytest.fixture
+def simple_midpoints() -> list[DehydronMidpoint]:
+    """Five spread 3D midpoints — enough for k-means landmarks and witness complex."""
+    coords = [
+        np.array([0.0, 0.0, 0.0]),
+        np.array([5.0, 0.0, 0.0]),
+        np.array([2.5, 4.0, 0.0]),
+        np.array([2.5, 1.5, 3.0]),
+        np.array([8.0, 2.0, 1.0]),
+    ]
+    return [
+        DehydronMidpoint(
+            coord=c,
+            donor_idx=i,
+            acceptor_idx=(i + 1) % len(coords),
+            wrapping_count=5.0,
+        )
+        for i, c in enumerate(coords)
+    ]
+
+
+def test_witness_persistence_empty_midpoints():
+    from science.dtie.common.dehydron_barcode_features import compute_witness_persistence
+
+    assert compute_witness_persistence([]) == []
+
+
+def test_witness_persistence_single_midpoint_returns_empty():
+    from science.dtie.common.dehydron_barcode_features import compute_witness_persistence
+
+    one = DehydronMidpoint(
+        coord=np.array([0.0, 0.0, 0.0]),
+        donor_idx=0,
+        acceptor_idx=1,
+        wrapping_count=5.0,
+    )
+    assert compute_witness_persistence([one]) == []
+
+
+def test_witness_persistence_returns_nonneg_persistence(simple_midpoints):
+    from science.dtie.common.dehydron_barcode_features import compute_witness_persistence
+
+    bars = compute_witness_persistence(simple_midpoints, max_alpha_angstrom=20.0)
+    assert all(b.persistence >= 0.0 for b in bars)
+    assert all(b.dim in (0, 1) for b in bars)
