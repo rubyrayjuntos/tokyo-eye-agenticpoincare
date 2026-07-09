@@ -63,6 +63,23 @@ def _missing_barcode_payload(n_residues: int, *, use_binned: bool) -> dict[str, 
     }
 
 
+def _barcode_payload_to_numpy(barcode: dict) -> dict[str, np.ndarray | None]:
+    def to_float32_array(value) -> np.ndarray:
+        if isinstance(value, torch.Tensor):
+            value = value.detach().cpu()
+        return np.asarray(value, dtype=np.float32)
+
+    return {
+        "scalars": to_float32_array(barcode["scalars"]),
+        "missing": to_float32_array(barcode["missing"]),
+        "binned": (
+            None
+            if barcode.get("binned") is None
+            else to_float32_array(barcode["binned"])
+        ),
+    }
+
+
 def attach_dehydron_barcode_features(
     prot: Dict,
     *,
@@ -82,7 +99,10 @@ def attach_dehydron_barcode_features(
     sidecar = _barcode_sidecar_path(Path(barcode_dir), pdb_id, chain)
 
     if sidecar.is_file():
-        barcode = torch.load(sidecar, map_location="cpu", weights_only=True)
+        # Local training sidecars are trusted artifacts produced by precompute;
+        # allow legacy NumPy payloads while normalizing tensors/arrays below.
+        barcode = torch.load(sidecar, map_location="cpu", weights_only=False)
+        barcode = _barcode_payload_to_numpy(barcode)
     else:
         warn_key = f"{pdb_id}:{chain}"
         if warn_key not in _MISSING_BARCODE_WARNED:

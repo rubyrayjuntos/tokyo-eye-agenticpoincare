@@ -52,17 +52,22 @@ def resolve_prior_checkpoint(output_dir: Path, phase: int, protein_count: int) -
     return None
 
 
-def build_model(config: TrainingConfig) -> torch.nn.Module:
+def build_model(config: TrainingConfig, node_dim: int | None = None) -> torch.nn.Module:
     from science.dtie.common.residue_features import GnnInputMode, gnn_input_dim_for_barcode
     from science.dtie.v6.gnn.model import GOSPConeMapperV6
 
     input_mode = GnnInputMode.TOPOLOGY_THREE_VECTOR if config.use_dehydron_barcode else None
-    model = GOSPConeMapperV6(
-        node_dim=gnn_input_dim_for_barcode(
+    resolved_node_dim = (
+        int(node_dim)
+        if node_dim is not None
+        else gnn_input_dim_for_barcode(
             config.use_dehydron_barcode,
             config.use_binned_dehydron,
             mode=input_mode,
-        ),
+        )
+    )
+    model = GOSPConeMapperV6(
+        node_dim=resolved_node_dim,
         hidden=config.hidden,
         num_layers=config.num_layers,
         num_experts=config.num_experts,
@@ -83,6 +88,24 @@ def build_model(config: TrainingConfig) -> torch.nn.Module:
         structure_gate=config.structure_gate,
     )
     return model
+
+
+def _node_dim_from_loaded_graphs(proteins: list[dict]) -> int | None:
+    if not proteins:
+        return None
+
+    node_dim = int(proteins[0]["data"].x.size(1))
+    mismatches = [
+        f"{str(prot.get('pdb_id', '?')).upper()}:{prot.get('chain', 'A')}={int(prot['data'].x.size(1))}"
+        for prot in proteins
+        if int(prot["data"].x.size(1)) != node_dim
+    ]
+    if mismatches:
+        raise ValueError(
+            f"Loaded graph node feature dim mismatch; expected {node_dim}, got "
+            + ", ".join(mismatches)
+        )
+    return node_dim
 
 
 def main() -> None:
@@ -861,6 +884,11 @@ def main() -> None:
         logger.error("No proteins loaded (%d failed). Check network / manifest.", failed)
         sys.exit(1)
     logger.info("Loaded %d proteins (%d failed)", len(proteins), failed)
+    try:
+        node_dim = _node_dim_from_loaded_graphs(proteins)
+    except ValueError as exc:
+        logger.error("%s", exc)
+        sys.exit(2)
 
     if proteins and (
         config.master_cold_lineage
@@ -889,7 +917,7 @@ def main() -> None:
             config = config.model_copy(update={"decoupled_uncertainty_heads": True})
             logger.info("Resume checkpoint uses decoupled uncertainty head")
 
-    model = build_model(config)
+    model = build_model(config, node_dim=node_dim)
     device = config.device
     if device != "cpu" and torch.cuda.is_available():
         model.to(device)

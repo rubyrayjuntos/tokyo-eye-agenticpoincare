@@ -46,12 +46,12 @@ def _resolve_pdb_path(pdb_id: str, pdb_dir: Path) -> Path:
 def _save_payload(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     save_obj = {
-        "scalars": payload["scalars"],
-        "missing": payload["missing"],
+        "scalars": torch.as_tensor(payload["scalars"], dtype=torch.float32),
+        "missing": torch.as_tensor(payload["missing"], dtype=torch.float32),
         "metadata": payload["metadata"],
     }
     if payload.get("binned") is not None:
-        save_obj["binned"] = payload["binned"]
+        save_obj["binned"] = torch.as_tensor(payload["binned"], dtype=torch.float32)
     torch.save(save_obj, path)
 
 

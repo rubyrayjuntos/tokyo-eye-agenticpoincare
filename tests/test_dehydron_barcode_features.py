@@ -289,6 +289,43 @@ def test_attach_missing_sidecar_zeros_shape(tmp_path):
     assert torch.allclose(x[:, 14:], torch.ones(4, 1))
 
 
+def test_precompute_sidecar_round_trips_through_attach(tmp_path):
+    import torch
+    from torch_geometric.data import Data
+
+    from experiments.training.v6._data import attach_dehydron_barcode_features
+    from experiments.training.v6.precompute_dehydron_barcodes import _save_payload
+
+    sidecar = tmp_path / "4OBE_A_dehydron_barcode_v1.pt"
+    _save_payload(
+        sidecar,
+        {
+            "scalars": np.full((4, 11), 2.0, dtype=np.float32),
+            "binned": np.full((4, 40), 3.0, dtype=np.float32),
+            "missing": np.zeros((4, 1), dtype=np.float32),
+            "metadata": {"version": BARCODE_FEATURE_VERSION},
+        },
+    )
+
+    weights_only_payload = torch.load(sidecar, map_location="cpu", weights_only=True)
+    assert isinstance(weights_only_payload["scalars"], torch.Tensor)
+    assert weights_only_payload["scalars"].dtype == torch.float32
+
+    prot = {
+        "pdb_id": "4OBE",
+        "chain": "A",
+        "data": Data(x=torch.ones(4, 3)),
+    }
+    attach_dehydron_barcode_features(prot, barcode_dir=tmp_path, use_binned=True)
+
+    x = prot["data"].x
+    assert x.shape == (4, 55)
+    assert torch.allclose(x[:, :3], torch.ones(4, 3))
+    assert torch.allclose(x[:, 3:14], torch.full((4, 11), 2.0))
+    assert torch.allclose(x[:, 14:54], torch.full((4, 40), 3.0))
+    assert torch.allclose(x[:, 54:], torch.zeros(4, 1))
+
+
 FOUROBE_PDB = Path(
     "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/"
     "checkpoints/v6/runs/slim_moe_structural_ssot_cold_v1/viewers/4obe/4obe_gosp_native.pdb"
