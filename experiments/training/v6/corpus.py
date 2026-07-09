@@ -56,6 +56,33 @@ def iter_corpus_entries(
     return entries
 
 
+def _barcode_cache_suffix(
+    *,
+    use_dehydron_barcode: bool = False,
+    use_binned_dehydron: bool = False,
+) -> str:
+    """Cache-key tag when barcode sidecars widen ``data.x`` (Task 5 / Task 6)."""
+    import os
+
+    if not use_dehydron_barcode:
+        use_dehydron_barcode = os.environ.get("USE_DEHYDRON_BARCODE", "").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+    if not use_binned_dehydron:
+        use_binned_dehydron = os.environ.get("USE_BINNED_DEHYDRON", "").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+    if not use_dehydron_barcode:
+        return ""
+    if use_binned_dehydron:
+        return "|dbh_v1_binned"
+    return "|dbh_v1"
+
+
 def load_training_proteins(
     pdb_dir: Path,
     manifest_path: Path | None = None,
@@ -63,6 +90,8 @@ def load_training_proteins(
     max_proteins: int | None = None,
     max_residues: int | None = None,
     use_cache: bool = True,
+    use_dehydron_barcode: bool = False,
+    use_binned_dehydron: bool = False,
 ) -> tuple[list[dict[str, Any]], int]:
     """
     Load protein graphs from corpus manifest.
@@ -92,8 +121,12 @@ def load_training_proteins(
         logger.info("Using writable corpus cache at %s (pdb_dir not writable)", cache_dir)
     manifest_data = load_corpus_manifest(manifest_path)
     residue_stage = int(manifest_data.get("residue_stage", 0) or 0)
+    barcode_tag = _barcode_cache_suffix(
+        use_dehydron_barcode=use_dehydron_barcode,
+        use_binned_dehydron=use_binned_dehydron,
+    )
     cache_key = hashlib.sha256(
-        f"{manifest.resolve()}|{max_proteins}|{max_residues}|bf_v1|rs{residue_stage}".encode()
+        f"{manifest.resolve()}|{max_proteins}|{max_residues}|bf_v1|rs{residue_stage}{barcode_tag}".encode()
     ).hexdigest()[:16]
     cache_path = cache_dir / f"graphs_{cache_key}.pt"
 

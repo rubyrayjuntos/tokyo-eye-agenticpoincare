@@ -431,6 +431,16 @@ ingest-corpus-master-features: ## MASTER features → dim_residue for 12-prot co
 ingest-corpus-master-features-dry-run: ## Dry-run MASTER feature ingest (compute only)
 	$(MAKE) ingest-corpus-master-features DRY_RUN=1
 
+precompute-dehydron-barcodes: ## Cache dehydron_barcode_v1 sidecars for Stage A small corpus
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@mkdir -p checkpoints/v65/dehydron_barcode_v1 pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v6.precompute_dehydron_barcodes \
+		--manifest /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--out-dir /app/checkpoints/v65/dehydron_barcode_v1 \
+		$(if $(BINNED),--binned,) \
+		$(if $(MAX_PROTEINS),--max-proteins $(MAX_PROTEINS),)
+
 run-9est-pipeline: ## Re-run discovery pathway on ingested 9EST (science container)
 	@docker compose exec -T science python -c "import urllib.request,json; print(json.dumps(json.load(urllib.request.urlopen(urllib.request.Request('http://localhost:8001/compute/pipeline', data=json.dumps({'structure_id':'9est'}).encode(), headers={'Content-Type':'application/json'}, method='POST'))), indent=2))"
 
