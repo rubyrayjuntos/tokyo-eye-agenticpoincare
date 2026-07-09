@@ -102,11 +102,38 @@ checkpoints/v65/runs/cold_start_v8_p3e/investigation_audit_corpus12.json
 
 ### 3. Cone / τ probes
 
+`make audit-dehydron-topology` loads 3-wide topology graphs **without** barcode sidecars. It is valid only for the **baseline** arm (node_dim 3). Scalars/full checkpoints (node_dim 15/55) will fail on forward if run through the current audit script.
+
+**Baseline arm** — run the offline audit:
+
 ```bash
-make audit-dehydron-topology CHECKPOINT=checkpoints/v65/runs/<RUN_ID>/v65_best.pt
+make audit-dehydron-topology CHECKPOINT=checkpoints/v65/runs/dbh_ablation_baseline/v65_best.pt
 ```
 
-**Pass:** cone alignment and τ-dehydron rim metrics do not regress vs baseline / p3e.
+**Scalars / full arms** — evaluate cone/τ from training artifacts already written under the run directory (or the same metrics in MLflow experiment `tokyo-eyes-v65`):
+
+| Source | Path | Cone / τ fields |
+|--------|------|-----------------|
+| Epoch history | `checkpoints/v65/runs/<RUN_ID>/metrics.json` | Last phase-3 epoch: `health.probe_r_depth_tau`, `health.cone_range_mean`, `health.probe_r_depth_rho` |
+| End-of-run focus | `checkpoints/v65/runs/<RUN_ID>/focus_summary.json` (if present) | `items[]` entries for `probe_r_depth_tau` and `cone_range_mean` |
+| MLflow | Run UI → Metrics | Same keys logged each epoch by `StageRunner` |
+
+Quick read of the final phase-3 epoch:
+
+```bash
+python3 - <<'PY'
+import json, sys
+run = sys.argv[1]
+rows = [r for r in json.load(open(f"checkpoints/v65/runs/{run}/metrics.json")) if r.get("phase") == 3]
+h = rows[-1]["health"]
+print("probe_r_depth_tau", h.get("probe_r_depth_tau"))
+print("cone_range_mean", h.get("cone_range_mean"))
+PY dbh_ablation_scalars
+```
+
+**Pass:** `probe_r_depth_tau` ≥ **0.15** (P_DEHYDRON_CONE_01 floor) and `cone_range_mean` stable; neither regresses vs baseline ablation run or `cold_start_v8_p3e`.
+
+> **Follow-up:** Wire `--use-dehydron-barcode` / `--dehydron-barcode-dir` into `experiments/training/v6/dehydron_cone_alignment_audit.py` so `make audit-dehydron-topology` works on barcode checkpoints.
 
 ### 4. MoE routing health
 
