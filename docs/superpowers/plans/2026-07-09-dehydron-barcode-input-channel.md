@@ -178,10 +178,10 @@ EOF
   - `SCALAR_NAMES: list[str]` length 11 (document order in module docstring)
   - `aggregate_residue_barcode_features(n_residues, midpoints, bars, *, long_lived_persistence_angstrom=2.0, use_binned=False, bin_width=0.25, bin_max=10.0) -> dict`
     - returns `{ "scalars": Float32[N,11], "binned": Float32[N,40]|None, "missing": Float32[N,1] }`
-  - Assignment rule: each midpoint’s bars contribute to **both** `donor_idx` and `acceptor_idx`
+  - Assignment rule: the structure-level barcode summary is assigned to residues touched by any midpoint (`donor_idx` and/or `acceptor_idx`)
   - Residue with no touching dehydrons: scalar row zeros, `missing=1`
   - Structure with zero midpoints / failed TDA: all rows zero, `missing=1` for all residues
-  - Counts use **sum**; max stats use **max**; means use **mean** over touching dehydrons’ bar sets
+  - Structure-level WitnessComplex does not produce true per-midpoint bar sets; scalars 0–9 and binned histograms are broadcast structure-global summaries, while `n_dehydrons_touching` remains local
   - Apply `log1p` to count and total-persistence scalars before return (document in metadata)
 
 **Locked scalar order (11):**

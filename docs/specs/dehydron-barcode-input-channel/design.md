@@ -71,7 +71,9 @@ Investigation audits (corpus-12 + literature spot-check) show the model already 
 
 ### 5.1 Always-on scalars (~10–16 dims, normalized)
 
-Per residue, aggregated over dehydrons that **touch** the residue (donor and/or acceptor):
+P1 computes one structure-level WitnessComplex over all dehydron midpoints in the chain.
+The resulting barcode summary scalars are broadcast to residues that **touch** at least
+one dehydron (donor and/or acceptor); only `n_dehydrons_touching` is residue-local.
 
 | Feature family | Examples |
 |----------------|----------|
@@ -79,15 +81,18 @@ Per residue, aggregated over dehydrons that **touch** the residue (donor and/or 
 | Persistence | total / max / mean / std |
 | Lifetime | fraction of bars above long-lived threshold |
 | Birth/death | mean birth, mean death (H1-focused) |
-| Optional | max H1 persistence only |
+| Local count | `n_dehydrons_touching` |
 
-Aggregation default: **mean** over touching dehydrons for distributional stats; **max** for “strongest local defect” scalars; **sum** for counts. Exact mix is config-documented and versioned in metadata.
+This intentionally does **not** produce true per-midpoint or per-dehydron bar sets:
+structure-level witness persistence does not associate bars back to individual
+midpoints. A future post-P1 local-association pass may add that mapping if the
+ablation warrants it.
 
 ### 5.2 Optional binned vector (flag-controlled)
 
 - Config: `use_binned_dehydron: bool` (default **`false`** for first training arms).
 - Persistence histogram and/or birth–death image, **~32–64 dims**, **0.25 Å** bins.
-- Same per-residue aggregation rule as scalars.
+- Same structure-global broadcast semantics as scalars.
 - If dim ≳ 32, optional small MLP projector before concat into `node_emb` input (ablation: projector on/off).
 
 ### 5.3 Missing / failed TDA

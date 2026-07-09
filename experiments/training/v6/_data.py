@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import pickle
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -22,6 +23,7 @@ from torch_geometric.data import Data
 
 logger = logging.getLogger(__name__)
 _MISSING_BARCODE_WARNED: set[str] = set()
+_LEGACY_BARCODE_LOAD_WARNED = False
 
 TRAINING_TARGETS = {
     "4OBE": {"gene": "KRAS",  "desc": "WT GDP",           "chain": "A", "stage0": True},
@@ -80,6 +82,22 @@ def _barcode_payload_to_numpy(barcode: dict) -> dict[str, np.ndarray | None]:
     }
 
 
+def _load_barcode_sidecar(sidecar: Path) -> dict:
+    """Load a sidecar with the restricted torch loader when available."""
+    global _LEGACY_BARCODE_LOAD_WARNED
+
+    try:
+        return torch.load(sidecar, map_location="cpu", weights_only=True)
+    except (TypeError, pickle.UnpicklingError):
+        if not _LEGACY_BARCODE_LOAD_WARNED:
+            logger.warning(
+                "Loading legacy dehydron barcode sidecar with unsafe torch.load; "
+                "re-run precompute-dehydron-barcodes so sidecars are tensor-only."
+            )
+            _LEGACY_BARCODE_LOAD_WARNED = True
+        return torch.load(sidecar, map_location="cpu", weights_only=False)
+
+
 def attach_dehydron_barcode_features(
     prot: Dict,
     *,
@@ -99,9 +117,7 @@ def attach_dehydron_barcode_features(
     sidecar = _barcode_sidecar_path(Path(barcode_dir), pdb_id, chain)
 
     if sidecar.is_file():
-        # Local training sidecars are trusted artifacts produced by precompute;
-        # allow legacy NumPy payloads while normalizing tensors/arrays below.
-        barcode = torch.load(sidecar, map_location="cpu", weights_only=False)
+        barcode = _load_barcode_sidecar(sidecar)
         barcode = _barcode_payload_to_numpy(barcode)
     else:
         warn_key = f"{pdb_id}:{chain}"

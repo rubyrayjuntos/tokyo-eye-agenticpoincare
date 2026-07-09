@@ -56,6 +56,29 @@ def iter_corpus_entries(
     return entries
 
 
+def _dehydron_sidecar_digest(dehydron_barcode_dir: Path | None) -> str:
+    """Digest sidecar file state for corpus cache invalidation."""
+    import hashlib
+
+    if dehydron_barcode_dir is None:
+        return "none"
+
+    barcode_dir = Path(dehydron_barcode_dir)
+    if not barcode_dir.is_dir():
+        return "none"
+
+    sidecars = sorted(barcode_dir.glob("*_dehydron_barcode_v1.pt"))
+    if not sidecars:
+        return "none"
+
+    digest = hashlib.sha256()
+    digest.update(f"count={len(sidecars)}".encode())
+    for sidecar in sidecars:
+        stat = sidecar.stat()
+        digest.update(f"|{sidecar.name}:{stat.st_size}:{stat.st_mtime_ns}".encode())
+    return digest.hexdigest()[:16]
+
+
 def _barcode_cache_suffix(
     *,
     use_dehydron_barcode: bool | None = None,
@@ -82,6 +105,7 @@ def _barcode_cache_suffix(
     suffix = "|dbh_v1_binned" if use_binned_dehydron else "|dbh_v1"
     if dehydron_barcode_dir is not None:
         suffix = f"{suffix}:{Path(dehydron_barcode_dir).resolve()}"
+    suffix = f"{suffix}|dbh_sidecars_{_dehydron_sidecar_digest(dehydron_barcode_dir)}"
     return suffix
 
 

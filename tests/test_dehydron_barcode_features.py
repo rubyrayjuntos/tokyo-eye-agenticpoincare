@@ -326,6 +326,39 @@ def test_precompute_sidecar_round_trips_through_attach(tmp_path):
     assert torch.allclose(x[:, 54:], torch.zeros(4, 1))
 
 
+def test_attach_sidecar_prefers_weights_only_load(tmp_path, monkeypatch):
+    import torch
+    from torch_geometric.data import Data
+
+    from experiments.training.v6 import _data
+
+    sidecar = tmp_path / "4OBE_A_dehydron_barcode_v1.pt"
+    sidecar.write_bytes(b"placeholder")
+    load_calls: list[bool | None] = []
+
+    def fake_load(path, *, map_location=None, weights_only=None):
+        assert path == sidecar
+        assert map_location == "cpu"
+        load_calls.append(weights_only)
+        return {
+            "scalars": torch.full((4, 11), 2.0),
+            "binned": None,
+            "missing": torch.zeros((4, 1)),
+        }
+
+    monkeypatch.setattr(_data.torch, "load", fake_load)
+
+    prot = {
+        "pdb_id": "4OBE",
+        "chain": "A",
+        "data": Data(x=torch.ones(4, 3)),
+    }
+    _data.attach_dehydron_barcode_features(prot, barcode_dir=tmp_path, use_binned=False)
+
+    assert load_calls == [True]
+    assert prot["data"].x.shape == (4, 15)
+
+
 FOUROBE_PDB = Path(
     "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/"
     "checkpoints/v6/runs/slim_moe_structural_ssot_cold_v1/viewers/4obe/4obe_gosp_native.pdb"

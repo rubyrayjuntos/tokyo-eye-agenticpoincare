@@ -1,6 +1,6 @@
 # Dehydron Barcode Ablation — Runbook
 
-**Related:** [`design.md`](design.md)  
+**Related:** [`design.md`](design.md)
 **Purpose:** Matched-epoch representation ablation (baseline vs scalars vs full binned) off a fixed slim MoE lineage.
 
 ---
@@ -123,12 +123,12 @@ Quick read of the final phase-3 epoch:
 ```bash
 python3 - <<'PY'
 import json, sys
-run = sys.argv[1]
+run = "dbh_ablation_scalars"
 rows = [r for r in json.load(open(f"checkpoints/v65/runs/{run}/metrics.json")) if r.get("phase") == 3]
 h = rows[-1]["health"]
 print("probe_r_depth_tau", h.get("probe_r_depth_tau"))
 print("cone_range_mean", h.get("cone_range_mean"))
-PY dbh_ablation_scalars
+PY
 ```
 
 **Pass:** `probe_r_depth_tau` ≥ **0.15** (P_DEHYDRON_CONE_01 floor) and `cone_range_mean` stable; neither regresses vs baseline ablation run or `cold_start_v8_p3e`.
