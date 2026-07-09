@@ -1,0 +1,167 @@
+# Goal-driven autonomous training for corpus-25.
+# Diagnostics → benchmark goals → regime → action + env setup.
+# LLMs may edit goals, regimes, and conditions — not make_target allowlist values.
+version: "1.1"
+name: corpus25_autonomous_loop
+
+champion:
+  run_id: auto_touchup_20260704_135750
+  checkpoint: checkpoints/v6/runs/auto_touchup_20260704_135750/v6_best.pt
+  gate_run_id: p4_corpus25_gate_v4
+
+corpus:
+  manifest: v6_corpus_stage_a_expand_v1.json
+  max_proteins: 23
+
+budget:
+  max_iterations: 10
+  max_failed_runs: 3
+  device: cuda
+
+# Multi-run program goals — journal + state progress (Phase A).
+program_goals:
+  metric_progress:
+    probe_r_epi_sasa:
+      target_min: 0.20
+      min_delta: 0.01
+      max_iterations_without_improvement: 4
+      on_stall: full_push
+  budget:
+    max_consecutive_unpromoted: 3
+    max_program_iterations: 10
+    max_regime_attempts:
+      epistemic_shell: 3
+  corpus_stage:
+    current: stage_a_23
+    next: stage_a_25
+    unlock_when:
+      critical_goals_passing_streak: 2
+  approval_required_for:
+    - full_push
+
+# Production + stretch targets used to pick training regime.
+benchmark_goals:
+  probe_r_epi_sasa:
+    target_min: 0.20
+    tier: critical
+    description: Routed epistemic uncertainty tracks SASA (shell alive)
+  routing_entropy:
+    target_max: 1.20
+    tier: important
+    description: MoE specialization — not uniform routing
+  per_structure_min_routing:
+    target_min: 0.05
+    tier: important
+    description: No structure drops below expert load floor
+  probe_r_depth_sasa:
+    target_min: 0.80
+    tier: stretch
+    description: Strong depth×SASA shell correlation
+  probe_r_epi_ale:
+    target_max: 0.70
+    tier: stretch
+    description: Epistemic decoupled from aleatoric
+
+# Map failing goal → training regime (ordered by goal tier in code).
+goal_regimes:
+  probe_r_epi_sasa: epistemic_shell
+  routing_entropy: moe_specialization
+  per_structure_min_routing: load_floor
+  probe_r_depth_sasa: depth_shell
+  probe_r_epi_ale: epistemic_decouple
+
+regimes:
+  epistemic_shell:
+    action_order:
+      - touchup_from_gate
+      - touchup_extended
+    after_unpromoted:
+      touchup_extended: touchup_from_gate
+
+  moe_specialization:
+    action_order:
+      - gate_promotion
+
+  load_floor:
+    action_order:
+      - gate_promotion
+
+  depth_shell:
+    action_order:
+      - touchup_extended
+
+  epistemic_decouple:
+    action_order:
+      - touchup_extended
+
+# Legacy fallback order if regime mapping misses.
+priority:
+  - touchup_from_gate
+  - touchup_extended
+  - gate_promotion
+  - full_push
+
+actions:
+  touchup_extended:
+    make_target: train-v6-p4-corpus25-touchup-extended
+    description: Extended SASA recal touchup (25 ep) from champion v6_best
+    run_id_prefix: auto_touchup_ext
+    env:
+      RESUME: "{champion_checkpoint}"
+    setup:
+      probe_r_epi_sasa:
+        EPISTEMIC_SASA_PEN_COEFF: "0.12"
+      probe_r_epi_ale:
+        EPISTEMIC_SASA_PEN_COEFF: "0.10"
+    when:
+      primary_focus: probe_r_epi_sasa
+      promotion_gate_passed: true
+      probe_r_epi_sasa_below: 0.20
+      skip_if_last_action: touchup_extended
+
+  touchup_from_gate:
+    make_target: train-v6-p4-corpus25-touchup
+    description: Standard routed uncertainty touchup from gate v6_best
+    run_id_prefix: auto_touchup
+    env:
+      RESUME: "checkpoints/v6/runs/{gate_run_id}/v6_best.pt"
+      GATE_PROMOTION_RUN: "{gate_run_id}"
+    setup:
+      probe_r_epi_sasa:
+        P4_EPISTEMIC_LR: "5e-5"
+    when:
+      primary_focus: probe_r_epi_sasa
+      promotion_gate_passed: true
+      routing_entropy_below: 1.15
+      requires_gate_best: true
+
+  gate_promotion:
+    make_target: train-v6-p4-corpus25-gate
+    description: Gate-only MoE promotion when routing is too diffuse or load floor fails
+    run_id_prefix: auto_gate
+    env:
+      RESUME: "{champion_checkpoint}"
+    setup:
+      routing_entropy:
+        P4_GATE_BALANCE_COEFF: "0.08"
+      per_structure_min_routing:
+        P4_GATE_LOAD_FLOOR_COEFF: "14"
+        P4_GATE_LOAD_FLOOR_MIN: "0.05"
+      per_structure_min_routing_severe:
+        P4_GATE_LOAD_FLOOR_COEFF: "18"
+        P4_GATE_LOAD_FLOOR_MIN: "0.06"
+    when:
+      promotion_gate_passed: true
+
+  full_push:
+    make_target: train-v6-p4-corpus25-push
+    description: Extended touchup → gate → touchup pipeline (expensive)
+    run_id_prefix: auto_push
+    env:
+      RESUME: "{champion_checkpoint}"
+      TOUCHUP_EXTENDED_RUN: "{prior_run_id}"
+      GATE_PROMOTION_RUN: "{prior_run_id}_gate"
+      GATE_TOUCHUP_RUN: "{prior_run_id}_final"
+    when:
+      promotion_gate_passed: false
+      min_failed_assessments: 2

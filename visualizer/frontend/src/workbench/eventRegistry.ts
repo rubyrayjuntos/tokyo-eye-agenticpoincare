@@ -3,12 +3,15 @@ import type { WorkbenchPhaseGroup } from "./phaseGroups";
 
 export type WorkbenchPanelComponentType =
   | "briefing-panel"
+  | "control-console-panel"
   | "triple-viewport-panel"
   | "findings-dock-panel"
   | "poincare-panel"
   | "molecular-panel"
   | "chat-panel"
-  | "telemetry-panel";
+  | "telemetry-panel"
+  | "model-lifecycle-panel"
+  | "mlflow-panel";
 
 export interface OrchestrationSnapshotPayload {
   session_id?: string;

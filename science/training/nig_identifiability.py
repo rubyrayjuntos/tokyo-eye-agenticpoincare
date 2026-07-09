@@ -164,12 +164,24 @@ def aleatoric_shaping_holdout_design(
     return {
         "gate": "G4",
         "holdout_fraction": holdout_fraction,
+        "holdout_mode_default": "protein",
         "stratify_by_dehydron": stratify_by_dehydron,
         "train_mask": "residues receiving var_penalty and aleatoric_hinge",
-        "holdout_mask": "residues excluded from shaping loss; still in NIG/gaussian primary loss",
+        "holdout_mask": "whole proteins (default) or residue_stratified excluded from shaping",
         "p8_eval": "tau_boundary_aleatoric_elevation(rows[holdout_mask]) only",
-        "pass": "holdout P8 lift > 0 and holdout aleatoric_std ≥ informative floor",
-        "fail": "full-corpus P8 pass but holdout P8 fail → mask memorization",
+        "implementation": (
+            "science/training/aleatoric_shaping_holdout.py; "
+            "v3_aleatoric_shaping_loss in science/dtie/v6/loss.py; "
+            "g4_aleatoric_shaping_holdout_report in evidential_validation.py"
+        ),
+        "pass_frozen": {
+            "holdout_p8_g4a": "relative_lift≥0.20 AND ale_std≥0.05 on holdout",
+            "no_memorization": "NOT (full_p8_ok AND NOT holdout_p8_ok)",
+            "transfer_ratio_min": 0.70,
+            "transfer_ratio": "holdout_rel_lift / full_rel_lift",
+            "rho_coupling_report": "|r(ale,ρ)| on corpus + holdout; ≥0.85 → reparameterization risk",
+        },
+        "fail": "full-corpus P8 pass but holdout P8 fail → mask memorization; or transfer < 0.70",
         "ablation": {
             "A": "no var_penalty/hinge (or baseline P4)",
             "B": "shaping on train mask only",
@@ -186,17 +198,23 @@ def g5_epistemic_provenance_checklist() -> dict[str, Any]:
         "teacher_checkpoint": "science/dtie/v3/checkpoints/v2_bridge_epoch_014.pt",
         "teacher_epistemic_risk": "v3 epistemic ≈ SASA proxy (SASA in x[:,3], coupled head, temp=2.8)",
         "metrics_to_compute": [
-            "r(epi, SASA) marginal on Stage A corpus",
+            "r(epi, SASA) marginal on Stage A corpus (|r| for proxy flag)",
             "r(epi, SASA | ρ) partial (or residualized)",
-            "r(student_epi, teacher_epi) per structure",
-            "r(student_epi, teacher_epi) on proteins outside teacher precompute cache",
+            "r(student_epi, teacher_epi) per structure + bootstrap CI across proteins",
+            "r(student_epi, teacher_epi | ρ) partial",
+            "G5b: r(epi, ρ) marginal + OOD (1PGB) contrast raw vs ρ-residualized",
         ],
-        "flag_distilled_proxy_if": (
-            "marginal r(epi,SASA) ≥ 0.85 AND teacher-student r ≥ 0.80 on same graphs"
+        "flag_distilled_sasa_proxy_if": (
+            "|r(epi,SASA)| ≥ 0.85 AND |teacher-student r| ≥ 0.80 on same graphs "
+            "(bootstrap CI_low ≥ 0.80 for robust trigger)"
+        ),
+        "flag_rho_feature_proxy_if": (
+            "G5b: |r(epi,ρ)| ≥ 0.85 AND OOD epistemic elevation collapses after ρ residualization"
         ),
         "pass_interpretation": (
             "partial r(epi,SASA|ρ) materially below marginal, OR holdout structures "
-            "show student epistemic spread not explained by teacher alignment"
+            "show student epistemic spread not explained by teacher alignment; "
+            "G5b: OOD novelty survives ρ control when |r(epi,ρ)| is high"
         ),
         "does_not_block_retrain": True,
         "blocks_claim": "emergent DER epistemic without provenance caveat",
@@ -205,8 +223,25 @@ def g5_epistemic_provenance_checklist() -> dict[str, Any]:
             "S6 and any epistemic-based production claim carry asterisk: "
             "'informative but largely SASA-proxy inherited via v3 teacher distillation — "
             "not v6-native DER exposure discovery.' Do not count S6 epistemic leg toward "
-            "production uncertainty gates without native-learning corroboration."
+            "production uncertainty gates without native-learning corroboration. "
+            "Same asterisk if G5b rho_feature_proxy flags."
         ),
+    }
+
+
+def g5b_rho_feature_proxy_checklist() -> dict[str, Any]:
+    """G5b — ρ is a direct input; high |r(epi,ρ)| may be feature reparameterization."""
+    return {
+        "gate": "G5b",
+        "candidate_feature": "ρ (dehydron order parameter, x[:,0])",
+        "metrics": [
+            "r(epi, ρ) marginal",
+            "OOD pinned 1PGB: mean(epi) ratio in-corpus vs OOD (raw)",
+            "Same contrast on epistemic residualized w.r.t. ρ (fit in-corpus)",
+            "r(student, teacher | ρ) — distillation beyond ρ",
+        ],
+        "flag_if": "|r(epi,ρ)| ≥ 0.85 AND raw OOD elevation collapses after ρ control",
+        "does_not_duplicate_g5a": "SASA-distillation ruled separately; G5b catches relocated proxy",
     }
 
 
@@ -264,6 +299,7 @@ def analyze_v3_vs_v6_uncertainty_training() -> dict[str, Any]:
             "G4a": g4a_p8_magnitude_gate(),
             "G4": aleatoric_shaping_holdout_design(),
             "G5": g5_epistemic_provenance_checklist(),
+            "G5b": g5b_rho_feature_proxy_checklist(),
         },
         "loss_philosophy": loss_philosophy_options(),
     }

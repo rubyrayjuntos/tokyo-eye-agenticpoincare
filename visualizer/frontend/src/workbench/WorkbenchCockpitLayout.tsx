@@ -8,6 +8,7 @@ import type { HypothesisLifecycleState } from "../lib/hypothesisLifecycleMachine
 import type { ViewportDirective, ViewportState } from "../lib/types";
 import type { MolecularColorMode, PanelPoincareColorMode } from "../components/viewers";
 import type { SelectedResidueInfo } from "../lib/types";
+import { PINNED_ACTIVITY_PANELS } from "./activityBarPolicy";
 import { PhaseGroupTabs, resolveActivePhaseGroup } from "./PhaseGroupTabs";
 import { WorkbenchCanvas } from "./WorkbenchCanvas";
 import { useLayoutEngineAdapter, useWorkbenchBus } from "./WorkbenchProvider";
@@ -149,6 +150,7 @@ export function WorkbenchCockpitLayout(props: WorkbenchCockpitLayoutProps) {
         </div>
         <div className="flex min-h-0 flex-1">
         <ToolDock
+          pinnedTools={[...PINNED_ACTIVITY_PANELS]}
           allowedTools={props.allowedTools}
           blockedTools={props.blockedTools}
           activePanel={props.activePanel}

@@ -21,11 +21,11 @@ async def run_gnn_inference(
     caller_identity: str = "compute_job_gnn_inference",
     device: str = "cpu",
 ) -> tuple[PhaseResult, GNNInferenceResult | None]:
-    """Run V6 GNN inference and persist hyperbolic + Euclidean embeddings via Normalizer."""
+    """Run GNN inference via contract-registered runner and persist via Normalizer."""
     from data.normalizer.core import Normalizer
+    from science.contracts.model_registry import get_production_model
     from science.dtie.common.adapters import GNNOutputAdapter
     from science.dtie.common.graph_builder import GraphBuilder
-    from science.dtie.v6.gnn.runner import V6GNNRunner
 
     structure_id = config.structure_id
     builder = GraphBuilder(db=db)
@@ -43,8 +43,14 @@ async def run_gnn_inference(
             None,
         )
 
+    prod = get_production_model()
+    import importlib
+
+    runner_mod = importlib.import_module(prod.runner_module)
+    runner_cls = getattr(runner_mod, prod.runner_class)
+
     pyg_data = builder.to_pyg(graph)
-    runner = V6GNNRunner(
+    runner = runner_cls(
         checkpoint_path=config.checkpoint_path,
         device=device,
         curvature_override=config.curvature_override,

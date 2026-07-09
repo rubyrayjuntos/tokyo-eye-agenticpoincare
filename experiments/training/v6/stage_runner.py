@@ -5,11 +5,13 @@ from __future__ import annotations
 import logging
 import math
 import time
+from pathlib import Path
 from typing import Any
 
 import torch
 
 from science.training.topology_depth import topology_depth_lineage
+from science.training.gnn_lineage import get_lineage
 from science.training.checkpoint import CheckpointData, CheckpointManager
 from science.training.checkpoint_score import score_checkpoint
 from science.training.config import (
@@ -49,6 +51,9 @@ from science.training.config import (
     p4_epistemic_decoupling_phase_config,
     p4_head_decouple_phase_config,
     p4_head_decouple_decorr_only_phase_config,
+    p4_v3_aleatoric_shaping_phase_config,
+    p4_g4_shaping_only_isolation_phase_config,
+    p4_g4_ale_only_unshaped_phase_config,
     p4_corpus25_gate_phase_config,
     p4_corpus25_touchup_extended_phase_config,
     p4_gate_promotion_phase_config,
@@ -59,6 +64,7 @@ from science.training.config import (
     routing_save_max_for_epoch,
     routing_save_ceiling_for_display,
 )
+from science.training.expert_timeout import ExpertTimeoutController
 from science.training.monitor import ConvergenceMonitor
 from science.training.p3_entry_gate import p3_entry_gate_verdict
 from science.training.dehydron_cone_gate import dehydron_cone_gate_verdict
@@ -67,8 +73,10 @@ from experiments.training.v6.train_loop import (
     build_p4_optimizer,
     measure_geometry_health,
     set_expert_dropout,
+    set_p4_aleatoric_only_freeze,
     set_p4_uncertainty_only_freeze,
     set_gate_only_freeze,
+    set_routing_load_floor_min,
     set_uncertainty_from_backbone,
     train_epoch,
 )
@@ -93,7 +101,14 @@ class StageRunner:
         self.config = config
         self.tracker = tracker
         self.v2_teacher = v2_teacher
-        self.checkpoint_mgr = CheckpointManager(config.output_dir, len(proteins))
+        # P1 MoE-alive hard timeout (share>40% → ban 2 epochs); None outside slim P1.
+        self._expert_timeout: ExpertTimeoutController | None = None
+        self.checkpoint_mgr = CheckpointManager(
+            config.output_dir,
+            len(proteins),
+            checkpoint_prefix=get_lineage(config.gnn_lineage).checkpoint_prefix,
+            architecture_version=get_lineage(config.gnn_lineage).architecture_version,
+        )
         self.monitor = ConvergenceMonitor()
         metrics_path = config.output_dir / "metrics.json"
         if metrics_path.is_file():
@@ -105,6 +120,28 @@ class StageRunner:
                 self.metrics_log = []
         else:
             self.metrics_log = []
+        # Cross-run P3 resume: seed P2 routing history from the resume checkpoint's
+        # sibling metrics.json so P3_ENTRY_GATE can see prior phase-2 entropy.
+        if (
+            not self.metrics_log
+            and resume_state is not None
+            and config.resume is not None
+        ):
+            sibling = Path(config.resume).resolve().parent / "metrics.json"
+            if sibling.is_file() and sibling != metrics_path.resolve():
+                try:
+                    import json
+
+                    seeded = json.loads(sibling.read_text())
+                    if isinstance(seeded, list) and seeded:
+                        self.metrics_log = seeded
+                        logger.info(
+                            "Seeded metrics_log (%d epochs) from resume sibling %s",
+                            len(seeded),
+                            sibling,
+                        )
+                except (json.JSONDecodeError, OSError) as exc:
+                    logger.warning("Could not seed metrics from %s: %s", sibling, exc)
         self.global_epoch = resume_state.global_epoch if resume_state else 0
         self.best_score = resume_state.score if resume_state else -math.inf
         self._saved_eligible = resume_state is not None and resume_state.score > -math.inf
@@ -399,6 +436,58 @@ class StageRunner:
                     max_probe_r_epi_sasa_save=sasa_save,
                 )
             ]
+        if self.config.p4_v3_aleatoric_shaping:
+            epochs = self.config.epochs_override or 20
+            sasa_save = (
+                self.config.max_probe_r_epi_sasa_save
+                if self.config.max_probe_r_epi_sasa_save is not None
+                else 0.78
+            )
+            return [
+                p4_v3_aleatoric_shaping_phase_config(
+                    lr=self.config.p4_epistemic_lr,
+                    epochs=epochs,
+                    max_probe_r_epi_sasa_save=sasa_save,
+                    w_var_penalty=(
+                        self.config.w_var_penalty
+                        if self.config.w_var_penalty is not None
+                        else 2.8
+                    ),
+                )
+            ]
+        if self.config.p4_g4_shaping_only_isolation:
+            epochs = self.config.epochs_override or 12
+            sasa_save = (
+                self.config.max_probe_r_epi_sasa_save
+                if self.config.max_probe_r_epi_sasa_save is not None
+                else 0.78
+            )
+            return [
+                p4_g4_shaping_only_isolation_phase_config(
+                    lr=self.config.p4_epistemic_lr,
+                    epochs=epochs,
+                    max_probe_r_epi_sasa_save=sasa_save,
+                    w_var_penalty=(
+                        self.config.w_var_penalty
+                        if self.config.w_var_penalty is not None
+                        else 2.8
+                    ),
+                )
+            ]
+        if self.config.p4_g4_ale_only_unshaped:
+            epochs = self.config.epochs_override or 12
+            sasa_save = (
+                self.config.max_probe_r_epi_sasa_save
+                if self.config.max_probe_r_epi_sasa_save is not None
+                else 0.78
+            )
+            return [
+                p4_g4_ale_only_unshaped_phase_config(
+                    lr=self.config.p4_epistemic_lr,
+                    epochs=epochs,
+                    max_probe_r_epi_sasa_save=sasa_save,
+                )
+            ]
         if self.config.p4_head_decouple:
             epochs = self.config.epochs_override or 20
             sasa_save = (
@@ -679,7 +768,15 @@ class StageRunner:
                 _n_experts = model_num_experts(
                     self.model, default=self.config.num_experts
                 )
-                _p3_ceiling = routing_entropy_save_ceiling(num_experts=_n_experts)
+                # Slim MoE uses a higher H band (~1.20–1.30); align entry gate with save ceiling.
+                if self.config.slim_moe_structural_ssot:
+                    _p3_ceiling = float(
+                        phase_cfg.routing_save_ceiling_final
+                        or phase_cfg.routing_save_ceiling_start
+                        or 1.30
+                    )
+                else:
+                    _p3_ceiling = routing_entropy_save_ceiling(num_experts=_n_experts)
                 p3_gate = p3_entry_gate_verdict(p2_route_h, ceiling=_p3_ceiling)
                 if not p3_gate.passed:
                     p3_entry_skipped = True
@@ -786,6 +883,56 @@ class StageRunner:
                     phase_cfg.coeffs.routing_load_floor_coeff,
                     phase_cfg.coeffs.routing_load_floor_min,
                 )
+            if phase_cfg.coeffs.routing_load_ceiling_coeff > 0:
+                logger.info(
+                    "  Routing load ceiling: λ=%.2f max_share=%.2f (anti-dominance hinge)",
+                    phase_cfg.coeffs.routing_load_ceiling_coeff,
+                    phase_cfg.coeffs.routing_load_ceiling_max,
+                )
+            if phase_cfg.slim_moe_structural_ssot_train and phase_cfg.freeze_experts:
+                logger.info(
+                    "  Frozen experts: %s (weights locked; gate may still route to them)",
+                    ",".join(f"e{i}" for i in phase_cfg.freeze_experts),
+                )
+            # Soft expert timeout: slim MoE P1–P3. Default share>~50%; P3 may
+            # tighten and restrict to the generalist (e2) only.
+            if phase_cfg.slim_moe_structural_ssot_train and phase_cfg.phase in (1, 2, 3):
+                from science.training.routing_gate_bounds import model_num_experts
+
+                n_exp = model_num_experts(self.model, default=self.config.num_experts)
+                max_share = (
+                    float(phase_cfg.expert_timeout_max_share)
+                    if phase_cfg.expert_timeout_max_share is not None
+                    else 0.50
+                )
+                eligible = (
+                    list(phase_cfg.expert_timeout_eligible_experts)
+                    if phase_cfg.expert_timeout_eligible_experts is not None
+                    else None
+                )
+                self._expert_timeout = ExpertTimeoutController(
+                    num_experts=n_exp,
+                    max_share=max_share,
+                    ban_epochs=1,
+                    cooldown_epochs=1,
+                    eligible_experts=eligible,
+                )
+                eligible_txt = (
+                    ",".join(f"e{i}" for i in eligible) if eligible is not None else "all"
+                )
+                logger.info(
+                    "  Expert timeout: soft share>%.0f%% → ban %d epoch "
+                    "(cooldown=%d, keep≥2 experts, eligible=%s, train-only mask%s)",
+                    100.0 * self._expert_timeout.max_share,
+                    self._expert_timeout.ban_epochs,
+                    self._expert_timeout.cooldown_epochs,
+                    eligible_txt,
+                    "; gate frozen" if phase_cfg.freeze_gate else "",
+                )
+            else:
+                if self._expert_timeout is not None:
+                    self._expert_timeout.clear_gate(self.model)
+                self._expert_timeout = None
             if phase_cfg.min_disc_r_std_save is not None:
                 logger.info(
                     "  Disc save gate: disc_r_std >= %.3f required for v6_best",
@@ -796,7 +943,16 @@ class StageRunner:
                     "  Disc visual gate: line_thickness_rms >= %.3f required for v6_best",
                     phase_cfg.min_disc_line_thickness_save,
                 )
-            if phase_cfg.epistemic_uncertainty_only_train:
+            if phase_cfg.aleatoric_only_train:
+                set_p4_aleatoric_only_freeze(self.model)
+                set_uncertainty_from_backbone(self.model, enabled=False)
+                optimizer = build_p4_optimizer(self.model, lr=phase_cfg.lr)
+                logger.info(
+                    "  Phase 4 optimizer: AdamW on aleatoric uncertainty subpath only (lr=%.2e, AMP off)",
+                    phase_cfg.lr,
+                )
+                logger.info("  Uncertainty probes: routed tangent (production inference path)")
+            elif phase_cfg.epistemic_uncertainty_only_train:
                 set_p4_uncertainty_only_freeze(self.model)
                 set_uncertainty_from_backbone(self.model, enabled=False)
                 optimizer = build_p4_optimizer(self.model, lr=phase_cfg.lr)
@@ -870,6 +1026,18 @@ class StageRunner:
                 elif phase_cfg.freeze_radial_epochs > 0 and epoch < phase_cfg.freeze_radial_epochs:
                     freeze_radial = True
                 set_expert_dropout(self.model, dropout_p)
+                if phase_cfg.coeffs.routing_load_floor_coeff > 0:
+                    set_routing_load_floor_min(
+                        self.model, phase_cfg.coeffs.routing_load_floor_min
+                    )
+                if self._expert_timeout is not None:
+                    banned = self._expert_timeout.active_bans()
+                    self._expert_timeout.apply_to_gate(self.model)
+                    if banned:
+                        logger.info(
+                            "  Expert timeout active bans: %s",
+                            ",".join(f"e{i}" for i in banned),
+                        )
 
                 losses = train_epoch(
                     self.model,
@@ -880,6 +1048,7 @@ class StageRunner:
                     freeze_angular=freeze_angular,
                     freeze_backbone=phase_cfg.freeze_backbone,
                     freeze_gate=phase_cfg.freeze_gate,
+                    freeze_experts=list(phase_cfg.freeze_experts),
                     path_alignment_train=phase_cfg.path_alignment_train,
                     rec_ablation_train=phase_cfg.rec_ablation_train,
                     projection_recovery_train=phase_cfg.projection_recovery_train,
@@ -978,6 +1147,23 @@ class StageRunner:
                     or phase_cfg.topology_gate_disc_recovery_train
                     or phase_cfg.topology_crescent_recovery_train
                 )
+                from science.training.mlflow_governance import (
+                    governance_epoch_metrics,
+                    stage_gate_passed,
+                    telemetry_track_metrics,
+                )
+                from science.training.routing_metrics import inference_mode_routing_metrics
+
+                # Eval / save gates must see unmasked routing (timeout is train-only).
+                if self._expert_timeout is not None:
+                    self._expert_timeout.clear_gate(self.model)
+
+                infer_routing = inference_mode_routing_metrics(
+                    self.model,
+                    self.proteins,
+                    self.config.device,
+                    structural_disc_frozen=bool(self.config.structural_disc_frozen),
+                )
                 scored = score_checkpoint(
                     health,
                     losses,
@@ -995,6 +1181,9 @@ class StageRunner:
                     max_probe_r_epi_sasa_save=(
                         None if skip_unc_gates else phase_cfg.max_probe_r_epi_sasa_save
                     ),
+                    min_probe_r_epi_sasa_save=(
+                        None if skip_unc_gates else phase_cfg.min_probe_r_epi_sasa_save
+                    ),
                     min_epistemic_std_save=(
                         None if skip_unc_gates else phase_cfg.min_epistemic_std_save
                     ),
@@ -1007,6 +1196,11 @@ class StageRunner:
                         else phase_cfg.require_tau_ale_elevation_save
                     ),
                     topology_depth=self._topology_depth,
+                    inference_routing=infer_routing,
+                    max_expert_starvation_save=phase_cfg.max_expert_starvation_save,
+                    min_eval_routing_fraction_save=phase_cfg.min_eval_routing_fraction_save,
+                    max_eval_routing_fraction_save=phase_cfg.max_eval_routing_fraction_save,
+                    routing_entropy_min_save=phase_cfg.routing_entropy_min_save,
                 )
                 score = scored.score
 
@@ -1017,7 +1211,15 @@ class StageRunner:
                     "checkpoint_eligible": scored.eligible,
                     "routing_save_max": route_ceiling,
                     "elapsed_s": elapsed,
+                    "eval_min_routing_fraction": float(
+                        infer_routing.get("min_routing_fraction", float("nan"))
+                    ),
+                    "eval_max_routing_fraction": float(
+                        infer_routing.get("max_routing_fraction", float("nan"))
+                    ),
                 }
+                # expert_load is a list for timeout observe; MLflow needs scalars only.
+                log_metrics.pop("expert_load", None)
                 from science.training.metric_focus import assess_training_focus, focus_mlflow_metrics
 
                 focus = assess_training_focus(
@@ -1030,16 +1232,6 @@ class StageRunner:
                     topology_depth=self._topology_depth,
                 )
                 log_metrics.update(focus_mlflow_metrics(focus))
-                from science.training.mlflow_governance import (
-                    governance_epoch_metrics,
-                    stage_gate_passed,
-                    telemetry_track_metrics,
-                )
-                from science.training.routing_metrics import inference_mode_routing_metrics
-
-                infer_routing = inference_mode_routing_metrics(
-                    self.model, self.proteins, self.config.device
-                )
                 gov = governance_epoch_metrics(
                     health,
                     losses,
@@ -1121,6 +1313,12 @@ class StageRunner:
                         route_display,
                         elapsed,
                     )
+                logger.info(
+                    "    eval hard routing: min_frac=%.3f max_frac=%.3f eff_experts=%.2f",
+                    float(infer_routing.get("min_routing_fraction", float("nan"))),
+                    float(infer_routing.get("max_routing_fraction", float("nan"))),
+                    float(infer_routing.get("effective_experts", float("nan"))),
+                )
                 if phase_cfg.phase == 4 or float(losses.get("epistemic_decoupling", 0.0)) > 0.0:
                     logger.info(
                         "    decouple r(epi,bf_resid)=%.3f partial(epi,sasa|depth)=%.3f "
@@ -1134,11 +1332,33 @@ class StageRunner:
                         float(coeffs.get("epistemic_sasa_pen_coeff", 0.0)),
                     )
                 loads = losses.get("expert_load")
-                if loads is not None and hasattr(loads, "numel") and loads.numel() >= 4:
+                soft_load_list: list[float] | None = None
+                if isinstance(loads, (list, tuple)) and len(loads) >= 1:
+                    soft_load_list = [float(x) for x in loads]
+                elif loads is not None and hasattr(loads, "numel") and loads.numel() >= 1:
+                    soft_load_list = [float(loads[i]) for i in range(loads.numel())]
+                elif any(f"expert_load_{i}" in losses for i in range(4)):
+                    soft_load_list = [
+                        float(losses.get(f"expert_load_{i}", 0.0)) for i in range(4)
+                    ]
+                if soft_load_list is not None:
                     logger.info(
                         "    expert_load=%s",
-                        ", ".join(f"{float(loads[i]):.3f}" for i in range(min(4, loads.numel()))),
+                        ", ".join(f"{x:.3f}" for x in soft_load_list[:4]),
                     )
+                if self._expert_timeout is not None and soft_load_list is not None:
+                    # Decrement bans that just trained under the mask, then maybe ban.
+                    still = self._expert_timeout.tick_end_of_epoch()
+                    newly = self._expert_timeout.observe_loads(
+                        soft_load_list,
+                        epoch=self.global_epoch,
+                    )
+                    if newly or still:
+                        logger.info(
+                            "    expert_timeout: newly_banned=%s still_banned=%s",
+                            newly,
+                            self._expert_timeout.active_bans(),
+                        )
                 if self.config.full_hyp_moe_test or self._topology_depth:
                     expert_bits = []
                     disc_std_bits = []

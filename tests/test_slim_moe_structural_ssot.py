@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import torch
 from torch_geometric.data import Data
 
@@ -22,8 +23,10 @@ from science.training.config import (
 
 def test_apply_slim_moe_phases_zeros_disc_geometry_losses() -> None:
     phases = apply_slim_moe_structural_ssot_phases(default_v6_phases())
+    assert len(phases) == 3
+    assert [p.epochs for p in phases] == [40, 160, 50]
     assert all(p.slim_moe_structural_ssot_train for p in phases)
-    assert all(p.freeze_radial and p.freeze_angular for p in phases)
+    assert all(p.freeze_radial and p.freeze_angular and p.freeze_backbone for p in phases)
     for phase in phases:
         c = phase.coeffs
         assert c.disc_occupancy_coeff == 0.0
@@ -31,8 +34,39 @@ def test_apply_slim_moe_phases_zeros_disc_geometry_losses() -> None:
         assert c.disc_path_align_coeff == 0.0
         assert c.angular_coeff == 0.0
         assert c.cone_target_mode == "tau_dehydron_rim"
+        assert phase.max_expert_starvation_save == 0
+        assert phase.routing_entropy_min_save == 0.90
+        assert phase.routing_save_ceiling_start == 1.30
+        assert phase.routing_save_ceiling_final == 1.30
+    p1 = next(p for p in phases if p.phase == 1)
+    assert p1.freeze_gate is False
+    assert p1.min_eval_routing_fraction_save == 0.08
+    assert p1.max_eval_routing_fraction_save == 0.50
+    # Light safety nets — timeout@50% is primary anti-dominance (v8+).
+    assert p1.coeffs.balance_coeff <= 0.03
+    assert p1.coeffs.routing_load_floor_coeff <= 2.0
+    assert p1.coeffs.routing_load_floor_min <= 0.08
+    assert p1.coeffs.routing_load_ceiling_coeff <= 5.0
+    assert p1.coeffs.routing_load_ceiling_max >= 0.50
     p2 = next(p for p in phases if p.phase == 2)
-    assert p2.coeffs.routing_load_floor_coeff >= 0.12
+    assert p2.freeze_gate is False
+    assert 0.10 <= p2.expert_dropout_p <= 0.12
+    assert p2.coeffs.routing_load_floor_coeff == 0.0
+    assert p2.coeffs.routing_load_ceiling_coeff == 0.0
+    assert p2.coeffs.epi_ale_decorrelation_coeff > 0.0
+    assert p2.coeffs.epistemic_sasa_pen_coeff > 0.0
+    assert p2.min_eval_routing_fraction_save == 0.08
+    assert p2.max_eval_routing_fraction_save == 0.50
+    p3 = next(p for p in phases if p.phase == 3)
+    assert p3.freeze_gate is False
+    assert p3.lr == pytest.approx(p1.lr * 0.5)
+    assert p3.coeffs.balance_coeff <= 0.01
+    assert p3.coeffs.routing_load_floor_coeff == 0.0
+    assert p3.coeffs.routing_load_ceiling_coeff == 0.0
+    assert p3.min_eval_routing_fraction_save == 0.05
+    assert p3.max_eval_routing_fraction_save == 0.55
+    assert p1.min_eval_routing_fraction_save == 0.08
+    assert p1.max_eval_routing_fraction_save == 0.50
 
 
 def test_apply_slim_moe_config_sets_structural_frozen_and_topology_gate() -> None:
@@ -70,14 +104,34 @@ def test_set_slim_moe_freeze_geometry_heads_only() -> None:
         "angular_head.",
         "hyp_proj_head_2d.",
         "hyp_proj_head_3d.",
+        "convs.",
+        "norms.",
+        "node_emb.",
     )
     for name, param in model.named_parameters():
-        if name.startswith(frozen_prefixes) or name == "expert_depth_bias":
+        if name.startswith(frozen_prefixes) or name in ("expert_depth_bias", "log_c"):
             assert not param.requires_grad, name
         elif name.startswith("gate."):
             assert param.requires_grad, name
         elif name.startswith("experts."):
             assert param.requires_grad, name
+
+
+def test_set_slim_moe_freeze_gate_locks_gate_in_p3() -> None:
+    model = GOSPConeMapperV6(
+        hidden=16,
+        num_layers=2,
+        num_experts=2,
+        hyperbolic_gate=False,
+        topology_only_gate=True,
+    )
+    set_slim_moe_structural_ssot_freeze(model, freeze_gate=True)
+    for name, param in model.named_parameters():
+        if name.startswith("gate."):
+            assert not param.requires_grad, name
+        elif name.startswith("experts."):
+            assert param.requires_grad, name
+    assert model.gate.detach_gate_input is True
 
 
 def test_prepare_training_batch_attaches_structural_disc() -> None:

@@ -15,4 +15,9 @@ export {
   groupToDefaultDiscoveryPhase,
   type WorkbenchPhaseGroup,
 } from "./phaseGroups";
+export {
+  PINNED_ACTIVITY_PANELS,
+  PINNED_PANEL_DOCK_SPAWN,
+  type PinnedActivityPanel,
+} from "./activityBarPolicy";
 export type { WorkbenchTopic, EventRegistry } from "./eventRegistry";

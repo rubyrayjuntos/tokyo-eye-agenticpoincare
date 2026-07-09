@@ -18,6 +18,8 @@ RUN mkdir -p /var/lib/postgresql/wal_archive \
 # Custom PostgreSQL configuration for WAL archiving and performance
 COPY docker/postgres/postgresql.conf /etc/postgresql/conf.d/tokyo-eye.conf
 COPY docker/postgres/init-extensions.sql /docker-entrypoint-initdb.d/00-extensions.sql
+COPY docker/postgres/01-mlflow-db.sh /docker-entrypoint-initdb.d/01-mlflow-db.sh
+RUN chmod +x /docker-entrypoint-initdb.d/01-mlflow-db.sh
 
 # Override the default CMD to include our config
 CMD ["postgres", "-c", "config_file=/etc/postgresql/conf.d/tokyo-eye.conf"]

@@ -63,7 +63,7 @@ export function ToolDock({
                 ? "bg-teal-dim/30 text-teal border border-teal-dim"
                 : "hover:bg-slate/50 text-text-secondary hover:text-text-primary border border-transparent"
             }`}
-            title={tool}
+            title={tool.replace(/_/g, " ")}
           >
             {toolIcons?.[tool] ?? (
               <div className="w-5 h-5 rounded bg-slate-light flex items-center justify-center text-[10px] text-text-muted">

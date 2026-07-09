@@ -58,7 +58,8 @@ pytz==2024.1
 # Scientific computing
 joblib==1.4.2
 
-# V6 training lifecycle (MLflow tracking, optional Optuna sweeps)
-mlflow==2.14.3
+# V6/v6.5 training lifecycle (MLflow 3.x tracking + Model Registry)
+mlflow==3.14.0
+psycopg2-binary==2.9.10
 optuna==3.6.1
 pyyaml==6.0.2

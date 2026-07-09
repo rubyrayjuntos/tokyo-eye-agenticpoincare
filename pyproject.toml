@@ -21,9 +21,12 @@ agent = [
     "python-jose[cryptography]>=3.3,<4",
     "bcrypt>=4.2,<5",
     "matplotlib>=3.8,<4",
+    "mlflow>=3.14,<4",
+    "httpx>=0.27,<1",
 ]
 training = [
-    "mlflow>=2.14,<3",
+    "mlflow>=3.14,<4",
+    "psycopg2-binary>=2.9,<3",
     "optuna>=3.6,<5",
     "tmtools>=0.3,<1",
     "freesasa>=2.2,<3",

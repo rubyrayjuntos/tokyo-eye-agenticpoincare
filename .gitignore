@@ -67,6 +67,9 @@ checkpoints_v6/
 checkpoints_v6_gumbel/
 checkpoints_v6_hybrid/
 checkpoints_v6_topo/
+mlflow-artifacts/
+mlruns/
+data/lifecycle/jobs.json
 # checkpoints_v6_retrained/ — tracked so checkpoint is accessible on branch
 cache/
 !manifests/cache/
@@ -126,3 +129,4 @@ rcsbapi_local/tests/
 rcsbapi_local/viewer/
 rcsbapi_local/.gitignore
 rcsbapi_local/RESIDUE_ID_KEY_STRATEGY.md
+.worktrees/

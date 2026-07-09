@@ -239,6 +239,8 @@ def build_governance_params(
         "spec_version": SPEC_VERSION,
         "space_name": V6_HYP_SPACE_NAME,
         "num_experts": str(config.num_experts),
+        "gnn_lineage": config.gnn_lineage,
+        "model_version": config.model_version,
     }
     from science.training.routing_gate_bounds import (
         CAPACITY_OUTCOME_A_VS_C,

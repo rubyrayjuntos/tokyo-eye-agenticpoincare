@@ -19,7 +19,9 @@ from science.dtie.common.structural_disc_compose import (
     StructuralResidueInput,
     attach_structural_disc_for_forward,
     attach_structural_disc_to_pyg,
+    clear_structural_disc_compose_cache,
     compose_from_protein_graph,
+    compose_from_training_prot,
     compose_structural_disc,
     export_viewer_json,
     residue_inputs_from_protein_graph,
@@ -285,4 +287,41 @@ def test_no_empty_center_hole_on_high_rho_corpus():
     hyp = np.array([n.hyperbolic_r for n in art.nodes])
     assert hyp.min() < 0.15
     assert len(np.unique(np.round(hyp, 3))) > 10
+
+
+def test_compose_from_training_prot_caches_by_structure_and_rounded_c(monkeypatch):
+    """Identical (structure, round(c,4)) must not re-run full compose."""
+    import torch
+    from torch_geometric.data import Data
+
+    clear_structural_disc_compose_cache()
+    n = 12
+    x = torch.randn(n, 4)
+    x[:, 0] = torch.linspace(8.0, 20.0, n)
+    x[:, 1] = (x[:, 0] < 13.0).float()
+    prot = {
+        "pdb_id": "1TST",
+        "chain": "A",
+        "data": Data(x=x, edge_index=torch.tensor([[0], [1]], dtype=torch.long)),
+        "ca_coords": torch.randn(n, 3),
+        "residue_ids": [f"A:{i}:" for i in range(1, n + 1)],
+    }
+    calls = {"n": 0}
+    real = compose_structural_disc
+
+    def _counting(*args, **kwargs):
+        calls["n"] += 1
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "science.dtie.common.structural_disc_compose.compose_structural_disc",
+        _counting,
+    )
+    a1 = compose_from_training_prot(prot, C)
+    a2 = compose_from_training_prot(prot, C + 1e-6)  # same round(c, 4)
+    a3 = compose_from_training_prot(prot, C + 0.01)  # new bucket
+    assert calls["n"] == 2
+    assert a1 is a2
+    assert a3 is not a1
+    clear_structural_disc_compose_cache()
 

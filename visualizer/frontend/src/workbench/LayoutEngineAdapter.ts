@@ -7,12 +7,15 @@ import { PHASE_GROUP_CONFIG } from "./phaseGroups";
 
 const DEFAULT_PANEL_TITLES: Record<WorkbenchPanelComponentType, string> = {
   "briefing-panel": "Briefing",
+  "control-console-panel": "Control Console",
   "triple-viewport-panel": "Discovery Viewports",
   "findings-dock-panel": "Findings",
   "poincare-panel": "Poincaré Disc",
   "molecular-panel": "3D Structure",
   "chat-panel": "Agent Chat",
   "telemetry-panel": "Telemetry",
+  "model-lifecycle-panel": "Model Lifecycle",
+  "mlflow-panel": "MLflow",
 };
 
 const COCKPIT_CORE_PANELS: WorkbenchPanelComponentType[] = [

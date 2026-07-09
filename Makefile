@@ -20,7 +20,7 @@ train-v6: ## Train v6 GNN (STAGE=1|2|3, RESUME=..., MAX_PROTEINS=N, MAX_RESIDUES
 		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),$(shell date +%Y%m%d_%H%M%S)) \
 		--pdb-dir /tmp/dtie_pdb_cache \
 		--device $(or $(DEVICE),cuda) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		$(if $(STAGE),--phase $(STAGE),) \
 		$(if $(MAX_PROTEINS),--max-proteins $(MAX_PROTEINS),) \
 		$(if $(MAX_RESIDUES),--max-residues $(MAX_RESIDUES),) \
@@ -46,7 +46,7 @@ train-v6-benchmark: ## GPU smoke on science/dtie benchmark_pdbs + v3 teacher (EP
 		--max-proteins $(or $(MAX_PROTEINS),8) \
 		--max-residues $(or $(MAX_RESIDUES),600) \
 		--no-corpus-cache \
-		$(if $(USE_MLFLOW),--mlflow-uri file:/app/mlruns,) \
+		$(if $(USE_MLFLOW),--mlflow-uri http://mlflow:5000,) \
 		$(if $(USE_MLFLOW),,--no-mlflow) \
 		--v2-teacher-checkpoint $(V2_TEACHER_CKPT_CONTAINER) \
 		$(if $(NO_WARM_START),--no-warm-start,) \
@@ -674,7 +674,7 @@ train-v6-stage-a-smoke: ## 1-epoch locked Stage A corpus + MLflow (P_STAGE_A_SMO
 		--epochs 1 \
 		--max-proteins $(or $(MAX_PROTEINS),8) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),checkpoints/v6/runs/lever_a_clean_slate_v1/v6_best_disc.pt)
 	@echo "Smoke complete. Verify with: STAGE_A_SMOKE_RUN_ID=<run_id> make test-stage-a-smoke"
 
@@ -690,7 +690,7 @@ train-v6-stage-a-curriculum: ## Full 3-phase Stage A on locked corpus (25 protei
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),25) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),checkpoints/v6/runs/lever_a_clean_slate_v1/v6_best_disc.pt) \
 		--save-epoch-snapshots
 	@echo "Curriculum complete. Read trajectory: checkpoints/v6/runs/$(or $(RUN_ID),stage_a_*)"
@@ -718,7 +718,7 @@ train-v6-stage-a-small-corpus: ## 12-protein fold-diverse expansion (requires ga
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),12) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),checkpoints/v6/runs/lever_a_clean_slate_v1/v6_best_disc.pt) \
 		--save-epoch-snapshots
 	@echo "Small corpus curriculum complete. Read trajectory: checkpoints/v6/runs/$(or $(RUN_ID),stage_a_small_*)"
@@ -735,7 +735,7 @@ train-v6-stage-a-small-master-cold: ## Cold-start 12-prot MASTER features (P1→
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),12) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--no-warm-start \
 		--master-cold-lineage \
 		--num-experts $(or $(NUM_EXPERTS),4) \
@@ -754,12 +754,104 @@ train-v6-slim-moe-structural-ssot: ## Cold-start 12-prot slim MoE + frozen struc
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),12) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--no-warm-start \
 		--slim-moe-structural-ssot \
 		--num-experts $(or $(NUM_EXPERTS),4) \
 		--save-epoch-snapshots
 	@echo "Slim MoE structural SSOT cold-start complete. Run: checkpoints/v6/runs/$(or $(RUN_ID),slim_moe_structural_ssot_v1)"
+
+# ---------------------------------------------------------------------------
+# V6.5 GNN lineage — isolated experiment + checkpoint namespace (see science/dtie/v65/README.md)
+# ---------------------------------------------------------------------------
+
+train-v65: ## Train v6.5 fork (STAGE=1|2|3, RUN_ID=..., separate MLflow experiment tokyo-eyes-v65)
+	@mkdir -p mlruns checkpoints/v65/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v65.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_120.json) \
+		--output-dir /app/checkpoints/v65/runs/$(or $(RUN_ID),$(shell date +%Y%m%d_%H%M%S)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v65 \
+		$(if $(STAGE),--phase $(STAGE),) \
+		$(if $(MAX_PROTEINS),--max-proteins $(MAX_PROTEINS),) \
+		$(if $(MAX_RESIDUES),--max-residues $(MAX_RESIDUES),) \
+		$(if $(NO_MLFLOW),--no-mlflow,) \
+		$(if $(NO_WARM_START),--no-warm-start,) \
+		$(if $(RESUME),--resume /app/$(RESUME),)
+
+train-v65-cold-start: ## v6.5 true cold start: slim MoE + frozen structural disc, no warm-start/resume
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v65/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v65.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v65/runs/$(or $(RUN_ID),cold_start_v8) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v65 \
+		--no-warm-start \
+		--slim-moe-structural-ssot \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--phase $(or $(STAGE),1) \
+		--save-epoch-snapshots
+	@echo "v6.5 cold-start complete. Run: checkpoints/v65/runs/$(or $(RUN_ID),cold_start_v8)"
+	@echo "MLflow experiment: tokyo-eyes-v65 (separate from tokyo-eyes-v6)"
+	@echo "Curriculum: P1-only 40ep (light floor/ceiling, timeout>30%; override STAGE=2|3 for full)"
+
+train-v65-slim-p2: ## Continue slim MoE P2 (timeout@50%/1ep, no floor/ceiling; RESUME=... EPOCHS=...)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f $(or $(RESUME),checkpoints/v65/runs/cold_start_v8_p2/v65_best.pt) || \
+		(echo "Missing resume checkpoint — set RESUME=..." && exit 1)
+	@mkdir -p mlruns checkpoints/v65/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v65.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v65/runs/$(or $(RUN_ID),cold_start_v8_p2b) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v65 \
+		--no-warm-start \
+		--slim-moe-structural-ssot \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--phase 2 \
+		--epochs $(or $(EPOCHS),30) \
+		--resume /app/$(or $(RESUME),checkpoints/v65/runs/cold_start_v8_p2/v65_best.pt) \
+		--save-epoch-snapshots
+	@echo "Slim MoE P2 complete. Run: checkpoints/v65/runs/$(or $(RUN_ID),cold_start_v8_p2b)"
+
+train-v65-slim-p3: ## P3 routing consolidate: freeze e2 + e2-only timeout@45%/1ep
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f $(or $(RESUME),checkpoints/v65/runs/cold_start_v8_p3/v65_phase3_12prot.pt) || \
+		(echo "Missing resume checkpoint — set RESUME=..." && exit 1)
+	@mkdir -p mlruns checkpoints/v65/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v65.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v65/runs/$(or $(RUN_ID),cold_start_v8_p3b) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v65 \
+		--no-warm-start \
+		--slim-moe-structural-ssot \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--phase 3 \
+		--epochs $(or $(EPOCHS),15) \
+		--resume /app/$(or $(RESUME),checkpoints/v65/runs/cold_start_v8_p3/v65_phase3_12prot.pt) \
+		--save-epoch-snapshots
+	@echo "Slim MoE P3 complete. Run: checkpoints/v65/runs/$(or $(RUN_ID),cold_start_v8_p3b)"
+	@echo "P3: freeze e2, e2-only timeout@45%/1ep, eval_min≥0.05 eval_max≤0.55 H≤1.30"
 
 train-v6-slim-moe-routing-recovery: ## MoE routing recovery off slim SSOT checkpoint (structural disc frozen)
 	@test -f data/gates/p_feature_01_passed.json || \
@@ -775,7 +867,7 @@ train-v6-slim-moe-routing-recovery: ## MoE routing recovery off slim SSOT checkp
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),12) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),checkpoints/v6/runs/slim_moe_structural_ssot_cold_v1/v6_phase2_12prot.pt) \
 		--topology-routing-recovery \
 		--structural-disc-frozen \
@@ -800,7 +892,7 @@ train-v6-topology-routing-recovery: ## P2 MoE routing: ep169, 4 experts, structu
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),12) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),checkpoints/v6/runs/master_cold_topology_v1/epochs/epoch_169.pt) \
 		--topology-routing-recovery \
 		--topology-routing-recovery-lr $(or $(LR),3e-5) \
@@ -824,7 +916,7 @@ train-v6-topology-gate-disc-recovery: ## Gate-only + light disc recovery off rou
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),12) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),checkpoints/v6/runs/master_cold_topology_route_v3/epochs/epoch_209.pt) \
 		--topology-gate-disc-recovery \
 		--topology-gate-disc-recovery-lr $(or $(LR),2e-5) \
@@ -848,7 +940,7 @@ train-v6-topology-crescent-recovery: ## Open 1D crescent: angular+disc wedge off
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),12) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),checkpoints/v6/runs/master_cold_topology_route_v3/epochs/epoch_209.pt) \
 		--topology-crescent-recovery \
 		--topology-crescent-recovery-lr $(or $(LR),2e-5) \
@@ -873,7 +965,7 @@ train-v6-stage-a-small-master-cold-smoke: ## 1-epoch MASTER cold-start smoke —
 		--epochs 1 \
 		--max-proteins $(or $(MAX_PROTEINS),12) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--no-warm-start \
 		--master-cold-lineage \
 		--no-corpus-cache \
@@ -898,7 +990,7 @@ train-v6-residue-stage1: ## ResidueStage1 BCE on 12-protein corpus (warm-start s
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),12) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),checkpoints/v6/runs/stage_a_small_v1/v6_best.pt) \
 		--residue-stage1 \
 		--residue-stage1-lr $(or $(RESIDUE_STAGE1_LR),1e-4) \
@@ -918,7 +1010,7 @@ train-v6-residue-stage2: ## ResidueStage2 pipeline cryptic + source-leak BCE (wa
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),12) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),checkpoints/v6/runs/residue_stage1_v1/v6_best.pt) \
 		--residue-stage2 \
 		--residue-stage2-lr $(or $(RESIDUE_STAGE2_LR),1e-4) \
@@ -939,7 +1031,7 @@ train-v6-p4-from-residue-stage2: ## P4 staged epistemic on 12-protein corpus (wa
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),12) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),checkpoints/v6/runs/residue_stage2_v1/v6_phase1_12prot.pt) \
 		--p4-epistemic-decoupling \
 		--p4-epistemic-staged \
@@ -979,7 +1071,7 @@ train-v6-p4-uncertainty-calibration: ## P4 uncertainty decoupling warm-start rs2
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),12) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),checkpoints/v6/runs/rs2_post_p4_v1/v6_best.pt) \
 		--p4-uncertainty-calibration \
 		--p4-epistemic-lr $(or $(P4_EPISTEMIC_LR),5e-5) \
@@ -1002,7 +1094,7 @@ train-v6-p4-head-decouple: ## P4 split epi/ale trunks + decorrelation loss (20 e
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),12) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),checkpoints/v6/runs/rs2_post_p4_v1/v6_best.pt) \
 		--p4-head-decouple \
 		--p4-epistemic-lr $(or $(P4_EPISTEMIC_LR),5e-5) \
@@ -1016,6 +1108,10 @@ train-v6-p4-head-decouple: ## P4 split epi/ale trunks + decorrelation loss (20 e
 
 G3_ROUTE_RESUME ?= checkpoints/v6/runs/slim_moe_route_v1/v6_best.pt
 G3_EPOCHS ?= 12
+G4_WVP_WEIGHTS ?= 2.8,1.0,0.3
+G4_WVP_EPOCHS ?= 4
+G4_ISO_EPOCHS ?= 12
+G4_ALE_ONLY_EPOCHS ?= 12
 
 train-v6-g3-p4-decorr-only: ## G3 ablation A: decorr-only Phase 4 from route_v1 (no B-factor/SASA supervision)
 	@test -f data/gates/p_feature_01_passed.json || \
@@ -1030,7 +1126,7 @@ train-v6-g3-p4-decorr-only: ## G3 ablation A: decorr-only Phase 4 from route_v1 
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),12) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),$(G3_ROUTE_RESUME)) \
 		--p4-head-decouple-decorr-only \
 		--structural-disc-frozen \
@@ -1053,7 +1149,7 @@ train-v6-g3-p4-full: ## G3 ablation B: full Phase 4 head decouple from route_v1 
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),12) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),$(G3_ROUTE_RESUME)) \
 		--p4-head-decouple \
 		--structural-disc-frozen \
@@ -1064,7 +1160,7 @@ train-v6-g3-p4-full: ## G3 ablation B: full Phase 4 head decouple from route_v1 
 		--no-corpus-cache
 	@echo "G3 ablation B complete: checkpoints/v6/runs/$(or $(RUN_ID),g3_p4_full_v1)"
 
-eval-g3-ablation: ## Compare G3 A/B checkpoints (P8/P11 circularity gate)
+eval-g3-ablation: ## Compare G3 A/B checkpoints (G4a P8 + G5b + P11 circularity gate)
 	@test -f $(or $(G3_DECORR_CKPT),checkpoints/v6/runs/g3_p4_decorr_only_v1/v6_best.pt) \
 		-o -f $(or $(G3_DECORR_CKPT),checkpoints/v6/runs/g3_p4_decorr_only_v1/v6_phase4_12prot.pt) || \
 		(echo "Missing decorr-only checkpoint (v6_best.pt or v6_phase4_12prot.pt)" && exit 1)
@@ -1081,6 +1177,122 @@ eval-g3-ablation: ## Compare G3 A/B checkpoints (P8/P11 circularity gate)
 		--device $(or $(DEVICE),cpu) \
 		--json-out /app/checkpoints/v6/diagnostics/g3_ablation_report.json \
 		--pdb-local
+
+eval-g5-provenance: ## G5 + G5b epistemic provenance (SASA/ρ/teacher bootstrap + OOD 1PGB)
+	@mkdir -p checkpoints/v6/diagnostics
+	TRAINING_LOAD_FROM_PDB=1 $(SCIENCE_RUN) science python experiments/diagnostics/g5_epistemic_provenance_audit.py \
+		--checkpoints route_v1:/app/checkpoints/v6/runs/slim_moe_route_v1/v6_best.pt \
+		--checkpoints g3_decorr:/app/checkpoints/v6/runs/g3_p4_decorr_only_v1/v6_phase4_12prot.pt \
+		--checkpoints g3_full:/app/checkpoints/v6/runs/g3_p4_full_v1/v6_phase4_12prot.pt \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cpu) \
+		--json-out /app/checkpoints/v6/diagnostics/g5_provenance_report.json \
+		--pdb-local
+
+eval-g4-holdout: ## G4 holdout P8 eval (aleatoric shaping circularity baseline)
+	@mkdir -p checkpoints/v6/diagnostics
+	TRAINING_LOAD_FROM_PDB=1 $(SCIENCE_RUN) science python experiments/diagnostics/g4_aleatoric_holdout_eval.py \
+		--checkpoint /app/$(or $(G4_CKPT),checkpoints/v6/runs/slim_moe_route_v1/v6_best.pt) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cpu) \
+		--holdout-seeds $(or $(G4_HOLDOUT_SEEDS),42) \
+		--json-out /app/checkpoints/v6/diagnostics/g4_holdout_report.json \
+		--pdb-local
+
+eval-g4-holdout-multi: ## G4 eval with holdout seeds 42,7 (eval-only rotation)
+	$(MAKE) eval-g4-holdout G4_HOLDOUT_SEEDS=42,7 G4_CKPT=$(or $(G4_CKPT),checkpoints/v6/runs/slim_moe_route_v1/v6_best.pt)
+
+train-v6-p4-v3-aleatoric-shaping: ## Phase 4 + v3 aleatoric shaping (G4 holdout train mask)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f $(or $(RESUME),$(G3_ROUTE_RESUME)) || \
+		(echo "Missing resume: $(or $(RESUME),$(G3_ROUTE_RESUME))" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),p4_v3_aleatoric_shaping_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--resume /app/$(or $(RESUME),$(G3_ROUTE_RESUME)) \
+		--p4-v3-aleatoric-shaping \
+		--structural-disc-frozen \
+		--p4-epistemic-lr $(or $(P4_EPISTEMIC_LR),5e-5) \
+		$(if $(W_VAR_PENALTY),--w-var-penalty $(W_VAR_PENALTY),) \
+		--epistemic-decoupling-holdouts $(or $(EPISTEMIC_DECOUPLING_HOLDOUTS),1IVO\,4MNE) \
+		--epochs $(or $(EPOCHS),$(G3_EPOCHS)) \
+		--save-epoch-snapshots \
+		--no-corpus-cache
+	@echo "G4 v3 aleatoric shaping complete: checkpoints/v6/runs/$(or $(RUN_ID),p4_v3_aleatoric_shaping_v1)"
+
+train-v6-p4-g4-shaping-only-isolation: ## G4 isolation: uncertainty-head-only, only v3 shaping loss active
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f $(or $(RESUME),$(G3_ROUTE_RESUME)) || \
+		(echo "Missing resume: $(or $(RESUME),$(G3_ROUTE_RESUME))" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),g4_shaping_only_iso_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--resume /app/$(or $(RESUME),$(G3_ROUTE_RESUME)) \
+		--p4-g4-shaping-only-isolation \
+		--structural-disc-frozen \
+		--p4-epistemic-lr $(or $(P4_EPISTEMIC_LR),5e-5) \
+		$(if $(W_VAR_PENALTY),--w-var-penalty $(W_VAR_PENALTY),) \
+		--epistemic-decoupling-holdouts $(or $(EPISTEMIC_DECOUPLING_HOLDOUTS),1IVO\,4MNE) \
+		--epochs $(or $(EPOCHS),$(G4_ISO_EPOCHS)) \
+		--save-epoch-snapshots \
+		--no-corpus-cache
+	@echo "G4 shaping-only isolation complete: checkpoints/v6/runs/$(or $(RUN_ID),g4_shaping_only_iso_v1)"
+
+train-v6-p4-g4-ale-only-unshaped: ## G4 isolation: ale-only branch trainable, no shaping losses
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f $(or $(RESUME),$(G3_ROUTE_RESUME)) || \
+		(echo "Missing resume: $(or $(RESUME),$(G3_ROUTE_RESUME))" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v6.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),g4_ale_only_unshaped_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--resume /app/$(or $(RESUME),$(G3_ROUTE_RESUME)) \
+		--p4-g4-ale-only-unshaped \
+		--structural-disc-frozen \
+		--p4-epistemic-lr $(or $(P4_EPISTEMIC_LR),5e-5) \
+		--epistemic-decoupling-holdouts $(or $(EPISTEMIC_DECOUPLING_HOLDOUTS),1IVO\,4MNE) \
+		--epochs $(or $(EPOCHS),$(G4_ALE_ONLY_EPOCHS)) \
+		--save-epoch-snapshots \
+		--no-corpus-cache
+	@echo "G4 ale-only unshaped isolation complete: checkpoints/v6/runs/$(or $(RUN_ID),g4_ale_only_unshaped_v1)"
+
+g4-var-penalty-sweep: ## Short w_var_penalty probes {2.8,1.0,0.3} + frozen separation eval
+	@test -f $(or $(RESUME),$(G3_ROUTE_RESUME)) || \
+		(echo "Missing resume: $(or $(RESUME),$(G3_ROUTE_RESUME))" && exit 1)
+	@mkdir -p mlruns checkpoints/v6/runs checkpoints/v6/diagnostics pdb_cache
+	TRAINING_LOAD_FROM_PDB=1 $(SCIENCE_RUN) science python experiments/diagnostics/g4_var_penalty_sweep.py \
+		--resume /app/$(or $(RESUME),$(G3_ROUTE_RESUME)) \
+		--epochs $(or $(G4_WVP_EPOCHS),4) \
+		--device $(or $(DEVICE),cuda) \
+		--weights $(G4_WVP_WEIGHTS) \
+		--json-out /app/checkpoints/v6/diagnostics/g4_wvp_sweep_report.json
+
+g4-var-penalty-sweep-eval: ## Eval-only for existing g4_wvp_* probe runs
+	TRAINING_LOAD_FROM_PDB=1 $(SCIENCE_RUN) science python experiments/diagnostics/g4_var_penalty_sweep.py \
+		--eval-only \
+		--device $(or $(DEVICE),cuda) \
+		--weights $(G4_WVP_WEIGHTS) \
+		--json-out /app/checkpoints/v6/diagnostics/g4_wvp_sweep_report.json
 
 gnnv7-retrain-g3: ## Run G3 A/B Phase 4 ablations then eval circularity gate
 	$(MAKE) train-v6-g3-p4-decorr-only RUN_ID=$(or $(G3_DECORR_RUN),g3_p4_decorr_only_v1) EPOCHS=$(or $(EPOCHS),$(G3_EPOCHS))
@@ -1099,7 +1311,7 @@ train-v6-gnnv7-routing-recovery: ## GNNv7: MoE routing touch-up from route_v1 (h
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),12) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),$(G3_ROUTE_RESUME)) \
 		--topology-routing-recovery \
 		--structural-disc-frozen \
@@ -1121,7 +1333,7 @@ train-v6-gnnv7-p4-full: ## GNNv7: full Phase 4 after routing recovery (requires 
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),12) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),checkpoints/v6/runs/gnnv7_route_v1/v6_best.pt) \
 		--p4-head-decouple \
 		--structural-disc-frozen \
@@ -1160,7 +1372,7 @@ train-v6-p4-head-decouple-continue: ## Continue head decouple from phase checkpo
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),12) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),checkpoints/v6/runs/p4_head_decouple_v1/v6_phase4_12prot.pt) \
 		--p4-head-decouple \
 		--max-probe-r-epi-sasa-save $(or $(MAX_PROBE_R_EPI_SASA_SAVE),0.79) \
@@ -1184,7 +1396,7 @@ train-v6-p4-gate-promotion: ## Gate-only routing pass from head-decouple best (2
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),12) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),checkpoints/v6/runs/p4_head_decouple_v2/v6_best.pt) \
 		--p4-gate-promotion \
 		--max-probe-r-epi-sasa-save $(or $(MAX_PROBE_R_EPI_SASA_SAVE),0.79) \
@@ -1210,7 +1422,7 @@ train-v6-p4-gate-touchup: ## Routed-path uncertainty recalibration after gate pa
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),12) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),checkpoints/v6/runs/$(or $(GATE_PROMOTION_RUN),p4_gate_promotion_v3)/v6_phase2_12prot.pt) \
 		--p4-gate-uncertainty-touchup \
 		--max-probe-r-epi-sasa-save $(or $(MAX_PROBE_R_EPI_SASA_SAVE),0.79) \
@@ -1245,7 +1457,7 @@ train-v6-p4-corpus25-gate: ## Gate on Stage A expand corpus (23 prot) from touch
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),$(CORPUS25_PROTEINS)) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),$(CORPUS25_RESUME)) \
 		--p4-corpus25-gate-promotion \
 		--gate-gumbel \
@@ -1272,7 +1484,7 @@ train-v6-p4-corpus25-touchup: ## Routed uncertainty touchup after corpus expand 
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),$(CORPUS25_PROTEINS)) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),$(CORPUS25_GATE_TOUCHUP_RESUME)) \
 		--p4-gate-uncertainty-touchup \
 		--max-probe-r-epi-sasa-save $(or $(MAX_PROBE_R_EPI_SASA_SAVE),0.79) \
@@ -1296,7 +1508,7 @@ train-v6-p4-corpus25-touchup-extended: ## Extended SASA recal touchup (25 ep, ga
 		--device $(or $(DEVICE),cuda) \
 		--max-proteins $(or $(MAX_PROTEINS),$(CORPUS25_PROTEINS)) \
 		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--mlflow-uri file:/app/mlruns \
+		--mlflow-uri http://mlflow:5000 \
 		--resume /app/$(or $(RESUME),$(CORPUS25_RESUME)) \
 		--p4-corpus25-touchup-extended \
 		--max-probe-r-epi-sasa-save $(or $(MAX_PROBE_R_EPI_SASA_SAVE),0.79) \
@@ -1551,6 +1763,33 @@ residue-uncertainty-audit: ## Per-residue ν_epi / ν_ale CSV+JSON (CHECKPOINT=.
 		--json-out "$(or $(JSON_OUT),checkpoints/v6/diagnostics/residue_uncertainty_audit.json)" \
 		--csv-out "$(or $(CSV_OUT),checkpoints/v6/diagnostics/residue_uncertainty_audit.csv)"
 
+aleatoric-corpus-diagnostics: ## Residue-first aleatoric health + active-learning triage (CHECKPOINT=... MANIFEST=...)
+	@test -f "$(or $(CHECKPOINT),checkpoints/v6/runs/slim_moe_route_v1/v6_best.pt)" || \
+		(echo "Missing CHECKPOINT" && exit 1)
+	@mkdir -p checkpoints/v6/diagnostics
+	python3 -m experiments.diagnostics.aleatoric_corpus_diagnostics \
+		--checkpoint "$(or $(CHECKPOINT),checkpoints/v6/runs/slim_moe_route_v1/v6_best.pt)" \
+		--manifest "$(or $(MANIFEST),manifests/v6_corpus_stage_a_small_v1.json)" \
+		--pdb-dir "$(or $(PDB_DIR),/tmp/dtie_pdb_cache)" \
+		--pdb-local \
+		--device $(or $(DEVICE),cpu) \
+		--t-ale-percentile $(or $(T_ALE_PERCENTILE),90) \
+		$(if $(T_ALE),--t-ale $(T_ALE),) \
+		--json-out "$(or $(JSON_OUT),checkpoints/v6/diagnostics/aleatoric_corpus_diagnostics.json)"
+
+aleatoric-independence-probe: ## Does ν_ale vary beyond ρ + expert? (CHECKPOINT=... MANIFEST=...)
+	@test -f "$(or $(CHECKPOINT),checkpoints/v6/runs/slim_moe_route_v1/v6_best.pt)" || \
+		(echo "Missing CHECKPOINT" && exit 1)
+	@mkdir -p checkpoints/v6/diagnostics
+	python3 -m experiments.diagnostics.aleatoric_independence_probe \
+		--checkpoint "$(or $(CHECKPOINT),checkpoints/v6/runs/slim_moe_route_v1/v6_best.pt)" \
+		--manifest "$(or $(MANIFEST),manifests/v6_corpus_stage_a_small_v1.json)" \
+		--pdb-dir "$(or $(PDB_DIR),/tmp/dtie_pdb_cache)" \
+		--pdb-local \
+		--device $(or $(DEVICE),cpu) \
+		$(if $(INCLUDE_GEOMETRY),--include-geometry,) \
+		--json-out "$(or $(JSON_OUT),checkpoints/v6/diagnostics/aleatoric_independence_probe.json)"
+
 train-v6-dehydron-rim-recovery: ## τ→rim cone recovery warm-start off production v6 (preserve disc occupancy)
 	$(MAKE) train-v6-benchmark RUN_ID=$(or $(RUN_ID),dehydron_rim_recovery_v1) EPOCHS=$(or $(EPOCHS),12) \
 		CORPUS=$(or $(CORPUS),v6_corpus_disc_target.json) \
@@ -1603,7 +1842,7 @@ promote-v6-from-run: ## Promote v6_best from MLflow run (MLFLOW_RUN_ID=... from 
 		--mlflow-run-id "$(MLFLOW_RUN_ID)" \
 		--checkpoint-id $(or $(CHECKPOINT_ID),tokyo_eyes_v6_candidate) \
 		--status $(or $(STATUS),candidate) \
-		--mlflow-tracking-uri file:/app/mlruns
+		--mlflow-tracking-uri $(or $(MLFLOW_TRACKING_URI),http://localhost:5000)
 
 promote-production-v6: ## Copy v6_best.pt → tokyo_eyes_v6.pt (SOURCE=checkpoints/v6/runs/.../v6_best.pt)
 	@test -f "$(or $(SOURCE),checkpoints/v6/runs/full_hyp_moe_test/v6_best.pt)" || \
@@ -1626,17 +1865,32 @@ test-v6-gnn-integration: ## Run tests/test_v6_gnn_integration.py in science cont
 	$(SCIENCE_RUN) -v $(PWD)/tests:/app/tests science \
 		sh -c "$(TEST_RUN_PREFIX) tests/test_v6_gnn_integration.py -v --tb=short"
 
-mlflow-ui: ## Start MLflow UI (http://localhost:5000); also started by make up
-	@mkdir -p mlruns
-	@python3 experiments/training/v6/repair_mlflow_store.py --store mlruns
-	docker compose up -d mlflow-ui
-	@echo "✓ MLflow UI at http://localhost:5000"
+mlflow-ui: ## Start MLflow 3 server (http://localhost:5000); also started by make up
+	@mkdir -p mlflow-artifacts mlruns
+	docker compose up -d mlflow
+	@echo "✓ MLflow server at http://localhost:5000 (Postgres-backed registry)"
 
-mlflow-ui-logs: ## Tail MLflow UI container logs
-	docker compose logs -f mlflow-ui
+mlflow-ui-logs: ## Tail MLflow server container logs
+	docker compose logs -f mlflow
 
-mlflow-repair-store: ## Fix local mlruns/ metadata that breaks mlflow ui (HTTP 500)
+mlflow-repair-store: ## Fix legacy local mlruns/ metadata (archive only; prefer Postgres server)
 	@python3 experiments/training/v6/repair_mlflow_store.py --store mlruns
+
+lifecycle-status: ## Print GNN lifecycle 360° status (host; needs PYTHONPATH)
+	PYTHONPATH=. MLFLOW_TRACKING_URI=$(or $(MLFLOW_TRACKING_URI),http://localhost:5000) \
+		python3 -c "from science.training.lifecycle import lifecycle_status; import json; print(json.dumps(lifecycle_status(), indent=2, default=str))"
+
+promote-champion: ## Register checkpoint as MLflow champion + sync contract (LINEAGE=v6.5 CHECKPOINT=...)
+	@test -n "$(CHECKPOINT)" || (echo "Usage: make promote-champion LINEAGE=v6.5 CHECKPOINT=checkpoints/..." && exit 1)
+	PYTHONPATH=. MLFLOW_TRACKING_URI=$(or $(MLFLOW_TRACKING_URI),http://localhost:5000) \
+		python3 -c "from science.training.lifecycle import register_and_alias; import json; \
+print(json.dumps(register_and_alias(lineage_id='$(or $(LINEAGE),v6.5)', checkpoint_path='$(CHECKPOINT)', alias='champion', sync_contract=True), indent=2, default=str))"
+
+promote-challenger: ## Register checkpoint as MLflow challenger (LINEAGE=v6.5 CHECKPOINT=...)
+	@test -n "$(CHECKPOINT)" || (echo "Usage: make promote-challenger LINEAGE=v6.5 CHECKPOINT=checkpoints/..." && exit 1)
+	PYTHONPATH=. MLFLOW_TRACKING_URI=$(or $(MLFLOW_TRACKING_URI),http://localhost:5000) \
+		python3 -c "from science.training.lifecycle import register_and_alias; import json; \
+print(json.dumps(register_and_alias(lineage_id='$(or $(LINEAGE),v6.5)', checkpoint_path='$(CHECKPOINT)', alias='challenger', sync_contract=True), indent=2, default=str))"
 
 .PHONY: help up down kill build rebuild logs ps migrate psql dev dev-frontend test test-host test-docker test-integration test-integration-docker test-all lint format typecheck clean train-v6 train-v6-curriculum assess-v6 eval-v6 diagnose-embedding audit-dehydron-topology train-v6-dehydron-rim-recovery promote-v6 promote-v6-from-run promote-production-v6 verify-v6-gnn test-v6-gnn-integration mlflow-ui mlflow-ui-logs train-v6-theory-test-mlflow train-v6-mlflow-governance-smoke train-v6-stage-a-smoke train-v6-stage-a-curriculum test-stage-a-smoke auto-train-v6-corpus25 auto-train-v6-status sync-corpus-pins sync-p-curv-fixture seed-p-curv-fixture test-p-curv-01
 
@@ -1666,8 +1920,8 @@ rebuild: ## Rebuild and restart all services
 build-agent: ## Rebuild agent image only
 	docker compose build --no-cache agent
 
-build-science: ## Rebuild science image only (shared by science + mlflow-ui)
-	docker compose build --no-cache science mlflow-ui
+build-science: ## Rebuild science image only (shared by science + mlflow)
+	docker compose build --no-cache science mlflow
 
 build-db: ## Rebuild database (normally not needed)
 	docker compose build --no-cache db
@@ -1702,7 +1956,7 @@ logs-science: ## Tail science container logs only
 	docker compose logs -f science
 
 logs-mlflow: ## Tail MLflow UI logs only
-	docker compose logs -f mlflow-ui
+	docker compose logs -f mlflow
 
 logs-db: ## Tail database logs only
 	docker compose logs -f db

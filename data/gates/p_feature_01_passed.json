@@ -1,0 +1,89 @@
+{
+  "checked_at": "2026-07-07T00:14:51.287838+00:00",
+  "feature_module_sha256": "b18cece16d0fcbcb2ee70e824ef75b62ce8b638c10ebba4f7e951fbe9b999e68",
+  "gate": "P_FEATURE_01",
+  "manifest_path": "/app/manifests/v6_corpus_stage_a_small_v1.json",
+  "manifest_sha256": "ac954a4fd28124e695df448590547820fad666bc08f6df11b35d902a9feddedc",
+  "p_feature_01_passed": true,
+  "passed": true,
+  "rho_def": "dehydron_wrapping_6.5A",
+  "sasa_def": "freesasa_heavy_atom_A2",
+  "ss_def": "biotite_psea_dssp_class",
+  "stamp_path": "/app/data/gates/p_feature_01_passed.json",
+  "structures": [
+    {
+      "chain": "A",
+      "n_residues": 153,
+      "passed": true,
+      "pdb_id": "1MBN"
+    },
+    {
+      "chain": "A",
+      "n_residues": 129,
+      "passed": true,
+      "pdb_id": "1LYZ"
+    },
+    {
+      "chain": "A",
+      "n_residues": 559,
+      "passed": true,
+      "pdb_id": "1BG1"
+    },
+    {
+      "chain": "A",
+      "n_residues": 338,
+      "passed": true,
+      "pdb_id": "1F88"
+    },
+    {
+      "chain": "A",
+      "n_residues": 533,
+      "passed": true,
+      "pdb_id": "2Z6H"
+    },
+    {
+      "chain": "A",
+      "n_residues": 99,
+      "passed": true,
+      "pdb_id": "1HHP"
+    },
+    {
+      "chain": "A",
+      "n_residues": 89,
+      "passed": true,
+      "pdb_id": "1TEN"
+    },
+    {
+      "chain": "A",
+      "n_residues": 76,
+      "passed": true,
+      "pdb_id": "1UBQ"
+    },
+    {
+      "chain": "A",
+      "n_residues": 247,
+      "passed": true,
+      "pdb_id": "1TIM"
+    },
+    {
+      "chain": "A",
+      "n_residues": 169,
+      "passed": true,
+      "pdb_id": "4OBE"
+    },
+    {
+      "chain": "A",
+      "n_residues": 511,
+      "passed": true,
+      "pdb_id": "1IVO"
+    },
+    {
+      "chain": "A",
+      "n_residues": 491,
+      "passed": true,
+      "pdb_id": "2SHP"
+    }
+  ],
+  "structures_checked": 12,
+  "tau_def": "rho_lt_13.0"
+}

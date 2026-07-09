@@ -141,6 +141,8 @@ class HyperbolicPrototypeGate(nn.Module):
         self.gumbel_temperature = gumbel_temperature
         self.deep_gate = deep_gate
         self.detach_gate_input = False
+        # Epoch-level hard bans (train-only); set by ExpertTimeoutController.
+        self.expert_timeout_banned: list[int] = []
 
         if not topology_only:
             self.mobius1 = MobiusLinear(hidden_dim, hidden_dim)
@@ -285,6 +287,11 @@ class HyperbolicPrototypeGate(nn.Module):
         if self.training and torch.rand(1).item() < self.expert_dropout_p:
             drop_idx = torch.randint(0, self.num_experts, (1,)).item()
             adjusted_logits[:, drop_idx] = -1e9
+
+        if self.training and self.expert_timeout_banned:
+            for ban_idx in self.expert_timeout_banned:
+                if 0 <= int(ban_idx) < self.num_experts:
+                    adjusted_logits[:, int(ban_idx)] = -1e9
 
         if self.use_gumbel and self.training:
             scores = F.gumbel_softmax(

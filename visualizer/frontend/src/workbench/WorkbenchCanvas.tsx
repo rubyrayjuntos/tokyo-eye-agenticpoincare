@@ -5,6 +5,9 @@ import "dockview/dist/styles/dockview.css";
 import { ChatRail } from "../components/chat";
 import AgentTelemetryPanel from "../components/AgentTelemetryPanel";
 import { BriefingDockPanel, FindingsDockPanel } from "../components/cockpit";
+import ControlConsoleDockPanel from "../components/cockpit/ControlConsoleDockPanel";
+import ModelLifecycleDockPanel from "../components/cockpit/ModelLifecycleDockPanel";
+import MlflowDockPanel from "../components/cockpit/MlflowDockPanel";
 import { MolecularPanel, PoincarePanel, TripleViewportPanel } from "../components/viewers";
 import type { MolecularColorMode, PanelPoincareColorMode } from "../components/viewers";
 import type {
@@ -112,6 +115,7 @@ function ChatPanelDock() {
 
 const DOCK_COMPONENTS = {
   "briefing-panel": BriefingDockPanel,
+  "control-console-panel": ControlConsoleDockPanel,
   "findings-dock-panel": FindingsDockPanel,
   "triple-viewport-panel": TripleViewportPanelDock,
   "poincare-panel": PoincarePanelDock,
@@ -124,6 +128,11 @@ const DOCK_COMPONENTS = {
       </div>
     );
   },
+  "model-lifecycle-panel": function ModelLifecyclePanelDock() {
+    const props = useWorkbenchCanvasProps();
+    return <ModelLifecycleDockPanel structureId={props.structureId} />;
+  },
+  "mlflow-panel": MlflowDockPanel,
 };
 
 export function WorkbenchCanvas(props: WorkbenchCanvasProps) {

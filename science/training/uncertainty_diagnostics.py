@@ -20,8 +20,17 @@ TOTAL_TOLERANCE = 1e-3
 def extract_residue_uncertainty_rows(
     output: dict[str, Any],
     prot: dict[str, Any],
+    *,
+    graph_data: Any | None = None,
+    structure_id: str | None = None,
+    chain: str | None = None,
 ) -> list[dict[str, Any]]:
-    """One row per residue: governed features + ν_epi, ν_ale, ν_total + evidence."""
+    """One row per residue: governed features + ν_epi, ν_ale, ν_total + evidence.
+
+    When ``graph_data`` is provided (post-``precompute_clustering``), rows include
+    graph clustering. ``hyp_projections_2d`` in ``output`` adds ``disc_r`` for
+    rim-localized site triage.
+    """
     unc = output["uncertainty"]
     epi = unc["epistemic"].detach().cpu().numpy().reshape(-1)
     ale = unc["aleatoric"].detach().cpu().numpy().reshape(-1)
@@ -50,18 +59,42 @@ def extract_residue_uncertainty_rows(
 
     residue_ids = list(prot.get("residue_ids") or [f"idx:{i}" for i in range(len(epi))])
     expert_w = output.get("expert_weights")
+    expert_routing_max: np.ndarray | None = None
+    expert_routing_entropy: np.ndarray | None = None
     if expert_w is not None:
         ew = expert_w.detach().cpu().numpy()
         if ew.ndim == 1:
             expert_assign = ew.astype(int)
         else:
             expert_assign = ew.argmax(axis=1)
+            w_norm = ew / np.maximum(ew.sum(axis=1, keepdims=True), 1e-12)
+            expert_routing_max = w_norm.max(axis=1)
+            expert_routing_entropy = -np.sum(
+                w_norm * np.log(np.maximum(w_norm, 1e-12)),
+                axis=1,
+            )
     else:
         expert_assign = np.full(len(epi), -1, dtype=int)
+
+    hyp = output.get("hyp_projections_2d")
+    disc_r: np.ndarray | None = None
+    if hyp is not None:
+        hyp_np = hyp.detach().cpu().numpy()
+        disc_r = np.linalg.norm(hyp_np, axis=1) if hyp_np.ndim == 2 else np.abs(hyp_np)
+
+    clustering: np.ndarray | None = None
+    src = graph_data if graph_data is not None else prot.get("data")
+    if src is not None and hasattr(src, "clustering") and src.clustering is not None:
+        clustering = src.clustering.detach().cpu().numpy().reshape(-1)
+
+    sid = structure_id or str(prot.get("pdb_id", "")).lower()
+    ch = chain or str(prot.get("chain", "A"))
 
     rows: list[dict[str, Any]] = []
     for i, rid in enumerate(residue_ids):
         row: dict[str, Any] = {
+            "structure_id": sid,
+            "chain": ch,
             "residue_id": str(rid),
             "index": i,
             "rho": float(rho[i]),
@@ -78,6 +111,13 @@ def extract_residue_uncertainty_rows(
             "near_tau_boundary": bool(abs(float(rho[i]) - TAU) <= 1.0),
             "expert": int(expert_assign[i]) if i < len(expert_assign) else -1,
         }
+        if disc_r is not None and i < len(disc_r):
+            row["disc_r"] = float(disc_r[i])
+        if clustering is not None and i < len(clustering):
+            row["clustering"] = float(clustering[i])
+        if expert_routing_max is not None and i < len(expert_routing_max):
+            row["expert_routing_max"] = float(expert_routing_max[i])
+            row["expert_routing_entropy"] = float(expert_routing_entropy[i])
         if nu_np is not None:
             row["evidence_nu"] = float(nu_np[i])
             row["epistemic_from_nu"] = float(1.0 / max(nu_np[i], 1e-12))

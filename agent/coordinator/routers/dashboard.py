@@ -515,12 +515,27 @@ async def get_kpis():
         # Science container check (cached — only check once per 5 minutes)
         science_available = await _get_cached_science_status()
 
+        model_status = "ready" if science_available else "error"
+        try:
+            from science.training.lifecycle import lifecycle_status
+
+            life = lifecycle_status()
+            if life.get("active_job") and life["active_job"].get("status") in (
+                "queued",
+                "running",
+            ):
+                model_status = "training"
+            elif not life.get("production", {}).get("checkpoint_path"):
+                model_status = "error"
+        except Exception:
+            pass
+
         return {
             "total_structures": total_structures,
             "mean_uncertainty": round(mean_uncertainty, 6),
             "avg_inference_seconds": 0.0,  # TODO: track from pipeline runs
             "active_jobs": active_jobs,
-            "model_status": "ready",
+            "model_status": model_status,
             "db_connected": True,
             "science_container_available": science_available,
         }

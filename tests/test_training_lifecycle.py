@@ -407,6 +407,72 @@ def test_checkpoint_score_prefers_geometry_and_routing() -> None:
     assert good.score > bad_route.score
 
 
+def test_checkpoint_score_slim_moe_rejects_starvation_and_eval_collapse() -> None:
+    from science.training.checkpoint_score import score_checkpoint
+
+    shell_ok = {
+        "probe_r_depth_sasa": 0.70,
+        "probe_r_epi_sasa": 0.20,
+        "probe_r_proj_depth": 0.85,
+        "probe_r_epi_ale": 0.40,
+        "disc_sigma2_sigma1_mean": 0.40,
+        "disc_r_std_mean": 0.05,
+        "epistemic_std_mean": 0.05,
+        "aleatoric_std_mean": 0.20,
+    }
+    health = {"proj_frac_mean": 0.0, "cone_range_mean": 0.12, **shell_ok}
+    base_losses = {
+        "routing_entropy": 1.05,
+        "expert_starvation_count": 0,
+        "total": 8.0,
+        "expert_load_0": 0.28,
+        "expert_load_1": 0.24,
+        "expert_load_2": 0.24,
+        "expert_load_3": 0.24,
+    }
+    moe_kwargs = {
+        "phase": 1,
+        "routing_save_max": 1.25,
+        "max_expert_starvation_save": 0,
+        "min_eval_routing_fraction_save": 0.08,
+        "max_eval_routing_fraction_save": 0.50,
+        "routing_entropy_min_save": 0.90,
+        "min_probe_r_epi_sasa_save": 0.0,
+        "max_probe_r_epi_ale_save": 0.95,
+    }
+    good = score_checkpoint(
+        health,
+        base_losses,
+        inference_routing={"min_routing_fraction": 0.20, "max_routing_fraction": 0.35},
+        **moe_kwargs,
+    )
+    starved = score_checkpoint(
+        health,
+        {**base_losses, "expert_starvation_count": 1},
+        inference_routing={"min_routing_fraction": 0.20, "max_routing_fraction": 0.35},
+        **moe_kwargs,
+    )
+    collapsed = score_checkpoint(
+        health,
+        base_losses,
+        inference_routing={"min_routing_fraction": 0.02, "max_routing_fraction": 0.80},
+        **moe_kwargs,
+    )
+    inverted_epi = score_checkpoint(
+        {**health, "probe_r_epi_sasa": -0.3},
+        base_losses,
+        inference_routing={"min_routing_fraction": 0.20, "max_routing_fraction": 0.35},
+        **moe_kwargs,
+    )
+    assert good.eligible is True
+    assert starved.eligible is False
+    assert any("starvation" in r for r in starved.reasons)
+    assert collapsed.eligible is False
+    assert any("eval_min_r" in r or "eval_max_r" in r for r in collapsed.reasons)
+    assert inverted_epi.eligible is False
+    assert any("inverted epi/sasa" in r for r in inverted_epi.reasons)
+
+
 def test_checkpoint_score_rejects_collapsed_disc_r_std() -> None:
     from science.training.checkpoint_score import score_checkpoint
 

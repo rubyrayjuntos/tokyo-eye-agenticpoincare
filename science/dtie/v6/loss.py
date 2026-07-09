@@ -35,6 +35,10 @@ from science.dtie.v5.gnn.model import (
     evidential_regression_loss,
     neighborhood_consistency_loss,
 )
+from science.training.routing_metrics import (
+    routing_load_ceiling_penalty,
+    routing_load_floor_penalty,
+)
 
 
 def _pearson_corr(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
@@ -47,6 +51,32 @@ def _pearson_corr(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     bc = b - b.mean()
     denom = ac.norm() * bc.norm() + 1e-8
     return (ac * bc).sum() / denom
+
+
+def v3_aleatoric_shaping_loss(
+    aleatoric: torch.Tensor,
+    target_dehydron: torch.Tensor,
+    train_mask: torch.Tensor,
+    *,
+    w_var_penalty: float = 2.8,
+    w_aleatoric_hinge: float = 4.8,
+    hinge_target: float = 1.0,
+) -> Dict[str, torch.Tensor]:
+    """v3 var_penalty + aleatoric_hinge on regular residues, train_mask only (G4)."""
+    ale = aleatoric.squeeze(-1) if aleatoric.dim() > 1 else aleatoric
+    dehyd = target_dehydron.squeeze(-1) if target_dehydron.dim() > 1 else target_dehydron
+    regularity = (1.0 - dehyd).clamp(min=0.0, max=1.0)
+    mask = train_mask.float() * regularity
+    denom = mask.sum().clamp(min=1.0)
+    var_penalty = (mask * ale).sum() / denom
+    hinge_t = max(float(hinge_target), 1e-6)
+    aleatoric_hinge = (mask * torch.relu(ale - hinge_t).pow(2)).sum() / denom
+    total = w_var_penalty * var_penalty + w_aleatoric_hinge * aleatoric_hinge
+    return {
+        "v3_aleatoric_shaping_total": total,
+        "var_penalty": var_penalty,
+        "aleatoric_hinge": aleatoric_hinge,
+    }
 
 
 def cone_alignment_loss(
@@ -428,10 +458,17 @@ def gosp_loss_v6(
     epistemic_min_epi_std: float = 0.02,
     routing_load_floor_coeff: float = 0.0,
     routing_load_floor_min: float = 0.05,
+    routing_load_ceiling_coeff: float = 0.0,
+    routing_load_ceiling_max: float = 0.45,
     pocket_bce_coeff: float = 0.0,
     interface_bce_coeff: float = 0.0,
     leak_bce_coeff: float = 0.0,
     cone_target_mode: str = "rho_wrap",
+    v3_aleatoric_shaping_coeff: float = 0.0,
+    w_var_penalty: float = 2.8,
+    w_aleatoric_hinge: float = 4.8,
+    aleatoric_hinge_target: float = 1.0,
+    aleatoric_shaping_train_mask: Optional[torch.Tensor] = None,
     target_pocket: Optional[torch.Tensor] = None,
     target_interface: Optional[torch.Tensor] = None,
     target_leak: Optional[torch.Tensor] = None,
@@ -484,9 +521,27 @@ def gosp_loss_v6(
     # ── Asymmetric capacity loss (replaces v5 symmetric balance_loss) ─────
     capacity_loss = output["capacity_loss"]
     routing_load_floor_raw = output.get("routing_load_floor")
+    # Prefer phase coeff floor threshold over gate.min_usage (often stuck at 0.05).
+    load = output.get("expert_load")
+    if routing_load_floor_coeff > 0 and routing_load_floor_min > 0 and load is not None:
+        routing_load_floor_raw = routing_load_floor_penalty(
+            load.reshape(-1).float(),
+            min_fraction=float(routing_load_floor_min),
+        )
     routing_load_floor_loss = torch.tensor(0.0, device=device)
     if routing_load_floor_coeff > 0 and routing_load_floor_raw is not None:
         routing_load_floor_loss = routing_load_floor_coeff * routing_load_floor_raw
+
+    routing_load_ceiling_loss = torch.tensor(0.0, device=device)
+    if (
+        routing_load_ceiling_coeff > 0
+        and routing_load_ceiling_max > 0
+        and load is not None
+    ):
+        routing_load_ceiling_loss = routing_load_ceiling_coeff * routing_load_ceiling_penalty(
+            load.reshape(-1).float(),
+            max_fraction=float(routing_load_ceiling_max),
+        )
 
     # ── Cone loss — flows through RadialHead only ─────────────────────────
     cone_loss = cone_alignment_loss(
@@ -741,6 +796,27 @@ def gosp_loss_v6(
             mask=leak_label_mask,
         )
 
+    v3_shaping_total = torch.tensor(0.0, device=device)
+    v3_shaping_losses: Dict[str, torch.Tensor] = {}
+    if (
+        v3_aleatoric_shaping_coeff > 0
+        and target_dehydron is not None
+        and aleatoric_shaping_train_mask is not None
+        and "uncertainty" in output
+        and "aleatoric" in output["uncertainty"]
+    ):
+        v3_shaping_losses = v3_aleatoric_shaping_loss(
+            output["uncertainty"]["aleatoric"],
+            target_dehydron,
+            aleatoric_shaping_train_mask,
+            w_var_penalty=w_var_penalty,
+            w_aleatoric_hinge=w_aleatoric_hinge,
+            hinge_target=aleatoric_hinge_target,
+        )
+        v3_shaping_total = v3_aleatoric_shaping_coeff * v3_shaping_losses[
+            "v3_aleatoric_shaping_total"
+        ]
+
     # ── Total loss ────────────────────────────────────────────────────────
     total = (
         (ev_loss if evidential_coeff > 0 else torch.tensor(0.0, device=device))
@@ -764,9 +840,11 @@ def gosp_loss_v6(
         + epistemic_decoupling_coeff * epistemic_decoupling_total
         + epi_ale_decorrelation_coeff * epi_ale_decorrelation_total
         + routing_load_floor_loss
+        + routing_load_ceiling_loss
         + pocket_bce_coeff * pocket_bce
         + interface_bce_coeff * interface_bce
         + leak_bce_coeff * leak_bce
+        + v3_shaping_total
     )
     if shell_losses:
         total = total + shell_corr_coeff * shell_losses["shell_corr_total"]
@@ -788,6 +866,7 @@ def gosp_loss_v6(
         "evidential": ev_loss,
         "capacity_loss": capacity_loss,
         "routing_load_floor": routing_load_floor_loss,
+        "routing_load_ceiling": routing_load_ceiling_loss,
         "cone_consistency": cone_loss,
         "cone_depth_anticollapse": anticollapse_loss,
         "disc_depth_scale": disc_scale_loss,
@@ -812,7 +891,11 @@ def gosp_loss_v6(
         "pocket_bce": pocket_bce,
         "interface_bce": interface_bce,
         "leak_bce": leak_bce,
+        "v3_aleatoric_shaping": v3_shaping_total,
     }
+    if v3_shaping_losses:
+        result["var_penalty"] = v3_shaping_losses["var_penalty"]
+        result["aleatoric_hinge"] = v3_shaping_losses["aleatoric_hinge"]
     if shell_losses:
         result["shell_correlation"] = shell_losses["shell_corr_total"]
         result["shell_corr_depth_sasa"] = shell_losses["shell_corr_depth_sasa"]

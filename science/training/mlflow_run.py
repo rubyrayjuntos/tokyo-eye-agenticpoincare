@@ -12,13 +12,13 @@ from science.contracts.model_registry import resolve_checkpoint_file
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TRACKING_URI = "file:/app/mlruns"
+DEFAULT_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000")
 DEFAULT_EXPERIMENT = "tokyo-eyes-v6"
 CHECKPOINT_ARTIFACT = "checkpoints/v6_best.pt"
 
 
 def _import_mlflow() -> Any:
-    os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
+    os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "false")
     try:
         import mlflow
     except ImportError as exc:

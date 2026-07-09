@@ -41,12 +41,27 @@ def _resolve_tracking_uri(uri: str) -> str:
 
 
 def _ensure_experiment(mlf: Any, tracking_uri: str, experiment_name: str) -> str:
-    """Create experiment with writable artifact root when missing. Returns active name."""
+    """Create experiment when missing. Returns active name.
+
+    HTTP/Postgres tracking servers use the server default artifact root
+    (``MLFLOW_DEFAULT_ARTIFACT_ROOT``). File-store URIs still get an explicit
+    sibling ``mlflow-artifacts/<experiment>`` location so artifacts are not
+    nested under the tracking store root.
+    """
     from mlflow.tracking import MlflowClient
 
     client = MlflowClient(tracking_uri=tracking_uri)
     exp = client.get_experiment_by_name(experiment_name)
+    is_file_store = tracking_uri.startswith("file:")
+
+    if not is_file_store:
+        if exp is None:
+            client.create_experiment(experiment_name)
+        return experiment_name
+
     store_root = Path(tracking_uri.replace("file:", "", 1))
+    if not store_root.is_absolute():
+        store_root = (Path.cwd() / store_root).resolve()
     # Artifacts must NOT live directly under the tracking store root — MLflow treats
     # every top-level subdirectory as an experiment and 500s the UI without meta.yaml.
     artifact_root = store_root.parent / "mlflow-artifacts"
@@ -64,7 +79,7 @@ def _ensure_experiment(mlf: Any, tracking_uri: str, experiment_name: str) -> str
 
 
 def _import_mlflow() -> Any:
-    os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
+    os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "false")
     try:
         import mlflow
     except ImportError as exc:

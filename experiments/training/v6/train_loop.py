@@ -71,17 +71,41 @@ def prepare_training_batch(
     return data
 
 
-def set_slim_moe_structural_ssot_freeze(model: nn.Module) -> None:
-    """Train MoE routing + uncertainty on frozen structural disc; geometry heads read-only."""
+def set_slim_moe_structural_ssot_freeze(
+    model: nn.Module,
+    *,
+    freeze_gate: bool = False,
+    freeze_experts: list[int] | None = None,
+) -> None:
+    """Train MoE routing + uncertainty on frozen structural disc; geometry heads read-only.
+
+    Backbone stays frozen (geometry is SSOT). When ``freeze_gate`` is True,
+    only experts + uncertainty heads train. ``freeze_experts`` locks specific
+    expert MLPs (e.g. dominant e2) while gate + other experts keep training.
+
+    Learned curvature (``log_c``) is frozen: the structural disc is the geometry
+    SSOT, and recomposing every forward for tiny ``c`` updates is pure overhead.
+    """
+    frozen_expert_idxs = {int(i) for i in (freeze_experts or ())}
+    frozen_expert_prefixes = tuple(f"experts.{i}." for i in sorted(frozen_expert_idxs))
     geometry_prefixes = (
         "radial_head.",
         "angular_head.",
         "hyp_proj_head_2d.",
         "hyp_proj_head_3d.",
     )
+    backbone_prefixes = ("convs.", "norms.", "node_emb.")
     for name, param in model.named_parameters():
         if name.startswith(geometry_prefixes) or name == "expert_depth_bias":
             param.requires_grad = False
+        elif name.startswith(backbone_prefixes):
+            param.requires_grad = False
+        elif name == "log_c":
+            param.requires_grad = False
+        elif frozen_expert_prefixes and name.startswith(frozen_expert_prefixes):
+            param.requires_grad = False
+        elif name.startswith("gate."):
+            param.requires_grad = not freeze_gate
         else:
             param.requires_grad = True
     fusion = getattr(model, "radial_angular_fusion", None)
@@ -89,7 +113,7 @@ def set_slim_moe_structural_ssot_freeze(model: nn.Module) -> None:
         for p in fusion.parameters():
             p.requires_grad = False
     if hasattr(model, "gate") and hasattr(model.gate, "detach_gate_input"):
-        model.gate.detach_gate_input = False
+        model.gate.detach_gate_input = freeze_gate
     set_uncertainty_from_backbone(model, enabled=True)
 
 
@@ -193,6 +217,13 @@ def set_expert_dropout(model: nn.Module, p: float) -> None:
         model.gate.expert_dropout_p = p
 
 
+def set_routing_load_floor_min(model: nn.Module, min_fraction: float) -> None:
+    """Align gate capacity / floor hinge with the phase load-floor threshold."""
+    gate = getattr(model, "gate", None)
+    if gate is not None and hasattr(gate, "min_usage"):
+        gate.min_usage = float(min_fraction)
+
+
 def set_gate_only_freeze(model: nn.Module, *, train_experts: bool = True) -> None:
     """Train MoE gate (+ optional expert MLPs); freeze backbone and geometry heads."""
     for name, param in model.named_parameters():
@@ -238,6 +269,18 @@ def set_p4_uncertainty_only_freeze(model: nn.Module) -> None:
     """Phase 4 stage 1: train uncertainty_head only; freeze all other parameters."""
     for name, param in model.named_parameters():
         param.requires_grad = "uncertainty_head" in name
+
+
+def set_p4_aleatoric_only_freeze(model: nn.Module) -> None:
+    """Train aleatoric branch only within decoupled uncertainty head."""
+    for name, param in model.named_parameters():
+        if "uncertainty_head" not in name:
+            param.requires_grad = False
+            continue
+        # Keep aleatoric branch trainable; freeze epistemic branch.
+        param.requires_grad = not (
+            ".epi_trunk." in name or ".logv_head." in name
+        )
 
 
 def build_p4_optimizer(
@@ -308,6 +351,7 @@ def train_epoch(
     freeze_angular: bool = False,
     freeze_backbone: bool = False,
     freeze_gate: bool = False,
+    freeze_experts: list[int] | None = None,
     path_alignment_train: bool = False,
     rec_ablation_train: bool = False,
     projection_recovery_train: bool = False,
@@ -341,7 +385,11 @@ def train_epoch(
         set_topology_crescent_recovery_freeze(model)
         set_uncertainty_from_backbone(model, enabled=True)
     elif slim_moe_structural_ssot_train:
-        set_slim_moe_structural_ssot_freeze(model)
+        set_slim_moe_structural_ssot_freeze(
+            model,
+            freeze_gate=freeze_gate,
+            freeze_experts=freeze_experts,
+        )
     elif gate_only_train:
         set_gate_only_freeze(model)
         set_uncertainty_from_backbone(model, enabled=True)
@@ -378,6 +426,7 @@ def train_epoch(
             "evidential",
             "capacity_loss",
             "routing_load_floor",
+            "routing_load_ceiling",
             "cone_consistency",
             "cone_depth_anticollapse",
             "shell_correlation",
@@ -414,7 +463,9 @@ def train_epoch(
             "partial_epi_sasa_given_depth",
             "pocket_bce",
             "interface_bce",
-            "leak_bce",
+            "var_penalty",
+            "aleatoric_hinge",
+            "v3_aleatoric_shaping",
         ]
     }
     expert_load_acc: list[torch.Tensor] = []
@@ -426,6 +477,28 @@ def train_epoch(
         "grad_backbone": [],
     }
     fold_totals: dict[str, list[float]] = {}
+
+    shaping_holdout_proteins: frozenset[str] | None = None
+    shaping_holdout_mode = "protein"
+    if float(loss_coeffs.get("v3_aleatoric_shaping_coeff", 0.0)) > 0:
+        from science.training.aleatoric_shaping_holdout import (
+            G4_DEFAULT_HOLDOUT_FRACTION,
+            G4_DEFAULT_HOLDOUT_MODE,
+            corpus_protein_holdout_ids,
+        )
+
+        shaping_holdout_mode = str(
+            loss_coeffs.get("aleatoric_shaping_holdout_mode", G4_DEFAULT_HOLDOUT_MODE)
+        )
+        if shaping_holdout_mode == "protein":
+            shaping_holdout_proteins = corpus_protein_holdout_ids(
+                [str(p.get("pdb_id", "")).upper() for p in proteins],
+                holdout_fraction=float(
+                    loss_coeffs.get(
+                        "aleatoric_shaping_holdout_fraction", G4_DEFAULT_HOLDOUT_FRACTION
+                    )
+                ),
+            )
 
     for prot in proteins:
         pdb_id = prot.get("pdb_id", "?")
@@ -482,6 +555,29 @@ def train_epoch(
                 sasa = None
                 if not topology_depth:
                     sasa = residue_sasa_from_data(data).squeeze(-1)
+                shaping_train_mask = None
+                if (
+                    float(loss_coeffs.get("v3_aleatoric_shaping_coeff", 0.0)) > 0
+                    and target_dehydron is not None
+                ):
+                    from science.training.aleatoric_shaping_holdout import (
+                        aleatoric_shaping_holdout_masks_torch,
+                    )
+
+                    residue_ids = list(
+                        prot.get("residue_ids") or [f"idx:{i}" for i in range(data.num_nodes)]
+                    )
+                    shaping_train_mask, _ = aleatoric_shaping_holdout_masks_torch(
+                        target_dehydron,
+                        residue_ids,
+                        pdb_id=str(pdb_id),
+                        holdout_fraction=float(
+                            loss_coeffs.get("aleatoric_shaping_holdout_fraction", 0.20)
+                        ),
+                        device=device,
+                        holdout_mode=shaping_holdout_mode,
+                        corpus_holdout_proteins=shaping_holdout_proteins,
+                    )
                 losses = gosp_loss_v6(
                     output=output,
                     target_rho=target_rho.squeeze(-1) if target_rho.dim() > 1 else target_rho,
@@ -502,7 +598,16 @@ def train_epoch(
                     interface_label_mask=interface_label_mask,
                     leak_label_mask=leak_label_mask,
                     topology_depth=topology_depth,
-                    **loss_coeffs,
+                    aleatoric_shaping_train_mask=shaping_train_mask,
+                    **{
+                        k: v
+                        for k, v in loss_coeffs.items()
+                        if k
+                        not in (
+                            "aleatoric_shaping_holdout_fraction",
+                            "aleatoric_shaping_holdout_mode",
+                        )
+                    },
                 )
                 if (
                     v2_teacher is not None
@@ -594,9 +699,11 @@ def train_epoch(
     result.update(finalize_subsystem_grad_norms(grad_norms))
     if expert_load_acc:
         mean_load = torch.stack(expert_load_acc).mean(dim=0)
-        for i, load in enumerate(mean_load.tolist()):
-            result[f"expert_load_{i}"] = float(load)
-        result["expert_starvation_count"] = float(sum(1 for x in mean_load.tolist() if x < 0.05))
+        load_list = [float(x) for x in mean_load.tolist()]
+        result["expert_load"] = load_list
+        for i, load in enumerate(load_list):
+            result[f"expert_load_{i}"] = load
+        result["expert_starvation_count"] = float(sum(1 for x in load_list if x < 0.05))
     if effective_experts_per_prot:
         result["effective_experts"] = float(np.mean(effective_experts_per_prot))
         result["effective_experts_min"] = float(np.min(effective_experts_per_prot))

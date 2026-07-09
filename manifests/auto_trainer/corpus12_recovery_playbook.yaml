@@ -1,0 +1,73 @@
+# 12-prot recovery baseline — geometry/routing footing after 23-prot regression.
+# HALTED: auto-trainer budget=0 until P_FEATURE_01 (training/inference feature parity) is green.
+# Do NOT optimize probe_r_epi_sasa toward 0.92 — that was SASA-proxy collapse, not a working shell.
+version: "1.2"
+name: corpus12_recovery_baseline
+
+champion:
+  run_id: residue_stage2_v1
+  checkpoint: checkpoints/v6/runs/residue_stage2_v1/v6_phase1_12prot.pt
+  gate_run_id: stage_a_small_v1
+
+corpus:
+  manifest: v6_corpus_stage_a_small_v1.json
+  max_proteins: 12
+
+budget:
+  max_iterations: 0
+  max_failed_runs: 0
+  device: cuda
+
+program_goals:
+  budget:
+    max_consecutive_unpromoted: 0
+    max_program_iterations: 0
+  corpus_stage:
+    current: stage_a_12
+    next: stage_a_12
+    unlock_when:
+      critical_goals_passing_streak: 99
+  approval_required_for:
+    - full_push
+    - gate_promotion
+    - touchup_from_gate
+    - touchup_extended
+
+# Shell acceptance: decoupling + enrichment — NOT high r(epi,sasa).
+benchmark_goals:
+  probe_r_epi_ale:
+    target_max: 0.70
+    tier: critical
+    description: Epistemic decoupled from aleatoric (not SASA-proxy collapse)
+  routing_entropy:
+    target_max: 1.20
+    tier: important
+    description: MoE specialization — not uniform routing
+  per_structure_min_routing:
+    target_min: 0.05
+    tier: important
+    description: No structure drops below expert load floor
+  probe_r_depth_sasa:
+    target_min: 0.65
+    tier: stretch
+    description: Depth×SASA shell correlation (save gate level)
+
+goal_regimes:
+  probe_r_epi_ale: epistemic_decouple
+  routing_entropy: moe_specialization
+  per_structure_min_routing: load_floor
+  probe_r_depth_sasa: depth_shell
+
+regimes:
+  epistemic_decouple:
+    action_order: []
+  moe_specialization:
+    action_order: []
+  load_floor:
+    action_order: []
+  depth_shell:
+    action_order: []
+
+priority: []
+
+actions: {}

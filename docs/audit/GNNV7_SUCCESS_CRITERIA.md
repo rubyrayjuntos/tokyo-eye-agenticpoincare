@@ -104,15 +104,56 @@ low on non-dehydrons and free on dehydrons **on the same residues P8 evaluates**
 P8 passing proves the hinge converged, not that the model discovered biophysical
 ambiguity at the rim.
 
-**Required before `p4_v3_aleatoric_recovery`:**
+**Holdout granularity (frozen):** default **`protein`** — entire structures excluded
+from shaping (`corpus_protein_holdout_ids`, ~20% of Stage A proteins, stable hash).
+Alternate `residue_stratified` is within-protein interpolation only (weaker claim;
+adjacent residues share context). Constants: `G4_DEFAULT_HOLDOUT_MODE` in
+`aleatoric_shaping_holdout.py`.
 
-1. **Holdout split:** Per structure (or corpus-level), hold out fraction `h` of
-   residues from `var_penalty` and `aleatoric_hinge` entirely. Holdout must include
-   both τ-near and non-τ residues; stratify by `target_dehydron` where possible.
-2. **Train** with shaping on the **train mask only**; never backprop shaping on holdout.
-3. **Evaluate P8 only on holdout residues** (`tau_boundary_aleatoric_elevation(holdout_rows)`).
-4. **G4 pass:** P8 holdout lift > 0 **and** aleatoric_std on holdout ≥ informative floor.
-5. **G4 fail:** P8 passes on full corpus but fails on holdout → shaping memorized the mask.
+**G4 pass — ALL required (frozen before `--p4-v3-aleatoric-shaping` runs):**
+
+1. **Holdout P8 (G4a-hardened):** `tau_boundary_aleatoric_elevation(holdout_rows)`
+   passes — relative lift `(ale_τ − ale_non) / std(ale) ≥ 0.20` **and**
+   `std(ale) ≥ 0.05` on holdout residues only.
+2. **No mask memorization:** NOT (`p8_full.ok` AND NOT `p8_holdout.ok`). **Vacuous when
+   full P8 fails** — report as `vacuous_full_p8_fail`, not a pass.
+3. **Transfer ratio:** `holdout_relative_lift / full_relative_lift ≥ 0.70`
+   (`G4_HOLDOUT_RELATIVE_LIFT_TRANSFER_MIN`) **only when** full-corpus P8 is informative
+   (`ale_std ≥ 0.05`) **and** `full_relative_lift ≥ 0.20`. Otherwise
+   `not_evaluable_sub_threshold` — ratio is noise÷noise and must not count as pass.
+4. **ρ coupling report (required in eval, advisory for pass):** compute
+   `r(aleatoric, ρ)` on corpus and holdout. If `|r| ≥ 0.85` →
+   `aleatoric_rho_reparameterization_risk` — G4 P8 may pass but do **not** cite
+   aleatoric as independent biophysical signal (same failure shape as epistemic G5b).
+
+**G4 fail examples:**
+
+| Pattern | Verdict |
+| ------- | ------- |
+| Full P8 ok, holdout P8 fail | Mask memorization |
+| Holdout P8 ok, transfer &lt; 0.70 | Partial memorization |
+| Holdout P8 fail (flat ale) | Shaping did not generalize |
+| Transfer ratio with flat full P8 | **Not evaluable** — do not count as partial pass |
+| Memorization with both P8 fail | **Vacuous** — not a pass |
+| G4 pass + \|r(ale,ρ)\| ≥ 0.85 | P8 credit with ρ-reparameterization caveat |
+| Eval on `checkpoint_eligible=false` | Diagnostic only — do not certify recipe |
+
+**Pre-recipe-change diagnostics (required on failed shaping runs):**
+
+- **Routing entropy** vs established 1.28–1.33 band — confounds aleatoric read if unstable.
+- **Dehydron mask split** (`aleatoric_dehydron_stratification_report`) — if dehydron
+  residues are also near-floor, suspect global penalty / mask bug before tuning coeffs.
+- **`r(epi,ale)`** only interpretable when `ale_std ≥ 0.05`; near-zero r on collapsed ale
+  is mechanical, not decoupling evidence.
+
+Constants: `G4_HOLDOUT_RELATIVE_LIFT_TRANSFER_MIN`, `G4_TRANSFER_RATIO_FULL_REL_LIFT_MIN`, `G4_ALE_RHO_MARGINAL_PROXY` in
+`evidential_validation.py`; report: `g4_aleatoric_shaping_holdout_report()`.
+
+**Thin holdout (n=12 corpus, 20% protein holdout):** default seed holds out **one**
+protein (e.g. 1F88). Report includes `holdout_corpus_contrast` (fold_id, dehydron
+fraction, ρ mean vs corpus z-scores) and `thin_holdout_warning`. Eval-only rotation:
+`--holdout-seeds 42,7` — training mask is fixed at seed 42; extra seeds test whether
+verdict is holdout-protein-specific. Multi-seed consensus in `multi_seed_consensus`.
 
 **A/B variant (mirrors G3 spirit):**
 
@@ -121,10 +162,65 @@ ambiguity at the rim.
 | **A** | Off (or decorr-only P4 baseline) | Holdout |
 | **B** | On train mask only | Holdout |
 
-**G4 pass:** B improves holdout P8 vs A without full-corpus-only inflation.
+**G4 pass (A/B):** B improves holdout P8 vs A under the frozen rule above.
 
-Implementation sketch: `aleatoric_shaping_holdout_masks()` in
-`science/training/nig_identifiability.py`; wire into Phase 4 when recipe is ported.
+Implementation: `science/training/aleatoric_shaping_holdout.py`; training via
+`p4_v3_aleatoric_shaping_phase_config()` + `--p4-v3-aleatoric-shaping`; eval via
+`make eval-g4-holdout`.
+
+**Mask audit (2026-07-08, p4_v3 run):** `target_dehydron` is binary `{0,1}` and
+matches `data.x[:,1]` (0 mismatches). Symmetric collapse is **not** soft-mask or
+field-drift — `var_penalty` on ~42% regular residues updates **shared**
+`DecoupledEvidentialHead.ale_trunk` weights that affect all residues.
+
+**Rejected fix:** stop-gradient on dehydron path — var_penalty already excludes
+dehydron residues; coupling is through shared **parameters**, not activation flow.
+
+**w_var_penalty coefficient sweep (before architectural change):**
+
+Frozen probe grid: `G4_POPULATION_SEPARATION_WVP_WEIGHTS` = `{2.8, 1.0, 0.3}`.
+Short probes only (`G4_WVP_EPOCHS` default 4). Launch: `make g4-var-penalty-sweep`.
+
+Frozen separation pass (pre-registered, not post-hoc):
+
+1. `global_ale_std ≥ 0.05` (same informativeness floor as G4a/P8).
+2. `|μ_dehyd − μ_regular| / σ_pooled ≥ 2.0` (`G4_POPULATION_GAP_STD_MULT_MIN`).
+
+Report: `aleatoric_population_separation_report()`; aggregate:
+`checkpoints/v6/diagnostics/g4_wvp_sweep_report.json`.
+
+**Sweep results (2026-07-08, resume `slim_moe_route_v1/v6_best.pt`, 4 epochs/probe):**
+
+| `w_var_penalty` | `global_ale_std` | `gap/σ_pooled` | `separation_ok` |
+| --------------- | ---------------- | -------------- | --------------- |
+| 2.8 | 0.0086 | 1.71 | fail |
+| 1.0 | 0.0087 | 1.71 | fail |
+| 0.3 | 0.0086 | 1.71 | fail |
+| *(route_v1 baseline, no probe)* | 0.0121 | 1.75 | fail |
+
+Verdict: **`partial_gap_at_low_weight`** — gap is not near-zero (~1.7× pooled σ) but
+frozen criterion fails on **global σ ≪ 0.05** at every weight; 4-epoch probes barely
+move population stats vs baseline. `w=0.3` did cut training `v3_aleatoric_shaping`
+loss (~10→~5), confirming coefficient wiring after config fix.
+
+**Single close-out isolation gate (pre-registered):**
+
+- Run exactly one shaping-only isolation training (`make train-v6-p4-g4-shaping-only-isolation`)
+  with uncertainty-head-only updates and non-G4 losses zeroed.
+- Evaluate with `make eval-g4-holdout G4_CKPT=checkpoints/v6/runs/<run_id>/v6_phase4_12prot.pt`.
+- Confirmation criterion (same frozen metric family): `global_ale_std ≥ 0.05` and/or a
+  material increase in `gap/σ_pooled` vs route baseline; otherwise park uncertainty.
+- Scope cap: isolation run + at most two follow-ups (loss reintroduction probes).
+
+| Sweep verdict | Meaning | Next step |
+| ------------- | ------- | --------- |
+| `magnitude_sufficient` | ≥1 weight passes frozen separation | Tune weight; no trunk split |
+| `partial_gap_at_low_weight` | Gap opens but criterion not met | Extend grid down or mild calibration |
+| `structure_likely_required` | Gap ~0 at all weights | Minimal per-population affine on ale output |
+
+**Architectural fallback (only if sweep rules out magnitude):** learned
+scale/shift on aleatoric output conditioned on dehydron flag **after** shared
+trunk — not duplicate `ale_trunk`, not stop-gradient.
 
 ---
 
@@ -158,7 +254,36 @@ AND teacher–student r≥0.80):
 | **S1** routing, **S4** hyperbolic MP, **S5** edge telemetry | Full weight |
 | **S6** and epistemic-based production claims | **Asterisk only** — wording: *"informative but largely SASA-proxy inherited via v3 teacher distillation — not v6-native DER exposure discovery."* Do **not** count S6 epistemic leg toward production uncertainty gates without native corroboration. |
 
-Checklist: `g5_epistemic_provenance_checklist()` in `nig_identifiability.py`.
+Checklist: `g5_epistemic_provenance_checklist()` / `g5b_rho_feature_proxy_checklist()` in
+`nig_identifiability.py`.
+
+### G5b — ρ feature proxy (extends G5)
+
+ρ is a **direct input** (`x[:,0]`). High `|r(epi,ρ)|` may indicate epistemic is a monotonic
+reparameterization of a feature the model already sees — same failure shape as SASA, different
+confound.
+
+**Required metrics (folded into `g5_epistemic_provenance_report`):**
+
+1. `|r(epi,ρ)|` marginal on Stage A corpus.
+2. Pinned OOD **1PGB**: raw in-corpus vs OOD mean(epi) ratio (P11).
+3. Same contrast on epistemic **ρ-residualized** (fit `epi ~ ρ` on in-corpus only).
+4. `r(student, teacher | ρ)` — distillation alignment beyond ρ.
+
+**Flag `rho_feature_proxy` if:** `|r(epi,ρ)| ≥ 0.85` **and** raw OOD epistemic elevation
+**collapses** after ρ control (`ood_separation_collapsed_after_rho`).
+
+**Teacher–student bootstrap:** resample Stage A proteins with replacement; report CI for
+`r(stu,tea)`. If CI straddles 0.80 → `teacher_student_borderline` (not a robust non-trigger).
+
+**G5 route_v1 result (2026-07-08):** SASA-distillation ruled out (|r(epi,SASA)|=0.51,
+partial≈0). **Epistemic novelty blocked:** r(epi,ρ)=0.95; pinned OOD 1PGB mean epistemic
+**0.90× in-corpus** (inverted, not merely flat); ρ-residual OOD ratio ≈0.98. Teacher–student
+r=0.807 with bootstrap CI [0.791, 0.821] straddling 0.80 (n=12 proteins — CI may understate
+true spread). **S6 epistemic credit for route_v1:** epistemic is ρ-dominant and shows no OOD
+elevation (raw or ρ-residualized) on the pinned OOD test — **do not cite epistemic uncertainty
+for novelty/review-flagging claims until this is independently resolved.** G3 ablations break
+teacher lock-in (r≈0.59) but do not fix OOD inversion.
 
 ---
 
@@ -178,6 +303,102 @@ validate under pure DER. If blended becomes primary, update P9/P11 interpretatio
 `EVIDENTIAL_UNCERTAINTY.md`.
 
 Analytical reference: `loss_philosophy_options()` in `nig_identifiability.py`.
+
+---
+
+## Residue-first aleatoric doctrine (2026-07-08)
+
+**Aleatoric uncertainty is not a corpus-level property.** The NIG head models
+genuine molecular ambiguity at each residue / dehydron site — local probability mass
+that remains accessible even in the fully observed conformational ensemble. Averaging
+or thresholding aleatoric across the corpus erases the spatial signal needed for
+druggability and active learning.
+
+From the manifold perspective, informative aleatoric should **concentrate at the rim**
+of the Poincaré disc (high `disc_r`, under-wrapped / high-entropy regions), while
+stable core residues sit deeper in the cone with low aleatoric. A global
+`std(ale) ≥ 0.05` gate smears rim signal across the bulk and systematically
+under-flags proteins with one or two critical sites while over-penalizing flexible
+constructs.
+
+### Site decisions (local only)
+
+**Investigate** when **all** hold on a residue:
+
+| Signal | Rule | Rationale |
+| ------ | ---- | --------- |
+| High aleatoric | `ν_ale > t_ale` (default: corpus **P90**) | Local ensemble ambiguity |
+| Rim-localized | `disc_r` ≥ corpus P75 | Under-wrapped / rim geometry |
+| Low clustering | graph `clustering` ≤ corpus P25 | Not in a dense topological core |
+| (optional) Low routing confidence | `expert_routing_max` ≤ P25 | Expert ambiguity |
+
+Implementation: `flag_investigation_sites()` in
+`science/training/aleatoric_residue_diagnostics.py`. CLI:
+`make aleatoric-corpus-diagnostics`.
+
+**`t_ale` resolution:** default is corpus-relative **P90** (`resolve_t_ale()`), not
+the training-health absolute `0.05` floor. Override with `--t-ale` (absolute) or
+`T_ALE_PERCENTILE=95` on the Makefile target. Use absolute `0.05` only when head
+output is on that scale.
+
+### Global summaries (monitoring / triage only)
+
+| Diagnostic | Purpose | Not for |
+| ---------- | ------- | ------- |
+| Residue-level aleatoric histogram | Calibration shape — expect **right-skew** (bulk low, long tail) | Site pass/fail |
+| `std(ale)` corpus-wide | Head collapse / narrow calibration detector | Druggability certification |
+| Per-protein `fraction(ale > t_ale)` | Validate ~0.12–0.20 vs known flexible sites | Global gate |
+| Per-protein `max(ale)` ranked | **Active-learning acquisition priority** | Mean-ale ranking |
+| Intra-protein `var(ale)` | Conformational heterogeneity (e.g. EGFR L858R) | Corpus mean |
+| Dehydron high-ale burden table | Unwrapped-site count per structure | Global threshold |
+| Family-level means (when metadata present) | Kinase vs multi-domain separation | Until corpus diverse enough |
+
+**Expected global signatures when well-calibrated on a diverse corpus:** right-skewed
+residue distribution; kinase domains lower mean with localized activation-loop spikes;
+multi-domain / disordered constructs higher mean and dehydron burden. Current Stage A
+corpus is too narrow to show clean family separation — treat absence as a **data**
+limit, not proof the head cannot discriminate.
+
+### Aleatoric independence probe (minimal)
+
+**Question:** Does ν_ale vary independently of ρ and expert assignment after controls?
+
+**Not a training gate** — run before crediting site-level aleatoric claims.
+
+| Stat | Meaning |
+| ---- | ------- |
+| `r(ale, ρ)` marginal | Dehydron-density proxy risk |
+| `r(ale, ρ \| expert)` partial | ρ coupling beyond routing |
+| `η²(expert)` / `η²(expert \| ρ)` | MoE assignment explains aleatoric? |
+| `R²(ale ~ ρ + expert)` | Combined proxy explainability |
+| `residual_std_ratio` | `std(resid) / std(ale)` — independent variance left |
+| Within-expert `r(ale, ρ)` | ρ monotonicity inside each expert |
+
+**Verdicts** (`aleatoric_independence_probe()`):
+
+| Verdict | Meaning |
+| ------- | ------- |
+| `not_yet_meaningful` | CV too low — probe cannot decide (route_v1 expected) |
+| `rho_proxy` | Aleatoric tracks ρ |
+| `expert_proxy` | Aleatoric tracks routing |
+| `proxy_fully_explained` | ρ + expert absorb variance |
+| `independent_signal_candidate` | Residual spread + weak partials — warrant site follow-up |
+| `ambiguous` | Borderline — extend corpus or add geometry |
+
+CLI: `make aleatoric-independence-probe` (optional `INCLUDE_GEOMETRY=1`).
+
+### Impact on frozen gates
+
+| Gate / metric | Old role | New interpretation |
+| ------------- | -------- | ------------------ |
+| `global_ale_std ≥ 0.05` (G4a, S6, sweep) | Site informativeness certification | **Training collapse monitor** — retain for save health, demote for biology |
+| `aleatoric_population_separation_report` | Sweep pass/fail | Shaping coefficient diagnostic — not druggability |
+| P8 τ lift on corpus | Aleatoric biology | Residue-stratified holdout P8 on **high-ale sites** + local rim check |
+| G4 holdout memorization | Still valid | Independent of global σ floor |
+
+`global_aleatoric_health_monitor()` wraps corpus `std(ale)` with
+`not_a_site_gate=True`. Do **not** block structure onboarding or site reports on
+corpus mean aleatoric alone.
 
 ---
 
@@ -210,9 +431,9 @@ Analytical reference: `loss_philosophy_options()` in `nig_identifiability.py`.
 
 Implementation: `uncertainty_s6_joint_pass()`, `uncertainty_save_ineligibility_reasons(require_tau_ale_elevation=True)`.
 
-**G3 must pass before S6 counts for production claims** on OOD / τ-boundary **for
-epistemic-supervised paths**. **G4 must pass before** v3 aleatoric shaping or P8
-claims on aleatoric recovery. **G5 must be run before** attributing P7 to v6-native learning.
+**G5 must be run before** attributing P7 to v6-native learning. **If
+`epistemic_novelty_claim_blocked` (route_v1: yes)** — block production claims that epistemic
+flags novel/risky structures for review; routing/disc legs (S1, S4, S5) remain creditable.
 
 ---
 
@@ -251,7 +472,7 @@ Floor `0.02` validated against synthetic degenerate + live route_v1 discriminati
 2. **G4a** — P8 magnitude gate (done in code; re-eval G3/G3 report through hardened P8)
 3. **G5** provenance audit on route_v1 / G3 checkpoints (cheap, no GPU)
 4. Re-interpret G3 A/B (epistemic circularity on P11; P8 legs invalid pre-G4a)
-5. If pursuing v3 aleatoric recipe: **G4** holdout wiring + A/B — only after G4a
+5. **G4** holdout wiring — **done** (`--p4-v3-aleatoric-shaping`, `make eval-g4-holdout`)
 6. Choose primary-loss philosophy (NIG vs blended) — document in run params
 7. If G3 (epistemic) + G4 pass → full Phase 4 + routing retrain with hyperbolic MP graph (S4)
 8. Evaluate S1–S6 jointly; apply G5 asterisk rule if `distilled_proxy` flags

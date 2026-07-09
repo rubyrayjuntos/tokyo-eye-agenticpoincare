@@ -35,6 +35,14 @@ def _write_contract(contract: dict, contract_path: Path | None = None) -> None:
         yaml.dump(contract, handle, default_flow_style=False, sort_keys=False, width=120)
 
 
+def _dest_subdir_for_model(model_id: str) -> str:
+    if "v65" in model_id or "v6.5" in model_id or model_id.endswith("_v65"):
+        return "v65"
+    if "v5" in model_id and "v6" not in model_id:
+        return "v5"
+    return "v6"
+
+
 def promote_checkpoint(
     config: PromotionConfig,
     *,
@@ -45,13 +53,15 @@ def promote_checkpoint(
     if not src.is_file():
         raise FileNotFoundError(f"Checkpoint not found: {src}")
 
-    dest_dir = _REPO_ROOT / "checkpoints" / "v6"
+    subdir = _dest_subdir_for_model(config.model_id)
+    dest_dir = _REPO_ROOT / "checkpoints" / subdir
     dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / src.name
+    dest_name = f"{config.checkpoint_id}.pt"
+    dest = dest_dir / dest_name
     if src != dest:
         shutil.copy2(src, dest)
 
-    logical_path = f"checkpoints/v6/{dest.name}"
+    logical_path = f"checkpoints/{subdir}/{dest.name}"
     sha256 = compute_checkpoint_sha256(logical_path) or compute_checkpoint_sha256(str(dest))
     if sha256 is None:
         raise RuntimeError(f"Could not compute SHA-256 for {dest}")

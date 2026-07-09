@@ -1,0 +1,108 @@
+{
+  "checkpoint": "checkpoints/v6/tokyo_eyes_v6.pt",
+  "corpus": "manifests/v6_corpus_disc_target.json",
+  "n_structures": 3,
+  "feature_source": "MASTER DB (rho, tau, sasa) \u2014 no GNN leak/motif tables",
+  "theory": {
+    "dehydron_rim": "\u03c4=1 (\u03c1<TAU) \u2192 high cone_depth / disc_r",
+    "stable_core": "high \u03c1 wrap \u2192 low depth (center)"
+  },
+  "cone_loss_target": "target_depth = clip(\u03c1 / 30.0, 0, 1)",
+  "per_structure": [
+    {
+      "pdb_id": "11QE",
+      "fold_id": "None",
+      "n_residues": 168,
+      "tau_fraction": 0.5952380952380952,
+      "n_dehydron_residues": 100,
+      "mean_rho": 12.041666666666666,
+      "std_rho": 8.405889493361377,
+      "mean_cone_depth": 1.712697412996065,
+      "std_cone_depth": 0.24957302378325358,
+      "mean_disc_r": 1.0215836774025644,
+      "correlations": {
+        "r_cone_depth_tau": 0.4216011493209421,
+        "r_cone_depth_rho": -0.6086298867401633,
+        "r_cone_depth_sasa_z": 0.8576645479572796,
+        "r_cone_depth_target_depth": -0.5986338085500379,
+        "r_radial_depth_rho": -0.5633147193151193,
+        "r_radial_depth_tau": 0.4078346164070694,
+        "r_disc_r_tau": 0.4215668411805138,
+        "r_disc_r_rho": -0.6085825327582546,
+        "r_disc_r_sasa_z": 0.8575052412185571,
+        "r_target_depth_rho": 0.9969833980810283
+      }
+    },
+    {
+      "pdb_id": "4OBE",
+      "fold_id": "3.40.50.300",
+      "n_residues": 169,
+      "tau_fraction": 0.6035502958579881,
+      "n_dehydron_residues": 102,
+      "mean_rho": 12.337278106508876,
+      "std_rho": 8.116669656891704,
+      "mean_cone_depth": 1.6900859905417853,
+      "std_cone_depth": 0.25698144736876716,
+      "mean_disc_r": 1.0081034179269914,
+      "correlations": {
+        "r_cone_depth_tau": 0.5116740338152163,
+        "r_cone_depth_rho": -0.6429513645384136,
+        "r_cone_depth_sasa_z": 0.8664252521575726,
+        "r_cone_depth_target_depth": -0.6422752688755763,
+        "r_radial_depth_rho": -0.5852117252246597,
+        "r_radial_depth_tau": 0.5002753691064672,
+        "r_disc_r_tau": 0.511663809690423,
+        "r_disc_r_rho": -0.6429411254915621,
+        "r_disc_r_sasa_z": 0.8663551515160252,
+        "r_target_depth_rho": 0.9951916067354637
+      }
+    },
+    {
+      "pdb_id": "1IVO",
+      "fold_id": "3.80.20.20",
+      "n_residues": 511,
+      "tau_fraction": 0.5753424657534246,
+      "n_dehydron_residues": 294,
+      "mean_rho": 12.16242661448141,
+      "std_rho": 6.844873035406695,
+      "mean_cone_depth": 1.7005302777728923,
+      "std_cone_depth": 0.2460857462230201,
+      "mean_disc_r": 1.0142948985566365,
+      "correlations": {
+        "r_cone_depth_tau": 0.3015267443891382,
+        "r_cone_depth_rho": -0.39295633585106954,
+        "r_cone_depth_sasa_z": 0.848868926144609,
+        "r_cone_depth_target_depth": -0.39488108823617957,
+        "r_radial_depth_rho": -0.3926974840632069,
+        "r_radial_depth_tau": 0.3085048922017839,
+        "r_disc_r_tau": 0.30138631834251894,
+        "r_disc_r_rho": -0.39279681139932177,
+        "r_disc_r_sasa_z": 0.8483331517747964,
+        "r_target_depth_rho": 0.9995875091450664
+      }
+    }
+  ],
+  "summary": {
+    "aggregate_correlations": {
+      "mean_r_cone_depth_tau": 0.4116006425084322,
+      "mean_r_cone_depth_rho": -0.5481791957098822,
+      "mean_r_cone_depth_sasa_z": 0.8576529087531538,
+      "mean_r_radial_depth_rho": -0.5137413095343287,
+      "mean_r_disc_r_tau": 0.41153898973781855,
+      "mean_r_disc_r_sasa_z": 0.8573978481697929
+    },
+    "theory_dehydron_rim": {
+      "expects_r_cone_depth_tau_positive": true,
+      "expects_r_cone_depth_rho_negative": true,
+      "tau_positive": true,
+      "rho_negative": true
+    },
+    "cone_loss_contract": {
+      "expects_r_radial_depth_rho_positive": true,
+      "rho_positive": false
+    },
+    "sasa_dominance_over_tau": true,
+    "verdict": "dehydron_rim_aligned",
+    "interpretation": "dehydron_rim_aligned: dehydrons (\u03c4) correlate with higher cone depth as theory predicts. cone_loss_rho_aligned_not_dehydron_theory: model follows \u03c1/30 supervision (high wrap \u2192 deep) but not \u03c4\u2192rim. sasa_shell_dominated: depth tracks solvent exposure more than dehydron identity."
+  }
+}

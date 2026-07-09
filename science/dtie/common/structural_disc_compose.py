@@ -314,7 +314,7 @@ def compose_structural_disc(
             )
         )
 
-    logger.info(
+    logger.debug(
         "Structural disc composed structure=%s n=%d macros=%d c=%.6f",
         structure_id or "?",
         len(nodes),
@@ -555,29 +555,72 @@ def residue_inputs_from_training_prot(prot: dict[str, Any]) -> list[StructuralRe
     return out
 
 
+# Training recomposes the disc on every forward unless cached. Under slim MoE SSOT
+# the Tier-1 layout (ρ/τ/Cα) is fixed; only learned ``c`` can change placement.
+# Key by structure + rounded ``c`` so identical forwards (train/health/eval) reuse.
+_COMPOSE_CACHE: dict[tuple[str, float, int, int | None], StructuralDiscArtifact] = {}
+_COMPOSE_CACHE_MAX = 64
+
+
+def clear_structural_disc_compose_cache() -> None:
+    """Drop cached structural disc artifacts (tests / curvature regime change)."""
+    _COMPOSE_CACHE.clear()
+
+
+def _compose_cache_key(
+    structure_id: str,
+    curvature_c: float,
+    n_residues: int,
+    k_macros: int | None,
+) -> tuple[str, float, int, int | None]:
+    # 1e-4 ≈ typical per-step c drift; coarser than log spam, fine enough for SSOT.
+    return (structure_id.upper(), round(float(curvature_c), 4), int(n_residues), k_macros)
+
+
 def compose_from_training_prot(
     prot: dict[str, Any],
     curvature_c: float,
     *,
     k_macros: int | None = None,
+    use_cache: bool = True,
 ) -> StructuralDiscArtifact:
     """Compose structural SSOT from a training protein dict (no DB round-trip)."""
     structure_id = str(prot.get("pdb_id") or prot.get("structure_id") or "")
-    return compose_structural_disc(
+    n_residues = len(prot.get("residue_ids") or [])
+    if not n_residues and "data" in prot:
+        n_residues = int(prot["data"].num_nodes)
+    key = _compose_cache_key(structure_id, curvature_c, n_residues, k_macros)
+    if use_cache and key in _COMPOSE_CACHE:
+        return _COMPOSE_CACHE[key]
+    artifact = compose_structural_disc(
         residue_inputs_from_training_prot(prot),
         curvature_c,
         structure_id=structure_id,
         k_macros=k_macros,
     )
+    if use_cache:
+        if len(_COMPOSE_CACHE) >= _COMPOSE_CACHE_MAX:
+            # Drop an arbitrary old entry (insertion order in 3.7+).
+            _COMPOSE_CACHE.pop(next(iter(_COMPOSE_CACHE)))
+        _COMPOSE_CACHE[key] = artifact
+    return artifact
 
 
 def attach_structural_disc_for_forward(
     graph_data: Any,
     prot: dict[str, Any],
     curvature_c: float,
+    *,
+    use_cache: bool = True,
 ) -> Any:
-    """Compose + attach structural disc before a v6 forward pass (training/diagnostics)."""
-    artifact = compose_from_training_prot(prot, curvature_c)
+    """Compose + attach structural disc before a v6 forward pass (training/diagnostics).
+
+    Compose is cached by ``(structure_id, round(c, 4))``; attaching tensors to a
+    cloned ``Data`` object remains cheap and happens every call.
+    """
+    artifact = compose_from_training_prot(
+        prot, curvature_c, use_cache=use_cache
+    )
     return attach_structural_disc_to_pyg(
         graph_data,
         artifact,

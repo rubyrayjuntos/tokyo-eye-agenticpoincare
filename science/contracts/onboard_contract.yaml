@@ -566,6 +566,13 @@ gnn_models:
       runner_module: science.dtie.v5.gnn.runner
       runner_class: V5GNNRunner
       production_checkpoint_id: tokyo_eyes_v5
+    gospc_v65:
+      model_version: GOSPConeMapper-v6.5
+      api_alias: v65
+      status: candidate
+      runner_module: science.dtie.v65.gnn.runner
+      runner_class: V65GNNRunner
+      production_checkpoint_id: v65_champion
   checkpoints:
     lever_a_clean_slate_v1:
       model_id: gospc_v6

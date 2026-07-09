@@ -17,10 +17,15 @@ services:
       - pgdata:/var/lib/postgresql/data
       - wal_archive:/var/lib/postgresql/wal_archive
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tokyoeye -d tokyoeye_dev"]
+      # Ensure mlflow DB exists (init script only runs on fresh volumes)
+      test:
+        [
+          "CMD-SHELL",
+          "psql -U tokyoeye -d tokyoeye_dev -tAc \"SELECT 1 FROM pg_database WHERE datname='mlflow'\" | grep -q 1 || psql -U tokyoeye -d tokyoeye_dev -c \"CREATE DATABASE mlflow OWNER tokyoeye\"",
+        ]
       interval: 5s
-      timeout: 3s
-      retries: 5
+      timeout: 5s
+      retries: 10
     networks:
       - tokyoeye_net
     restart: unless-stopped
@@ -36,8 +41,9 @@ services:
     environment:
       DATABASE_URL: postgresql://tokyoeye:tokyoeye_dev_local@db:5432/tokyoeye_dev
       CHECKPOINT_DIR: /app/checkpoints
-      MLFLOW_TRACKING_URI: file:/app/mlruns
-      MLFLOW_ALLOW_FILE_STORE: "true"
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_REGISTRY_URI: http://mlflow:5000
+      MLFLOW_ALLOW_FILE_STORE: "false"
       PYTHONUNBUFFERED: "1"
       PYTHONDONTWRITEBYTECODE: "1"
       DB_POOL_MIN_SIZE: "2"
@@ -63,10 +69,13 @@ services:
       - ./experiments:/app/experiments
       - ./manifests:/app/manifests
       - ./mlruns:/app/mlruns
+      - ./mlflow-artifacts:/app/mlflow-artifacts
       - ./pdb_cache:/tmp/dtie_pdb_cache
     depends_on:
       db:
         condition: service_healthy
+      mlflow:
+        condition: service_started
     networks:
       - tokyoeye_net
     deploy:
@@ -101,22 +110,28 @@ services:
       PORT: "8000"
       PYTHONUNBUFFERED: "1"
       PYTHONDONTWRITEBYTECODE: "1"
-      # Uvicorn concurrency tuning
       WEB_CONCURRENCY: "4"
-      # Database connection pool (psycopg-pool)
       DB_POOL_MIN_SIZE: "2"
       DB_POOL_MAX_SIZE: "10"
       GNN_VIEWER_OUTPUT_DIR: /app/data/local_objects/gnn_viewer
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_REGISTRY_URI: http://mlflow:5000
+      SCIENCE_API_URL: http://science:8001
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
+      mlflow:
+        condition: service_started
     volumes:
       - ./agent:/app/agent
       - ./data:/app/data
       - ./shared:/app/shared
       - ./science:/app/science
+      - ./checkpoints:/app/checkpoints
+      - ./manifests:/app/manifests
+      - ./experiments:/app/experiments
     networks:
       - tokyoeye_net
     healthcheck:
@@ -127,27 +142,46 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  mlflow-ui:
+  mlflow:
     build:
       context: .
       dockerfile: Dockerfile.science
       cache_from:
         - tokyoeye-science:latest
     image: tokyoeye-science:latest
-    container_name: tokyoeye_mlflow_ui
+    container_name: tokyoeye_mlflow
+    environment:
+      MLFLOW_BACKEND_STORE_URI: postgresql://tokyoeye:tokyoeye_dev_local@db:5432/mlflow
+      MLFLOW_DEFAULT_ARTIFACT_ROOT: /app/mlflow-artifacts
     command:
       - sh
       - -c
       - |
-        python3 /app/experiments/training/v6/repair_mlflow_store.py --store /app/mlruns
-        exec mlflow ui --host 0.0.0.0 --port 5000 --backend-store-uri file:/app/mlruns
+        mkdir -p /app/mlflow-artifacts
+        exec mlflow server \
+          --host 0.0.0.0 \
+          --port 5000 \
+          --backend-store-uri postgresql://tokyoeye:tokyoeye_dev_local@db:5432/mlflow \
+          --default-artifact-root /app/mlflow-artifacts \
+          --allowed-hosts "localhost,localhost:5000,127.0.0.1,127.0.0.1:5000,mlflow,mlflow:5000" \
+          --cors-allowed-origins "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5000,http://127.0.0.1:5000"
     ports:
       - "5000:5000"
     volumes:
+      - ./mlflow-artifacts:/app/mlflow-artifacts
+      - ./checkpoints:/app/checkpoints
       - ./experiments:/app/experiments
-      - ./mlruns:/app/mlruns
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - tokyoeye_net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
 
 networks:

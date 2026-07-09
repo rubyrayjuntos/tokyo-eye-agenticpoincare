@@ -5,7 +5,11 @@ from __future__ import annotations
 import torch
 from torch_geometric.data import Data
 
-from experiments.training.v6.train_loop import set_gate_only_freeze, set_uncertainty_from_backbone
+from experiments.training.v6.train_loop import (
+    set_gate_only_freeze,
+    set_p4_aleatoric_only_freeze,
+    set_uncertainty_from_backbone,
+)
 from science.dtie.v5.gnn.model import precompute_clustering
 from science.dtie.v6.gnn.model import GOSPConeMapperV6
 
@@ -47,3 +51,13 @@ def test_gate_only_freeze_enables_backbone_uncertainty_mode() -> None:
     assert model.uncertainty_from_backbone is True
     assert all(not p.requires_grad for n, p in model.named_parameters() if "uncertainty_head" in n)
     assert any(p.requires_grad for n, p in model.named_parameters() if n.startswith("gate."))
+
+
+def test_p4_aleatoric_only_freeze_disables_epi_subpath() -> None:
+    model = GOSPConeMapperV6(hidden=16, num_layers=2, num_experts=2, decoupled_uncertainty_heads=True)
+    set_p4_aleatoric_only_freeze(model)
+    for name, param in model.named_parameters():
+        if "uncertainty_head.epi_trunk" in name or "uncertainty_head.logv_head" in name:
+            assert param.requires_grad is False
+        elif "uncertainty_head" in name:
+            assert param.requires_grad is True

@@ -40,54 +40,27 @@ logging.basicConfig(
 logger = logging.getLogger("launch_v6")
 
 
-def resolve_prior_checkpoint(output_dir: Path, phase: int, protein_count: int) -> Path | None:
-    """Pick v6_best.pt or prior phase end checkpoint for curriculum continuity."""
-    best = output_dir / "v6_best.pt"
-    if best.is_file():
-        return best
-    if phase >= 2:
-        prev = output_dir / f"v6_phase{phase - 1}_{protein_count}prot.pt"
-        if prev.is_file():
-            return prev
-    return None
+def resolve_prior_checkpoint(
+    output_dir: Path,
+    phase: int,
+    protein_count: int,
+    *,
+    checkpoint_prefix: str = "v6",
+) -> Path | None:
+    from science.training.gnn_lineage import resolve_prior_checkpoint as _resolve
+
+    return _resolve(
+        output_dir,
+        checkpoint_prefix=checkpoint_prefix,
+        phase=phase,
+        protein_count=protein_count,
+    )
 
 
 def build_model(config: TrainingConfig, node_dim: int | None = None) -> torch.nn.Module:
-    from science.dtie.common.residue_features import GnnInputMode, gnn_input_dim_for_barcode
-    from science.dtie.v6.gnn.model import GOSPConeMapperV6
+    from science.training.gnn_lineage import build_model as _build
 
-    input_mode = GnnInputMode.TOPOLOGY_THREE_VECTOR if config.use_dehydron_barcode else None
-    resolved_node_dim = (
-        int(node_dim)
-        if node_dim is not None
-        else gnn_input_dim_for_barcode(
-            config.use_dehydron_barcode,
-            config.use_binned_dehydron,
-            mode=input_mode,
-        )
-    )
-    model = GOSPConeMapperV6(
-        node_dim=resolved_node_dim,
-        hidden=config.hidden,
-        num_layers=config.num_layers,
-        num_experts=config.num_experts,
-        capacity_threshold=config.capacity_threshold,
-        expert_dropout_p=0.0,
-        min_usage=config.min_usage,
-        topology_only_gate=config.topology_only_gate,
-        hyperbolic_gate=config.hyperbolic_gate,
-        hyperbolic_expert_mix=config.hyperbolic_expert_mix,
-        gate_disc_scale=config.gate_disc_scale,
-        gate_gumbel=config.gate_gumbel,
-        deep_hyperbolic_gate=config.deep_hyperbolic_gate,
-        legacy_disc_projection=config.legacy_disc_projection,
-        radial_angular_recombine=config.radial_angular_recombine,
-        disc_radial_source=config.disc_radial_source,
-        decoupled_uncertainty_heads=config.decoupled_uncertainty_heads,
-        expert_depth_decouple=config.expert_depth_decouple,
-        structure_gate=config.structure_gate,
-    )
-    return model
+    return _build(config, node_dim=node_dim)
 
 
 def _node_dim_from_loaded_graphs(proteins: list[dict]) -> int | None:
@@ -141,12 +114,13 @@ def main() -> None:
         help="Skip structures larger than this (GPU guard; Stage A floor is STAGE_A_MAX_RESIDUES)",
     )
     parser.add_argument("--no-corpus-cache", action="store_true")
-    parser.add_argument("--mlflow-uri", default=os.environ.get("MLFLOW_TRACKING_URI", "file:/app/mlruns"))
+    parser.add_argument("--mlflow-uri", default=os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
     parser.add_argument("--mlflow-experiment", default="tokyo-eyes-v6")
     parser.add_argument(
         "--gnn-lineage",
-        default=None,
-        help="Optional lineage label for wrapper launchers (for example v6.5)",
+        choices=["v6", "v6.5"],
+        default="v6",
+        help="Architecture package line (v6=frozen baseline, v6.5=active development fork)",
     )
     parser.add_argument("--no-mlflow", action="store_true")
     parser.add_argument(
@@ -392,6 +366,27 @@ def main() -> None:
         help="G3 ablation A: head decouple + decorrelation only (no B-factor/SASA supervision)",
     )
     parser.add_argument(
+        "--p4-v3-aleatoric-shaping",
+        action="store_true",
+        help="Phase 4 + v3 var_penalty/hinge on G4 train mask (holdout P8 eval)",
+    )
+    parser.add_argument(
+        "--p4-g4-shaping-only-isolation",
+        action="store_true",
+        help="G4 isolation: uncertainty-head-only with only v3 shaping loss active",
+    )
+    parser.add_argument(
+        "--p4-g4-ale-only-unshaped",
+        action="store_true",
+        help="G4 isolation: aleatoric branch only, no shaping losses, minimal evidential objective",
+    )
+    parser.add_argument(
+        "--w-var-penalty",
+        type=float,
+        default=None,
+        help="Override v3 var_penalty weight (G4 coefficient sweep)",
+    )
+    parser.add_argument(
         "--max-probe-r-epi-sasa-save",
         type=float,
         default=None,
@@ -571,6 +566,14 @@ def main() -> None:
         help="Directory containing {PDB}_{chain}_dehydron_barcode_v1.pt sidecars",
     )
     args = parser.parse_args()
+    from science.training.gnn_lineage import get_lineage
+
+    lineage_spec = get_lineage(args.gnn_lineage)
+    if args.gnn_lineage == "v6.5":
+        if Path(args.output_dir).as_posix() == "checkpoints/v6/runs/default":
+            args.output_dir = lineage_spec.checkpoint_root / "default"
+        if args.mlflow_experiment == "tokyo-eyes-v6":
+            args.mlflow_experiment = lineage_spec.mlflow_experiment
 
     gate_disc_scale = args.gate_disc_scale
     if gate_disc_scale is None:
@@ -619,10 +622,11 @@ def main() -> None:
         v2_ckpt = resolve_default_v2_teacher_checkpoint()
 
     config = TrainingConfig(
-        model_version=f"GOSPConeMapper-{args.gnn_lineage}" if args.gnn_lineage else "GOSPConeMapper-v6",
         device=args.device,
         lr=args.lr,
         num_experts=args.num_experts,
+        gnn_lineage=args.gnn_lineage,
+        model_version=lineage_spec.model_version,
         output_dir=args.output_dir,
         pdb_dir=args.pdb_dir,
         corpus_manifest=args.corpus,
@@ -745,6 +749,10 @@ def main() -> None:
         p4_uncertainty_calibration=args.p4_uncertainty_calibration,
         p4_head_decouple=args.p4_head_decouple,
         p4_head_decouple_decorr_only=args.p4_head_decouple_decorr_only,
+        p4_v3_aleatoric_shaping=args.p4_v3_aleatoric_shaping,
+        p4_g4_shaping_only_isolation=args.p4_g4_shaping_only_isolation,
+        p4_g4_ale_only_unshaped=args.p4_g4_ale_only_unshaped,
+        w_var_penalty=args.w_var_penalty,
         p4_gate_promotion=args.p4_gate_promotion,
         p4_corpus25_gate_promotion=args.p4_corpus25_gate_promotion,
         p4_corpus25_touchup_extended=args.p4_corpus25_touchup_extended,
@@ -755,6 +763,9 @@ def main() -> None:
         decoupled_uncertainty_heads=(
             args.p4_head_decouple
             or args.p4_head_decouple_decorr_only
+            or args.p4_v3_aleatoric_shaping
+            or args.p4_g4_shaping_only_isolation
+            or args.p4_g4_ale_only_unshaped
             or args.p4_gate_uncertainty_touchup
             or args.p4_corpus25_touchup_extended
         ),
@@ -847,6 +858,17 @@ def main() -> None:
         or config.p2_disc_proj_recovery_v5
     ):
         config.legacy_disc_projection = False
+    from science.training.gnn_lineage import apply_lineage_defaults
+
+    config = apply_lineage_defaults(config)
+    lineage_spec = get_lineage(config.gnn_lineage)
+    logger.info(
+        "GNN lineage %s → %s_*.pt under %s, MLflow experiment %s",
+        config.gnn_lineage,
+        lineage_spec.checkpoint_prefix,
+        config.output_dir,
+        config.mlflow_experiment,
+    )
     config.output_dir.mkdir(parents=True, exist_ok=True)
     if not config.pdb_dir.is_dir():
         config.pdb_dir.mkdir(parents=True, exist_ok=True)
@@ -931,19 +953,31 @@ def main() -> None:
     init_v6_radial_scale(model)
 
     if config.phase and config.phase >= 2 and (config.resume is None or not Path(config.resume).is_file()):
-        auto_resume = resolve_prior_checkpoint(config.output_dir, config.phase, len(proteins))
+        auto_resume = resolve_prior_checkpoint(
+            config.output_dir,
+            config.phase,
+            len(proteins),
+            checkpoint_prefix=lineage_spec.checkpoint_prefix,
+        )
         if auto_resume is not None:
             config.resume = auto_resume
             logger.info("Auto-resuming phase %d from %s", config.phase, auto_resume)
 
     resume_state = None
     if config.resume and config.resume.is_file():
+        import importlib
+
         from science.training.checkpoint import CheckpointManager
 
-        resume_state = CheckpointManager(config.output_dir, len(proteins)).load(config.resume, device)
-        from science.dtie.v6.gnn.model import load_v6_state_dict
-
-        missing, unexpected = load_v6_state_dict(model, resume_state.model_state_dict)
+        resume_state = CheckpointManager(
+            config.output_dir,
+            len(proteins),
+            checkpoint_prefix=lineage_spec.checkpoint_prefix,
+            architecture_version=lineage_spec.architecture_version,
+        ).load(config.resume, device)
+        module = importlib.import_module(lineage_spec.package)
+        load_state = getattr(module, f"load_{lineage_spec.checkpoint_prefix}_state_dict")
+        missing, unexpected = load_state(model, resume_state.model_state_dict)
         if missing:
             logger.info("Resume: %d missing keys (new modules init from scratch)", len(missing))
         if unexpected:
@@ -1028,7 +1062,9 @@ def main() -> None:
             pdb_dir=config.pdb_dir,
             device=device,
             structural_disc_frozen=config.structural_disc_frozen,
-            checkpoint_label=str(config.output_dir / "v6_best_route.pt"),
+            checkpoint_label=str(
+                config.output_dir / f"{lineage_spec.checkpoint_prefix}_best_route.pt"
+            ),
         )
         if viewer_paths:
             logger.info(

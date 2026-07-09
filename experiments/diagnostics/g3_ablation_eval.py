@@ -35,6 +35,7 @@ from science.training.evidential_validation import (
     OOD_PINNED_STRUCTURES,
     assess_evidential_decomposition,
     g3_supervision_circularity_report,
+    g5b_rho_feature_proxy_report,
     out_of_corpus_epistemic_contrast,
     sparsification_curve,
     sparsification_error_monotone,
@@ -119,6 +120,7 @@ def audit_checkpoint(
         checkpoint, pdb_dir, device=device, structural_disc_frozen=structural_disc_frozen
     )
     p11 = out_of_corpus_epistemic_contrast(in_rows, ood_rows)
+    g5b = g5b_rho_feature_proxy_report(rows, ood_rows)
     s6_joint = uncertainty_s6_joint_pass(rows)
     return {
         "variant": variant,
@@ -129,6 +131,7 @@ def audit_checkpoint(
         "p9_reason": p9_reason,
         "p11_ok": bool(p11.get("ok")),
         "p11": p11,
+        "g5b": g5b,
         "s6_joint": s6_joint,
         "ood_ok": bool(p11.get("ok")),
     }
@@ -201,6 +204,19 @@ def main() -> None:
     logger.info("decor_only flags=%s", g3["decorrelation_only"])
     logger.info("full flags=%s", g3["with_epistemic_decoupling"])
     logger.info("supervision_required=%s", g3["supervision_required_for_pass"])
+    for tag, audit in (("decor_only", decor_audit), ("full", full_audit)):
+        g5b = audit.get("g5b") or {}
+        p8 = (audit.get("decomposition") or {}).get("tau_boundary") or {}
+        logger.info(
+            "%s P8(G4a)=%s s6_joint=%s |r(epi,ρ)|=%.3f rho_proxy=%s",
+            tag,
+            p8.get("ok"),
+            (audit.get("s6_joint") or {}).get("ok"),
+            abs(float(g5b.get("r_epi_rho_marginal", float("nan"))))
+            if g5b.get("r_epi_rho_marginal") is not None
+            else float("nan"),
+            g5b.get("rho_feature_proxy"),
+        )
 
     if args.json_out:
         args.json_out.parent.mkdir(parents=True, exist_ok=True)

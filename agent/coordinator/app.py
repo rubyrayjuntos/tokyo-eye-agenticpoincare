@@ -24,7 +24,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from agent.coordinator.auth import get_current_user
-from agent.coordinator.routers import audit, chat, compare, dashboard, data, graph, hypotheses, orchestration, plots, poincare, rcsb, sdrp, structures, tools, therapeutic_compiler, workspace
+from agent.coordinator.routers import audit, chat, compare, dashboard, data, graph, hypotheses, lifecycle, orchestration, plots, poincare, rcsb, sdrp, structures, tools, therapeutic_compiler, workspace
 from agent.coordinator.viewport import viewport_manager, websocket_viewport
 from shared.logging import get_logger, setup_logging
 from shared.middleware import RequestContextMiddleware
@@ -154,6 +154,7 @@ app.include_router(sdrp.router)
 app.include_router(therapeutic_compiler.router)
 app.include_router(workspace.router)
 app.include_router(orchestration.router)
+app.include_router(lifecycle.router)
 
 
 # ---------------------------------------------------------------------------

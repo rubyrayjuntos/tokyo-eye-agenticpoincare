@@ -32,6 +32,7 @@ from experiments.training.v6._data import load_protein_graph
 from experiments.training.v6.assess_checkpoint import load_v6_model
 from experiments.training.v6.train_loop import prepare_training_batch
 from science.dtie.v6.gnn.evidential import uncertainty_head_is_decoupled
+from science.dtie.v5.gnn.model import precompute_clustering
 from science.training.evidential_validation import assess_evidential_decomposition
 from science.training.uncertainty_diagnostics import (
     audit_uncertainty_sanity,
@@ -72,9 +73,16 @@ def audit_structure(
         data = prepare_training_batch(
             model, prot, device, structural_disc_frozen=structural_disc_frozen
         )
+        data = precompute_clustering(data)
         out = model(data)
 
-    rows = extract_residue_uncertainty_rows(out, prot)
+    rows = extract_residue_uncertainty_rows(
+        out,
+        prot,
+        graph_data=data,
+        structure_id=pdb_id.lower(),
+        chain=chain,
+    )
     sanity = audit_uncertainty_sanity(rows)
     decomposition = assess_evidential_decomposition(
         rows,
@@ -194,10 +202,13 @@ def main() -> None:
             "rho",
             "tau_flag",
             "cone_depth",
+            "disc_r",
+            "clustering",
             "epistemic",
             "aleatoric",
             "total",
             "expert",
+            "expert_routing_max",
             "near_tau_boundary",
         ]
         with args.csv_out.open("w", newline="", encoding="utf-8") as fh:

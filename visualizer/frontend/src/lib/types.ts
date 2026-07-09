@@ -706,6 +706,7 @@ export type StructureColorModeType = "spectrum" | "cone_depth" | "epistemic" | "
 export type ToolPanelId =
   | "briefing"
   | "control_console"
+  | "model_lifecycle"
   | "rcsb_search"
   | "graph_topology"
   | "hypothesis"
@@ -812,6 +813,64 @@ export interface StructureAuditResponse {
   structure_id: string;
   count: number;
   events: AuditEventRecord[];
+}
+
+// --- GNN Model Lifecycle ---
+
+export interface LifecycleAliasVersion {
+  name: string;
+  version: string;
+  alias?: string;
+  run_id?: string | null;
+  source?: string;
+  checkpoint_path?: string | null;
+  tags?: Record<string, string>;
+  lineage_id?: string;
+}
+
+export interface LifecycleLineageStatus {
+  lineage_id: string;
+  model_version: string;
+  mlflow_experiment: string;
+  checkpoint_root: string;
+  frozen_baseline: boolean;
+  champion: LifecycleAliasVersion | null;
+  challenger: LifecycleAliasVersion | null;
+}
+
+export interface LifecycleStatus {
+  generated_at: string;
+  mlflow: {
+    available: boolean;
+    tracking_uri?: string;
+    mlflow_version?: string | null;
+    error?: string;
+  };
+  production: {
+    model_id: string | null;
+    model_version: string | null;
+    runner_module?: string | null;
+    runner_class?: string | null;
+    checkpoint_path: string | null;
+    checkpoint_sha256: string | null;
+    checkpoint_id: string | null;
+  };
+  lineages: LifecycleLineageStatus[];
+  gates: {
+    p_feature_01_passed: boolean;
+    path?: string;
+    stamp?: Record<string, unknown>;
+    error?: string;
+  };
+  active_job: {
+    job_id: string;
+    status: string;
+    created_at?: string;
+    payload?: Record<string, unknown>;
+    suggested_command?: string;
+  } | null;
+  contract_models?: Record<string, unknown>;
+  contract_checkpoints?: Record<string, unknown>;
 }
 
 // --- Export ---

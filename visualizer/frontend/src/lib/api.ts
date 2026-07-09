@@ -4,13 +4,13 @@ import type {
   EmbeddingData,
   GraphMetrics,
   KPIs,
+  LifecycleStatus,
   IngestRequest,
   IngestResponse,
   PipelineRunRequest,
   AgentChatRequest,
   AgentChatResponse,
   AgentTelemetrySnapshot,
-  ApiError,
   RCSBSearchRequest,
   RCSBSearchResult,
   GraphMetricsData,
@@ -69,15 +69,27 @@ class ApiClient {
     if (!res.ok) {
       const body = await res.json().catch(() => ({} as Record<string, unknown>));
       const detail = body.detail;
+      const detailMessage =
+        typeof detail === "string"
+          ? detail
+          : Array.isArray(detail)
+            ? detail
+                .map((item) =>
+                  typeof item === "string"
+                    ? item
+                    : item && typeof item === "object" && "msg" in item
+                      ? String((item as { msg: unknown }).msg)
+                      : JSON.stringify(item),
+                )
+                .join("; ")
+            : detail && typeof detail === "object"
+              ? JSON.stringify(detail)
+              : null;
       const message =
-        (typeof detail === "string" ? detail : null) ||
+        detailMessage ||
         (typeof body.message === "string" ? body.message : null) ||
         res.statusText;
-      const err: ApiError = {
-        error: typeof body.error === "string" ? body.error : "unknown",
-        message,
-      };
-      throw err;
+      throw new Error(message || `Request failed (${res.status})`);
     }
 
     return res.json();
@@ -148,6 +160,101 @@ class ApiClient {
 
   async getKPIs(): Promise<KPIs> {
     return this.request<KPIs>("/api/kpis");
+  }
+
+  // --- GNN Model Lifecycle ---
+
+  async getLifecycleStatus(): Promise<LifecycleStatus> {
+    return this.request<LifecycleStatus>("/api/lifecycle/status");
+  }
+
+  async getLifecycleLineages(): Promise<{ lineages: Record<string, unknown>[] }> {
+    return this.request("/api/lifecycle/lineages");
+  }
+
+  async getLifecycleRuns(params?: {
+    experiment?: string;
+    lineage_id?: string;
+    max_results?: number;
+  }): Promise<{ experiment: string; runs: Record<string, unknown>[]; error?: string }> {
+    const q = new URLSearchParams();
+    if (params?.experiment) q.set("experiment", params.experiment);
+    if (params?.lineage_id) q.set("lineage_id", params.lineage_id);
+    if (params?.max_results) q.set("max_results", String(params.max_results));
+    const suffix = q.toString() ? `?${q}` : "";
+    return this.request(`/api/lifecycle/runs${suffix}`);
+  }
+
+  async enqueueLifecycleTrain(body: {
+    lineage_id?: "v6" | "v6.5";
+    run_id?: string;
+    preset?: string;
+    corpus?: string;
+    device?: string;
+    no_warm_start?: boolean;
+  }): Promise<{
+    job_id: string;
+    status: string;
+    suggested_command?: string;
+    note?: string;
+  }> {
+    return this.request("/api/lifecycle/train", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  async registerLifecycleModel(body: {
+    lineage_id: "v6" | "v6.5";
+    checkpoint_path: string;
+    alias?: "champion" | "challenger";
+    run_id?: string;
+    sync_contract?: boolean;
+  }): Promise<Record<string, unknown>> {
+    return this.request("/api/lifecycle/register", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  async promoteLifecycleModel(body: {
+    lineage_id: "v6" | "v6.5";
+    checkpoint_path?: string;
+    version?: string;
+    alias?: "champion" | "challenger";
+    run_id?: string;
+    sync_contract?: boolean;
+  }): Promise<Record<string, unknown>> {
+    return this.request("/api/lifecycle/promote", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  async addStructureToCorpus(body: {
+    structure_id: string;
+    manifest_path?: string;
+    pdb_id?: string;
+    chain?: string;
+    enabled?: boolean;
+  }): Promise<{ action: string; pdb_id: string; manifest: string }> {
+    return this.request("/api/lifecycle/corpus/add", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  async getCheckpointPreview(params: {
+    structure_id: string;
+    checkpoint_path?: string;
+    alias?: string;
+    lineage_id?: string;
+  }): Promise<Record<string, unknown>> {
+    const q = new URLSearchParams({ structure_id: params.structure_id });
+    if (params.checkpoint_path) q.set("checkpoint_path", params.checkpoint_path);
+    if (params.alias) q.set("alias", params.alias);
+    if (params.lineage_id) q.set("lineage_id", params.lineage_id);
+    return this.request(`/api/lifecycle/checkpoint-preview?${q}`);
   }
 
   // --- Agent Chat ---

@@ -149,6 +149,7 @@ def uncertainty_save_ineligibility_reasons(
     *,
     max_probe_r_epi_ale: float | None = None,
     max_probe_r_epi_sasa: float | None = None,
+    min_probe_r_epi_sasa: float | None = None,
     min_epistemic_std: float | None = None,
     min_aleatoric_std: float | None = None,
     require_tau_ale_elevation: bool = False,
@@ -172,6 +173,10 @@ def uncertainty_save_ineligibility_reasons(
     if max_probe_r_epi_sasa is not None and r_epi_sasa is not None and r_epi_sasa > max_probe_r_epi_sasa:
         reasons.append(
             f"probe_r_epi_sasa={r_epi_sasa:.3f}>{max_probe_r_epi_sasa} (epi/sasa coupled)"
+        )
+    if min_probe_r_epi_sasa is not None and r_epi_sasa is not None and r_epi_sasa < min_probe_r_epi_sasa:
+        reasons.append(
+            f"probe_r_epi_sasa={r_epi_sasa:.3f}<{min_probe_r_epi_sasa} (inverted epi/sasa)"
         )
     if min_epistemic_std is not None and epi_std is not None and epi_std < min_epistemic_std:
         reasons.append(
@@ -241,6 +246,48 @@ def disc_save_ineligibility_reasons(
     )
 
 
+def moe_routing_save_ineligibility_reasons(
+    losses: dict[str, float],
+    *,
+    inference_routing: dict[str, float] | None = None,
+    max_expert_starvation: int | None = None,
+    min_eval_routing_fraction: float | None = None,
+    max_eval_routing_fraction: float | None = None,
+    routing_entropy_min: float | None = None,
+    routing_entropy_max: float | None = None,
+) -> list[str]:
+    """MoE collapse / dominance gates — prefer eval-mode hard routing fractions."""
+    reasons: list[str] = []
+    starve = int(losses.get("expert_starvation_count", 0))
+    route_h = float(losses.get("routing_entropy", 1.386))
+    infer = inference_routing or {}
+    min_r = _finite_probe(infer.get("min_routing_fraction"))
+    if min_r is None:
+        min_r = _finite_probe(losses.get("min_routing_fraction"))
+    max_r = _finite_probe(infer.get("max_routing_fraction"))
+    if max_r is None:
+        loads = [
+            float(losses[k])
+            for k in losses
+            if isinstance(k, str)
+            and k.startswith("expert_load_")
+            and k[len("expert_load_") :].isdigit()
+        ]
+        max_r = max(loads) if loads else None
+
+    if max_expert_starvation is not None and starve > max_expert_starvation:
+        reasons.append(f"starvation={starve}>{max_expert_starvation}")
+    if min_eval_routing_fraction is not None and min_r is not None and min_r < min_eval_routing_fraction:
+        reasons.append(f"eval_min_r={min_r:.3f}<{min_eval_routing_fraction}")
+    if max_eval_routing_fraction is not None and max_r is not None and max_r > max_eval_routing_fraction:
+        reasons.append(f"eval_max_r={max_r:.3f}>{max_eval_routing_fraction}")
+    if routing_entropy_min is not None and route_h < routing_entropy_min:
+        reasons.append(f"routing_H={route_h:.3f}<{routing_entropy_min}")
+    if routing_entropy_max is not None and route_h > routing_entropy_max:
+        reasons.append(f"routing_H={route_h:.3f}>{routing_entropy_max}")
+    return reasons
+
+
 def score_checkpoint(
     health: dict[str, float],
     losses: dict[str, float],
@@ -255,10 +302,16 @@ def score_checkpoint(
     disc_radial_source: str = "mobius",
     max_probe_r_epi_ale_save: float | None = None,
     max_probe_r_epi_sasa_save: float | None = None,
+    min_probe_r_epi_sasa_save: float | None = None,
     min_epistemic_std_save: float | None = None,
     min_aleatoric_std_save: float | None = None,
     require_tau_ale_elevation_save: bool = False,
     topology_depth: bool = False,
+    inference_routing: dict[str, float] | None = None,
+    max_expert_starvation_save: int | None = None,
+    min_eval_routing_fraction_save: float | None = None,
+    max_eval_routing_fraction_save: float | None = None,
+    routing_entropy_min_save: float | None = None,
 ) -> CheckpointScoreResult:
     """
     Rank checkpoints for v6_best.pt selection.
@@ -297,10 +350,33 @@ def score_checkpoint(
             reasons.append(f"{label}=nonfinite")
     if pf > PROJ_FRAC_MAX:
         reasons.append(f"proj_frac={pf:.3f}")
-    if phase >= 2 and not radial_override and route_h > route_max:
-        reasons.append(f"routing_H={route_h:.3f}")
-    if starve >= 2 and phase >= 2:
-        reasons.append(f"starvation={starve}")
+    moe_gates_active = any(
+        v is not None
+        for v in (
+            max_expert_starvation_save,
+            min_eval_routing_fraction_save,
+            max_eval_routing_fraction_save,
+            routing_entropy_min_save,
+        )
+    )
+    if moe_gates_active:
+        moe_route_max = routing_save_max if routing_save_max is not None else route_max
+        reasons.extend(
+            moe_routing_save_ineligibility_reasons(
+                losses,
+                inference_routing=inference_routing,
+                max_expert_starvation=max_expert_starvation_save,
+                min_eval_routing_fraction=min_eval_routing_fraction_save,
+                max_eval_routing_fraction=max_eval_routing_fraction_save,
+                routing_entropy_min=routing_entropy_min_save,
+                routing_entropy_max=moe_route_max,
+            )
+        )
+    else:
+        if phase >= 2 and not radial_override and route_h > route_max:
+            reasons.append(f"routing_H={route_h:.3f}")
+        if starve >= 2 and phase >= 2:
+            reasons.append(f"starvation={starve}")
     if cr < cone_min:
         reasons.append(f"cone_range={cr:.4f}<{cone_min}")
 
@@ -333,6 +409,7 @@ def score_checkpoint(
             health,
             max_probe_r_epi_ale=max_probe_r_epi_ale_save,
             max_probe_r_epi_sasa=max_probe_r_epi_sasa_save,
+            min_probe_r_epi_sasa=min_probe_r_epi_sasa_save,
             min_epistemic_std=min_epistemic_std_save,
             min_aleatoric_std=min_aleatoric_std_save,
             require_tau_ale_elevation=require_tau_ale_elevation_save,
@@ -358,7 +435,30 @@ def score_checkpoint(
 
     # Composite: reward spread + low boundary clip + specialized routing + shell alignment
     score = cr + (1.0 - min(pf, 1.0))
-    if route_h <= ROUTING_ENTROPY_PROMOTE_MAX:
+    if moe_gates_active:
+        # Prefer mid-band entropy (alive but not uniform) + balanced eval hard fractions.
+        band_lo = routing_entropy_min_save if routing_entropy_min_save is not None else 0.90
+        band_hi = (
+            routing_save_max
+            if routing_save_max is not None
+            else ROUTING_ENTROPY_SAVE_MAX
+        )
+        mid = 0.5 * (band_lo + band_hi)
+        score += 0.6 * (1.0 - min(abs(route_h - mid) / max(band_hi - band_lo, 1e-3), 1.0))
+        infer = inference_routing or {}
+        min_r = _finite_probe(infer.get("min_routing_fraction"))
+        if min_r is None:
+            min_r = _finite_probe(losses.get("min_routing_fraction"))
+        max_r = _finite_probe(infer.get("max_routing_fraction"))
+        if min_r is not None:
+            score += 0.5 * min(min_r / 0.15, 1.0)
+        if max_r is not None and max_eval_routing_fraction_save is not None:
+            score += 0.4 * max(
+                0.0,
+                1.0 - max(0.0, max_r - max_eval_routing_fraction_save) / 0.25,
+            )
+        score -= 0.35 * starve
+    elif route_h <= ROUTING_ENTROPY_PROMOTE_MAX:
         score += 0.5 * (ROUTING_ENTROPY_PROMOTE_MAX - route_h)
     else:
         score -= 1.0 * (route_h - ROUTING_ENTROPY_PROMOTE_MAX)

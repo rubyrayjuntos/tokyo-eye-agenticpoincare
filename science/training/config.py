@@ -60,10 +60,18 @@ class LossCoeffs(BaseModel):
     epistemic_min_epi_std: float = 0.02
     routing_load_floor_coeff: float = 0.0
     routing_load_floor_min: float = 0.05
+    routing_load_ceiling_coeff: float = 0.0
+    routing_load_ceiling_max: float = 0.45
     pocket_bce_coeff: float = 0.0
     interface_bce_coeff: float = 0.0
     leak_bce_coeff: float = 0.0
     cone_target_mode: Literal["rho_wrap", "tau_dehydron_rim"] = "rho_wrap"
+    v3_aleatoric_shaping_coeff: float = 0.0
+    w_var_penalty: float = 2.8
+    w_aleatoric_hinge: float = 4.8
+    aleatoric_hinge_target: float = 1.0
+    aleatoric_shaping_holdout_fraction: float = 0.20
+    aleatoric_shaping_holdout_mode: Literal["protein", "residue_stratified"] = "protein"
 
 
 class PhaseConfig(BaseModel):
@@ -77,6 +85,11 @@ class PhaseConfig(BaseModel):
     freeze_angular: bool = False
     freeze_backbone: bool = False
     freeze_gate: bool = False
+    # Slim MoE: freeze specific expert MLPs by index (e.g. [2] locks the dominant expert).
+    freeze_experts: list[int] = Field(default_factory=list)
+    # Soft timeout overrides (None → stage_runner defaults: max_share=0.50, all experts).
+    expert_timeout_max_share: float | None = None
+    expert_timeout_eligible_experts: list[int] | None = None
     expert_dropout_p: float = 0.0
     freeze_radial_epochs: int = 0  # freeze radial for first N epochs within phase
     coeffs: LossCoeffs = Field(default_factory=LossCoeffs)
@@ -108,6 +121,7 @@ class PhaseConfig(BaseModel):
     epistemic_bf_align_coeff_final: float | None = None
     epistemic_sasa_pen_coeff_final: float | None = None
     epistemic_uncertainty_only_train: bool = False
+    aleatoric_only_train: bool = False
     gate_only_train: bool = False
     topology_gate_disc_recovery_train: bool = False
     topology_crescent_recovery_train: bool = False
@@ -119,9 +133,16 @@ class PhaseConfig(BaseModel):
     epistemic_sasa_pen_cap_epochs: int = 5
     max_probe_r_epi_ale_save: float | None = None
     max_probe_r_epi_sasa_save: float | None = None
+    min_probe_r_epi_sasa_save: float | None = None  # reject inverted epi×SASA
     min_epistemic_std_save: float | None = None
     min_aleatoric_std_save: float | None = None
     require_tau_ale_elevation_save: bool = False
+    require_g4_holdout_p8_save: bool = False
+    # MoE save gates (slim SSOT v2): eval-mode hard routing + starvation
+    min_eval_routing_fraction_save: float | None = None
+    max_eval_routing_fraction_save: float | None = None
+    max_expert_starvation_save: int | None = None  # reject if starve > this (0 → starve≥1)
+    routing_entropy_min_save: float | None = None
 
 
 def routing_save_max_for_epoch(
@@ -173,6 +194,7 @@ class TrainingConfig(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
 
     model_version: str = "GOSPConeMapper-v6"
+    gnn_lineage: Literal["v6", "v6.5"] = "v6"
     device: str = "cpu"
     lr: float = 5e-4
     hidden: int = 128
@@ -185,7 +207,7 @@ class TrainingConfig(BaseModel):
     resume: Path | None = None
     warm_start_v5: Path | None = None
     mlflow_experiment: str = "tokyo-eyes-v6"
-    mlflow_tracking_uri: str = "file:/app/mlruns"
+    mlflow_tracking_uri: str = "http://mlflow:5000"
     max_proteins: int | None = None
     max_residues: int = STAGE_A_MAX_RESIDUES
     topology_only_gate: bool = False
@@ -265,6 +287,10 @@ class TrainingConfig(BaseModel):
     p4_uncertainty_calibration: bool = False
     p4_head_decouple: bool = False
     p4_head_decouple_decorr_only: bool = False
+    p4_v3_aleatoric_shaping: bool = False
+    p4_g4_shaping_only_isolation: bool = False
+    p4_g4_ale_only_unshaped: bool = False
+    w_var_penalty: float | None = None
     p4_gate_promotion: bool = False
     p4_corpus25_gate_promotion: bool = False
     p4_corpus25_touchup_extended: bool = False
@@ -335,6 +361,12 @@ class TrainingConfig(BaseModel):
             return "p4_uncertainty_calibration"
         if self.p4_head_decouple_decorr_only:
             return "p4_head_decouple_decorr_only"
+        if self.p4_v3_aleatoric_shaping:
+            return "p4_v3_aleatoric_shaping"
+        if self.p4_g4_shaping_only_isolation:
+            return "p4_g4_shaping_only_isolation"
+        if self.p4_g4_ale_only_unshaped:
+            return "p4_g4_ale_only_unshaped"
         if self.p4_head_decouple:
             return "p4_head_decouple"
         if self.p4_corpus25_gate_promotion:
@@ -845,52 +877,151 @@ _SLIM_MOE_ZERO_DISC_COEFFS: dict[str, float] = {
 }
 
 
-def apply_slim_moe_structural_ssot_phases(phases: list[PhaseConfig]) -> list[PhaseConfig]:
-    """Frozen structural disc SSOT at train time — MoE + uncertainty only (matches ingest)."""
-    out: list[PhaseConfig] = []
-    for phase_cfg in phases:
-        coeff_updates: dict[str, float | str] = {
+def _slim_moe_ssot_coeffs(**overrides: float | str) -> LossCoeffs:
+    """Loss coeffs for slim MoE SSOT: zero disc geometry pressure + MoE overrides."""
+    return LossCoeffs(
+        **{
             **_SLIM_MOE_ZERO_DISC_COEFFS,
             "cone_target_mode": "tau_dehydron_rim",
             "shell_corr_depth_sasa_weight": 0.0,
             "shell_corr_epi_sasa_weight": 0.0,
             "shell_floor_coeff": 0.0,
-            "epistemic_sasa_pen_coeff": 0.0,
+            "domain_sep_2d_coeff": 0.0,
+            "domain_sep_3d_coeff": 0.0,
+            "evidential_coeff": 0.001,
+            **overrides,
         }
-        if phase_cfg.phase == 1:
-            coeff_updates["shell_corr_coeff"] = max(phase_cfg.coeffs.shell_corr_coeff, 0.12)
-        if phase_cfg.phase == 2:
-            coeff_updates["routing_load_floor_coeff"] = max(
-                phase_cfg.coeffs.routing_load_floor_coeff, 0.12
-            )
-            coeff_updates["routing_load_floor_min"] = max(
-                phase_cfg.coeffs.routing_load_floor_min, 0.08
-            )
-        new_coeffs = phase_cfg.coeffs.model_copy(update=coeff_updates)
-        phase_updates: dict[str, Any] = {
-            "freeze_radial": True,
-            "freeze_angular": True,
-            "freeze_radial_epochs": 0,
-            "coeffs": new_coeffs,
-            "slim_moe_structural_ssot_train": True,
-            "min_probe_r_depth_sasa": None,
-            "min_probe_r_depth_sasa_save": None,
-            "max_probe_r_epi_sasa_save": None,
-            "min_disc_line_thickness_save": None,
-            "min_disc_effective_rank_save": None,
-            "min_disc_sigma2_sigma1_save": None,
-            "min_disc_r_std_save": None,
-        }
-        if phase_cfg.phase == 2:
-            phase_updates.update(
-                {
-                    "routing_save_ceiling_start": 1.35,
-                    "routing_save_ceiling_final": 1.21,
-                    "routing_save_ceiling_ramp_epochs": min(phase_cfg.epochs, 20),
-                }
-            )
-        out.append(phase_cfg.model_copy(update=phase_updates))
-    return out
+    )
+
+
+def apply_slim_moe_structural_ssot_phases(phases: list[PhaseConfig]) -> list[PhaseConfig]:
+    """Frozen structural disc SSOT — MoE-alive curriculum (cold_start_v8+).
+
+    Geometry is given (radial/angular/backbone frozen). Pressure is on gate +
+    experts + uncertainty. Floor/ceiling stay off in P2/P3; soft expert timeout
+    (share>50%, 1 epoch) is the anti-dominance safety net.
+
+    * P1 (40): light balance; soft floor/ceiling rarely fire; timeout@50%/1ep
+    * P2 (160): specialize; no floor/ceiling; timeout@50%/1ep
+    * P3 (50): gate unfrozen; freeze e2 weights; e2-only soft timeout@45%/1ep
+      (consolidate after partition); relaxed eval save gates; H≤1.30
+    """
+    base_lr = next((p.lr for p in phases if p.phase == 1), 5e-4)
+    moe_save: dict[str, Any] = {
+        "slim_moe_structural_ssot_train": True,
+        "freeze_radial": True,
+        "freeze_angular": True,
+        "freeze_backbone": True,
+        "freeze_radial_epochs": 0,
+        "min_probe_r_depth_sasa": None,
+        "min_probe_r_depth_sasa_save": None,
+        "min_disc_line_thickness_save": None,
+        "min_disc_effective_rank_save": None,
+        "min_disc_sigma2_sigma1_save": None,
+        "min_disc_r_std_save": None,
+        "max_expert_starvation_save": 0,
+        "min_eval_routing_fraction_save": 0.08,
+        "max_eval_routing_fraction_save": 0.50,
+        "routing_entropy_min_save": 0.90,
+        # Allow mild specialization (H~1.20–1.25); still reject near-uniform (~1.386).
+        "routing_save_ceiling_start": 1.30,
+        "routing_save_ceiling_final": 1.30,
+        "routing_save_ceiling_ramp_epochs": 1,
+        "min_probe_r_epi_sasa_save": 0.0,
+    }
+    # P3 continue: allow the locked-routing eval band that blocked gate-frozen saves.
+    moe_save_p3: dict[str, Any] = {
+        **moe_save,
+        "min_eval_routing_fraction_save": 0.05,
+        "max_eval_routing_fraction_save": 0.55,
+    }
+    return [
+        PhaseConfig(
+            phase=1,
+            name="Phase 1: MoE alive (structural disc SSOT)",
+            epochs=40,
+            lr=base_lr,
+            freeze_gate=False,
+            expert_dropout_p=0.0,
+            coeffs=_slim_moe_ssot_coeffs(
+                balance_coeff=0.02,
+                cone_coeff=0.20,
+                neighborhood_coeff=0.05,
+                cone_depth_anticollapse_coeff=0.40,
+                shell_corr_coeff=0.12,
+                # Soft nets only: fire on soft-collapse / extreme dominance.
+                # Hard timeout@30% is the primary anti-dominance lever.
+                routing_load_floor_coeff=1.0,
+                routing_load_floor_min=0.05,
+                routing_load_ceiling_coeff=2.0,
+                routing_load_ceiling_max=0.55,
+                epistemic_sasa_pen_coeff=0.0,
+                epi_ale_decorrelation_coeff=0.0,
+            ),
+            max_probe_r_epi_ale_save=0.95,
+            **moe_save,
+        ),
+        PhaseConfig(
+            phase=2,
+            name="Phase 2: Expert specialize (structural disc SSOT)",
+            epochs=160,
+            lr=base_lr,
+            freeze_gate=False,
+            expert_dropout_p=0.11,
+            expert_dropout_ramp_epochs=8,
+            coeffs=_slim_moe_ssot_coeffs(
+                balance_coeff=0.01,
+                cone_coeff=0.18,
+                neighborhood_coeff=0.10,
+                cone_depth_anticollapse_coeff=0.35,
+                shell_corr_coeff=0.10,
+                # No floor/ceiling — soft timeout@50% (1 epoch) is the anti-dominance lever.
+                routing_load_floor_coeff=0.0,
+                routing_load_floor_min=0.05,
+                routing_load_ceiling_coeff=0.0,
+                routing_load_ceiling_max=0.60,
+                epistemic_sasa_pen_coeff=0.05,
+                epi_ale_decorrelation_coeff=0.55,
+                epistemic_anticollapse_coeff=0.05,
+            ),
+            max_probe_r_epi_ale_save=0.85,
+            max_probe_r_epi_sasa_save=0.90,
+            min_epistemic_std_save=0.02,
+            min_aleatoric_std_save=0.05,
+            **moe_save,
+        ),
+        PhaseConfig(
+            phase=3,
+            name="Phase 3: routing consolidate (freeze e2, e2-only timeout@45%)",
+            epochs=50,
+            lr=base_lr * 0.5,
+            freeze_gate=False,
+            freeze_experts=[2],
+            # Mild safety net only — 0.42 caused ban ping-pong after e2 shed to ~0.39.
+            expert_timeout_max_share=0.45,
+            expert_timeout_eligible_experts=[2],
+            expert_dropout_p=0.0,
+            coeffs=_slim_moe_ssot_coeffs(
+                balance_coeff=0.005,
+                cone_coeff=0.15,
+                neighborhood_coeff=0.08,
+                cone_depth_anticollapse_coeff=0.30,
+                shell_corr_coeff=0.08,
+                routing_load_floor_coeff=0.0,
+                routing_load_floor_min=0.05,
+                routing_load_ceiling_coeff=0.0,
+                routing_load_ceiling_max=0.65,
+                epistemic_sasa_pen_coeff=0.04,
+                epi_ale_decorrelation_coeff=0.45,
+                epistemic_anticollapse_coeff=0.05,
+            ),
+            max_probe_r_epi_ale_save=0.85,
+            max_probe_r_epi_sasa_save=0.90,
+            min_epistemic_std_save=0.02,
+            min_aleatoric_std_save=0.05,
+            **moe_save_p3,
+        ),
+    ]
 
 
 def apply_slim_moe_structural_ssot_config(config: TrainingConfig) -> TrainingConfig:
@@ -1923,6 +2054,150 @@ def p4_head_decouple_phase_config(
             epistemic_anticollapse_coeff=0.15,
             epistemic_min_epi_std=0.03,
         ),
+    )
+
+
+def p4_v3_aleatoric_shaping_phase_config(
+    lr: float = 5e-5,
+    epochs: int = 20,
+    *,
+    max_probe_r_epi_sasa_save: float = 0.78,
+    holdout_fraction: float = 0.20,
+    w_var_penalty: float = 2.8,
+) -> PhaseConfig:
+    """Phase 4 + v3 var_penalty/hinge on train mask only; P8 eval on holdout (G4)."""
+    cfg = p4_head_decouple_phase_config(
+        lr=lr,
+        epochs=epochs,
+        max_probe_r_epi_sasa_save=max_probe_r_epi_sasa_save,
+        phase_name="Phase 4 v3 aleatoric shaping (G4 holdout)",
+    )
+    return cfg.model_copy(
+        update={
+            "name": "Phase 4 v3 aleatoric shaping (G4 holdout)",
+            "require_tau_ale_elevation_save": False,
+            "require_g4_holdout_p8_save": True,
+            "coeffs": cfg.coeffs.model_copy(
+                update={
+                    "v3_aleatoric_shaping_coeff": 1.0,
+                    "w_var_penalty": w_var_penalty,
+                    "w_aleatoric_hinge": 4.8,
+                    "aleatoric_hinge_target": 1.0,
+                    "aleatoric_shaping_holdout_fraction": holdout_fraction,
+                    "aleatoric_shaping_holdout_mode": "protein",
+                }
+            ),
+        }
+    )
+
+
+def p4_g4_shaping_only_isolation_phase_config(
+    lr: float = 5e-5,
+    epochs: int = 12,
+    *,
+    max_probe_r_epi_sasa_save: float = 0.78,
+    holdout_fraction: float = 0.20,
+    w_var_penalty: float = 2.8,
+) -> PhaseConfig:
+    """G4 isolation: uncertainty-head-only + v3 shaping losses, all other losses off."""
+    cfg = p4_head_decouple_phase_config(
+        lr=lr,
+        epochs=epochs,
+        max_probe_r_epi_sasa_save=max_probe_r_epi_sasa_save,
+        phase_name="Phase 4 G4 shaping-only isolation",
+    )
+    return cfg.model_copy(
+        update={
+            "name": "Phase 4 G4 shaping-only isolation",
+            "require_tau_ale_elevation_save": False,
+            "require_g4_holdout_p8_save": True,
+            "coeffs": cfg.coeffs.model_copy(
+                update={
+                    "evidential_coeff": 0.0,
+                    "balance_coeff": 0.0,
+                    "cone_coeff": 0.0,
+                    "neighborhood_coeff": 0.0,
+                    "angular_coeff": 0.0,
+                    "domain_sep_2d_coeff": 0.0,
+                    "domain_sep_3d_coeff": 0.0,
+                    "cone_depth_anticollapse_coeff": 0.0,
+                    "shell_corr_coeff": 0.0,
+                    "shell_corr_epi_sasa_weight": 0.0,
+                    "disc_occupancy_coeff": 0.0,
+                    "disc_pc_repulsion_coeff": 0.0,
+                    "disc_eff_rank_coeff": 0.0,
+                    "disc_batch_diversity_coeff": 0.0,
+                    "disc_path_align_coeff": 0.0,
+                    "disc_thickness_floor_coeff": 0.0,
+                    "disc_origin_span_floor_coeff": 0.0,
+                    "x_hyp_thickness_floor_coeff": 0.0,
+                    "routing_load_floor_coeff": 0.0,
+                    "epistemic_decoupling_coeff": 0.0,
+                    "epi_ale_decorrelation_coeff": 0.0,
+                    "epistemic_bf_align_coeff": 0.0,
+                    "epistemic_sasa_pen_coeff": 0.0,
+                    "epistemic_anticollapse_coeff": 0.0,
+                    "v3_aleatoric_shaping_coeff": 1.0,
+                    "w_var_penalty": w_var_penalty,
+                    "w_aleatoric_hinge": 4.8,
+                    "aleatoric_hinge_target": 1.0,
+                    "aleatoric_shaping_holdout_fraction": holdout_fraction,
+                    "aleatoric_shaping_holdout_mode": "protein",
+                }
+            ),
+        }
+    )
+
+
+def p4_g4_ale_only_unshaped_phase_config(
+    lr: float = 5e-5,
+    epochs: int = 12,
+    *,
+    max_probe_r_epi_sasa_save: float = 0.78,
+) -> PhaseConfig:
+    """G4 isolation: aleatoric subpath only, no shaping losses, minimal evidential objective."""
+    cfg = p4_head_decouple_phase_config(
+        lr=lr,
+        epochs=epochs,
+        max_probe_r_epi_sasa_save=max_probe_r_epi_sasa_save,
+        phase_name="Phase 4 G4 ale-only unshaped isolation",
+    )
+    return cfg.model_copy(
+        update={
+            "name": "Phase 4 G4 ale-only unshaped isolation",
+            "require_tau_ale_elevation_save": False,
+            "require_g4_holdout_p8_save": False,
+            "aleatoric_only_train": True,
+            "coeffs": cfg.coeffs.model_copy(
+                update={
+                    "evidential_coeff": 0.01,
+                    "balance_coeff": 0.0,
+                    "cone_coeff": 0.0,
+                    "neighborhood_coeff": 0.0,
+                    "angular_coeff": 0.0,
+                    "domain_sep_2d_coeff": 0.0,
+                    "domain_sep_3d_coeff": 0.0,
+                    "cone_depth_anticollapse_coeff": 0.0,
+                    "shell_corr_coeff": 0.0,
+                    "shell_corr_epi_sasa_weight": 0.0,
+                    "disc_occupancy_coeff": 0.0,
+                    "disc_pc_repulsion_coeff": 0.0,
+                    "disc_eff_rank_coeff": 0.0,
+                    "disc_batch_diversity_coeff": 0.0,
+                    "disc_path_align_coeff": 0.0,
+                    "disc_thickness_floor_coeff": 0.0,
+                    "disc_origin_span_floor_coeff": 0.0,
+                    "x_hyp_thickness_floor_coeff": 0.0,
+                    "routing_load_floor_coeff": 0.0,
+                    "epistemic_decoupling_coeff": 0.0,
+                    "epi_ale_decorrelation_coeff": 0.0,
+                    "epistemic_bf_align_coeff": 0.0,
+                    "epistemic_sasa_pen_coeff": 0.0,
+                    "epistemic_anticollapse_coeff": 0.0,
+                    "v3_aleatoric_shaping_coeff": 0.0,
+                }
+            ),
+        }
     )
 
 

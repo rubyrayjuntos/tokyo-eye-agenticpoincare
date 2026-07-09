@@ -50,30 +50,50 @@ def routing_load_floor_penalty(
     return torch.relu(min_fraction - p.min()).pow(2)
 
 
+def routing_load_ceiling_penalty(
+    expert_fractions: torch.Tensor,
+    max_fraction: float = 0.45,
+) -> torch.Tensor:
+    """Squared hinge on max expert share — fights winner-take-most dominance."""
+    p = expert_fractions.reshape(-1).float()
+    return torch.relu(p.max() - max_fraction).pow(2)
+
+
 def inference_mode_routing_metrics(
     model: torch.nn.Module,
     proteins: list[dict[str, Any]],
     device: str,
+    *,
+    structural_disc_frozen: bool = False,
 ) -> dict[str, float]:
     """Inference-mode routing (dropout off) — SSOT for stage_gate_passed routing checks."""
-    from experiments.training.v6.train_loop import attach_v6_features
+    from experiments.training.v6.train_loop import prepare_training_batch
 
     was_training = model.training
     model.eval()
     effs: list[float] = []
     min_fracs: list[float] = []
+    max_fracs: list[float] = []
     per_structure: dict[str, float] = {}
     try:
         with torch.no_grad():
             for prot in proteins:
                 pdb_id = str(prot.get("pdb_id", "?")).upper()
-                data = attach_v6_features(prot["data"].to(device))
+                data = prepare_training_batch(
+                    model,
+                    prot,
+                    device,
+                    structural_disc_frozen=structural_disc_frozen,
+                )
                 out = model(data)
                 load = out["expert_load"].detach().cpu()
                 mr = min_routing_fraction(load)
+                mx = float(np.max(np.asarray(load, dtype=np.float64)))
                 effs.append(effective_experts(load))
                 min_fracs.append(mr)
+                max_fracs.append(mx)
                 per_structure[f"eval_min_routing_fraction.{pdb_id}"] = mr
+                per_structure[f"eval_max_routing_fraction.{pdb_id}"] = mx
     finally:
         model.train(was_training)
 
@@ -81,6 +101,7 @@ def inference_mode_routing_metrics(
         "effective_experts": float(np.mean(effs)) if effs else float("nan"),
         "effective_experts_min": float(np.min(effs)) if effs else float("nan"),
         "min_routing_fraction": float(np.min(min_fracs)) if min_fracs else float("nan"),
+        "max_routing_fraction": float(np.max(max_fracs)) if max_fracs else float("nan"),
     }
     metrics.update(per_structure)
     return metrics

@@ -34,10 +34,19 @@ class CheckpointData:
 class CheckpointManager:
     """Manages training checkpoints with metadata."""
 
-    def __init__(self, output_dir: Path, protein_count: int) -> None:
+    def __init__(
+        self,
+        output_dir: Path,
+        protein_count: int,
+        *,
+        checkpoint_prefix: str = "v6",
+        architecture_version: str = "v6",
+    ) -> None:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.protein_count = protein_count
+        self.checkpoint_prefix = checkpoint_prefix
+        self.architecture_version = architecture_version
 
     def save_best(
         self,
@@ -51,7 +60,7 @@ class CheckpointManager:
         training_config: dict[str, Any],
         score: float,
     ) -> Path:
-        path = self.output_dir / "v6_best.pt"
+        path = self.output_dir / f"{self.checkpoint_prefix}_best.pt"
         curvature = float(model.curvature.item()) if hasattr(model, "curvature") else 0.0
         payload = {
             "model_state_dict": model.state_dict(),
@@ -64,7 +73,7 @@ class CheckpointManager:
             "score": score,
             "curvature": curvature,
             "architecture": {
-                "version": "v6",
+                "version": self.architecture_version,
                 "node_dim": _node_dim_from_model(model),
                 "hidden": getattr(model, "hidden", 128),
                 "num_experts": len(model.experts) if hasattr(model, "experts") else 4,
@@ -95,7 +104,7 @@ class CheckpointManager:
         routing_entropy: float,
     ) -> Path:
         """Best MoE routing snapshot — independent of geometry-tier v6_best.pt."""
-        path = self.output_dir / "v6_best_route.pt"
+        path = self.output_dir / f"{self.checkpoint_prefix}_best_route.pt"
         curvature = float(model.curvature.item()) if hasattr(model, "curvature") else 0.0
         payload = {
             "model_state_dict": model.state_dict(),
@@ -109,7 +118,7 @@ class CheckpointManager:
             "routing_entropy": routing_entropy,
             "curvature": curvature,
             "architecture": {
-                "version": "v6",
+                "version": self.architecture_version,
                 "node_dim": _node_dim_from_model(model),
                 "hidden": getattr(model, "hidden", 128),
                 "num_experts": len(model.experts) if hasattr(model, "experts") else 4,
@@ -135,7 +144,7 @@ class CheckpointManager:
         training_config: dict[str, Any] | None = None,
     ) -> Path:
         """Best disc occupancy snapshot (eligible or not) for recovery warm-starts."""
-        path = self.output_dir / "v6_best_disc.pt"
+        path = self.output_dir / f"{self.checkpoint_prefix}_best_disc.pt"
         curvature = float(model.curvature.item()) if hasattr(model, "curvature") else 0.0
         legacy = bool(getattr(model, "legacy_disc_projection", False))
         disc_source = (
@@ -158,7 +167,7 @@ class CheckpointManager:
         if training_config:
             payload["training_config"] = training_config
             payload["architecture"] = {
-                "version": "v6",
+                "version": self.architecture_version,
                 "node_dim": _node_dim_from_model(model),
                 "hidden": getattr(model, "hidden", 128),
                 "num_experts": len(model.experts) if hasattr(model, "experts") else 4,
@@ -193,7 +202,7 @@ class CheckpointManager:
     ) -> Path:
         slug = phase_name.split(":")[0].strip().lower().replace(" ", "_")
         slug = re.sub(r"[^\w.-]+", "_", slug).strip("_") or f"phase_{phase}"
-        path = self.output_dir / f"v6_phase{phase}_{self.protein_count}prot.pt"
+        path = self.output_dir / f"{self.checkpoint_prefix}_phase{phase}_{self.protein_count}prot.pt"
         torch.save(
             {
                 "model_state_dict": model.state_dict(),

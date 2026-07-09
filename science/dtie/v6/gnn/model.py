@@ -147,6 +147,8 @@ class TopologicalMoEGateV6(nn.Module):
         self.detach_gate_input = False  # Set True in Phase 3 to freeze routing boundaries
         self.use_gumbel = False  # Set True to enable Gumbel-Softmax hard routing
         self.temperature = 1.0  # Gumbel temperature (annealed during training)
+        # Epoch-level hard bans (train-only); set by ExpertTimeoutController.
+        self.expert_timeout_banned: list[int] = []
 
         # Running statistics for degree/rho normalization
         self.register_buffer('degree_mean', torch.tensor(0.0))
@@ -250,6 +252,12 @@ class TopologicalMoEGateV6(nn.Module):
         if self.training and torch.rand(1).item() < self.expert_dropout_p:
             drop_idx = torch.randint(0, self.num_experts, (1,)).item()
             adjusted_logits[:, drop_idx] = -1e9
+
+        # --- Hard expert timeout bans (training only; eval stays unmasked) ---
+        if self.training and self.expert_timeout_banned:
+            for ban_idx in self.expert_timeout_banned:
+                if 0 <= int(ban_idx) < self.num_experts:
+                    adjusted_logits[:, int(ban_idx)] = -1e9
 
         # --- Routing activation ---
         gumbel_active = self.use_gumbel and getattr(self, '_gumbel_active', True)

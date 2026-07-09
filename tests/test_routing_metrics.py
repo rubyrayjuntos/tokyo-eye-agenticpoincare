@@ -156,16 +156,18 @@ def test_inference_mode_routing_metrics_ignores_dropout() -> None:
 
     import experiments.training.v6.train_loop as train_loop
 
-    original = train_loop.attach_v6_features
-    train_loop.attach_v6_features = lambda x: x
+    original = train_loop.prepare_training_batch
+    train_loop.prepare_training_batch = lambda *args, **kwargs: torch.zeros(1)
     try:
         metrics = inference_mode_routing_metrics(model, proteins, "cpu")
     finally:
-        train_loop.attach_v6_features = original
+        train_loop.prepare_training_batch = original
 
     assert metrics["min_routing_fraction"] == pytest.approx(0.25)
+    assert metrics["max_routing_fraction"] == pytest.approx(0.25)
     assert metrics["effective_experts_min"] == pytest.approx(4.0, rel=0.05)
     assert metrics["eval_min_routing_fraction.TEST"] == pytest.approx(0.25)
+    assert metrics["eval_max_routing_fraction.TEST"] == pytest.approx(0.25)
 
 
 @pytest.mark.integration

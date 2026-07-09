@@ -23,12 +23,16 @@ RUN pip install --no-cache-dir -r requirements-agent.txt
 # Order from least to most frequently changed for better caching
 COPY shared/ /app/shared/
 COPY data/ /app/data/
+COPY science/__init__.py /app/science/__init__.py
+COPY science/contracts/ /app/science/contracts/
+COPY science/training/ /app/science/training/
 COPY science/dtie/__init__.py /app/science/dtie/__init__.py
 COPY science/dtie/v5/__init__.py /app/science/dtie/v5/__init__.py
 COPY science/dtie/v5/orchestrator/ /app/science/dtie/v5/orchestrator/
 COPY science/dtie/v5/phase_adapter.py /app/science/dtie/v5/phase_adapter.py
 COPY science/dtie/common/ /app/science/dtie/common/
-COPY science/__init__.py /app/science/__init__.py
+COPY science/dtie/v6/__init__.py /app/science/dtie/v6/__init__.py
+COPY science/dtie/v65/__init__.py /app/science/dtie/v65/__init__.py
 COPY agent/ /app/agent/
 
 # Set Python environment variables to reduce overhead and improve startup

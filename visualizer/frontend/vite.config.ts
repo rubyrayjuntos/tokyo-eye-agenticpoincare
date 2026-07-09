@@ -24,6 +24,11 @@ export default defineConfig(() => {
           changeOrigin: true,
           ws: true,
         },
+        '/mlflow': {
+          target: process.env.VITE_MLFLOW_URL || 'http://localhost:5000',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/mlflow/, '') || '/',
+        },
       },
     },
   };

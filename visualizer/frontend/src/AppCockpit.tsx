@@ -5,6 +5,7 @@ import {
   BookOpenText,
   Command,
   Database,
+  FlaskConical,
   GitBranch,
   Lightbulb,
   Search,
@@ -68,12 +69,16 @@ import {
   useWorkbenchPolicy,
   useStructureScopeSync,
   discoveryPhaseToGroup,
+  PINNED_ACTIVITY_PANELS,
+  PINNED_PANEL_DOCK_SPAWN,
 } from "./workbench";
 import type { WorkbenchBus } from "./workbench/WorkbenchBus";
+import type { PinnedActivityPanel } from "./workbench/activityBarPolicy";
 
 const TOOL_ICONS: Record<string, ReactNode> = {
   briefing: <BookOpenText className="h-4 w-4" />,
   control_console: <Command className="h-4 w-4" />,
+  model_lifecycle: <FlaskConical className="h-4 w-4" />,
   rcsb_search: <Search className="h-4 w-4" />,
   graph_topology: <GitBranch className="h-4 w-4" />,
   hypothesis: <Lightbulb className="h-4 w-4" />,
@@ -204,13 +209,20 @@ function CockpitShell({
         onOpenStructurePicker();
         return;
       }
+      // Workbench Dockview: spawn/focus pinned control-center panels.
+      if (workbenchBus && panel) {
+        const spawn = PINNED_PANEL_DOCK_SPAWN[panel as PinnedActivityPanel];
+        if (spawn) {
+          workbenchBus.publish("layout:spawn_panel", spawn);
+        }
+      }
       const nextPanel = panel as ActivePanelName;
       panelBroker.emitPort(TOOL_PANEL_REGISTRY.rcsb_search.manifest, "open-panel", {
         panelId: nextPanel,
         open: nextPanel !== null,
       });
     },
-    [onOpenStructurePicker, panelBroker],
+    [onOpenStructurePicker, panelBroker, workbenchBus],
   );
 
   const handleEditorTabSelect = useCallback(
@@ -471,7 +483,7 @@ function CockpitShell({
         }
         activityBar={
           <ToolDock
-            pinnedTools={["briefing", "control_console"]}
+            pinnedTools={[...PINNED_ACTIVITY_PANELS]}
             allowedTools={orchestrator.plannerPolicy.allowedTools}
             blockedTools={orchestrator.plannerPolicy.blockedTools}
             activePanel={activePanel}

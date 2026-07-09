@@ -17,6 +17,7 @@ import ProvenanceTree from "../panels/ProvenanceTree";
 import PlotGeneratorPanel from "../panels/PlotGeneratorPanel";
 import ComparePanel from "../panels/ComparePanel";
 import DataInspectorPanel from "../panels/DataInspectorPanel";
+import ModelLifecyclePanel from "../panels/ModelLifecyclePanel";
 import type {
   ActivePanelName,
   BottomPanelId,
@@ -116,6 +117,33 @@ export const TOOL_PANEL_REGISTRY: Record<ToolPanelId, WorkbenchPanelDefinition<T
     manifest: CONTROL_CONSOLE_PANEL_MANIFEST,
     render: () => (
       <PrototypeControlConsolePanel manifest={CONTROL_CONSOLE_PANEL_MANIFEST} />
+    ),
+  },
+  model_lifecycle: {
+    id: "model_lifecycle",
+    title: "Model Lifecycle",
+    region: "activity-sidebar",
+    manifest: {
+      id: "model_lifecycle",
+      title: "Model Lifecycle",
+      region: "activity-sidebar",
+      ports: [
+        { name: "open-panel", kind: "open-panel", direction: "output" },
+      ],
+      emits: ["panel.activated"],
+    },
+    render: () => (
+      <ModelLifecyclePanel
+        manifest={{
+          id: "model_lifecycle",
+          title: "Model Lifecycle",
+          region: "activity-sidebar",
+          ports: [
+            { name: "open-panel", kind: "open-panel", direction: "output" },
+          ],
+          emits: ["panel.activated"],
+        }}
+      />
     ),
   },
   rcsb_search: {

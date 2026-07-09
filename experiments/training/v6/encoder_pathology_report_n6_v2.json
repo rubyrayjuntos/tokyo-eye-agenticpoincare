@@ -1,0 +1,1213 @@
+{
+  "verdict": "mixed_signal_review",
+  "output": "/tmp/encoder_pathology_report.json"
+}
+{
+  "run_dir": "/app/checkpoints/v6/runs/stage_a_small_master_cold_n6_v2",
+  "n_structures": 12,
+  "structures": [
+    {
+      "pdb_id": "1MBN",
+      "fold_id": "1.10.490.10",
+      "has_domain_labels": false
+    },
+    {
+      "pdb_id": "1LYZ",
+      "fold_id": "1.10.530.10",
+      "has_domain_labels": false
+    },
+    {
+      "pdb_id": "1BG1",
+      "fold_id": "1.20.1050.20",
+      "has_domain_labels": false
+    },
+    {
+      "pdb_id": "1F88",
+      "fold_id": "1.20.1070.10",
+      "has_domain_labels": false
+    },
+    {
+      "pdb_id": "2Z6H",
+      "fold_id": "1.25.10.10",
+      "has_domain_labels": false
+    },
+    {
+      "pdb_id": "1HHP",
+      "fold_id": "2.40.70.10",
+      "has_domain_labels": false
+    },
+    {
+      "pdb_id": "1TEN",
+      "fold_id": "2.60.40.10",
+      "has_domain_labels": false
+    },
+    {
+      "pdb_id": "1UBQ",
+      "fold_id": "3.10.20.90",
+      "has_domain_labels": false
+    },
+    {
+      "pdb_id": "1TIM",
+      "fold_id": "3.20.20.70",
+      "has_domain_labels": false
+    },
+    {
+      "pdb_id": "4OBE",
+      "fold_id": "3.40.50.300",
+      "has_domain_labels": true
+    },
+    {
+      "pdb_id": "1IVO",
+      "fold_id": "3.80.20.20",
+      "has_domain_labels": false
+    },
+    {
+      "pdb_id": "2SHP",
+      "fold_id": "3.90.190.10",
+      "has_domain_labels": false
+    }
+  ],
+  "checkpoints": [
+    {
+      "label": "v6_phase1_12prot.pt",
+      "checkpoint": "/app/checkpoints/v6/runs/stage_a_small_master_cold_n6_v2/v6_phase1_12prot.pt",
+      "domain_labelled_structures": 1,
+      "depth_vs_backbone_norm_corr": -0.034349232735618865,
+      "stage_summaries": {
+        "raw_input": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9995769262313843,
+            "pairwise_std": 0.0004628981405403465,
+            "pairwise_min": 0.9976832270622253,
+            "pairwise_max": 0.9999980926513672
+          },
+          "pc1_variance_frac": 0.9939960241317749,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.9995430409908295,
+            "across_mean_cos": 0.9995779059827328,
+            "separation_delta": -3.4864991903305054e-05
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9995768494678267
+          }
+        },
+        "backbone": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9746737480163574,
+            "pairwise_std": 0.03086809068918228,
+            "pairwise_min": 0.8535032272338867,
+            "pairwise_max": 0.9986340999603271
+          },
+          "pc1_variance_frac": 0.7987672090530396,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.956367015838623,
+            "across_mean_cos": 0.9752458836883307,
+            "separation_delta": -0.018878867849707603
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9746737967837941
+          }
+        },
+        "radial_depth_mean": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9982298515167054,
+            "pairwise_std": 0.0018192017393610057,
+            "pairwise_min": 0.993509995131698,
+            "pairwise_max": 0.9999951520468877
+          },
+          "pc1_variance_frac": 0.9474362676289412,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.9969331094729619,
+            "across_mean_cos": 0.9982703747055723,
+            "separation_delta": -0.0013372652326104628
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9982298515167054
+          }
+        },
+        "angular_direction_mean": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9948590397834778,
+            "pairwise_std": 0.005568105261772871,
+            "pairwise_min": 0.9728087782859802,
+            "pairwise_max": 0.9996470808982849
+          },
+          "pc1_variance_frac": 0.8259955644607544,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.9912264347076416,
+            "across_mean_cos": 0.9949725065380335,
+            "separation_delta": -0.003746071830391884
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9948589892098398
+          }
+        },
+        "disc_2d_mean": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.8452717065811157,
+            "pairwise_std": 0.17181456089019775,
+            "pairwise_min": 0.24471907317638397,
+            "pairwise_max": 0.9999735951423645
+          },
+          "pc1_variance_frac": 0.9920513033866882,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.8549598455429077,
+            "across_mean_cos": 0.8449689166154712,
+            "separation_delta": 0.009990928927436471
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.8452716720375147
+          }
+        },
+        "gate_scores_mean": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9869389533996582,
+            "pairwise_std": 0.01751629449427128,
+            "pairwise_min": 0.9027182459831238,
+            "pairwise_max": 0.9999116659164429
+          },
+          "pc1_variance_frac": 0.9597654342651367,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.9864197075366974,
+            "across_mean_cos": 0.9869552087038755,
+            "separation_delta": -0.000535501167178154
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9869389813957792
+          }
+        },
+        "depth_mean": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9999999842292322,
+            "pairwise_std": 1.0764673763777383e-09,
+            "pairwise_min": 0.9999999820782541,
+            "pairwise_max": 0.9999999865880865
+          },
+          "pc1_variance_frac": 1.0,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.9999999845344532,
+            "across_mean_cos": 0.9999999842196939,
+            "separation_delta": 3.1475921868917567e-10
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9999999842292321
+          },
+          "depth_spread": {
+            "min": 1.1083979606628418,
+            "max": 1.568832516670227,
+            "std": 0.13448287131214434
+          }
+        }
+      },
+      "raw_input_stats": {
+        "1MBN": {
+          "mean_rho": 12.803921699523926,
+          "mean_tau": 0.4901960790157318,
+          "mean_ss": 0.09150326997041702,
+          "mean_sasa": 0.3552941083908081,
+          "std_rho": 6.061837196350098,
+          "std_sasa": 0.16646677255630493,
+          "n_residues": 153
+        },
+        "1LYZ": {
+          "mean_rho": 10.162790298461914,
+          "mean_tau": 0.682170569896698,
+          "mean_ss": 0.1860465109348297,
+          "mean_sasa": 0.433358371257782,
+          "std_rho": 6.321846961975098,
+          "std_sasa": 0.17377744615077972,
+          "n_residues": 129
+        },
+        "1BG1": {
+          "mean_rho": 12.598566055297852,
+          "mean_tau": 0.5107526779174805,
+          "mean_ss": 0.23655913770198822,
+          "mean_sasa": 0.429983913898468,
+          "std_rho": 6.479092121124268,
+          "std_sasa": 0.16994263231754303,
+          "n_residues": 558
+        },
+        "1F88": {
+          "mean_rho": 16.644969940185547,
+          "mean_tau": 0.2988165616989136,
+          "mean_ss": 0.13017751276493073,
+          "mean_sasa": 0.47438716888427734,
+          "std_rho": 8.060312271118164,
+          "std_sasa": 0.16376854479312897,
+          "n_residues": 338
+        },
+        "2Z6H": {
+          "mean_rho": 14.707317352294922,
+          "mean_tau": 0.3808630406856537,
+          "mean_ss": 0.05722326412796974,
+          "mean_sasa": 0.4150889813899994,
+          "std_rho": 6.768255233764648,
+          "std_sasa": 0.17527781426906586,
+          "n_residues": 533
+        },
+        "1HHP": {
+          "mean_rho": 13.646464347839355,
+          "mean_tau": 0.49494948983192444,
+          "mean_ss": 0.44949495792388916,
+          "mean_sasa": 0.4296814501285553,
+          "std_rho": 6.496794700622559,
+          "std_sasa": 0.20564040541648865,
+          "n_residues": 99
+        },
+        "1TEN": {
+          "mean_rho": 10.460674285888672,
+          "mean_tau": 0.6853932738304138,
+          "mean_ss": 0.584269642829895,
+          "mean_sasa": 0.4036300778388977,
+          "std_rho": 5.039297580718994,
+          "std_sasa": 0.15727843344211578,
+          "n_residues": 89
+        },
+        "1UBQ": {
+          "mean_rho": 11.631579399108887,
+          "mean_tau": 0.5657894611358643,
+          "mean_ss": 0.3486842215061188,
+          "mean_sasa": 0.34210526943206787,
+          "std_rho": 5.635512351989746,
+          "std_sasa": 0.18098998069763184,
+          "n_residues": 76
+        },
+        "1TIM": {
+          "mean_rho": 13.113360404968262,
+          "mean_tau": 0.5263158082962036,
+          "mean_ss": 0.26923078298568726,
+          "mean_sasa": 0.43724697828292847,
+          "std_rho": 6.229363441467285,
+          "std_sasa": 0.1716935783624649,
+          "n_residues": 247
+        },
+        "4OBE": {
+          "mean_rho": 12.337278366088867,
+          "mean_tau": 0.6035503149032593,
+          "mean_ss": 0.24260355532169342,
+          "mean_sasa": 0.4272189140319824,
+          "std_rho": 8.116669654846191,
+          "std_sasa": 0.19387929141521454,
+          "n_residues": 169
+        },
+        "1IVO": {
+          "mean_rho": 12.162426948547363,
+          "mean_tau": 0.5753424763679504,
+          "mean_ss": 0.3835616409778595,
+          "mean_sasa": 0.4097594618797302,
+          "std_rho": 6.844872951507568,
+          "std_sasa": 0.17557933926582336,
+          "n_residues": 511
+        },
+        "2SHP": {
+          "mean_rho": 11.450101852416992,
+          "mean_tau": 0.5845214128494263,
+          "mean_ss": 0.30142566561698914,
+          "mean_sasa": 0.44246435165405273,
+          "std_rho": 6.470602035522461,
+          "std_sasa": 0.167946919798851,
+          "n_residues": 491
+        }
+      }
+    },
+    {
+      "label": "v6_phase2_12prot.pt",
+      "checkpoint": "/app/checkpoints/v6/runs/stage_a_small_master_cold_n6_v2/v6_phase2_12prot.pt",
+      "domain_labelled_structures": 1,
+      "depth_vs_backbone_norm_corr": 0.8313888159634241,
+      "stage_summaries": {
+        "raw_input": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9995769262313843,
+            "pairwise_std": 0.0004628981405403465,
+            "pairwise_min": 0.9976832270622253,
+            "pairwise_max": 0.9999980926513672
+          },
+          "pc1_variance_frac": 0.9939960241317749,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.9995430409908295,
+            "across_mean_cos": 0.9995779059827328,
+            "separation_delta": -3.4864991903305054e-05
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9995768494678267
+          }
+        },
+        "backbone": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.901103675365448,
+            "pairwise_std": 0.10687839984893799,
+            "pairwise_min": 0.5252162218093872,
+            "pairwise_max": 0.9989446401596069
+          },
+          "pc1_variance_frac": 0.9030129909515381,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.8877491056919098,
+            "across_mean_cos": 0.9015210205689073,
+            "separation_delta": -0.01377191487699747
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9011036898150588
+          }
+        },
+        "radial_depth_mean": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9976953405409557,
+            "pairwise_std": 0.0033675764649777245,
+            "pairwise_min": 0.980201606497871,
+            "pairwise_max": 0.9999999729070562
+          },
+          "pc1_variance_frac": 0.9525162535376921,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.9989770057933423,
+            "across_mean_cos": 0.9976552885018185,
+            "separation_delta": 0.0013217172915237496
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9976953405409557
+          }
+        },
+        "angular_direction_mean": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.8964132070541382,
+            "pairwise_std": 0.10579029470682144,
+            "pairwise_min": 0.5117472410202026,
+            "pairwise_max": 0.9965960383415222
+          },
+          "pc1_variance_frac": 0.8037729859352112,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.8526716232299805,
+            "across_mean_cos": 0.8977801771834493,
+            "separation_delta": -0.0451085539534688
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.8964132513060714
+          }
+        },
+        "disc_2d_mean": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9287558197975159,
+            "pairwise_std": 0.1070622131228447,
+            "pairwise_min": 0.539239764213562,
+            "pairwise_max": 0.9999258518218994
+          },
+          "pc1_variance_frac": 0.7115035653114319,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.8848260939121246,
+            "across_mean_cos": 0.9301286321133375,
+            "separation_delta": -0.04530253820121288
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.928755827925422
+          }
+        },
+        "gate_scores_mean": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9866920113563538,
+            "pairwise_std": 0.010131663642823696,
+            "pairwise_min": 0.9508690237998962,
+            "pairwise_max": 0.9995877146720886
+          },
+          "pc1_variance_frac": 0.5019810795783997,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.9866789877414703,
+            "across_mean_cos": 0.9866923959925771,
+            "separation_delta": -1.3408251106739044e-05
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9866919896819375
+          }
+        },
+        "depth_mean": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9999999865600075,
+            "pairwise_std": 7.253680655423811e-10,
+            "pairwise_min": 0.9999999848204253,
+            "pairwise_max": 0.9999999880480008
+          },
+          "pc1_variance_frac": 1.0,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.9999999868181084,
+            "across_mean_cos": 0.9999999865519418,
+            "separation_delta": 2.6616664428047443e-10
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9999999865600075
+          },
+          "depth_spread": {
+            "min": 1.2766655683517456,
+            "max": 1.7452620267868042,
+            "std": 0.11933363138088926
+          }
+        }
+      },
+      "raw_input_stats": {
+        "1MBN": {
+          "mean_rho": 12.803921699523926,
+          "mean_tau": 0.4901960790157318,
+          "mean_ss": 0.09150326997041702,
+          "mean_sasa": 0.3552941083908081,
+          "std_rho": 6.061837196350098,
+          "std_sasa": 0.16646677255630493,
+          "n_residues": 153
+        },
+        "1LYZ": {
+          "mean_rho": 10.162790298461914,
+          "mean_tau": 0.682170569896698,
+          "mean_ss": 0.1860465109348297,
+          "mean_sasa": 0.433358371257782,
+          "std_rho": 6.321846961975098,
+          "std_sasa": 0.17377744615077972,
+          "n_residues": 129
+        },
+        "1BG1": {
+          "mean_rho": 12.598566055297852,
+          "mean_tau": 0.5107526779174805,
+          "mean_ss": 0.23655913770198822,
+          "mean_sasa": 0.429983913898468,
+          "std_rho": 6.479092121124268,
+          "std_sasa": 0.16994263231754303,
+          "n_residues": 558
+        },
+        "1F88": {
+          "mean_rho": 16.644969940185547,
+          "mean_tau": 0.2988165616989136,
+          "mean_ss": 0.13017751276493073,
+          "mean_sasa": 0.47438716888427734,
+          "std_rho": 8.060312271118164,
+          "std_sasa": 0.16376854479312897,
+          "n_residues": 338
+        },
+        "2Z6H": {
+          "mean_rho": 14.707317352294922,
+          "mean_tau": 0.3808630406856537,
+          "mean_ss": 0.05722326412796974,
+          "mean_sasa": 0.4150889813899994,
+          "std_rho": 6.768255233764648,
+          "std_sasa": 0.17527781426906586,
+          "n_residues": 533
+        },
+        "1HHP": {
+          "mean_rho": 13.646464347839355,
+          "mean_tau": 0.49494948983192444,
+          "mean_ss": 0.44949495792388916,
+          "mean_sasa": 0.4296814501285553,
+          "std_rho": 6.496794700622559,
+          "std_sasa": 0.20564040541648865,
+          "n_residues": 99
+        },
+        "1TEN": {
+          "mean_rho": 10.460674285888672,
+          "mean_tau": 0.6853932738304138,
+          "mean_ss": 0.584269642829895,
+          "mean_sasa": 0.4036300778388977,
+          "std_rho": 5.039297580718994,
+          "std_sasa": 0.15727843344211578,
+          "n_residues": 89
+        },
+        "1UBQ": {
+          "mean_rho": 11.631579399108887,
+          "mean_tau": 0.5657894611358643,
+          "mean_ss": 0.3486842215061188,
+          "mean_sasa": 0.34210526943206787,
+          "std_rho": 5.635512351989746,
+          "std_sasa": 0.18098998069763184,
+          "n_residues": 76
+        },
+        "1TIM": {
+          "mean_rho": 13.113360404968262,
+          "mean_tau": 0.5263158082962036,
+          "mean_ss": 0.26923078298568726,
+          "mean_sasa": 0.43724697828292847,
+          "std_rho": 6.229363441467285,
+          "std_sasa": 0.1716935783624649,
+          "n_residues": 247
+        },
+        "4OBE": {
+          "mean_rho": 12.337278366088867,
+          "mean_tau": 0.6035503149032593,
+          "mean_ss": 0.24260355532169342,
+          "mean_sasa": 0.4272189140319824,
+          "std_rho": 8.116669654846191,
+          "std_sasa": 0.19387929141521454,
+          "n_residues": 169
+        },
+        "1IVO": {
+          "mean_rho": 12.162426948547363,
+          "mean_tau": 0.5753424763679504,
+          "mean_ss": 0.3835616409778595,
+          "mean_sasa": 0.4097594618797302,
+          "std_rho": 6.844872951507568,
+          "std_sasa": 0.17557933926582336,
+          "n_residues": 511
+        },
+        "2SHP": {
+          "mean_rho": 11.450101852416992,
+          "mean_tau": 0.5845214128494263,
+          "mean_ss": 0.30142566561698914,
+          "mean_sasa": 0.44246435165405273,
+          "std_rho": 6.470602035522461,
+          "std_sasa": 0.167946919798851,
+          "n_residues": 491
+        }
+      }
+    },
+    {
+      "label": "phase_1.pt",
+      "checkpoint": "/app/checkpoints/v6/runs/stage_a_small_master_cold_n6_v2/phase_1.pt",
+      "domain_labelled_structures": 1,
+      "depth_vs_backbone_norm_corr": -0.034349232735618865,
+      "stage_summaries": {
+        "raw_input": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9995769262313843,
+            "pairwise_std": 0.0004628981405403465,
+            "pairwise_min": 0.9976832270622253,
+            "pairwise_max": 0.9999980926513672
+          },
+          "pc1_variance_frac": 0.9939960241317749,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.9995430409908295,
+            "across_mean_cos": 0.9995779059827328,
+            "separation_delta": -3.4864991903305054e-05
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9995768494678267
+          }
+        },
+        "backbone": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9746737480163574,
+            "pairwise_std": 0.03086809068918228,
+            "pairwise_min": 0.8535032272338867,
+            "pairwise_max": 0.9986340999603271
+          },
+          "pc1_variance_frac": 0.7987672090530396,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.956367015838623,
+            "across_mean_cos": 0.9752458836883307,
+            "separation_delta": -0.018878867849707603
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9746737967837941
+          }
+        },
+        "radial_depth_mean": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9982298515167054,
+            "pairwise_std": 0.0018192017393610057,
+            "pairwise_min": 0.993509995131698,
+            "pairwise_max": 0.9999951520468877
+          },
+          "pc1_variance_frac": 0.9474362676289412,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.9969331094729619,
+            "across_mean_cos": 0.9982703747055723,
+            "separation_delta": -0.0013372652326104628
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9982298515167054
+          }
+        },
+        "angular_direction_mean": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9948590397834778,
+            "pairwise_std": 0.005568105261772871,
+            "pairwise_min": 0.9728087782859802,
+            "pairwise_max": 0.9996470808982849
+          },
+          "pc1_variance_frac": 0.8259955644607544,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.9912264347076416,
+            "across_mean_cos": 0.9949725065380335,
+            "separation_delta": -0.003746071830391884
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9948589892098398
+          }
+        },
+        "disc_2d_mean": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.8452717065811157,
+            "pairwise_std": 0.17181456089019775,
+            "pairwise_min": 0.24471907317638397,
+            "pairwise_max": 0.9999735951423645
+          },
+          "pc1_variance_frac": 0.9920513033866882,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.8549598455429077,
+            "across_mean_cos": 0.8449689166154712,
+            "separation_delta": 0.009990928927436471
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.8452716720375147
+          }
+        },
+        "gate_scores_mean": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9869389533996582,
+            "pairwise_std": 0.01751629449427128,
+            "pairwise_min": 0.9027182459831238,
+            "pairwise_max": 0.9999116659164429
+          },
+          "pc1_variance_frac": 0.9597654342651367,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.9864197075366974,
+            "across_mean_cos": 0.9869552087038755,
+            "separation_delta": -0.000535501167178154
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9869389813957792
+          }
+        },
+        "depth_mean": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9999999842292322,
+            "pairwise_std": 1.0764673763777383e-09,
+            "pairwise_min": 0.9999999820782541,
+            "pairwise_max": 0.9999999865880865
+          },
+          "pc1_variance_frac": 1.0,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.9999999845344532,
+            "across_mean_cos": 0.9999999842196939,
+            "separation_delta": 3.1475921868917567e-10
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9999999842292321
+          },
+          "depth_spread": {
+            "min": 1.1083979606628418,
+            "max": 1.568832516670227,
+            "std": 0.13448287131214434
+          }
+        }
+      },
+      "raw_input_stats": {
+        "1MBN": {
+          "mean_rho": 12.803921699523926,
+          "mean_tau": 0.4901960790157318,
+          "mean_ss": 0.09150326997041702,
+          "mean_sasa": 0.3552941083908081,
+          "std_rho": 6.061837196350098,
+          "std_sasa": 0.16646677255630493,
+          "n_residues": 153
+        },
+        "1LYZ": {
+          "mean_rho": 10.162790298461914,
+          "mean_tau": 0.682170569896698,
+          "mean_ss": 0.1860465109348297,
+          "mean_sasa": 0.433358371257782,
+          "std_rho": 6.321846961975098,
+          "std_sasa": 0.17377744615077972,
+          "n_residues": 129
+        },
+        "1BG1": {
+          "mean_rho": 12.598566055297852,
+          "mean_tau": 0.5107526779174805,
+          "mean_ss": 0.23655913770198822,
+          "mean_sasa": 0.429983913898468,
+          "std_rho": 6.479092121124268,
+          "std_sasa": 0.16994263231754303,
+          "n_residues": 558
+        },
+        "1F88": {
+          "mean_rho": 16.644969940185547,
+          "mean_tau": 0.2988165616989136,
+          "mean_ss": 0.13017751276493073,
+          "mean_sasa": 0.47438716888427734,
+          "std_rho": 8.060312271118164,
+          "std_sasa": 0.16376854479312897,
+          "n_residues": 338
+        },
+        "2Z6H": {
+          "mean_rho": 14.707317352294922,
+          "mean_tau": 0.3808630406856537,
+          "mean_ss": 0.05722326412796974,
+          "mean_sasa": 0.4150889813899994,
+          "std_rho": 6.768255233764648,
+          "std_sasa": 0.17527781426906586,
+          "n_residues": 533
+        },
+        "1HHP": {
+          "mean_rho": 13.646464347839355,
+          "mean_tau": 0.49494948983192444,
+          "mean_ss": 0.44949495792388916,
+          "mean_sasa": 0.4296814501285553,
+          "std_rho": 6.496794700622559,
+          "std_sasa": 0.20564040541648865,
+          "n_residues": 99
+        },
+        "1TEN": {
+          "mean_rho": 10.460674285888672,
+          "mean_tau": 0.6853932738304138,
+          "mean_ss": 0.584269642829895,
+          "mean_sasa": 0.4036300778388977,
+          "std_rho": 5.039297580718994,
+          "std_sasa": 0.15727843344211578,
+          "n_residues": 89
+        },
+        "1UBQ": {
+          "mean_rho": 11.631579399108887,
+          "mean_tau": 0.5657894611358643,
+          "mean_ss": 0.3486842215061188,
+          "mean_sasa": 0.34210526943206787,
+          "std_rho": 5.635512351989746,
+          "std_sasa": 0.18098998069763184,
+          "n_residues": 76
+        },
+        "1TIM": {
+          "mean_rho": 13.113360404968262,
+          "mean_tau": 0.5263158082962036,
+          "mean_ss": 0.26923078298568726,
+          "mean_sasa": 0.43724697828292847,
+          "std_rho": 6.229363441467285,
+          "std_sasa": 0.1716935783624649,
+          "n_residues": 247
+        },
+        "4OBE": {
+          "mean_rho": 12.337278366088867,
+          "mean_tau": 0.6035503149032593,
+          "mean_ss": 0.24260355532169342,
+          "mean_sasa": 0.4272189140319824,
+          "std_rho": 8.116669654846191,
+          "std_sasa": 0.19387929141521454,
+          "n_residues": 169
+        },
+        "1IVO": {
+          "mean_rho": 12.162426948547363,
+          "mean_tau": 0.5753424763679504,
+          "mean_ss": 0.3835616409778595,
+          "mean_sasa": 0.4097594618797302,
+          "std_rho": 6.844872951507568,
+          "std_sasa": 0.17557933926582336,
+          "n_residues": 511
+        },
+        "2SHP": {
+          "mean_rho": 11.450101852416992,
+          "mean_tau": 0.5845214128494263,
+          "mean_ss": 0.30142566561698914,
+          "mean_sasa": 0.44246435165405273,
+          "std_rho": 6.470602035522461,
+          "std_sasa": 0.167946919798851,
+          "n_residues": 491
+        }
+      }
+    },
+    {
+      "label": "phase_2.pt",
+      "checkpoint": "/app/checkpoints/v6/runs/stage_a_small_master_cold_n6_v2/phase_2.pt",
+      "domain_labelled_structures": 1,
+      "depth_vs_backbone_norm_corr": 0.8313888159634241,
+      "stage_summaries": {
+        "raw_input": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9995769262313843,
+            "pairwise_std": 0.0004628981405403465,
+            "pairwise_min": 0.9976832270622253,
+            "pairwise_max": 0.9999980926513672
+          },
+          "pc1_variance_frac": 0.9939960241317749,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.9995430409908295,
+            "across_mean_cos": 0.9995779059827328,
+            "separation_delta": -3.4864991903305054e-05
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9995768494678267
+          }
+        },
+        "backbone": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.901103675365448,
+            "pairwise_std": 0.10687839984893799,
+            "pairwise_min": 0.5252162218093872,
+            "pairwise_max": 0.9989446401596069
+          },
+          "pc1_variance_frac": 0.9030129909515381,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.8877491056919098,
+            "across_mean_cos": 0.9015210205689073,
+            "separation_delta": -0.01377191487699747
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9011036898150588
+          }
+        },
+        "radial_depth_mean": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9976953405409557,
+            "pairwise_std": 0.0033675764649777245,
+            "pairwise_min": 0.980201606497871,
+            "pairwise_max": 0.9999999729070562
+          },
+          "pc1_variance_frac": 0.9525162535376921,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.9989770057933423,
+            "across_mean_cos": 0.9976552885018185,
+            "separation_delta": 0.0013217172915237496
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9976953405409557
+          }
+        },
+        "angular_direction_mean": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.8964132070541382,
+            "pairwise_std": 0.10579029470682144,
+            "pairwise_min": 0.5117472410202026,
+            "pairwise_max": 0.9965960383415222
+          },
+          "pc1_variance_frac": 0.8037729859352112,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.8526716232299805,
+            "across_mean_cos": 0.8977801771834493,
+            "separation_delta": -0.0451085539534688
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.8964132513060714
+          }
+        },
+        "disc_2d_mean": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9287558197975159,
+            "pairwise_std": 0.1070622131228447,
+            "pairwise_min": 0.539239764213562,
+            "pairwise_max": 0.9999258518218994
+          },
+          "pc1_variance_frac": 0.7115035653114319,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.8848260939121246,
+            "across_mean_cos": 0.9301286321133375,
+            "separation_delta": -0.04530253820121288
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.928755827925422
+          }
+        },
+        "gate_scores_mean": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9866920113563538,
+            "pairwise_std": 0.010131663642823696,
+            "pairwise_min": 0.9508690237998962,
+            "pairwise_max": 0.9995877146720886
+          },
+          "pc1_variance_frac": 0.5019810795783997,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.9866789877414703,
+            "across_mean_cos": 0.9866923959925771,
+            "separation_delta": -1.3408251106739044e-05
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9866919896819375
+          }
+        },
+        "depth_mean": {
+          "n_structures": 12,
+          "pairwise_cosine": {
+            "pairwise_mean": 0.9999999865600075,
+            "pairwise_std": 7.253680655423811e-10,
+            "pairwise_min": 0.9999999848204253,
+            "pairwise_max": 0.9999999880480008
+          },
+          "pc1_variance_frac": 1.0,
+          "cath_architecture_2": {
+            "n_within_pairs": 2,
+            "n_across_pairs": 64,
+            "within_mean_cos": 0.9999999868181084,
+            "across_mean_cos": 0.9999999865519418,
+            "separation_delta": 2.6616664428047443e-10
+          },
+          "cath_topology_3": {
+            "n_within_pairs": 0,
+            "n_across_pairs": 66,
+            "across_mean_cos": 0.9999999865600075
+          },
+          "depth_spread": {
+            "min": 1.2766655683517456,
+            "max": 1.7452620267868042,
+            "std": 0.11933363138088926
+          }
+        }
+      },
+      "raw_input_stats": {
+        "1MBN": {
+          "mean_rho": 12.803921699523926,
+          "mean_tau": 0.4901960790157318,
+          "mean_ss": 0.09150326997041702,
+          "mean_sasa": 0.3552941083908081,
+          "std_rho": 6.061837196350098,
+          "std_sasa": 0.16646677255630493,
+          "n_residues": 153
+        },
+        "1LYZ": {
+          "mean_rho": 10.162790298461914,
+          "mean_tau": 0.682170569896698,
+          "mean_ss": 0.1860465109348297,
+          "mean_sasa": 0.433358371257782,
+          "std_rho": 6.321846961975098,
+          "std_sasa": 0.17377744615077972,
+          "n_residues": 129
+        },
+        "1BG1": {
+          "mean_rho": 12.598566055297852,
+          "mean_tau": 0.5107526779174805,
+          "mean_ss": 0.23655913770198822,
+          "mean_sasa": 0.429983913898468,
+          "std_rho": 6.479092121124268,
+          "std_sasa": 0.16994263231754303,
+          "n_residues": 558
+        },
+        "1F88": {
+          "mean_rho": 16.644969940185547,
+          "mean_tau": 0.2988165616989136,
+          "mean_ss": 0.13017751276493073,
+          "mean_sasa": 0.47438716888427734,
+          "std_rho": 8.060312271118164,
+          "std_sasa": 0.16376854479312897,
+          "n_residues": 338
+        },
+        "2Z6H": {
+          "mean_rho": 14.707317352294922,
+          "mean_tau": 0.3808630406856537,
+          "mean_ss": 0.05722326412796974,
+          "mean_sasa": 0.4150889813899994,
+          "std_rho": 6.768255233764648,
+          "std_sasa": 0.17527781426906586,
+          "n_residues": 533
+        },
+        "1HHP": {
+          "mean_rho": 13.646464347839355,
+          "mean_tau": 0.49494948983192444,
+          "mean_ss": 0.44949495792388916,
+          "mean_sasa": 0.4296814501285553,
+          "std_rho": 6.496794700622559,
+          "std_sasa": 0.20564040541648865,
+          "n_residues": 99
+        },
+        "1TEN": {
+          "mean_rho": 10.460674285888672,
+          "mean_tau": 0.6853932738304138,
+          "mean_ss": 0.584269642829895,
+          "mean_sasa": 0.4036300778388977,
+          "std_rho": 5.039297580718994,
+          "std_sasa": 0.15727843344211578,
+          "n_residues": 89
+        },
+        "1UBQ": {
+          "mean_rho": 11.631579399108887,
+          "mean_tau": 0.5657894611358643,
+          "mean_ss": 0.3486842215061188,
+          "mean_sasa": 0.34210526943206787,
+          "std_rho": 5.635512351989746,
+          "std_sasa": 0.18098998069763184,
+          "n_residues": 76
+        },
+        "1TIM": {
+          "mean_rho": 13.113360404968262,
+          "mean_tau": 0.5263158082962036,
+          "mean_ss": 0.26923078298568726,
+          "mean_sasa": 0.43724697828292847,
+          "std_rho": 6.229363441467285,
+          "std_sasa": 0.1716935783624649,
+          "n_residues": 247
+        },
+        "4OBE": {
+          "mean_rho": 12.337278366088867,
+          "mean_tau": 0.6035503149032593,
+          "mean_ss": 0.24260355532169342,
+          "mean_sasa": 0.4272189140319824,
+          "std_rho": 8.116669654846191,
+          "std_sasa": 0.19387929141521454,
+          "n_residues": 169
+        },
+        "1IVO": {
+          "mean_rho": 12.162426948547363,
+          "mean_tau": 0.5753424763679504,
+          "mean_ss": 0.3835616409778595,
+          "mean_sasa": 0.4097594618797302,
+          "std_rho": 6.844872951507568,
+          "std_sasa": 0.17557933926582336,
+          "n_residues": 511
+        },
+        "2SHP": {
+          "mean_rho": 11.450101852416992,
+          "mean_tau": 0.5845214128494263,
+          "mean_ss": 0.30142566561698914,
+          "mean_sasa": 0.44246435165405273,
+          "std_rho": 6.470602035522461,
+          "std_sasa": 0.167946919798851,
+          "n_residues": 491
+        }
+      }
+    }
+  ],
+  "loss_contribution_audit": {
+    "p1_final_weighted": {
+      "cone_consistency": 0.1477686896920204,
+      "shell_correlation": 0.25084296862284344,
+      "neighborhood_consistency": 0.027936471750338872,
+      "angular_diversity": 0.0,
+      "domain_separation_2d": 0.0,
+      "domain_separation_3d": 0.0,
+      "cone_depth_anticollapse": 0.0,
+      "evidential_raw": 3.429410457611084,
+      "grad_radial": 0.10762895948137156,
+      "grad_angular": 0.0,
+      "grad_backbone": 0.05555087139004577,
+      "domain_sep_2d_active": 0.0
+    },
+    "p2_final_weighted": {
+      "cone_consistency": 0.08042984455823898,
+      "shell_correlation": 0.12546326220035553,
+      "neighborhood_consistency": 0.022010751999914646,
+      "angular_diversity": 0.029402669270833334,
+      "domain_separation_2d": 0.0,
+      "domain_separation_3d": 0.0,
+      "cone_depth_anticollapse": 0.0,
+      "evidential_raw": 3.374166170756022,
+      "grad_radial": 0.04671514621877578,
+      "grad_angular": 0.08150096982717514,
+      "grad_backbone": 0.03244922146761079,
+      "domain_sep_2d_active": 0.0
+    },
+    "domain_labels_note": "domain_separation only fires for structures with >=2 KRAS switch domains (4OBE only in 12-prot corpus); not CATH fold discrimination"
+  },
+  "verdict": "mixed_signal_review",
+  "interpretation": "Compare raw_input vs backbone pairwise cosine: if raw separates folds but backbone does not, the encoder is erasing fold signal. If both are high, inputs may be depth-dominated before the GNN. domain_separation loss is intra-protein (4OBE only), not cross-fold \u2014 absence of fold-discrimination objective is expected."
+}
