@@ -224,6 +224,71 @@ def test_stack_dims_full():
     assert y.shape == (8, 55)
 
 
+def test_feature_set_ids():
+    from science.dtie.common.residue_features import (
+        GnnInputMode,
+        gnn_feature_set_id,
+        gnn_feature_set_id_for_barcode,
+        gnn_input_dim_for_barcode,
+    )
+
+    assert (
+        gnn_feature_set_id_for_barcode(
+            use_barcode=False,
+            use_binned=False,
+            mode=GnnInputMode.TOPOLOGY_THREE_VECTOR,
+        )
+        == gnn_feature_set_id(GnnInputMode.TOPOLOGY_THREE_VECTOR)
+    )
+    assert "dbh_scalars_v1" in gnn_feature_set_id_for_barcode(
+        use_barcode=True,
+        use_binned=False,
+        mode=GnnInputMode.TOPOLOGY_THREE_VECTOR,
+    )
+    assert "dbh_full_v1" in gnn_feature_set_id_for_barcode(
+        use_barcode=True,
+        use_binned=True,
+        mode=GnnInputMode.TOPOLOGY_THREE_VECTOR,
+    )
+    assert (
+        gnn_input_dim_for_barcode(
+            use_barcode=True,
+            use_binned=False,
+            mode=GnnInputMode.TOPOLOGY_THREE_VECTOR,
+        )
+        == 15
+    )
+    assert (
+        gnn_input_dim_for_barcode(
+            use_barcode=True,
+            use_binned=True,
+            mode=GnnInputMode.TOPOLOGY_THREE_VECTOR,
+        )
+        == 55
+    )
+
+
+def test_attach_missing_sidecar_zeros_shape(tmp_path):
+    import torch
+    from torch_geometric.data import Data
+
+    from experiments.training.v6._data import attach_dehydron_barcode_features
+
+    prot = {
+        "pdb_id": "4OBE",
+        "chain": "A",
+        "data": Data(x=torch.ones(4, 3)),
+    }
+
+    attach_dehydron_barcode_features(prot, barcode_dir=tmp_path, use_binned=False)
+
+    x = prot["data"].x
+    assert x.shape == (4, 15)
+    assert torch.allclose(x[:, :3], torch.ones(4, 3))
+    assert torch.allclose(x[:, 3:14], torch.zeros(4, 11))
+    assert torch.allclose(x[:, 14:], torch.ones(4, 1))
+
+
 FOUROBE_PDB = Path(
     "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/"
     "checkpoints/v6/runs/slim_moe_structural_ssot_cold_v1/viewers/4obe/4obe_gosp_native.pdb"

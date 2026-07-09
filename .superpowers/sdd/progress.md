@@ -10,3 +10,4 @@ Task 2: complete (commits ed30be4..c8c4daf, review clean; minor: assert len(bars
 Task 3: complete (commits c8c4daf..79bbb62, re-review Approved after K-fold fix)
 Task 4: complete (commit a7ca5d2, review Approved)
 Task 5: complete (see task-5-report.md; post-review cache-key fix committed)
+Task 6: complete (see task-6-report.md; implementation committed)

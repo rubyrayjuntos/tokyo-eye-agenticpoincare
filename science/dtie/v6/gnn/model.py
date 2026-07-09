@@ -40,6 +40,8 @@ DESIGN CONTRACT:
     gate_features_used: list[str]   Audit: which features fed the gate
 """
 
+import logging
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -70,6 +72,8 @@ from science.dtie.v6.gnn.evidential import (
     uncertainty_head_is_decoupled,
 )
 from science.training.routing_metrics import routing_load_floor_penalty
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_message_passing_edges(data: Data) -> tuple[torch.Tensor, torch.Tensor]:
@@ -1061,6 +1065,42 @@ def adapt_checkpoint_expert_count(
     return adapted
 
 
+def adapt_checkpoint_node_emb_width(
+    state_dict: dict[str, torch.Tensor],
+    model_state: dict[str, torch.Tensor],
+) -> dict[str, torch.Tensor]:
+    """Resize node_emb.weight input columns for barcode warm-start/resume."""
+    key = "node_emb.weight"
+    old_w = state_dict.get(key)
+    new_w = model_state.get(key)
+    if old_w is None or new_w is None or old_w.shape == new_w.shape:
+        return dict(state_dict)
+    if old_w.ndim != 2 or new_w.ndim != 2 or old_w.shape[0] != new_w.shape[0]:
+        return dict(state_dict)
+
+    adapted = dict(state_dict)
+    resized = torch.zeros_like(new_w)
+    cols = min(old_w.shape[1], new_w.shape[1])
+    resized[:, :cols] = old_w[:, :cols].to(dtype=resized.dtype, device=resized.device)
+    adapted[key] = resized
+    if old_w.shape[1] < new_w.shape[1]:
+        logger.info(
+            "Expanded node_emb.weight input width %d -> %d; copied %d columns and zero-filled %d new barcode columns",
+            old_w.shape[1],
+            new_w.shape[1],
+            cols,
+            new_w.shape[1] - old_w.shape[1],
+        )
+    else:
+        logger.info(
+            "Shrank node_emb.weight input width %d -> %d; copied overlapping %d columns",
+            old_w.shape[1],
+            new_w.shape[1],
+            cols,
+        )
+    return adapted
+
+
 def load_v6_state_dict(
     model: GOSPConeMapperV6,
     state_dict: dict[str, torch.Tensor],
@@ -1078,6 +1118,7 @@ def load_v6_state_dict(
             expanded = new_w.clone()
             expanded[:, : old_w.shape[1]] = old_w
             adapted[topo_key] = expanded
+    adapted = adapt_checkpoint_node_emb_width(adapted, model_state)
     adapted = adapt_checkpoint_expert_count(adapted, model_state)
     incompatible = model.load_state_dict(adapted, strict=False)
     missing = list(getattr(incompatible, "missing_keys", incompatible[0] if isinstance(incompatible, tuple) else []))

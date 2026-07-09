@@ -16,7 +16,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from science.dtie.common.curvature_loader import CANONICAL_V6_CURVATURE, V6_HYP_SPACE_NAME
-from science.dtie.common.residue_features import gnn_feature_set_id
+from science.dtie.common.residue_features import GnnInputMode, gnn_feature_set_id_for_barcode
 from science.training.config import PhaseConfig, TrainingConfig
 
 logger = logging.getLogger(__name__)
@@ -229,7 +229,11 @@ def build_governance_params(
         "corpus_size": str(corpus_size),
         "curvature_mode": curvature_mode,
         "scale": "micro",
-        "feature_set": gnn_feature_set_id(),
+        "feature_set": gnn_feature_set_id_for_barcode(
+            config.use_dehydron_barcode,
+            config.use_binned_dehydron,
+            mode=GnnInputMode.TOPOLOGY_THREE_VECTOR if config.use_dehydron_barcode else None,
+        ),
         "curriculum_schedule": build_curriculum_schedule_json(phases or []),
         "git_commit": _git_commit(),
         "spec_version": SPEC_VERSION,

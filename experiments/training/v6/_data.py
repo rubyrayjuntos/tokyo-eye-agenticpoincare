@@ -21,6 +21,7 @@ import torch
 from torch_geometric.data import Data
 
 logger = logging.getLogger(__name__)
+_MISSING_BARCODE_WARNED: set[str] = set()
 
 TRAINING_TARGETS = {
     "4OBE": {"gene": "KRAS",  "desc": "WT GDP",           "chain": "A", "stage0": True},
@@ -46,6 +47,57 @@ TAU = 13.0
 EDGE_CUTOFF = 8.0
 
 from science.dtie.common import residue_features as rf
+
+
+def _barcode_sidecar_path(barcode_dir: Path, pdb_id: str, chain: str) -> Path:
+    return Path(barcode_dir) / f"{pdb_id.upper()}_{chain}_dehydron_barcode_v1.pt"
+
+
+def _missing_barcode_payload(n_residues: int, *, use_binned: bool) -> dict[str, np.ndarray | None]:
+    from science.dtie.common.dehydron_barcode_features import BINNED_DIM, SCALAR_DIM
+
+    return {
+        "scalars": np.zeros((n_residues, SCALAR_DIM), dtype=np.float32),
+        "binned": np.zeros((n_residues, BINNED_DIM), dtype=np.float32) if use_binned else None,
+        "missing": np.ones((n_residues, 1), dtype=np.float32),
+    }
+
+
+def attach_dehydron_barcode_features(
+    prot: Dict,
+    *,
+    barcode_dir: Path,
+    use_binned: bool,
+) -> Dict:
+    """Attach dehydron barcode sidecar features to ``prot['data'].x``."""
+    from science.dtie.common.dehydron_barcode_features import stack_node_features_with_barcode
+
+    pdb_id = str(prot.get("pdb_id", "")).upper()
+    chain = str(prot.get("chain", "A"))
+    data = prot["data"]
+    base_x = data.x.detach().cpu().numpy()
+    if base_x.ndim == 2 and base_x.shape[1] > 3:
+        base_x = base_x[:, :3]
+    n_residues = int(base_x.shape[0])
+    sidecar = _barcode_sidecar_path(Path(barcode_dir), pdb_id, chain)
+
+    if sidecar.is_file():
+        barcode = torch.load(sidecar, map_location="cpu", weights_only=True)
+    else:
+        warn_key = f"{pdb_id}:{chain}"
+        if warn_key not in _MISSING_BARCODE_WARNED:
+            logger.warning(
+                "%s missing dehydron barcode sidecar %s; using zero barcode with missing=1",
+                warn_key,
+                sidecar,
+            )
+            _MISSING_BARCODE_WARNED.add(warn_key)
+        barcode = _missing_barcode_payload(n_residues, use_binned=use_binned)
+
+    x = stack_node_features_with_barcode(base_x, barcode, use_binned=use_binned)
+    data.x = torch.as_tensor(x, dtype=data.x.dtype, device=data.x.device)
+    prot["data"] = data
+    return prot
 
 
 def _use_db_load() -> bool:

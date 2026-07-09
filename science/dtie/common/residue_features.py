@@ -84,6 +84,18 @@ def gnn_input_dim(mode: GnnInputMode | None = None) -> int:
     return 3 if mode == GnnInputMode.TOPOLOGY_THREE_VECTOR else 4
 
 
+def gnn_input_dim_for_barcode(
+    use_barcode: bool,
+    use_binned: bool,
+    mode: GnnInputMode | str | None = None,
+) -> int:
+    """Input width for training with optional dehydron barcode side-channel."""
+    base_dim = gnn_input_dim(mode)
+    if not use_barcode:
+        return base_dim
+    return base_dim + 11 + 1 + (40 if use_binned else 0)
+
+
 def gnn_feature_set_id(mode: GnnInputMode | None = None) -> str:
     """MLflow / contract feature_set tag."""
     mode = resolve_gnn_input_mode(mode)
@@ -92,6 +104,24 @@ def gnn_feature_set_id(mode: GnnInputMode | None = None) -> str:
         if mode == GnnInputMode.TOPOLOGY_THREE_VECTOR
         else "master_four_vector"
     )
+
+
+def gnn_feature_set_id_for_barcode(
+    use_barcode: bool,
+    use_binned: bool,
+    mode: GnnInputMode | str | None = None,
+) -> str:
+    """MLflow / contract feature_set tag with optional dehydron barcode suffix."""
+    base = gnn_feature_set_id(mode)
+    if not use_barcode:
+        return base
+    if resolve_gnn_input_mode(mode) == GnnInputMode.TOPOLOGY_THREE_VECTOR:
+        return (
+            "master_topology_three_vector_dbh_full_v1"
+            if use_binned
+            else "master_topology_three_vector_dbh_scalars_v1"
+        )
+    return f"{base}_dbh_full_v1" if use_binned else f"{base}_dbh_scalars_v1"
 
 
 def stack_gnn_node_features(

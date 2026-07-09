@@ -294,6 +294,9 @@ class TrainingConfig(BaseModel):
     track_v6_best_route: bool = False
     structural_disc_frozen: bool = False
     slim_moe_structural_ssot: bool = False
+    use_dehydron_barcode: bool = False
+    use_binned_dehydron: bool = False
+    dehydron_barcode_dir: Path | None = None
 
     def model_post_init(self, __context: object) -> None:
         self.output_dir = Path(self.output_dir)
@@ -303,6 +306,8 @@ class TrainingConfig(BaseModel):
             self.resume = Path(self.resume)
         if self.v2_teacher_checkpoint is not None:
             self.v2_teacher_checkpoint = Path(self.v2_teacher_checkpoint)
+        if self.dehydron_barcode_dir is not None:
+            self.dehydron_barcode_dir = Path(self.dehydron_barcode_dir)
 
     def phase_preset_name(self) -> str | None:
         """Stable curriculum preset id for MLflow tags."""

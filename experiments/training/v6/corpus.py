@@ -60,6 +60,7 @@ def _barcode_cache_suffix(
     *,
     use_dehydron_barcode: bool | None = None,
     use_binned_dehydron: bool | None = None,
+    dehydron_barcode_dir: Path | None = None,
 ) -> str:
     """Cache-key tag when barcode sidecars widen ``data.x`` (Task 5 / Task 6)."""
     import os
@@ -78,9 +79,10 @@ def _barcode_cache_suffix(
         )
     if not use_dehydron_barcode:
         return ""
-    if use_binned_dehydron:
-        return "|dbh_v1_binned"
-    return "|dbh_v1"
+    suffix = "|dbh_v1_binned" if use_binned_dehydron else "|dbh_v1"
+    if dehydron_barcode_dir is not None:
+        suffix = f"{suffix}:{Path(dehydron_barcode_dir).resolve()}"
+    return suffix
 
 
 def load_training_proteins(
@@ -92,6 +94,7 @@ def load_training_proteins(
     use_cache: bool = True,
     use_dehydron_barcode: bool | None = None,
     use_binned_dehydron: bool | None = None,
+    dehydron_barcode_dir: Path | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """
     Load protein graphs from corpus manifest.
@@ -124,6 +127,7 @@ def load_training_proteins(
     barcode_tag = _barcode_cache_suffix(
         use_dehydron_barcode=use_dehydron_barcode,
         use_binned_dehydron=use_binned_dehydron,
+        dehydron_barcode_dir=dehydron_barcode_dir,
     )
     cache_key = hashlib.sha256(
         f"{manifest.resolve()}|{max_proteins}|{max_residues}|bf_v1|rs{residue_stage}{barcode_tag}".encode()
@@ -175,6 +179,16 @@ def load_training_proteins(
                 )
             logger.warning("Skipping %s", msg)
             continue
+        if use_dehydron_barcode:
+            if dehydron_barcode_dir is None:
+                raise ValueError("--dehydron-barcode-dir is required with --use-dehydron-barcode")
+            from experiments.training.v6._data import attach_dehydron_barcode_features
+
+            prot = attach_dehydron_barcode_features(
+                prot,
+                barcode_dir=dehydron_barcode_dir,
+                use_binned=bool(use_binned_dehydron),
+            )
         prot["fold_class"] = entry.get("fold_class", "unknown")
         prot["gene"] = entry.get("gene", "")
         from science.training.mlflow_governance import resolve_protein_fold_id

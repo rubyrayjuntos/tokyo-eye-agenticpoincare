@@ -53,11 +53,16 @@ def resolve_prior_checkpoint(output_dir: Path, phase: int, protein_count: int) -
 
 
 def build_model(config: TrainingConfig) -> torch.nn.Module:
-    from science.dtie.common.residue_features import gnn_input_dim
+    from science.dtie.common.residue_features import GnnInputMode, gnn_input_dim_for_barcode
     from science.dtie.v6.gnn.model import GOSPConeMapperV6
 
+    input_mode = GnnInputMode.TOPOLOGY_THREE_VECTOR if config.use_dehydron_barcode else None
     model = GOSPConeMapperV6(
-        node_dim=gnn_input_dim(),
+        node_dim=gnn_input_dim_for_barcode(
+            config.use_dehydron_barcode,
+            config.use_binned_dehydron,
+            mode=input_mode,
+        ),
         hidden=config.hidden,
         num_layers=config.num_layers,
         num_experts=config.num_experts,
@@ -115,6 +120,11 @@ def main() -> None:
     parser.add_argument("--no-corpus-cache", action="store_true")
     parser.add_argument("--mlflow-uri", default=os.environ.get("MLFLOW_TRACKING_URI", "file:/app/mlruns"))
     parser.add_argument("--mlflow-experiment", default="tokyo-eyes-v6")
+    parser.add_argument(
+        "--gnn-lineage",
+        default=None,
+        help="Optional lineage label for wrapper launchers (for example v6.5)",
+    )
     parser.add_argument("--no-mlflow", action="store_true")
     parser.add_argument(
         "--skip-p-feature-01-gate",
@@ -521,6 +531,22 @@ def main() -> None:
         action="store_true",
         help="Gumbel-Softmax hard routing in hyperbolic gate",
     )
+    parser.add_argument(
+        "--use-dehydron-barcode",
+        action="store_true",
+        help="Append precomputed dehydron barcode sidecar features to topology node inputs",
+    )
+    parser.add_argument(
+        "--use-binned-dehydron",
+        action="store_true",
+        help="Append full binned dehydron barcode features (requires --use-dehydron-barcode)",
+    )
+    parser.add_argument(
+        "--dehydron-barcode-dir",
+        type=Path,
+        default=None,
+        help="Directory containing {PDB}_{chain}_dehydron_barcode_v1.pt sidecars",
+    )
     args = parser.parse_args()
 
     gate_disc_scale = args.gate_disc_scale
@@ -570,6 +596,7 @@ def main() -> None:
         v2_ckpt = resolve_default_v2_teacher_checkpoint()
 
     config = TrainingConfig(
+        model_version=f"GOSPConeMapper-{args.gnn_lineage}" if args.gnn_lineage else "GOSPConeMapper-v6",
         device=args.device,
         lr=args.lr,
         num_experts=args.num_experts,
@@ -726,7 +753,13 @@ def main() -> None:
         topology_crescent_recovery=args.topology_crescent_recovery,
         topology_crescent_recovery_lr=args.topology_crescent_recovery_lr,
         structural_disc_frozen=args.structural_disc_frozen,
+        use_dehydron_barcode=args.use_dehydron_barcode,
+        use_binned_dehydron=args.use_binned_dehydron,
+        dehydron_barcode_dir=args.dehydron_barcode_dir,
     )
+    if config.use_binned_dehydron and not config.use_dehydron_barcode:
+        logger.error("--use-binned-dehydron requires --use-dehydron-barcode")
+        sys.exit(2)
     if config.topology_crescent_recovery:
         from science.training.config import apply_topology_crescent_recovery_config
 
@@ -820,6 +853,9 @@ def main() -> None:
         max_proteins=config.max_proteins,
         max_residues=config.max_residues,
         use_cache=not args.no_corpus_cache,
+        use_dehydron_barcode=config.use_dehydron_barcode,
+        use_binned_dehydron=config.use_binned_dehydron,
+        dehydron_barcode_dir=config.dehydron_barcode_dir,
     )
     if not proteins:
         logger.error("No proteins loaded (%d failed). Check network / manifest.", failed)

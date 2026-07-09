@@ -48,3 +48,36 @@ def test_load_v6_expands_four_expert_checkpoint_to_six() -> None:
             large.experts[i][0].weight.detach(),
             small.experts[i][0].weight.detach(),
         )
+
+
+def test_load_v6_expands_node_embedding_width_for_barcode() -> None:
+    small = GOSPConeMapperV6(
+        node_dim=3,
+        hidden=32,
+        num_layers=2,
+        num_experts=4,
+        hyperbolic_gate=True,
+        topology_only_gate=True,
+    )
+    barcode = GOSPConeMapperV6(
+        node_dim=15,
+        hidden=32,
+        num_layers=2,
+        num_experts=4,
+        hyperbolic_gate=True,
+        topology_only_gate=True,
+    )
+    ckpt = small.state_dict()
+
+    missing, unexpected = load_v6_state_dict(barcode, ckpt)
+
+    assert not missing
+    assert not unexpected
+    assert torch.allclose(
+        barcode.node_emb.weight[:, :3].detach(),
+        small.node_emb.weight.detach(),
+    )
+    assert torch.allclose(
+        barcode.node_emb.weight[:, 3:].detach(),
+        torch.zeros_like(barcode.node_emb.weight[:, 3:]),
+    )
