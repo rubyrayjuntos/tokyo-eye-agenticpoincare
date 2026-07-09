@@ -13,16 +13,16 @@ tuple to ``(chain_label, residue_index, icode)`` if icode-aware graphs are added
 
 **Scalar order (``SCALAR_NAMES``, length 11):**
 
-0. ``n_bars`` — log1p(sum over touching dehydrons)
-1. ``n_h1_bars`` — log1p(sum)
-2. ``total_persistence`` — log1p(sum of bar persistence)
-3. ``max_persistence`` — max across touching dehydrons
-4. ``mean_persistence`` — mean of per-dehydron means
-5. ``std_persistence`` — mean of per-dehydron stds
-6. ``frac_long_lived`` — mean of per-dehydron fractions above threshold
-7. ``mean_birth_h1`` — mean of per-dehydron H1 mean birth
-8. ``mean_death_h1`` — mean of per-dehydron H1 mean death
-9. ``max_h1_persistence`` — max across touching dehydrons
+0. ``n_bars`` — log1p(structure-level bar count)
+1. ``n_h1_bars`` — log1p(structure-level H1 bar count)
+2. ``total_persistence`` — log1p(structure-level sum of bar persistence)
+3. ``max_persistence`` — structure-level max persistence
+4. ``mean_persistence`` — structure-level mean persistence
+5. ``std_persistence`` — structure-level std persistence
+6. ``frac_long_lived`` — structure-level fraction above threshold
+7. ``mean_birth_h1`` — structure-level H1 mean birth
+8. ``mean_death_h1`` — structure-level H1 mean death
+9. ``max_h1_persistence`` — structure-level max H1 persistence
 10. ``n_dehydrons_touching`` — log1p(count of midpoints touching residue)
 
 Scalars 0, 1, 2, and 10 receive ``log1p`` before return. Binned output (optional) is
@@ -268,30 +268,25 @@ def aggregate_residue_barcode_features(
         touching_by_residue[midpoint.donor_idx].append(midpoint)
         touching_by_residue[midpoint.acceptor_idx].append(midpoint)
 
-    n_bins = int(bin_max / bin_width)
-
     for residue_idx, touching_midpoints in touching_by_residue.items():
         if residue_idx < 0 or residue_idx >= n_residues:
             continue
 
-        per_dehydron_stats = [
-            _scalar_stats_from_bars(
-                bars,
-                long_lived_persistence_angstrom=long_lived_persistence_angstrom,
-            )
-            for _ in touching_midpoints
-        ]
+        structure_stats = _scalar_stats_from_bars(
+            bars,
+            long_lived_persistence_angstrom=long_lived_persistence_angstrom,
+        )
 
-        raw_n_bars = sum(stats[0] for stats in per_dehydron_stats)
-        raw_n_h1_bars = sum(stats[1] for stats in per_dehydron_stats)
-        raw_total_persistence = sum(stats[2] for stats in per_dehydron_stats)
-        max_persistence = max(stats[3] for stats in per_dehydron_stats)
-        mean_persistence = float(np.mean([stats[4] for stats in per_dehydron_stats]))
-        std_persistence = float(np.mean([stats[5] for stats in per_dehydron_stats]))
-        frac_long_lived = float(np.mean([stats[6] for stats in per_dehydron_stats]))
-        mean_birth_h1 = float(np.mean([stats[7] for stats in per_dehydron_stats]))
-        mean_death_h1 = float(np.mean([stats[8] for stats in per_dehydron_stats]))
-        max_h1_persistence = max(stats[9] for stats in per_dehydron_stats)
+        raw_n_bars = structure_stats[0]
+        raw_n_h1_bars = structure_stats[1]
+        raw_total_persistence = structure_stats[2]
+        max_persistence = structure_stats[3]
+        mean_persistence = structure_stats[4]
+        std_persistence = structure_stats[5]
+        frac_long_lived = structure_stats[6]
+        mean_birth_h1 = structure_stats[7]
+        mean_death_h1 = structure_stats[8]
+        max_h1_persistence = structure_stats[9]
         n_dehydrons_touching = float(len(touching_midpoints))
 
         scalars[residue_idx] = np.asarray(
@@ -313,13 +308,11 @@ def aggregate_residue_barcode_features(
         missing[residue_idx, 0] = 0.0
 
         if use_binned and binned is not None:
-            hist = np.zeros(n_bins, dtype=np.float64)
-            for _ in touching_midpoints:
-                hist += _h1_persistence_histogram(
-                    bars,
-                    bin_width=bin_width,
-                    bin_max=bin_max,
-                )
+            hist = _h1_persistence_histogram(
+                bars,
+                bin_width=bin_width,
+                bin_max=bin_max,
+            )
             if hist.sum() > 0.0:
                 binned[residue_idx] = (hist / hist.sum()).astype(np.float32)
 

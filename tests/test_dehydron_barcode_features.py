@@ -168,3 +168,29 @@ def test_aggregate_binned_shape_when_enabled(simple_midpoints, simple_bars):
 
     out = aggregate_residue_barcode_features(10, simple_midpoints, simple_bars, use_binned=True)
     assert out["binned"].shape == (10, 40)
+
+
+def test_aggregate_structure_stats_not_kfold_duplicated(simple_bars):
+    """Residue touching K midpoints must not K-fold duplicate structure-level bar stats."""
+    from science.dtie.common.dehydron_barcode_features import aggregate_residue_barcode_features
+
+    midpoints = [
+        DehydronMidpoint(
+            coord=np.array([0.0, 0.0, 0.0]),
+            donor_idx=0,
+            acceptor_idx=1,
+            wrapping_count=5.0,
+        ),
+        DehydronMidpoint(
+            coord=np.array([5.0, 0.0, 0.0]),
+            donor_idx=0,
+            acceptor_idx=2,
+            wrapping_count=5.0,
+        ),
+    ]
+    out = aggregate_residue_barcode_features(5, midpoints, simple_bars)
+    scalars = out["scalars"]
+
+    assert scalars[0, 0] == pytest.approx(np.log1p(len(simple_bars)))
+    assert scalars[0, 0] != pytest.approx(np.log1p(2 * len(simple_bars)))
+    assert scalars[0, 10] == pytest.approx(np.log1p(2))
