@@ -817,9 +817,8 @@ def main() -> None:
         logger.error("Use --slim-moe-structural-ssot OR --master-cold-lineage, not both")
         sys.exit(2)
     if config.slim_moe_structural_ssot:
-        if config.resume is not None:
-            logger.error("--slim-moe-structural-ssot is incompatible with --resume")
-            sys.exit(2)
+        # Resume is allowed for P2/P3 continuation from a prior slim MoE P1.
+        # Still skip v5 warm-start — weights come from --resume when present.
         args.no_warm_start = True
         from science.training.config import apply_slim_moe_structural_ssot_config
 
@@ -827,6 +826,8 @@ def main() -> None:
         logger.info(
             "Slim MoE structural SSOT: frozen disc from ρ/τ/Cα, train MoE routing + uncertainty only"
         )
+        if config.resume is not None:
+            logger.info("Slim MoE resume from %s (no expert timeout in P2+)", config.resume)
     elif config.master_cold_lineage:
         if config.resume is not None:
             logger.error("--master-cold-lineage is incompatible with --resume")

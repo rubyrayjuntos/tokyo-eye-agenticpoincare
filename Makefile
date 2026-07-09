@@ -441,6 +441,110 @@ precompute-dehydron-barcodes: ## Cache dehydron_barcode_v1 sidecars for Stage A 
 		$(if $(BINNED),--binned,) \
 		$(if $(MAX_PROTEINS),--max-proteins $(MAX_PROTEINS),)
 
+# ---------------------------------------------------------------------------
+# V6.5 GNN training (isolated checkpoint namespace + MLflow experiment)
+# ---------------------------------------------------------------------------
+
+DBH_RESUME_DEFAULT := checkpoints/v65/runs/cold_start_v8_p3e/v65_best.pt
+DBH_BARCODE_DIR := checkpoints/v65/dehydron_barcode_v1
+
+train-v65: ## Train v6.5 fork (STAGE=1|2|3, RUN_ID=..., separate MLflow experiment tokyo-eyes-v65)
+	@mkdir -p mlruns checkpoints/v65/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v65.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_120.json) \
+		--output-dir /app/checkpoints/v65/runs/$(or $(RUN_ID),$(shell date +%Y%m%d_%H%M%S)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v65 \
+		$(if $(STAGE),--phase $(STAGE),) \
+		$(if $(MAX_PROTEINS),--max-proteins $(MAX_PROTEINS),) \
+		$(if $(MAX_RESIDUES),--max-residues $(MAX_RESIDUES),) \
+		$(if $(NO_MLFLOW),--no-mlflow,) \
+		$(if $(NO_WARM_START),--no-warm-start,) \
+		$(if $(RESUME),--resume /app/$(RESUME),)
+
+train-v65-dbh-baseline: ## Dehydron barcode ablation — baseline (no barcode; RESUME= EPOCHS= RUN_ID=)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f $(or $(RESUME),$(DBH_RESUME_DEFAULT)) || \
+		(echo "Missing resume checkpoint — set RESUME=..." && exit 1)
+	@mkdir -p mlruns checkpoints/v65/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v65.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v65/runs/$(or $(RUN_ID),dbh_ablation_baseline) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v65 \
+		--no-warm-start \
+		--slim-moe-structural-ssot \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--phase 3 \
+		--epochs $(or $(EPOCHS),15) \
+		--resume /app/$(or $(RESUME),$(DBH_RESUME_DEFAULT)) \
+		--save-epoch-snapshots
+	@echo "DBH ablation baseline complete. Run: checkpoints/v65/runs/$(or $(RUN_ID),dbh_ablation_baseline)"
+
+train-v65-dbh-scalars: ## Dehydron barcode ablation — scalars only (--use-dehydron-barcode)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f $(or $(RESUME),$(DBH_RESUME_DEFAULT)) || \
+		(echo "Missing resume checkpoint — set RESUME=..." && exit 1)
+	@test -d $(DBH_BARCODE_DIR) || \
+		(echo "Missing barcode sidecars — run: make precompute-dehydron-barcodes" && exit 1)
+	@mkdir -p mlruns checkpoints/v65/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v65.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v65/runs/$(or $(RUN_ID),dbh_ablation_scalars) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v65 \
+		--no-warm-start \
+		--slim-moe-structural-ssot \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--phase 3 \
+		--epochs $(or $(EPOCHS),15) \
+		--resume /app/$(or $(RESUME),$(DBH_RESUME_DEFAULT)) \
+		--use-dehydron-barcode \
+		--dehydron-barcode-dir /app/$(DBH_BARCODE_DIR) \
+		--save-epoch-snapshots
+	@echo "DBH ablation scalars complete. Run: checkpoints/v65/runs/$(or $(RUN_ID),dbh_ablation_scalars)"
+
+train-v65-dbh-full: ## Dehydron barcode ablation — scalars + binned (precompute with BINNED=1)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f $(or $(RESUME),$(DBH_RESUME_DEFAULT)) || \
+		(echo "Missing resume checkpoint — set RESUME=..." && exit 1)
+	@test -d $(DBH_BARCODE_DIR) || \
+		(echo "Missing barcode sidecars — run: make precompute-dehydron-barcodes BINNED=1" && exit 1)
+	@mkdir -p mlruns checkpoints/v65/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v65.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v65/runs/$(or $(RUN_ID),dbh_ablation_full) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v65 \
+		--no-warm-start \
+		--slim-moe-structural-ssot \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--phase 3 \
+		--epochs $(or $(EPOCHS),15) \
+		--resume /app/$(or $(RESUME),$(DBH_RESUME_DEFAULT)) \
+		--use-dehydron-barcode \
+		--use-binned-dehydron \
+		--dehydron-barcode-dir /app/$(DBH_BARCODE_DIR) \
+		--save-epoch-snapshots
+	@echo "DBH ablation full complete. Run: checkpoints/v65/runs/$(or $(RUN_ID),dbh_ablation_full)"
+
 run-9est-pipeline: ## Re-run discovery pathway on ingested 9EST (science container)
 	@docker compose exec -T science python -c "import urllib.request,json; print(json.dumps(json.load(urllib.request.urlopen(urllib.request.Request('http://localhost:8001/compute/pipeline', data=json.dumps({'structure_id':'9est'}).encode(), headers={'Content-Type':'application/json'}, method='POST'))), indent=2))"
 
