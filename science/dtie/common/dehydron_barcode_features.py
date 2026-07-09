@@ -1,4 +1,5 @@
-"""Dehydron barcode input channel — midpoint extraction (Task 1) and witness persistence (Task 2).
+"""Dehydron barcode input channel — midpoint extraction (Task 1), witness persistence (Task 2),
+and per-residue scalar/binned aggregation (Task 3).
 
 Witness points for Euclidean witness persistence are midpoints of **inter-residue**
 backbone H-bonds (donor N … acceptor O), not per-residue local N–O midpoints used
@@ -9,11 +10,30 @@ where ``residue_index`` is the PDB residue sequence number (``resseq``), matchin
 ``ResidueRecord.residue_index`` / ``residue_features.residue_key`` conventions.
 Insertion codes are not modeled in training graph assembly today; extend the key
 tuple to ``(chain_label, residue_index, icode)`` if icode-aware graphs are added.
+
+**Scalar order (``SCALAR_NAMES``, length 11):**
+
+0. ``n_bars`` — log1p(sum over touching dehydrons)
+1. ``n_h1_bars`` — log1p(sum)
+2. ``total_persistence`` — log1p(sum of bar persistence)
+3. ``max_persistence`` — max across touching dehydrons
+4. ``mean_persistence`` — mean of per-dehydron means
+5. ``std_persistence`` — mean of per-dehydron stds
+6. ``frac_long_lived`` — mean of per-dehydron fractions above threshold
+7. ``mean_birth_h1`` — mean of per-dehydron H1 mean birth
+8. ``mean_death_h1`` — mean of per-dehydron H1 mean death
+9. ``max_h1_persistence`` — max across touching dehydrons
+10. ``n_dehydrons_touching`` — log1p(count of midpoints touching residue)
+
+Scalars 0, 1, 2, and 10 receive ``log1p`` before return. Binned output (optional) is
+an H1 persistence histogram on ``[0, bin_max)`` with ``bin_width`` (default 40 bins),
+L1-normalized per residue when any mass is present.
 """
 
 from __future__ import annotations
 
 import math
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Mapping, Sequence, TypeAlias
 
@@ -32,6 +52,20 @@ from science.dtie.common.residue_features import (
 BARCODE_FEATURE_VERSION = "dehydron_barcode_v1"
 SCALAR_DIM = 11
 BINNED_DIM = 40
+
+SCALAR_NAMES: list[str] = [
+    "n_bars",
+    "n_h1_bars",
+    "total_persistence",
+    "max_persistence",
+    "mean_persistence",
+    "std_persistence",
+    "frac_long_lived",
+    "mean_birth_h1",
+    "mean_death_h1",
+    "max_h1_persistence",
+    "n_dehydrons_touching",
+]
 
 ResidueMapKey: TypeAlias = tuple[str, int]
 
@@ -146,6 +180,150 @@ def compute_witness_persistence(
         )
 
     return bars
+
+
+def _scalar_stats_from_bars(
+    bars: Sequence[PersistenceBar],
+    *,
+    long_lived_persistence_angstrom: float,
+) -> tuple[float, float, float, float, float, float, float, float, float, float]:
+    """Raw (pre-log1p) per-dehydron scalar stats from one bar set."""
+    if not bars:
+        return (0.0,) * 10
+
+    h1_bars = [bar for bar in bars if bar.dim == 1]
+    persistences = [bar.persistence for bar in bars]
+    h1_persistences = [bar.persistence for bar in h1_bars]
+
+    n_bars = float(len(bars))
+    n_h1_bars = float(len(h1_bars))
+    total_persistence = float(sum(persistences))
+    max_persistence = float(max(persistences))
+    mean_persistence = float(np.mean(persistences))
+    std_persistence = float(np.std(persistences)) if len(persistences) > 1 else 0.0
+    frac_long_lived = float(
+        sum(1 for persistence in persistences if persistence >= long_lived_persistence_angstrom)
+        / len(persistences)
+    )
+    mean_birth_h1 = float(np.mean([bar.birth for bar in h1_bars])) if h1_bars else 0.0
+    mean_death_h1 = float(np.mean([bar.death for bar in h1_bars])) if h1_bars else 0.0
+    max_h1_persistence = float(max(h1_persistences)) if h1_persistences else 0.0
+
+    return (
+        n_bars,
+        n_h1_bars,
+        total_persistence,
+        max_persistence,
+        mean_persistence,
+        std_persistence,
+        frac_long_lived,
+        mean_birth_h1,
+        mean_death_h1,
+        max_h1_persistence,
+    )
+
+
+def _h1_persistence_histogram(
+    bars: Sequence[PersistenceBar],
+    *,
+    bin_width: float,
+    bin_max: float,
+) -> np.ndarray:
+    n_bins = int(bin_max / bin_width)
+    hist = np.zeros(n_bins, dtype=np.float64)
+    for bar in bars:
+        if bar.dim != 1:
+            continue
+        bin_idx = int(bar.persistence / bin_width)
+        if 0 <= bin_idx < n_bins:
+            hist[bin_idx] += 1.0
+    return hist
+
+
+def aggregate_residue_barcode_features(
+    n_residues: int,
+    midpoints: Sequence[DehydronMidpoint],
+    bars: Sequence[PersistenceBar],
+    *,
+    long_lived_persistence_angstrom: float = 2.0,
+    use_binned: bool = False,
+    bin_width: float = 0.25,
+    bin_max: float = 10.0,
+) -> dict[str, np.ndarray | None]:
+    """Aggregate global barcode features to per-residue scalars, optional binned vector, and mask."""
+    scalars = np.zeros((n_residues, SCALAR_DIM), dtype=np.float32)
+    missing = np.ones((n_residues, 1), dtype=np.float32)
+    binned: np.ndarray | None = (
+        np.zeros((n_residues, BINNED_DIM), dtype=np.float32) if use_binned else None
+    )
+
+    if n_residues <= 0:
+        return {"scalars": scalars, "binned": binned, "missing": missing}
+
+    if not midpoints or not bars:
+        return {"scalars": scalars, "binned": binned, "missing": missing}
+
+    touching_by_residue: dict[int, list[DehydronMidpoint]] = defaultdict(list)
+    for midpoint in midpoints:
+        touching_by_residue[midpoint.donor_idx].append(midpoint)
+        touching_by_residue[midpoint.acceptor_idx].append(midpoint)
+
+    n_bins = int(bin_max / bin_width)
+
+    for residue_idx, touching_midpoints in touching_by_residue.items():
+        if residue_idx < 0 or residue_idx >= n_residues:
+            continue
+
+        per_dehydron_stats = [
+            _scalar_stats_from_bars(
+                bars,
+                long_lived_persistence_angstrom=long_lived_persistence_angstrom,
+            )
+            for _ in touching_midpoints
+        ]
+
+        raw_n_bars = sum(stats[0] for stats in per_dehydron_stats)
+        raw_n_h1_bars = sum(stats[1] for stats in per_dehydron_stats)
+        raw_total_persistence = sum(stats[2] for stats in per_dehydron_stats)
+        max_persistence = max(stats[3] for stats in per_dehydron_stats)
+        mean_persistence = float(np.mean([stats[4] for stats in per_dehydron_stats]))
+        std_persistence = float(np.mean([stats[5] for stats in per_dehydron_stats]))
+        frac_long_lived = float(np.mean([stats[6] for stats in per_dehydron_stats]))
+        mean_birth_h1 = float(np.mean([stats[7] for stats in per_dehydron_stats]))
+        mean_death_h1 = float(np.mean([stats[8] for stats in per_dehydron_stats]))
+        max_h1_persistence = max(stats[9] for stats in per_dehydron_stats)
+        n_dehydrons_touching = float(len(touching_midpoints))
+
+        scalars[residue_idx] = np.asarray(
+            [
+                np.log1p(raw_n_bars),
+                np.log1p(raw_n_h1_bars),
+                np.log1p(raw_total_persistence),
+                max_persistence,
+                mean_persistence,
+                std_persistence,
+                frac_long_lived,
+                mean_birth_h1,
+                mean_death_h1,
+                max_h1_persistence,
+                np.log1p(n_dehydrons_touching),
+            ],
+            dtype=np.float32,
+        )
+        missing[residue_idx, 0] = 0.0
+
+        if use_binned and binned is not None:
+            hist = np.zeros(n_bins, dtype=np.float64)
+            for _ in touching_midpoints:
+                hist += _h1_persistence_histogram(
+                    bars,
+                    bin_width=bin_width,
+                    bin_max=bin_max,
+                )
+            if hist.sum() > 0.0:
+                binned[residue_idx] = (hist / hist.sum()).astype(np.float32)
+
+    return {"scalars": scalars, "binned": binned, "missing": missing}
 
 
 def _residue_key(atom: StructureAtom | AtomRecord) -> ResidueMapKey | None:

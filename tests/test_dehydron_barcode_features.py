@@ -1,4 +1,4 @@
-"""Unit tests for dehydron barcode midpoint extraction (Task 1) and witness persistence (Task 2)."""
+"""Unit tests for dehydron barcode features (Tasks 1–3)."""
 
 from __future__ import annotations
 
@@ -119,6 +119,13 @@ def simple_midpoints() -> list[DehydronMidpoint]:
     ]
 
 
+@pytest.fixture
+def simple_bars(simple_midpoints):
+    from science.dtie.common.dehydron_barcode_features import compute_witness_persistence
+
+    return compute_witness_persistence(simple_midpoints, max_alpha_angstrom=20.0)
+
+
 def test_witness_persistence_empty_midpoints():
     from science.dtie.common.dehydron_barcode_features import compute_witness_persistence
 
@@ -141,5 +148,23 @@ def test_witness_persistence_returns_nonneg_persistence(simple_midpoints):
     from science.dtie.common.dehydron_barcode_features import compute_witness_persistence
 
     bars = compute_witness_persistence(simple_midpoints, max_alpha_angstrom=20.0)
+    assert len(bars) > 0
     assert all(b.persistence >= 0.0 for b in bars)
     assert all(b.dim in (0, 1) for b in bars)
+
+
+def test_aggregate_missing_mask_when_no_midpoints():
+    from science.dtie.common.dehydron_barcode_features import aggregate_residue_barcode_features
+
+    out = aggregate_residue_barcode_features(5, [], [])
+    assert out["scalars"].shape == (5, 11)
+    assert out["binned"] is None
+    assert out["missing"].shape == (5, 1)
+    assert np.allclose(out["missing"], 1.0)
+
+
+def test_aggregate_binned_shape_when_enabled(simple_midpoints, simple_bars):
+    from science.dtie.common.dehydron_barcode_features import aggregate_residue_barcode_features
+
+    out = aggregate_residue_barcode_features(10, simple_midpoints, simple_bars, use_binned=True)
+    assert out["binned"].shape == (10, 40)
