@@ -288,6 +288,114 @@ def probe_chem_edge_liveness(
     }
 
 
+@torch.no_grad()
+def probe_containment_edge_liveness(
+    model: nn.Module,
+    proteins: list[dict[str, Any]],
+    device: str,
+    *,
+    structural_disc_frozen: bool = False,
+    eps: float = DEFAULT_DEAD_EPS,
+) -> dict[str, float | bool | str]:
+    """Compare forward with vs without contain_up/down edge rows.
+
+    Picks the first corpus protein that carries mapped containment edges after
+    attach. Empty SSE parent sets (e.g. no HELIX/SHEET) are skipped — sparsity
+    is expected, not dead.
+    """
+    from experiments.training.v6.train_loop import prepare_training_batch
+    from science.dtie.v66.containment_edge_graph import (
+        NUM_ROLE_RELATIONS_WITH_CONTAINMENT,
+        ROLE_CONTAIN_DOWN,
+        ROLE_CONTAIN_UP,
+    )
+    from science.dtie.v66.thermo_edge_features import GEO_DIM
+
+    if not getattr(model, "containment_edge_mp", False):
+        return {"alive": False, "skipped": True, "reason": "containment_edge_mp_off"}
+
+    chosen: dict[str, Any] | None = None
+    data_full: Any | None = None
+    for prot in proteins:
+        data = prepare_training_batch(
+            model,
+            prot,
+            device,
+            structural_disc_frozen=structural_disc_frozen,
+        )
+        if data.edge_attr is None or data.edge_attr.size(-1) < GEO_DIM + NUM_ROLE_RELATIONS_WITH_CONTAINMENT:
+            continue
+        oh = data.edge_attr[:, GEO_DIM : GEO_DIM + NUM_ROLE_RELATIONS_WITH_CONTAINMENT]
+        n_contain_down = int((oh[:, ROLE_CONTAIN_DOWN] > 0.5).sum().item())
+        n_contain_up = int((oh[:, ROLE_CONTAIN_UP] > 0.5).sum().item())
+        if n_contain_down + n_contain_up == 0:
+            continue
+        chosen = prot
+        data_full = data
+        break
+
+    if chosen is None or data_full is None:
+        return {
+            "alive": False,
+            "skipped": True,
+            "reason": "no_containment_edges_in_corpus_sample",
+            "n_contain_down_edges": 0.0,
+            "n_contain_up_edges": 0.0,
+        }
+
+    oh = data_full.edge_attr[:, GEO_DIM : GEO_DIM + NUM_ROLE_RELATIONS_WITH_CONTAINMENT]
+    n_contain_down = int((oh[:, ROLE_CONTAIN_DOWN] > 0.5).sum().item())
+    n_contain_up = int((oh[:, ROLE_CONTAIN_UP] > 0.5).sum().item())
+
+    model.eval()
+    out_full = _forward_outputs(model, data_full)
+    data_z = data_full.clone()
+    data_z.edge_attr = data_z.edge_attr.clone()
+    # Drop containment rows entirely (cleaner than zeroing one-hots, which would
+    # reassign them to relation-0 via EquivariantConvMultiRel fallback).
+    keep = ~(
+        (data_z.edge_attr[:, GEO_DIM + ROLE_CONTAIN_DOWN] > 0.5)
+        | (data_z.edge_attr[:, GEO_DIM + ROLE_CONTAIN_UP] > 0.5)
+    )
+    data_z.edge_index = data_z.edge_index[:, keep]
+    data_z.edge_attr = data_z.edge_attr[keep]
+    out_zero = _forward_outputs(model, data_z)
+
+    deltas: dict[str, float] = {}
+    for key in out_full:
+        deltas[f"delta_{key}"] = _max_abs(out_full[key], out_zero[key])
+    alive = any(v > eps for v in deltas.values())
+
+    rel_stats: dict[str, float] = {}
+    try:
+        conv0 = model.convs[0]
+        dist = data_full.edge_attr[:, 3:4]
+        for name, rel_id in (
+            ("contain_down", ROLE_CONTAIN_DOWN),
+            ("contain_up", ROLE_CONTAIN_UP),
+        ):
+            mask = data_full.edge_attr[:, GEO_DIM + rel_id] > 0.5
+            if not bool(mask.any()):
+                rel_stats[f"radial_var_{name}"] = 0.0
+                continue
+            mlp = conv0.radial_mlps[rel_id]
+            y = mlp(dist[mask])
+            rel_stats[f"radial_var_{name}"] = float(y.float().var().item())
+    except Exception as exc:  # pragma: no cover - defensive
+        rel_stats["radial_var_error"] = 1.0
+        logger.debug("containment radial var probe failed: %s", exc)
+
+    return {
+        "structure": f"{chosen.get('pdb_id')}:{chosen.get('chain')}",
+        "n_contain_down_edges": float(n_contain_down),
+        "n_contain_up_edges": float(n_contain_up),
+        "alive": alive,
+        "skipped": False,
+        **deltas,
+        **rel_stats,
+    }
+
+
 def run_feature_liveness_probes(
     model: nn.Module,
     proteins: list[dict[str, Any]],
@@ -300,8 +408,9 @@ def run_feature_liveness_probes(
     epoch_in_phase: int = 0,
     dehydron_edge_barcode: bool = False,
     chem_edge_mp: bool = False,
+    containment_edge_mp: bool = False,
 ) -> dict[str, Any]:
-    """Run barcode (if enabled) + MP + chem probes on the corpus."""
+    """Run barcode (if enabled) + MP + chem + containment probes on the corpus."""
     if not proteins:
         return {"ok": True, "skipped": True, "reason": "no_proteins"}
 
@@ -381,6 +490,31 @@ def run_feature_liveness_probes(
                 f"move inference outputs ({chem})"
             )
             report["chem_error"] = msg
+            if fail_if_dead and epoch_in_phase >= min_epochs_before_fail:
+                report["ok"] = False
+                logger.error(msg)
+            else:
+                logger.warning(
+                    "%s (epoch %s < fail threshold %s)",
+                    msg,
+                    epoch_in_phase,
+                    min_epochs_before_fail,
+                )
+
+    if containment_edge_mp or getattr(model, "containment_edge_mp", False):
+        contain = probe_containment_edge_liveness(
+            model,
+            proteins,
+            device,
+            structural_disc_frozen=structural_disc_frozen,
+        )
+        report["containment"] = contain
+        if not contain.get("skipped") and not contain.get("alive"):
+            msg = (
+                "Containment-edge liveness dead: removing contain_up/down edges "
+                f"did not move inference outputs ({contain})"
+            )
+            report["containment_error"] = msg
             if fail_if_dead and epoch_in_phase >= min_epochs_before_fail:
                 report["ok"] = False
                 logger.error(msg)
