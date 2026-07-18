@@ -11,6 +11,7 @@ from science.dtie.v66.chem_edge_graph import EDGE_ATTR_CHEM_DIM
 from science.dtie.v66.gnn.model import GOSPConeMapperV66
 from science.dtie.v66.containment_edge_graph import (
     EDGE_ATTR_CONTAIN_DIM,
+    NUM_ROLE_RELATIONS_WITH_CONTAINMENT,
     ROLE_CONTAIN_DOWN,
     ROLE_CONTAIN_UP,
     attach_containment_edge_graph,
@@ -109,3 +110,88 @@ def test_containment_edge_mp_requires_chem_edge_mp() -> None:
             chem_edge_mp=False,
             containment_edge_mp=True,
         )
+
+
+def test_containment_radial_mlp_expansion_preserves_gate_init_under_isolated_seed() -> None:
+    """New contain MLP slots must not scramble gate/prototype under init_seed discipline.
+
+    Hard prerequisite before any cold containment run — same as Chem-MVP.
+    Required: max |Δ| = 0 on gate/prototype tensors (torch.equal).
+    """
+
+    def _gate_proto_snapshot(model: GOSPConeMapperV66) -> dict[str, torch.Tensor]:
+        out: dict[str, torch.Tensor] = {}
+        for name, tensor in model.state_dict().items():
+            if name.startswith("gate.") or "prototype" in name.lower():
+                out[name] = tensor.detach().clone()
+        return out
+
+    with isolated_torch_seed(123):
+        baseline = GOSPConeMapperV66(
+            node_dim=4,
+            hidden=32,
+            num_layers=1,
+            num_experts=2,
+            role_edge_mp=True,
+            chem_edge_mp=True,
+            containment_edge_mp=False,
+            init_seed=123,
+        )
+        base_snap = _gate_proto_snapshot(baseline)
+
+    with isolated_torch_seed(123):
+        contain = GOSPConeMapperV66(
+            node_dim=4,
+            hidden=32,
+            num_layers=1,
+            num_experts=2,
+            role_edge_mp=True,
+            chem_edge_mp=True,
+            containment_edge_mp=True,
+            init_seed=123,
+        )
+        contain_snap = _gate_proto_snapshot(contain)
+
+    assert base_snap.keys() == contain_snap.keys()
+    for key in base_snap:
+        assert torch.equal(base_snap[key], contain_snap[key]), (
+            f"{key} diverged containment-off vs on "
+            f"(max |Δ|={(base_snap[key] - contain_snap[key]).abs().max().item()})"
+        )
+    assert len(contain.convs[0].radial_mlps) == NUM_ROLE_RELATIONS_WITH_CONTAINMENT
+    assert len(baseline.convs[0].radial_mlps) == NUM_ROLE_RELATIONS_WITH_CONTAINMENT - 2
+
+
+def test_empty_containment_forward_no_nan() -> None:
+    n = 6
+    data = _toy_chem_ready_data(n=n, feat_dim=4)
+    ca = torch.randn(n, 3)
+    residue_ids = [f"A:{i}:" for i in range(10, 10 + n)]
+    data = attach_containment_edge_graph(
+        data, ca, "END\n", residue_ids=residue_ids, force=True
+    )
+    assert data.n_parent_nodes == 0
+    assert data.edge_attr.size(-1) == EDGE_ATTR_CONTAIN_DIM
+
+    data.clustering = torch.rand(n)
+    data.degree = torch.ones(n)
+    data.ss_onehot = torch.zeros(n, 3)
+    data.rho = data.x[:, 0].clone()
+
+    model = GOSPConeMapperV66(
+        node_dim=4,
+        hidden=32,
+        num_layers=1,
+        num_experts=2,
+        role_edge_mp=True,
+        chem_edge_mp=True,
+        containment_edge_mp=True,
+    )
+    model.eval()
+    with torch.no_grad():
+        out = model(data)
+
+    for key in ("x_hyp", "cone_depth", "hyp_projections_2d"):
+        assert torch.isfinite(out[key]).all(), key
+    for ukey, utensor in out["uncertainty"].items():
+        assert torch.isfinite(utensor).all(), f"uncertainty.{ukey}"
