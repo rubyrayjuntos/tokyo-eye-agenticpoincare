@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -10,6 +11,149 @@ import torch.nn as nn
 
 from science.dtie.common.residue_features import residue_sasa_from_data
 from science.dtie.v6.loss import gosp_loss_v6
+
+# Per-node model outputs that must stay residue-aligned for physics losses / metrics.
+_RESIDUE_OUTPUT_KEYS = (
+    "projections",
+    "cone_depth",
+    "cone_depth_for_loss",
+    "cone_depth_routed",
+    "cone_width",
+    "expert_weights",
+    "x_hyp",
+    "x_routed_hyp",
+    "hyp_projections",
+    "hyp_projections_2d",
+    "hyp_projections_2d_pre",
+    "hyp_projections_2d_post",
+    "hyp_projections_2d_routed",
+    "hyp_projections_2d_legacy_teacher",
+    "hyp_projections_3d",
+    "radial_features",
+    "angular_features",
+    "binding_logits_pocket",
+    "binding_logits_interface",
+    "binding_logits_leak",
+    "geom_theta_prior",
+    "geom_theta_disc",
+    "encoder_h",
+)
+_RESIDUE_DICT_OUTPUT_KEYS = ("uncertainty", "evidence")
+
+
+def resolve_prot_pdb_path(prot: dict[str, Any]) -> str | None:
+    """Resolve deposited PDB text for Path B HELIX/SHEET parse."""
+    raw = prot.get("pdb_path")
+    if raw is not None:
+        path = Path(str(raw))
+        if path.is_file():
+            return str(path)
+    pdb_id = str(prot.get("pdb_id") or "").strip()
+    if not pdb_id:
+        return None
+    repo_root = Path(__file__).resolve().parents[3]
+    cache_dirs = []
+    pdb_dir = prot.get("pdb_dir")
+    if pdb_dir is not None:
+        cache_dirs.append(Path(str(pdb_dir)))
+    cache_dirs.append(repo_root / "pdb_cache")
+    for cache in cache_dirs:
+        for name in (f"{pdb_id.upper()}.pdb", f"{pdb_id.lower()}.pdb"):
+            cand = cache / name
+            if cand.is_file():
+                return str(cand)
+    return None
+
+
+def residue_node_count(data: Any, prot: dict[str, Any] | None = None) -> int:
+    """Leaf residue count for Path B graphs that append parent rows after chem."""
+    n = getattr(data, "n_residue_nodes", None)
+    if n is not None:
+        return int(n)
+    if prot is not None and prot.get("n_residues") is not None:
+        return int(prot["n_residues"])
+    return int(data.x.size(0))
+
+
+def _pad_containment_parent_node_attrs(data: Any) -> Any:
+    """Zero-pad per-node side channels after containment grows ``data.x``.
+
+    Parent ``structural_z_disc`` / ``structural_cone_depth`` rows are zeros
+    (origin). ``degree`` / ``rho`` / ``ss_onehot`` are refreshed from the grown
+    graph so gate inputs match ``x.shape[0]``. Residue losses still slice to
+    ``n_residue_nodes``.
+    """
+    n_res = getattr(data, "n_residue_nodes", None)
+    if n_res is None or getattr(data, "x", None) is None:
+        return data
+    n_res = int(n_res)
+    n_total = int(data.x.size(0))
+    n_pad = n_total - n_res
+    if n_pad <= 0:
+        return data
+
+    def _pad_tensor(t: torch.Tensor) -> torch.Tensor:
+        if t.shape[0] != n_res:
+            return t
+        pad_shape = (n_pad, *tuple(t.shape[1:]))
+        return torch.cat([t, t.new_zeros(pad_shape)], dim=0)
+
+    for name in (
+        "structural_z_disc",
+        "structural_cone_depth",
+        "clustering",
+        "sasa",
+        "dehydron",
+        "geom_theta_prior",
+        "geom_blend_mass",
+        "ca_coords",
+    ):
+        t = getattr(data, name, None)
+        if isinstance(t, torch.Tensor) and t.shape[0] == n_res:
+            setattr(data, name, _pad_tensor(t))
+
+    from torch_geometric.utils import degree as pyg_degree
+
+    data.degree = pyg_degree(  # type: ignore[attr-defined]
+        data.edge_index[0],
+        num_nodes=n_total,
+        dtype=data.x.dtype,
+    ).to(data.x.device)
+    data.rho = data.x[:, 0].clone()  # type: ignore[attr-defined]
+    ss_onehot = torch.zeros(n_total, 3, dtype=data.x.dtype, device=data.x.device)
+    ss_type = data.x[:, 2]
+    for i in range(n_total):
+        idx = int(round(float(ss_type[i].item()) * 2))
+        if 0 <= idx <= 2:
+            ss_onehot[i, idx] = 1.0
+        else:
+            ss_onehot[i, 2] = 1.0
+    data.ss_onehot = ss_onehot  # type: ignore[attr-defined]
+    return data
+
+
+def _slice_residue_outputs(output: dict[str, Any], n: int) -> dict[str, Any]:
+    """Drop parent-node rows from residue-aligned forward outputs before loss."""
+    if n <= 0:
+        return output
+    out = dict(output)
+    for key in _RESIDUE_OUTPUT_KEYS:
+        t = out.get(key)
+        if isinstance(t, torch.Tensor) and t.dim() >= 1 and t.shape[0] > n:
+            out[key] = t[:n]
+    for key in _RESIDUE_DICT_OUTPUT_KEYS:
+        d = out.get(key)
+        if isinstance(d, dict):
+            out[key] = {
+                k: (
+                    v[:n]
+                    if isinstance(v, torch.Tensor) and v.dim() >= 1 and v.shape[0] > n
+                    else v
+                )
+                for k, v in d.items()
+            }
+    return out
+
 
 def attach_v6_features(data: torch.Tensor | Any) -> Any:
     """Attach degree, ss_onehot, rho required by GOSPConeMapperV6."""
@@ -117,6 +261,25 @@ def prepare_training_batch(
                 structure_id=str(structure_id),
                 chain_label=chain,
             )
+            if bool(getattr(model, "containment_edge_mp", False)):
+                from science.dtie.v66.containment_edge_graph import (
+                    attach_containment_edge_graph,
+                )
+
+                pdb_path = resolve_prot_pdb_path(prot)
+                if pdb_path is None:
+                    raise ValueError(
+                        "containment_edge_mp requires prot['pdb_path'] or "
+                        "pdb_cache/{pdb_id}.pdb"
+                    )
+                data = attach_containment_edge_graph(
+                    data,
+                    ca.to(device) if hasattr(ca, "to") else ca,
+                    pdb_path,
+                    residue_ids=residue_ids,
+                )
+                # Pad structural_z_disc / gate side-channels before thermo / prior.
+                data = _pad_containment_parent_node_attrs(data)
     if bool(getattr(model, "rim_fanout_forward", False)):
         ca = prot.get("ca_coords")
         if ca is None:
@@ -160,6 +323,10 @@ def prepare_training_batch(
         data.dehydron = (  # type: ignore[attr-defined]
             td.to(device) if hasattr(td, "to") else torch.as_tensor(td, device=device)
         ).float().reshape(-1)
+    # Final pad: geom_theta_prior / dehydron / ca_coords may be residue-length
+    # after post-containment attaches above.
+    if bool(getattr(model, "containment_edge_mp", False)):
+        data = _pad_containment_parent_node_attrs(data)
     return data
 
 
@@ -679,9 +846,19 @@ def train_epoch(
 
             def _forward_losses() -> dict[str, Any]:
                 output = model(data)
+                # Path B: parent rows may receive MP but must not enter residue
+                # physics losses (depth-collision lock).
+                n_leaf = residue_node_count(data, prot)
+                if (
+                    isinstance(output.get("cone_depth"), torch.Tensor)
+                    and output["cone_depth"].shape[0] > n_leaf
+                ):
+                    output = _slice_residue_outputs(output, n_leaf)
                 sasa = None
                 if not topology_depth:
                     sasa = residue_sasa_from_data(data).squeeze(-1)
+                    if sasa.shape[0] > n_leaf:
+                        sasa = sasa[:n_leaf]
                 shaping_train_mask = None
                 if (
                     float(loss_coeffs.get("v3_aleatoric_shaping_coeff", 0.0)) > 0
@@ -693,7 +870,7 @@ def train_epoch(
 
                     residue_ids = list(
                         prot.get("residue_ids")
-                        or [f"idx:{i}" for i in range(data.num_nodes)]
+                        or [f"idx:{i}" for i in range(n_leaf)]
                     )
                     shaping_train_mask, _ = aleatoric_shaping_holdout_masks_torch(
                         target_dehydron,
@@ -867,19 +1044,27 @@ def _accumulate_expert_geometry(
     sheet_counts: list[int],
     coil_counts: list[int],
     bio_counts: list[int],
+    n_residues: int | None = None,
 ) -> None:
     """Per-expert geometry + topology from dominant routing assignment."""
     weights = out.get("expert_weights")
     if weights is None:
         return
+    n_leaf = int(n_residues) if n_residues is not None else int(data.x.size(0))
     cd = out["cone_depth"].squeeze().detach().cpu().numpy()
-    x = data.x.detach().cpu().numpy()
+    x = data.x[:n_leaf].detach().cpu().numpy()
     rho = x[:, 0]
     tau = x[:, 1]
     ss = x[:, 2]
     hyp = out["hyp_projections_2d"].detach().cpu().numpy()
     disc_r = np.linalg.norm(hyp, axis=1) if hyp.ndim == 2 else np.abs(hyp)
     assign = weights.argmax(dim=1).detach().cpu().numpy()
+    if assign.shape[0] > n_leaf:
+        assign = assign[:n_leaf]
+    if cd.shape[0] > n_leaf:
+        cd = cd[:n_leaf]
+    if disc_r.shape[0] > n_leaf:
+        disc_r = disc_r[:n_leaf]
     for e in range(num_experts):
         mask = assign == e
         n = int(mask.sum())
@@ -958,6 +1143,12 @@ def measure_geometry_health(
                 structural_disc_frozen=structural_disc_frozen,
             )
             out = model(data)
+            n_leaf = residue_node_count(data, prot)
+            if (
+                isinstance(out.get("cone_depth"), torch.Tensor)
+                and out["cone_depth"].shape[0] > n_leaf
+            ):
+                out = _slice_residue_outputs(out, n_leaf)
             rd = out["radial_features"].squeeze().cpu().numpy()
             radial_stds.append(float(rd.std()))
             at = out.get("audit_trail", {})
@@ -969,10 +1160,10 @@ def measure_geometry_health(
             cone_depth_stds.append(float(cd.std()))
             cone_depth_means.append(float(cd.mean()))
 
-            tau = data.x[:, 1].cpu().numpy()
-            rho = data.x[:, 0].cpu().numpy()
+            tau = data.x[:n_leaf, 1].cpu().numpy()
+            rho = data.x[:n_leaf, 0].cpu().numpy()
             if not topology_depth:
-                sasa = residue_sasa_from_data(data).squeeze(-1).cpu().numpy()
+                sasa = residue_sasa_from_data(data).squeeze(-1)[:n_leaf].cpu().numpy()
             epi = out["uncertainty"]["epistemic"].squeeze().cpu().numpy()
             ale = out["uncertainty"]["aleatoric"].squeeze().cpu().numpy()
             all_epi_vals.append(np.asarray(epi, dtype=float).reshape(-1))
@@ -981,7 +1172,7 @@ def measure_geometry_health(
             evidence = out.get("evidence") or {}
             nu_t = evidence.get("nu")
             if nu_t is not None:
-                all_nu_vals.append(nu_t.detach().cpu().numpy().reshape(-1))
+                all_nu_vals.append(nu_t.detach().cpu().numpy().reshape(-1)[:n_leaf])
             probe_epi_ale.append(_pearson_np(epi, ale))
             hyp = out["hyp_projections_2d"].cpu().numpy()
             disc_r = np.linalg.norm(hyp, axis=1) if hyp.ndim == 2 else np.abs(hyp)
@@ -1033,6 +1224,7 @@ def measure_geometry_health(
                 sheet_counts=sheet_counts,
                 coil_counts=coil_counts,
                 bio_counts=bio_counts,
+                n_residues=n_leaf,
             )
             if edge_telemetry:
                 from science.training.edge_telemetry import collect_edge_telemetry

@@ -968,6 +968,14 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--containment-edge-mp",
+        action="store_true",
+        help=(
+            "Path B containment: SSE parent nodes + contain_up/down edges "
+            "(requires role_edge_mp + chem_edge_mp; train-side only)"
+        ),
+    )
+    parser.add_argument(
         "--allow-dead-feature-channel",
         action="store_true",
         help="Debug only: allow --use-dehydron-barcode with slim MoE / frozen backbone",
@@ -1462,6 +1470,7 @@ def main() -> None:
         dehydron_barcode_dir=args.dehydron_barcode_dir,
         dehydron_edge_barcode=args.dehydron_edge_barcode,
         chem_edge_mp=args.chem_edge_mp,
+        containment_edge_mp=args.containment_edge_mp,
         allow_dead_feature_channel=args.allow_dead_feature_channel,
         feature_liveness_probe=args.feature_liveness_probe,
         feature_liveness_fail_if_dead=not args.no_feature_liveness_fail,
@@ -1688,6 +1697,14 @@ def main() -> None:
                 "(enabled by --v66-feeler-lineage unless S4 hyp-MP disables it)"
             )
             sys.exit(2)
+        if config.containment_edge_mp and not (
+            config.role_edge_mp and config.chem_edge_mp
+        ):
+            logger.error(
+                "--containment-edge-mp requires role_edge_mp + chem_edge_mp "
+                "(matched Path B arm; enabled by --v66-feeler-lineage + --chem-edge-mp)"
+            )
+            sys.exit(2)
         if config.v66_feeler_coupling:
             config = config.model_copy(update={"role_coupling_edges": True})
         if config.resume is not None:
@@ -1809,6 +1826,14 @@ def main() -> None:
         logger.error(
             "--chem-edge-mp requires role_edge_mp "
             "(use --v66-feeler-lineage, or an explicit role-edge lineage)"
+        )
+        sys.exit(2)
+    if config.containment_edge_mp and not (
+        config.role_edge_mp and config.chem_edge_mp
+    ):
+        logger.error(
+            "--containment-edge-mp requires role_edge_mp + chem_edge_mp "
+            "(matched Path B arm)"
         )
         sys.exit(2)
 

@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
 import torch
 from torch_geometric.data import Data
 
+from experiments.training.v6.train_loop import (
+    _pad_containment_parent_node_attrs,
+    _slice_residue_outputs,
+    prepare_training_batch,
+    residue_node_count,
+)
 from science.dtie.common.isolated_init import isolated_torch_seed
 from science.dtie.v66.chem_edge_graph import EDGE_ATTR_CHEM_DIM
 from science.dtie.v66.gnn.model import GOSPConeMapperV66
@@ -69,6 +78,155 @@ def test_attach_appends_parent_and_directed_relations() -> None:
     assert (oh[:, ROLE_CONTAIN_UP] > 0).any()
     assert out.containment_edge_counts["contain_down"] == 3
     assert out.containment_edge_counts["contain_up"] == 3
+
+
+def test_attach_sets_n_residue_nodes_for_loss_slice() -> None:
+    """After attach with 1 parent, n_residue_nodes == original N (loss slice key)."""
+    data = _toy_chem_ready_data()
+    ca = torch.randn(6, 3)
+    residue_ids = [f"A:{i}:" for i in range(10, 16)]
+    pdb = (
+        "HELIX    1   1 ALA A   10  ALA A   12  1                                   3\n"
+        "END\n"
+    )
+    out = attach_containment_edge_graph(
+        data, ca, pdb, residue_ids=residue_ids, force=True
+    )
+    assert out.n_residue_nodes == 6
+    assert out.x.shape[0] == 7
+    assert residue_node_count(out, {"n_residues": 6}) == 6
+
+
+def test_slice_residue_outputs_drops_parent_rows() -> None:
+    n_res, n_tot = 6, 7
+    output = {
+        "cone_depth": torch.randn(n_tot, 1),
+        "x_hyp": torch.randn(n_tot, 8),
+        "hyp_projections_2d": torch.randn(n_tot, 2),
+        "expert_weights": torch.randn(n_tot, 2),
+        "uncertainty": {
+            "epistemic": torch.randn(n_tot, 1),
+            "aleatoric": torch.randn(n_tot, 1),
+        },
+        "capacity_loss": torch.tensor(0.1),
+        "routing_entropy": torch.tensor(1.2),
+    }
+    sliced = _slice_residue_outputs(output, n_res)
+    assert sliced["cone_depth"].shape[0] == n_res
+    assert sliced["x_hyp"].shape[0] == n_res
+    assert sliced["hyp_projections_2d"].shape[0] == n_res
+    assert sliced["expert_weights"].shape[0] == n_res
+    assert sliced["uncertainty"]["epistemic"].shape[0] == n_res
+    assert sliced["uncertainty"]["aleatoric"].shape[0] == n_res
+    assert sliced["capacity_loss"].shape == ()
+    assert torch.equal(sliced["cone_depth"], output["cone_depth"][:n_res])
+
+
+def test_pad_containment_parent_attrs_matches_grown_x() -> None:
+    data = _toy_chem_ready_data()
+    n = 6
+    data.structural_z_disc = torch.randn(n, 2)
+    data.clustering = torch.rand(n)
+    data.degree = torch.ones(n)
+    data.ss_onehot = torch.zeros(n, 3)
+    data.ss_onehot[:, 2] = 1.0
+    data.rho = data.x[:, 0].clone()
+    ca = torch.randn(n, 3)
+    residue_ids = [f"A:{i}:" for i in range(10, 16)]
+    pdb = (
+        "HELIX    1   1 ALA A   10  ALA A   12  1                                   3\n"
+        "END\n"
+    )
+    out = attach_containment_edge_graph(
+        data, ca, pdb, residue_ids=residue_ids, force=True
+    )
+    assert out.x.shape[0] == 7
+    assert out.structural_z_disc.shape[0] == n  # not padded yet
+    padded = _pad_containment_parent_node_attrs(out)
+    assert padded.structural_z_disc.shape[0] == 7
+    assert torch.allclose(padded.structural_z_disc[n], torch.zeros(2))
+    assert padded.clustering.shape[0] == 7
+    assert padded.degree.shape[0] == 7
+    assert padded.ss_onehot.shape[0] == 7
+    assert padded.rho.shape[0] == 7
+
+
+def test_prepare_training_batch_containment_attach_and_pad(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """prepare_training_batch wires containment after chem and pads structural_z."""
+    n = 6
+    x = torch.randn(n, 3)
+    ei = torch.tensor([[0, 1], [1, 0]], dtype=torch.long)
+    ea = torch.zeros(2, EDGE_ATTR_CHEM_DIM)
+    data = Data(x=x, edge_index=ei, edge_attr=ea)
+    data.structural_z_disc = torch.randn(n, 2)
+    data.structural_z_disc_frozen = True
+    data.clustering = torch.rand(n)
+
+    pdb_text = (
+        "HELIX    1   1 ALA A   10  ALA A   12  1                                   3\n"
+        "END\n"
+    )
+    pdb_path = tmp_path / "TOY1.pdb"
+    pdb_path.write_text(pdb_text)
+
+    prot = {
+        "pdb_id": "TOY1",
+        "chain": "A",
+        "data": data,
+        "ca_coords": torch.randn(n, 3),
+        "residue_ids": [f"A:{i}:" for i in range(10, 16)],
+        "n_residues": n,
+        "pdb_path": str(pdb_path),
+        "covalent_bonds": [],
+        "target_dehydron": torch.zeros(n),
+    }
+
+    def _fake_role(data_in, *_args, **_kwargs):
+        data_in.role_edge_graph = True
+        return data_in
+
+    def _fake_chem(data_in, *_args, **_kwargs):
+        data_in.chem_edge_graph = True
+        if data_in.edge_attr is None or data_in.edge_attr.size(-1) < EDGE_ATTR_CHEM_DIM:
+            data_in.edge_attr = torch.zeros(
+                data_in.edge_index.size(1), EDGE_ATTR_CHEM_DIM
+            )
+        return data_in
+
+    monkeypatch.setattr(
+        "science.dtie.v66.role_edge_graph.attach_role_edge_graph", _fake_role
+    )
+    monkeypatch.setattr(
+        "science.dtie.v66.role_edge_graph.resolve_residue_records_for_prot",
+        lambda *_a, **_k: [],
+    )
+    monkeypatch.setattr(
+        "science.dtie.v66.chem_edge_graph.attach_chem_edge_graph", _fake_chem
+    )
+
+    model = SimpleNamespace(
+        role_edge_mp=True,
+        chem_edge_mp=True,
+        containment_edge_mp=True,
+        hyperbolic_mp_graph=False,
+        role_coupling_edges=False,
+        dehydron_exclusivity=True,
+        spoke_edge_scale=1.0,
+        ribbon_edge_scale=1.0,
+        rim_fanout_forward=False,
+        thermo_edge_message_gate=False,
+        multi_rel_edge_mp=False,
+        geometric_angular_prior=False,
+        curvature=torch.tensor(1.0),
+    )
+    out = prepare_training_batch(model, prot, "cpu", structural_disc_frozen=False)
+    assert out.n_residue_nodes == n
+    assert out.x.shape[0] == n + 1
+    assert out.structural_z_disc.shape[0] == n + 1
+    assert torch.allclose(out.structural_z_disc[n], torch.zeros(2))
+    assert out.containment_edge_graph is True
 
 
 def test_empty_sse_pads_attr_but_does_not_grow_n() -> None:

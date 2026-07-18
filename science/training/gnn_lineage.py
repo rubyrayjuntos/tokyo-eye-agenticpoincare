@@ -185,6 +185,9 @@ def build_model(config: TrainingConfig, node_dim: int | None = None) -> nn.Modul
             getattr(config, "role_coupling_edges", False)
         )
         model_kwargs["chem_edge_mp"] = bool(getattr(config, "chem_edge_mp", False))
+        model_kwargs["containment_edge_mp"] = bool(
+            getattr(config, "containment_edge_mp", False)
+        )
         model_kwargs["dehydron_exclusivity"] = bool(
             getattr(config, "dehydron_exclusivity", True)
         )

@@ -307,7 +307,7 @@ async def load_protein_graph_async(
             from science.dtie.v66.chem_edge_graph import fetch_covalent_bonds
 
             graph["covalent_bonds"] = await fetch_covalent_bonds(db, structure_id)
-            # Deposited PDB path for train-side parsers (barcode / chem / hierarchy).
+            # Path B containment HELIX/SHEET parse needs deposited PDB text.
             for name in (f"{pdb_id.upper()}.pdb", f"{pdb_id.lower()}.pdb"):
                 local = Path(pdb_dir) / name
                 if local.is_file():
@@ -465,7 +465,7 @@ def load_protein_graph_from_pdb_legacy(pdb_id: str, chain: str, pdb_dir: Path) -
         "n_residues": n,
         "source": "pdb_legacy",
         "covalent_bonds": [],
-        # Full deposited PDB (not chain extract) for train-side parsers.
+        # Full deposited PDB (not chain extract) for Path B HELIX/SHEET parse.
         "pdb_path": str(pdb_path),
         "pdb_dir": str(pdb_dir),
     }
