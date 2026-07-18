@@ -52,7 +52,11 @@ from science.dtie.common import residue_features as rf
 
 
 def _barcode_sidecar_path(barcode_dir: Path, pdb_id: str, chain: str) -> Path:
-    return Path(barcode_dir) / f"{pdb_id.upper()}_{chain}_dehydron_barcode_v1.pt"
+    from science.dtie.common.dehydron_barcode_features import (
+        barcode_sidecar_filename,
+    )
+
+    return Path(barcode_dir) / barcode_sidecar_filename(pdb_id, chain)
 
 
 def _missing_barcode_payload(n_residues: int, *, use_binned: bool) -> dict[str, np.ndarray | None]:
@@ -66,20 +70,23 @@ def _missing_barcode_payload(n_residues: int, *, use_binned: bool) -> dict[str, 
 
 
 def _barcode_payload_to_numpy(barcode: dict) -> dict[str, np.ndarray | None]:
-    def to_float32_array(value) -> np.ndarray:
+    def to_array(value, *, dtype) -> np.ndarray:
         if isinstance(value, torch.Tensor):
             value = value.detach().cpu()
-        return np.asarray(value, dtype=np.float32)
+        return np.asarray(value, dtype=dtype)
 
-    return {
-        "scalars": to_float32_array(barcode["scalars"]),
-        "missing": to_float32_array(barcode["missing"]),
+    out: dict[str, np.ndarray | None] = {
+        "scalars": to_array(barcode["scalars"], dtype=np.float32),
+        "missing": to_array(barcode["missing"], dtype=np.float32),
         "binned": (
             None
             if barcode.get("binned") is None
-            else to_float32_array(barcode["binned"])
+            else to_array(barcode["binned"], dtype=np.float32)
         ),
     }
+    if barcode.get("residue_indices") is not None:
+        out["residue_indices"] = to_array(barcode["residue_indices"], dtype=np.int32)
+    return out
 
 
 def _load_barcode_sidecar(sidecar: Path) -> dict:
@@ -98,6 +105,23 @@ def _load_barcode_sidecar(sidecar: Path) -> dict:
         return torch.load(sidecar, map_location="cpu", weights_only=False)
 
 
+def _graph_residue_indices(prot: Dict, n_residues: int) -> list[int]:
+    """Parse ``prot['residue_ids']`` (``chain:resseq:``) into resseq ints."""
+    residue_ids = prot.get("residue_ids") or []
+    if len(residue_ids) != n_residues:
+        raise ValueError(
+            f"{prot.get('pdb_id')}:{prot.get('chain')} residue_ids length "
+            f"{len(residue_ids)} != data.x rows {n_residues}"
+        )
+    out: list[int] = []
+    for rid in residue_ids:
+        parts = str(rid).split(":")
+        if len(parts) < 2:
+            raise ValueError(f"unparseable residue_id {rid!r}")
+        out.append(int(parts[1]))
+    return out
+
+
 def attach_dehydron_barcode_features(
     prot: Dict,
     *,
@@ -105,7 +129,10 @@ def attach_dehydron_barcode_features(
     use_binned: bool,
 ) -> Dict:
     """Attach dehydron barcode sidecar features to ``prot['data'].x``."""
-    from science.dtie.common.dehydron_barcode_features import stack_node_features_with_barcode
+    from science.dtie.common.dehydron_barcode_features import (
+        align_barcode_to_graph_residues,
+        stack_node_features_with_barcode,
+    )
 
     pdb_id = str(prot.get("pdb_id", "")).upper()
     chain = str(prot.get("chain", "A"))
@@ -119,6 +146,12 @@ def attach_dehydron_barcode_features(
     if sidecar.is_file():
         barcode = _load_barcode_sidecar(sidecar)
         barcode = _barcode_payload_to_numpy(barcode)
+        graph_resseqs = _graph_residue_indices(prot, n_residues)
+        barcode = align_barcode_to_graph_residues(
+            barcode,
+            graph_resseqs,
+            use_binned=use_binned,
+        )
     else:
         warn_key = f"{pdb_id}:{chain}"
         if warn_key not in _MISSING_BARCODE_WARNED:
@@ -133,6 +166,75 @@ def attach_dehydron_barcode_features(
     x = stack_node_features_with_barcode(base_x, barcode, use_binned=use_binned)
     data.x = torch.as_tensor(x, dtype=data.x.dtype, device=data.x.device)
     prot["data"] = data
+    return prot
+
+
+def attach_dehydron_edge_barcode_lookup(
+    prot: Dict,
+    *,
+    barcode_dir: Path,
+    pdb_dir: Path | None = None,
+) -> Dict:
+    """Load per-pair local dehydron barcode features for role-edge injection."""
+    from science.dtie.common.dehydron_barcode_features import (
+        EDGE_BARCODE_DIM,
+        align_edge_barcode_to_graph,
+        featurize_chain_dehydron_barcode,
+    )
+
+    pdb_id = str(prot.get("pdb_id", "")).upper()
+    chain = str(prot.get("chain", "A"))
+    n_residues = int(prot["data"].x.shape[0])
+    sidecar = _barcode_sidecar_path(Path(barcode_dir), pdb_id, chain)
+    graph_resseqs = _graph_residue_indices(prot, n_residues)
+
+    edge_pairs: np.ndarray | None = None
+    edge_scalars: np.ndarray | None = None
+    barcode_residue_indices: np.ndarray | None = None
+
+    if sidecar.is_file():
+        barcode = _load_barcode_sidecar(sidecar)
+        if barcode.get("edge_pairs") is not None and barcode.get("edge_scalars") is not None:
+            edge_pairs = np.asarray(barcode["edge_pairs"], dtype=np.int32)
+            edge_scalars = np.asarray(barcode["edge_scalars"], dtype=np.float32)
+            if barcode.get("residue_indices") is not None:
+                barcode_residue_indices = np.asarray(
+                    barcode["residue_indices"], dtype=np.int32
+                )
+
+    if edge_pairs is None or edge_scalars is None or barcode_residue_indices is None:
+        warn_key = f"{pdb_id}:{chain}:edge"
+        if warn_key not in _MISSING_BARCODE_WARNED:
+            logger.warning(
+                "%s sidecar %s missing edge barcode block; recomputing from PDB",
+                warn_key,
+                sidecar,
+            )
+            _MISSING_BARCODE_WARNED.add(warn_key)
+        pdb_path = prot.get("pdb_path")
+        if pdb_path is None and pdb_dir is not None:
+            pdb_path = _download_pdb(pdb_id, Path(pdb_dir))
+        if pdb_path is None:
+            prot["dehydron_edge_lookup"] = {}
+            return prot
+        payload = featurize_chain_dehydron_barcode(Path(pdb_path), chain)
+        edge_pairs = np.asarray(payload["edge_pairs"], dtype=np.int32)
+        edge_scalars = np.asarray(payload["edge_scalars"], dtype=np.float32)
+        barcode_residue_indices = np.asarray(payload["residue_indices"], dtype=np.int32)
+
+    if edge_scalars.ndim != 2 or edge_scalars.shape[1] != EDGE_BARCODE_DIM:
+        raise ValueError(
+            f"{pdb_id}:{chain} edge_scalars must be [M, {EDGE_BARCODE_DIM}], "
+            f"got {edge_scalars.shape}"
+        )
+
+    lookup = align_edge_barcode_to_graph(
+        edge_pairs,
+        edge_scalars,
+        barcode_residue_indices,
+        graph_resseqs,
+    )
+    prot["dehydron_edge_lookup"] = lookup
     return prot
 
 
@@ -201,6 +303,17 @@ async def load_protein_graph_async(
                 )
                 return None
         graph = await load_protein_graph_from_db(db, structure_id, pdb_id, chain)
+        if graph is not None:
+            from science.dtie.v66.chem_edge_graph import fetch_covalent_bonds
+
+            graph["covalent_bonds"] = await fetch_covalent_bonds(db, structure_id)
+            # Deposited PDB path for train-side parsers (barcode / chem / hierarchy).
+            for name in (f"{pdb_id.upper()}.pdb", f"{pdb_id.lower()}.pdb"):
+                local = Path(pdb_dir) / name
+                if local.is_file():
+                    graph["pdb_path"] = str(local)
+                    break
+            graph["pdb_dir"] = str(pdb_dir)
         return graph
 
 
@@ -351,4 +464,8 @@ def load_protein_graph_from_pdb_legacy(pdb_id: str, chain: str, pdb_dir: Path) -
         "residue_ids": res_ids,
         "n_residues": n,
         "source": "pdb_legacy",
+        "covalent_bonds": [],
+        # Full deposited PDB (not chain extract) for train-side parsers.
+        "pdb_path": str(pdb_path),
+        "pdb_dir": str(pdb_dir),
     }

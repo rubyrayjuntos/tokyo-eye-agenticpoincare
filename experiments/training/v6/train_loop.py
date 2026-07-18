@@ -11,7 +11,6 @@ import torch.nn as nn
 from science.dtie.common.residue_features import residue_sasa_from_data
 from science.dtie.v6.loss import gosp_loss_v6
 
-
 def attach_v6_features(data: torch.Tensor | Any) -> Any:
     """Attach degree, ss_onehot, rho required by GOSPConeMapperV6."""
     from torch_geometric.data import Data
@@ -59,6 +58,7 @@ def prepare_training_batch(
     device: str,
     *,
     structural_disc_frozen: bool = False,
+    thermo_edge_features: bool = False,
 ) -> Any:
     """Attach v6 features and optional structural disc SSOT before a training forward."""
     # Clone so structural attach does not mutate cached prot["data"] across checkpoints.
@@ -68,6 +68,98 @@ def prepare_training_batch(
 
         curvature_c = float(model.curvature.detach().cpu().item())
         data = attach_structural_disc_for_forward(data, prot, curvature_c)
+    elif bool(getattr(model, "hyperbolic_mp_graph", False)):
+        from science.dtie.common.structural_disc_compose import (
+            attach_hyperbolic_mp_graph_for_forward,
+        )
+
+        curvature_c = float(model.curvature.detach().cpu().item())
+        data = attach_hyperbolic_mp_graph_for_forward(data, prot, curvature_c)
+    if bool(getattr(model, "role_edge_mp", False)):
+        if bool(getattr(model, "hyperbolic_mp_graph", False)):
+            raise ValueError(
+                "role_edge_mp and hyperbolic_mp_graph are mutually exclusive "
+                "(typed role edges vs hyperbolic disc k-NN)"
+            )
+        from science.dtie.v66.role_edge_graph import (
+            attach_role_edge_graph,
+            resolve_residue_records_for_prot,
+        )
+
+        records = resolve_residue_records_for_prot(prot)
+        ca = prot.get("ca_coords")
+        if ca is None:
+            raise ValueError("role_edge_mp requires prot['ca_coords']")
+        data = attach_role_edge_graph(
+            data,
+            ca.to(device) if hasattr(ca, "to") else ca,
+            residue_ids=prot.get("residue_ids"),
+            residue_records=records,
+            dehydron_edge_lookup=prot.get("dehydron_edge_lookup"),
+            enable_coupling_edges=bool(getattr(model, "role_coupling_edges", False)),
+            dehydron_exclusivity=bool(getattr(model, "dehydron_exclusivity", True)),
+            spoke_edge_scale=float(getattr(model, "spoke_edge_scale", 1.0)),
+            ribbon_edge_scale=float(getattr(model, "ribbon_edge_scale", 1.0)),
+        )
+        if bool(getattr(model, "chem_edge_mp", False)):
+            from science.dtie.v66.chem_edge_graph import attach_chem_edge_graph
+
+            structure_id = prot.get("structure_id") or str(prot.get("pdb_id", "")).lower()
+            chain = str(prot.get("chain") or "A")
+            residue_ids = prot.get("residue_ids")
+            if residue_ids is None:
+                raise ValueError("chem_edge_mp requires prot['residue_ids']")
+            data = attach_chem_edge_graph(
+                data,
+                ca.to(device) if hasattr(ca, "to") else ca,
+                prot.get("covalent_bonds") or [],
+                residue_ids=residue_ids,
+                structure_id=str(structure_id),
+                chain_label=chain,
+            )
+    if bool(getattr(model, "rim_fanout_forward", False)):
+        ca = prot.get("ca_coords")
+        if ca is None:
+            raise ValueError("rim_fanout_forward requires prot['ca_coords']")
+        data.ca_coords = ca.to(device) if hasattr(ca, "to") else ca  # type: ignore[attr-defined]
+    elif thermo_edge_features or bool(
+        getattr(model, "thermo_edge_message_gate", False)
+    ) or bool(getattr(model, "multi_rel_edge_mp", False)):
+        from science.dtie.v66.thermo_edge_features import (
+            attach_thermo_edge_features,
+            resolve_residue_records_for_prot,
+        )
+
+        records = resolve_residue_records_for_prot(prot)
+        data = attach_thermo_edge_features(
+            data,
+            residue_ids=prot.get("residue_ids"),
+            residue_records=records,
+        )
+    if bool(getattr(model, "geometric_angular_prior", False)):
+        from science.dtie.v66.geometric_angular_prior import attach_geometric_angular_prior
+        from science.dtie.v66.role_edge_graph import resolve_residue_records_for_prot
+
+        ca = prot.get("ca_coords")
+        if ca is None:
+            raise ValueError("geometric_angular_prior requires prot['ca_coords']")
+        if getattr(data, "ca_coords", None) is None:
+            data.ca_coords = ca.to(device) if hasattr(ca, "to") else ca  # type: ignore[attr-defined]
+        records = resolve_residue_records_for_prot(prot)
+        data = attach_geometric_angular_prior(
+            data,
+            data.ca_coords,  # type: ignore[attr-defined]
+            residue_ids=prot.get("residue_ids"),
+            residue_records=records,
+            kappa=float(getattr(model, "geometric_angular_kappa", 1.0)),
+        )
+    # Quota / purity helpers: structure id + stopgrad dehydron labels on the batch.
+    data.pdb_id = str(prot.get("pdb_id") or prot.get("id") or "?").upper()  # type: ignore[attr-defined]
+    td = prot.get("target_dehydron")
+    if td is not None:
+        data.dehydron = (  # type: ignore[attr-defined]
+            td.to(device) if hasattr(td, "to") else torch.as_tensor(td, device=device)
+        ).float().reshape(-1)
     return data
 
 
@@ -341,6 +433,30 @@ def resolve_default_warm_start() -> "Path | None":
     return None
 
 
+def order_proteins_with_anchors(
+    proteins: list[dict[str, Any]],
+    anchor_pdb_ids: list[str] | tuple[str, ...] | None,
+) -> list[dict[str, Any]]:
+    """Put spread-anchor PDBs first each epoch; fail if any anchor is missing."""
+    anchors = [str(a).upper() for a in (anchor_pdb_ids or ()) if str(a).strip()]
+    if not anchors:
+        return list(proteins)
+    by_id: dict[str, dict[str, Any]] = {}
+    for prot in proteins:
+        pid = str(prot.get("pdb_id", "")).upper()
+        if pid and pid not in by_id:
+            by_id[pid] = prot
+    missing = [a for a in anchors if a not in by_id]
+    if missing:
+        raise ValueError(
+            f"epoch_anchor_pdb_ids missing from loaded corpus: {missing}"
+        )
+    ordered = [by_id[a] for a in anchors]
+    seen = {id(p) for p in ordered}
+    ordered.extend(p for p in proteins if id(p) not in seen)
+    return ordered
+
+
 def train_epoch(
     model: nn.Module,
     optimizer: torch.optim.Optimizer,
@@ -370,11 +486,13 @@ def train_epoch(
     slim_moe_structural_ssot_train: bool = False,
     structural_disc_frozen: bool = False,
     topology_depth: bool = False,
+    epoch_anchor_pdb_ids: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, float]:
     """Run one training epoch over all proteins (one protein per optimizer step)."""
     import logging
 
     logger = logging.getLogger(__name__)
+    proteins = order_proteins_with_anchors(proteins, epoch_anchor_pdb_ids)
     if epistemic_uncertainty_only_train:
         set_p4_uncertainty_only_freeze(model)
         set_uncertainty_from_backbone(model, enabled=False)
@@ -427,6 +545,15 @@ def train_epoch(
             "capacity_loss",
             "routing_load_floor",
             "routing_load_ceiling",
+            "prototype_repulsion",
+            "prototype_gram_logdet_hinge",
+            "prototype_gram_logdet_hinge_raw",
+            "prototype_gram_logdet",
+            "majority_committed_share",
+            "majority_committed_share_raw",
+            "core_majority_committed_share",
+            "core_majority_committed_share_raw",
+            "prototype_pair_min_dist",
             "cone_consistency",
             "cone_depth_anticollapse",
             "shell_correlation",
@@ -565,7 +692,8 @@ def train_epoch(
                     )
 
                     residue_ids = list(
-                        prot.get("residue_ids") or [f"idx:{i}" for i in range(data.num_nodes)]
+                        prot.get("residue_ids")
+                        or [f"idx:{i}" for i in range(data.num_nodes)]
                     )
                     shaping_train_mask, _ = aleatoric_shaping_holdout_masks_torch(
                         target_dehydron,
@@ -606,6 +734,8 @@ def train_epoch(
                         not in (
                             "aleatoric_shaping_holdout_fraction",
                             "aleatoric_shaping_holdout_mode",
+                            # Model-side routing control — not a gosp_loss_v6 kwarg.
+                            "core_capacity_quota_tau",
                         )
                     },
                 )
