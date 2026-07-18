@@ -1243,6 +1243,83 @@ class StageRunner:
                 )
                 log_metrics.update(gov)
                 log_metrics.update(telemetry_track_metrics(health))
+                if (
+                    self.config.feature_liveness_probe
+                    or self.config.use_dehydron_barcode
+                    or self.config.dehydron_edge_barcode
+                    or self.config.chem_edge_mp
+                    or self.config.containment_edge_mp
+                ):
+                    from science.training.feature_liveness import run_feature_liveness_probes
+
+                    live = run_feature_liveness_probes(
+                        self.model,
+                        self.proteins,
+                        self.config.device,
+                        use_dehydron_barcode=bool(self.config.use_dehydron_barcode),
+                        dehydron_edge_barcode=bool(self.config.dehydron_edge_barcode),
+                        chem_edge_mp=bool(self.config.chem_edge_mp),
+                        containment_edge_mp=bool(self.config.containment_edge_mp),
+                        structural_disc_frozen=bool(self.config.structural_disc_frozen),
+                        fail_if_dead=bool(self.config.feature_liveness_fail_if_dead),
+                        min_epochs_before_fail=int(self.config.feature_liveness_min_epochs),
+                        epoch_in_phase=int(epoch),
+                    )
+                    if live.get("barcode"):
+                        bc = live["barcode"]
+                        for k, v in bc.items():
+                            if isinstance(v, (int, float)) and k.startswith("delta_"):
+                                log_metrics[f"liveness_barcode_{k}"] = float(v)
+                        log_metrics["liveness_barcode_alive"] = (
+                            1.0 if bc.get("alive") else 0.0
+                        )
+                    if live.get("barcode_edge"):
+                        bec = live["barcode_edge"]
+                        for k, v in bec.items():
+                            if isinstance(v, (int, float)) and k.startswith("delta_"):
+                                log_metrics[f"liveness_barcode_edge_{k}"] = float(v)
+                        log_metrics["liveness_barcode_edge_alive"] = (
+                            1.0 if bec.get("alive") else 0.0
+                        )
+                    if live.get("chem"):
+                        chem = live["chem"]
+                        for k, v in chem.items():
+                            if isinstance(v, (int, float)) and (
+                                k.startswith("delta_")
+                                or k.startswith("radial_var_")
+                                or k.startswith("n_")
+                            ):
+                                log_metrics[f"liveness_chem_{k}"] = float(v)
+                        if chem.get("skipped"):
+                            log_metrics["liveness_chem_skipped"] = 1.0
+                        else:
+                            log_metrics["liveness_chem_alive"] = (
+                                1.0 if chem.get("alive") else 0.0
+                            )
+                    if live.get("containment"):
+                        contain = live["containment"]
+                        for k, v in contain.items():
+                            if isinstance(v, (int, float)) and (
+                                k.startswith("delta_")
+                                or k.startswith("radial_var_")
+                                or k.startswith("n_")
+                            ):
+                                log_metrics[f"liveness_containment_{k}"] = float(v)
+                        if contain.get("skipped"):
+                            log_metrics["liveness_containment_skipped"] = 1.0
+                        else:
+                            log_metrics["liveness_containment_alive"] = (
+                                1.0 if contain.get("alive") else 0.0
+                            )
+                    if live.get("mp"):
+                        mp = live["mp"]
+                        log_metrics["liveness_mp_alive"] = 1.0 if mp.get("alive") else 0.0
+                    if not live.get("ok", True) and self.config.feature_liveness_fail_if_dead:
+                        raise RuntimeError(
+                            "Feature liveness probe failed — barcode/MP/chem/containment "
+                            "channel is a no-op. "
+                            f"Report: {live}"
+                        )
                 from science.training.stage_a_stop import (
                     check_stage_a_inference_stop,
                     format_stop_message,

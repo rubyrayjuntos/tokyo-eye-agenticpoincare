@@ -545,6 +545,60 @@ train-v65-dbh-full: ## Dehydron barcode ablation — scalars + binned (precomput
 		--save-epoch-snapshots
 	@echo "DBH ablation full complete. Run: checkpoints/v65/runs/$(or $(RUN_ID),dbh_ablation_full)"
 
+# Path B hierarchical containment: matched Stage A-12 cold arms on chem-MVP parent stack.
+# Baseline = chem on, no containment; Path B = same + contain_up/down (+2 radial MLPs).
+train-v66-containment-baseline: ## Containment matched baseline: chem stack, no containment (Stage A-12 cold)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),containment_baseline_chem_stage_a12_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),1) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--epochs $(or $(EPOCHS),20) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--chem-edge-mp \
+		--phase 1 \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "Containment baseline complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),containment_baseline_chem_stage_a12_cold_v1)"
+
+train-v66-containment-pathb: ## Containment Path B cold: chem + contain_up/down (Stage A-12; matched vs baseline)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),containment_pathb_stage_a12_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),1) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--epochs $(or $(EPOCHS),20) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--chem-edge-mp \
+		--containment-edge-mp \
+		--phase 1 \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "Containment Path B cold complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),containment_pathb_stage_a12_cold_v1)"
+	@echo "Gate order: isolated-seed → liveness → oversmoothing-at-root → flow-influence (ablation.md)"
+
 run-9est-pipeline: ## Re-run discovery pathway on ingested 9EST (science container)
 	@docker compose exec -T science python -c "import urllib.request,json; print(json.dumps(json.load(urllib.request.urlopen(urllib.request.Request('http://localhost:8001/compute/pipeline', data=json.dumps({'structure_id':'9est'}).encode(), headers={'Content-Type':'application/json'}, method='POST'))), indent=2))"
 

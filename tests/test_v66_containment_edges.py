@@ -353,3 +353,45 @@ def test_empty_containment_forward_no_nan() -> None:
         assert torch.isfinite(out[key]).all(), key
     for ukey, utensor in out["uncertainty"].items():
         assert torch.isfinite(utensor).all(), f"uncertainty.{ukey}"
+
+
+def test_load_checkpoint_restores_containment_num_relations(tmp_path: Path) -> None:
+    """Save tiny containment-on checkpoint; reload must restore num_relations=9."""
+    from science.training.gnn_lineage import load_model_from_checkpoint
+
+    with isolated_torch_seed(123):
+        model = GOSPConeMapperV66(
+            node_dim=3,
+            hidden=32,
+            num_layers=1,
+            num_experts=2,
+            role_edge_mp=True,
+            chem_edge_mp=True,
+            containment_edge_mp=True,
+            init_seed=123,
+        )
+    ckpt_path = tmp_path / "containment_tiny.pt"
+    torch.save(
+        {
+            "model_state_dict": model.state_dict(),
+            "architecture": {
+                "version": "v6.6",
+                "node_dim": 3,
+                "hidden": 32,
+                "num_experts": 2,
+                "role_edge_mp": True,
+                "chem_edge_mp": True,
+                "containment_edge_mp": True,
+            },
+            "training_config": {
+                "gnn_lineage": "v6.6",
+                "role_edge_mp": True,
+                "chem_edge_mp": True,
+                "containment_edge_mp": True,
+            },
+        },
+        ckpt_path,
+    )
+    loaded = load_model_from_checkpoint(ckpt_path, "cpu", lineage_id="v6.6")
+    assert getattr(loaded, "containment_edge_mp", False) is True
+    assert len(loaded.convs[0].radial_mlps) == NUM_ROLE_RELATIONS_WITH_CONTAINMENT
