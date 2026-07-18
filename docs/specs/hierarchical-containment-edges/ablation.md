@@ -79,3 +79,4 @@ No pooling. Per-structure only. Disc layer reported but **not** deciding
 | Checkpoint reload (`num_relations=9`) | **Tested** — `radial_mlps.7/8` sniff + metadata in `test_load_checkpoint_restores_containment_num_relations` |
 | Stage-runner liveness wiring | **Wired** — `liveness_containment_*` MLflow metrics on `--containment-edge-mp` runs |
 | Oversmoothing-at-root (Task 8 T1c parent) | **Diagnostic landed** — `t1c_containment_parent_oversmooth.py` + unit tests; cold-run grade **pending** |
+| Flow-influence residue slice (Task 9) | **Landed** — `jacobian_flow_influence.py` honors `n_residue_nodes`; primary asymmetry score **pending cold arms** |

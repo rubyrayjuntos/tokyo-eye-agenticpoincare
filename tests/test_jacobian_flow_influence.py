@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+import torch
+from torch_geometric.data import Data
 
 from experiments.diagnostics.jacobian_flow_influence import (
     ASYMMETRY_FLOOR,
@@ -17,7 +19,6 @@ from science.dtie.common.classical_network_metrics import (
     build_ca_contact_graph,
     classical_network_metrics,
 )
-import torch
 
 
 def test_safe_norm_sq_floors_near_zero() -> None:
@@ -108,3 +109,59 @@ def test_structure_holds_and_stage_a12_verdict_floors() -> None:
     v = aggregate_stage_a12_verdict(structs)
     assert v["n_holds"] == 10
     assert v["outcome"] == "win_graph_scaffolded_flow"
+
+
+def test_jacobian_probe_node_count_honors_n_residue_nodes() -> None:
+    from experiments.diagnostics.jacobian_flow_influence import jacobian_probe_node_count
+
+    n_res = 4
+    data = Data(x=torch.randn(n_res + 1, 3))
+    data.n_residue_nodes = n_res
+    data.n_parent_nodes = 1
+    assert jacobian_probe_node_count(data) == n_res
+    assert jacobian_probe_node_count(data, {"n_residues": 99}) == n_res
+
+
+class _MockFlowGNN(torch.nn.Module):
+    """Minimal GNN stub: encoder_h = data.x[:, :hidden] for Jacobian hooks."""
+
+    def __init__(self, hidden: int = 4) -> None:
+        super().__init__()
+        self.hidden = hidden
+        self.radial_head = torch.nn.Linear(hidden, 1, bias=False)
+        torch.nn.init.ones_(self.radial_head.weight)
+
+    def forward(self, data: Data) -> dict[str, torch.Tensor]:
+        enc = data.x[:, : self.hidden]
+        if enc.shape[1] < self.hidden:
+            enc = torch.cat(
+                [enc, enc.new_zeros(enc.shape[0], self.hidden - enc.shape[1])],
+                dim=1,
+            )
+        _ = self.radial_head(enc)
+        return {"hyp_projections_2d": enc[:, :2]}
+
+
+def test_compute_influence_matrix_excludes_parent_nodes() -> None:
+    from experiments.diagnostics.jacobian_flow_influence import compute_influence_matrix
+
+    n_res = 3
+    hidden = 4
+    data = Data(
+        x=torch.randn(n_res + 1, hidden, dtype=torch.float64) + 1.0,
+        edge_index=torch.zeros(2, 0, dtype=torch.long),
+    )
+    data.n_residue_nodes = n_res
+    data.n_parent_nodes = 1
+    model = _MockFlowGNN(hidden=hidden).double()
+    report = compute_influence_matrix(
+        model,
+        data,
+        layer="encoder_h",
+        device="cpu",
+        prot={"n_residues": n_res},
+    )
+    assert report["n_residues"] == n_res
+    assert report["n_total_nodes"] == n_res + 1
+    assert report["influence"].shape == (n_res, n_res)
+    assert len(report["centralities"]["out"]) == n_res

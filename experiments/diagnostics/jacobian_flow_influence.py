@@ -26,7 +26,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from experiments.training.v6.train_loop import prepare_training_batch
+from experiments.training.v6.train_loop import prepare_training_batch, residue_node_count
 from science.dtie.common.classical_network_metrics import classical_network_metrics
 from science.training.gnn_lineage import load_model_from_checkpoint
 
@@ -172,14 +172,27 @@ def _capture_layers(
     return handles, captured
 
 
+def jacobian_probe_node_count(
+    data: Any,
+    prot: dict[str, Any] | None = None,
+) -> int:
+    """Residue count for Jacobian / classical GT pools (excludes Path B parents)."""
+    return residue_node_count(data, prot)
+
+
 def compute_influence_matrix(
     model: nn.Module,
     data: Any,
     *,
     layer: LayerName,
     device: str,
+    prot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Full N×N influence matrix for one layer via N backward passes.
+
+    When ``data.n_residue_nodes`` (or ``prot["n_residues"]``) is set, the probe
+    pool and matrix are restricted to leaf residues ``0:n_residue_nodes`` so
+    Path B parent rows never enter asymmetry or classical GT correlation.
 
     Excludes NaN/Inf entries rather than zero-filling. Flags near-origin nodes.
     """
@@ -214,7 +227,13 @@ def compute_influence_matrix(
         # Should already be float64 if model is double; keep reference for grad.
         pass
 
-    n = int(layer_t.shape[0])
+    n_total = int(layer_t.shape[0])
+    n = jacobian_probe_node_count(data, prot)
+    if n > n_total:
+        raise ValueError(
+            f"n_residue_nodes={n} exceeds layer rows {n_total} for {layer}"
+        )
+    layer_t = layer_t[:n]
     influence = np.full((n, n), np.nan, dtype=np.float64)
     excluded: list[dict[str, Any]] = []
     norms = layer_t.detach().norm(dim=-1).cpu().numpy()
@@ -312,6 +331,7 @@ def compute_influence_matrix(
     return {
         "layer": layer,
         "n_residues": n,
+        "n_total_nodes": n_total,
         "influence": influence,
         "centralities": {
             "out": cents["out"],
@@ -358,8 +378,13 @@ def evaluate_structure(
     ca = prot.get("ca_coords")
     if ca is None:
         raise ValueError(f"{pdb_id}: missing ca_coords")
-    ca_np = ca.detach().cpu().numpy() if torch.is_tensor(ca) else np.asarray(ca)
+    ca_np_full = ca.detach().cpu().numpy() if torch.is_tensor(ca) else np.asarray(ca)
 
+    model = load_model_from_checkpoint(checkpoint, device)
+    model.eval()
+    data = prepare_training_batch(model, prot, device)
+    n_res = jacobian_probe_node_count(data, prot)
+    ca_np = ca_np_full[:n_res] if ca_np_full.shape[0] > n_res else ca_np_full
     classical = classical_network_metrics(ca_np)
     # Serialize classical arrays as lists for JSON.
     classical_json = {
@@ -367,17 +392,15 @@ def evaluate_structure(
         for k, v in classical.items()
     }
 
-    model = load_model_from_checkpoint(checkpoint, device)
-    model.eval()
-    data = prepare_training_batch(model, prot, device)
-
     layer_reports: dict[str, Any] = {}
     for layer in layers:
         # Fresh batch per layer so prior autograd teardown cannot poison the next.
         model = load_model_from_checkpoint(checkpoint, device)
         model.eval()
         data = prepare_training_batch(model, prot, device)
-        report = compute_influence_matrix(model, data, layer=layer, device=device)
+        report = compute_influence_matrix(
+            model, data, layer=layer, device=device, prot=prot
+        )
         corr = None
         if report["liveness"]["flow_centrality_nondegenerate"]:
             corr = correlate_with_classical(
