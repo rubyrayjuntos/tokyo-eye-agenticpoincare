@@ -85,6 +85,17 @@ class CheckpointManager:
                 "gate_disc_scale": getattr(model, "gate_disc_scale", 1.0),
                 "disc_radial_source": getattr(model, "disc_radial_source", "mobius"),
                 "topology_only_gate": getattr(getattr(model, "gate", None), "topology_only", False),
+                "gate_include_sasa": bool(
+                    getattr(model, "gate_include_sasa", False)
+                    or getattr(getattr(model, "gate", None), "include_sasa", False)
+                ),
+                "thermo_edge_message_gate": getattr(
+                    model, "thermo_edge_message_gate", False
+                ),
+                "multi_rel_edge_mp": getattr(model, "multi_rel_edge_mp", False),
+                "role_edge_mp": getattr(model, "role_edge_mp", False),
+                "chem_edge_mp": getattr(model, "chem_edge_mp", False),
+                "containment_edge_mp": getattr(model, "containment_edge_mp", False),
             },
         }
         torch.save(payload, path)
@@ -127,6 +138,17 @@ class CheckpointManager:
                 "expert_depth_decouple": getattr(model, "expert_depth_decouple", False),
                 "structure_gate": getattr(model, "structure_gate", False),
                 "topology_only_gate": getattr(getattr(model, "gate", None), "topology_only", False),
+                "gate_include_sasa": bool(
+                    getattr(model, "gate_include_sasa", False)
+                    or getattr(getattr(model, "gate", None), "include_sasa", False)
+                ),
+                "thermo_edge_message_gate": getattr(
+                    model, "thermo_edge_message_gate", False
+                ),
+                "multi_rel_edge_mp": getattr(model, "multi_rel_edge_mp", False),
+                "role_edge_mp": getattr(model, "role_edge_mp", False),
+                "chem_edge_mp": getattr(model, "chem_edge_mp", False),
+                "containment_edge_mp": getattr(model, "containment_edge_mp", False),
             },
         }
         torch.save(payload, path)
@@ -178,6 +200,10 @@ class CheckpointManager:
                 "gate_gumbel": getattr(model, "gate_gumbel", False),
                 "gate_disc_scale": getattr(model, "gate_disc_scale", 1.0),
                 "topology_only_gate": getattr(getattr(model, "gate", None), "topology_only", False),
+                "gate_include_sasa": bool(
+                    getattr(model, "gate_include_sasa", False)
+                    or getattr(getattr(model, "gate", None), "include_sasa", False)
+                ),
                 "legacy_disc_projection": legacy,
                 "disc_projection_path": getattr(
                     model, "disc_projection_path", "post_routing" if legacy else "pre_routing"
@@ -188,6 +214,13 @@ class CheckpointManager:
                 ),
                 "radial_angular_recombine": getattr(model, "radial_angular_recombine", "multiply"),
                 "disc_radial_source": getattr(model, "disc_radial_source", "mobius"),
+                "thermo_edge_message_gate": getattr(
+                    model, "thermo_edge_message_gate", False
+                ),
+                "multi_rel_edge_mp": getattr(model, "multi_rel_edge_mp", False),
+                "role_edge_mp": getattr(model, "role_edge_mp", False),
+                "chem_edge_mp": getattr(model, "chem_edge_mp", False),
+                "containment_edge_mp": getattr(model, "containment_edge_mp", False),
             }
         torch.save(payload, path)
         return path

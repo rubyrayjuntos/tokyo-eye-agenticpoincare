@@ -43,6 +43,26 @@ class LossCoeffs(BaseModel):
     disc_eff_rank_min: float = 1.6
     disc_batch_diversity_coeff: float = 0.0
     disc_batch_min_pairwise_dist: float = 0.035
+    rim_angular_repulsion_coeff: float = 0.0
+    rim_angular_min_r: float = 0.35
+    rim_angular_min_sep: float = 0.12
+    rim_angular_spatial_exempt: float = 8.0
+    rim_pc2_floor_coeff: float = 0.0
+    rim_pc2_min_r: float = 0.35
+    rim_pc2_min_std: float = 0.06
+    # Soft angular-bin coverage: penalize under-filled θ sectors (empty-wedge pressure).
+    disc_angular_coverage_coeff: float = 0.0
+    disc_angular_coverage_min_r: float = 0.12
+    disc_angular_coverage_n_bins: int = 12
+    disc_angular_coverage_min_bin_frac: float = 0.40
+    disc_angular_coverage_temperature: float = 0.20
+    # Anti-barrier: untie crest experts from shared θ rays / recruit into empty bins.
+    expert_angular_diversity_coeff: float = 0.0
+    expert_angular_max_R: float = 0.55
+    expert_angular_min_mean_sep: float = 0.55
+    expert_sector_recruit_coeff: float = 0.0
+    expert_sector_recruit_min_bin_frac: float = 0.25
+    geometric_angular_fidelity_coeff: float = 0.0
     disc_path_align_coeff: float = 0.0
     disc_thickness_floor_coeff: float = 0.0
     disc_thickness_floor_min: float = 0.025
@@ -62,10 +82,26 @@ class LossCoeffs(BaseModel):
     routing_load_floor_min: float = 0.05
     routing_load_ceiling_coeff: float = 0.0
     routing_load_ceiling_max: float = 0.45
+    # Nearest-pair prototype repulsion: relu(m − min_{i<j} d_H(p_i, p_j)).
+    prototype_repulsion_coeff: float = 0.0
+    prototype_repulsion_margin: float = 0.25
+    # Full-bank Gram logdet hinge: ReLU(τ − logdet(G+εI))² (pre-reg GRAM_COND_*).
+    prototype_gram_logdet_coeff: float = 0.0
+    prototype_gram_logdet_tau: float = -1.15
+    # Majority-conditional committed-share hinge (local monopole; STE hard share).
+    majority_committed_share_coeff: float = 0.0
+    majority_committed_share_tau: float = 0.56
+    majority_committed_share_commit_thr: float = 0.60
+    majority_committed_share_min_n: int = 20
+    # Core-only majority hinge (dehydron=0 eligible; pre-reg CORE_MAJORITY_SPLIT_*).
+    core_majority_committed_share_coeff: float = 0.0
+    core_majority_committed_share_tau: float = 0.56
+    core_majority_committed_share_commit_thr: float = 0.60
+    core_majority_committed_share_min_n: int = 20
     pocket_bce_coeff: float = 0.0
     interface_bce_coeff: float = 0.0
     leak_bce_coeff: float = 0.0
-    cone_target_mode: Literal["rho_wrap", "tau_dehydron_rim"] = "rho_wrap"
+    cone_target_mode: Literal["rho_wrap", "tau_dehydron_rim", "rho_rim"] = "rho_wrap"
     v3_aleatoric_shaping_coeff: float = 0.0
     w_var_penalty: float = 2.8
     w_aleatoric_hinge: float = 4.8
@@ -101,22 +137,38 @@ class PhaseConfig(BaseModel):
     disc_depth_scale_target_final: float | None = None
     min_probe_r_depth_sasa: float | None = None  # abort if r(d,s) below for 2 epochs
     min_probe_r_depth_sasa_save: float | None = None  # ineligible v6_best if below
-    min_disc_sigma2_sigma1_save: float | None = None  # ineligible v6_best if disc streak
+    min_disc_sigma2_sigma1_save: float | None = (
+        None  # ineligible v6_best if disc streak
+    )
     min_disc_r_std_save: float | None = None  # ineligible if radial spread collapsed
-    min_disc_line_thickness_save: float | None = None  # ineligible if rank-1 streak (visual)
+    min_disc_line_thickness_save: float | None = (
+        None  # ineligible if rank-1 streak (visual)
+    )
     min_disc_effective_rank_save: float | None = None
     # P2 bridge: relaxed routing save ceiling ramp (saturated P1 → standard P2)
     p2_bridge: bool = False
     routing_save_ceiling_start: float | None = None
     routing_save_ceiling_final: float | None = None
     routing_save_ceiling_ramp_epochs: int = 0
-    expert_dropout_ramp_epochs: int = 0  # hold dropout at 0, then ramp to expert_dropout_p
-    angular_ramp_epochs: int = 0  # P2 bridge angular/domain ramp length (overrides default P2 warmup)
+    expert_dropout_ramp_epochs: int = (
+        0  # hold dropout at 0, then ramp to expert_dropout_p
+    )
+    angular_ramp_epochs: int = (
+        0  # P2 bridge angular/domain ramp length (overrides default P2 warmup)
+    )
     path_alignment_train: bool = False  # only train disc projection + gate disc readout
-    rec_ablation_train: bool = False  # only train radial_angular_fusion + hyp_proj_head_2d
-    projection_recovery_train: bool = False  # train hyp_proj_head_2d + gate disc readout
-    fusion_path_recovery_train: bool = False  # angular + fusion + disc proj + gate disc readout
-    lift_path_recovery_train: bool = False  # radial + angular + fusion + disc (fix x_hyp wedge)
+    rec_ablation_train: bool = (
+        False  # only train radial_angular_fusion + hyp_proj_head_2d
+    )
+    projection_recovery_train: bool = (
+        False  # train hyp_proj_head_2d + gate disc readout
+    )
+    fusion_path_recovery_train: bool = (
+        False  # angular + fusion + disc proj + gate disc readout
+    )
+    lift_path_recovery_train: bool = (
+        False  # radial + angular + fusion + disc (fix x_hyp wedge)
+    )
     epistemic_decoupling_ramp_epochs: int = 0
     epistemic_bf_align_coeff_final: float | None = None
     epistemic_sasa_pen_coeff_final: float | None = None
@@ -141,7 +193,9 @@ class PhaseConfig(BaseModel):
     # MoE save gates (slim SSOT v2): eval-mode hard routing + starvation
     min_eval_routing_fraction_save: float | None = None
     max_eval_routing_fraction_save: float | None = None
-    max_expert_starvation_save: int | None = None  # reject if starve > this (0 → starve≥1)
+    max_expert_starvation_save: int | None = (
+        None  # reject if starve > this (0 → starve≥1)
+    )
     routing_entropy_min_save: float | None = None
 
 
@@ -157,7 +211,9 @@ def routing_save_max_for_epoch(
     from science.training.checkpoint_score import ROUTING_ENTROPY_SAVE_MAX
     from science.training.routing_gate_bounds import scale_routing_entropy_ceiling
 
-    start = scale_routing_entropy_ceiling(phase_cfg.routing_save_ceiling_start, num_experts)
+    start = scale_routing_entropy_ceiling(
+        phase_cfg.routing_save_ceiling_start, num_experts
+    )
     final_raw = phase_cfg.routing_save_ceiling_final or ROUTING_ENTROPY_SAVE_MAX
     final = scale_routing_entropy_ceiling(final_raw, num_experts)
     n = phase_cfg.routing_save_ceiling_ramp_epochs or phase_cfg.epochs
@@ -194,12 +250,15 @@ class TrainingConfig(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
 
     model_version: str = "GOSPConeMapper-v6"
-    gnn_lineage: Literal["v6", "v6.5"] = "v6"
+    gnn_lineage: Literal["v6", "v6.5", "v6.6"] = "v6"
     device: str = "cpu"
     lr: float = 5e-4
     hidden: int = 128
     num_layers: int = 6
     num_experts: int = 4
+    # When set (from --seed), gate/prototype bank init uses an isolated RNG keyed
+    # only by this value — stable across node_emb width (3 vs 4). See isolated_init.py.
+    init_seed: int | None = None
     output_dir: Path = Path("checkpoints/v6/runs")
     pdb_dir: Path = Path("/tmp/dtie_pdb_cache")
     corpus_manifest: Path = Path("manifests/v6_corpus_120.json")
@@ -211,6 +270,25 @@ class TrainingConfig(BaseModel):
     max_proteins: int | None = None
     max_residues: int = STAGE_A_MAX_RESIDUES
     topology_only_gate: bool = False
+    gate_include_sasa: bool = False
+    # Prototype nearest-pair repulsion (pre-reg PROTO_SEP_*); applied to all phases when >0.
+    prototype_repulsion_coeff: float = 0.0
+    prototype_repulsion_margin: float = 0.25
+    # Full-bank Gram logdet hinge (pre-reg GRAM_COND_*); applied to all phases when >0.
+    prototype_gram_logdet_coeff: float = 0.0
+    prototype_gram_logdet_tau: float = -1.15
+    # Majority-conditional committed-share hinge (pre-reg MAJORITY_SPLIT_*).
+    majority_committed_share_coeff: float = 0.0
+    majority_committed_share_tau: float = 0.56
+    majority_committed_share_commit_thr: float = 0.60
+    majority_committed_share_min_n: int = 20
+    # Core-only majority hinge (pre-reg CORE_MAJORITY_SPLIT_*).
+    core_majority_committed_share_coeff: float = 0.0
+    core_majority_committed_share_tau: float = 0.56
+    core_majority_committed_share_commit_thr: float = 0.60
+    core_majority_committed_share_min_n: int = 20
+    # Core capacity quotas (pre-reg CORE_QUOTA_*); 0 = off.
+    core_capacity_quota_tau: float = 0.0
     hyperbolic_gate: bool = True
     hyperbolic_expert_mix: bool = False
     expert_dropout_p: float = 0.15
@@ -307,6 +385,62 @@ class TrainingConfig(BaseModel):
     residue_stage2_lr: float = 1e-4
     residue_stage2_epochs: int | None = None
     master_cold_lineage: bool = False
+    v66_feeler_lineage: bool = False
+    v66_feeler_angular_lift: bool = False
+    v66_feeler_coupling: bool = False
+    v66_feeler_no_exclusivity: bool = False
+    v66_feeler_dehydron_angular: bool = False
+    v66_feeler_rim_decouple: bool = False
+    v66_feeler_p3_geom_edges: bool = False
+    v66_feeler_p3_geom: bool = False
+    v66_feeler_p3_geom_half_stack: bool = False
+    v66_feeler_rim_fanout_model: bool = False
+    v66_feeler_rim_fanout_cold_curriculum: bool = False
+    v66_feeler_rim_fanout_polish: bool = False
+    v66_feeler_rim_fanout_angular: bool = False
+    v66_feeler_rim_fanout_angular_v2: bool = False
+    v66_feeler_rim_fanout_radius: bool = False
+    v66_feeler_rim_fanout_coverage: bool = False
+    v66_feeler_rim_fanout_antibarrier: bool = False
+    v66_feeler_rim_fanout_expert_arc: bool = False
+    v66_feeler_geom_angular_prior: bool = False
+    geometric_angular_prior: bool = False
+    geometric_angular_kappa: float = 1.0
+    geometric_angular_alpha: float = 0.7853981633974483  # π/4
+    # S4: hyp disc k-NN for MP during training (no SSOT freeze). Exclusive with role_edge_mp.
+    hyperbolic_mp_graph: bool = False
+    # T1a: per-channel z-score of node features before node_emb (corpus-fit mean/std).
+    input_feature_zscore: bool = False
+    # T1a optional: replace binary tau_flag with |ρ−TAU| before z-score.
+    replace_tau_with_abs_dist: bool = False
+    # Gate inverse-temperature: init softplus(logit_scale) target (None = default  softplus(1)≈1.31).
+    gate_logit_softplus_init: float | None = None
+    # Minimum softplus(logit_scale) during forward (None = no floor).
+    gate_logit_softplus_floor: float | None = None
+    # PDB IDs forced first each epoch (spread anchors); empty = corpus order.
+    epoch_anchor_pdb_ids: list[str] = Field(default_factory=list)
+    rim_fanout_forward: bool = False
+    rim_fanout_strength: float = 0.12
+    rim_fanout_min_r: float = 0.35
+    spoke_edge_scale: float = 1.0
+    ribbon_edge_scale: float = 1.0
+    # Training-only: append thermo affinity to edge_attr (type one-hots + ρ).
+    # Does not touch GraphBuilder / Normalizer / fact_graph_edge.
+    thermo_edge_features: bool = False
+    # Training-only: per-relation radial MP (generic / wrapped / dehydron).
+    # Requires thermo_edge_features for type labels; supersedes thermo gate.
+    multi_rel_edge_mp: bool = False
+    # Training-only: replace Cα contact graph with packing/dehydron/spoke/ribbon[/coupling].
+    role_edge_mp: bool = False
+    role_coupling_edges: bool = False
+    # Training-only Chem-MVP: append disulf/covale rows from fact_covalent_bond.
+    # Requires role_edge_mp; does not write Normalizer / fact_graph_edge.
+    chem_edge_mp: bool = False
+    # Training-only Path B: SSE parent nodes + contain_up/down relations (9 total).
+    # Requires chem_edge_mp; does not write Normalizer / fact_graph_edge.
+    containment_edge_mp: bool = False
+    dehydron_exclusivity: bool = True
+    dehydron_angular_scale: float = 1.0
     dehydron_rim_recovery: bool = False
     dehydron_rim_recovery_lr: float = 2e-5
     topology_routing_recovery: bool = False
@@ -323,6 +457,14 @@ class TrainingConfig(BaseModel):
     use_dehydron_barcode: bool = False
     use_binned_dehydron: bool = False
     dehydron_barcode_dir: Path | None = None
+    # Local witness barcode on dehydron role edges (not node-global broadcast).
+    dehydron_edge_barcode: bool = False
+    # Guardrails: refuse dead barcode+slim combos unless explicitly allowed.
+    allow_dead_feature_channel: bool = False
+    feature_liveness_probe: bool = False
+    feature_liveness_fail_if_dead: bool = True
+    feature_liveness_min_epochs: int = 2
+    disc_layout_source: str | None = None
 
     def model_post_init(self, __context: object) -> None:
         self.output_dir = Path(self.output_dir)
@@ -337,6 +479,8 @@ class TrainingConfig(BaseModel):
 
     def phase_preset_name(self) -> str | None:
         """Stable curriculum preset id for MLflow tags."""
+        if self.v66_feeler_lineage:
+            return "v66_feeler_p1"
         if self.slim_moe_structural_ssot:
             return "slim_moe_structural_ssot"
         if self.master_cold_lineage:
@@ -444,7 +588,11 @@ def default_v6_phases(
     phase2_lr: float | None = None,
 ) -> list[PhaseConfig]:
     """Three-phase MoE specialization schedule per v6-moe spec."""
-    p2_lr = phase2_lr if phase2_lr is not None else (base_lr * 0.2 if gentle_phase2 else base_lr)
+    p2_lr = (
+        phase2_lr
+        if phase2_lr is not None
+        else (base_lr * 0.2 if gentle_phase2 else base_lr)
+    )
     p2_radial_warmup = 5 if gentle_phase2 else 0
     return [
         PhaseConfig(
@@ -541,6 +689,107 @@ def apply_routing_load_floor_phase2(
     return out
 
 
+def apply_prototype_nearest_pair_repulsion(
+    phases: list[PhaseConfig],
+    *,
+    coeff: float,
+    margin: float = 0.25,
+) -> list[PhaseConfig]:
+    """Enable nearest-pair prototype hyp-distance hinge on every phase (one coeff, no anneal)."""
+    if coeff <= 0:
+        return phases
+    out: list[PhaseConfig] = []
+    for phase_cfg in phases:
+        new_coeffs = phase_cfg.coeffs.model_copy(
+            update={
+                "prototype_repulsion_coeff": float(coeff),
+                "prototype_repulsion_margin": float(margin),
+            }
+        )
+        out.append(phase_cfg.model_copy(update={"coeffs": new_coeffs}))
+    return out
+
+
+def apply_prototype_gram_logdet_hinge(
+    phases: list[PhaseConfig],
+    *,
+    coeff: float,
+    tau_logdet: float = -1.15,
+) -> list[PhaseConfig]:
+    """Enable saturating full-bank Gram logdet hinge on every phase (one coeff)."""
+    if coeff <= 0:
+        return phases
+    out: list[PhaseConfig] = []
+    for phase_cfg in phases:
+        new_coeffs = phase_cfg.coeffs.model_copy(
+            update={
+                "prototype_gram_logdet_coeff": float(coeff),
+                "prototype_gram_logdet_tau": float(tau_logdet),
+            }
+        )
+        out.append(phase_cfg.model_copy(update={"coeffs": new_coeffs}))
+    return out
+
+
+def apply_majority_committed_share_hinge(
+    phases: list[PhaseConfig],
+    *,
+    coeff: float,
+    tau: float = 0.56,
+    commit_thr: float = 0.60,
+    min_n: int = 20,
+) -> list[PhaseConfig]:
+    """Enable majority-conditional committed-share hinge on every phase (one coeff)."""
+    if coeff <= 0:
+        return phases
+    out: list[PhaseConfig] = []
+    for phase_cfg in phases:
+        new_coeffs = phase_cfg.coeffs.model_copy(
+            update={
+                "majority_committed_share_coeff": float(coeff),
+                "majority_committed_share_tau": float(tau),
+                "majority_committed_share_commit_thr": float(commit_thr),
+                "majority_committed_share_min_n": int(min_n),
+            }
+        )
+        out.append(phase_cfg.model_copy(update={"coeffs": new_coeffs}))
+    return out
+
+
+def apply_core_majority_committed_share_hinge(
+    phases: list[PhaseConfig],
+    *,
+    coeff: float,
+    tau: float = 0.56,
+    commit_thr: float = 0.60,
+    min_n: int = 20,
+) -> list[PhaseConfig]:
+    """Enable core-only (dehydron=0) committed-share hinge on every phase."""
+    if coeff <= 0:
+        return phases
+    out: list[PhaseConfig] = []
+    for phase_cfg in phases:
+        new_coeffs = phase_cfg.coeffs.model_copy(
+            update={
+                "core_majority_committed_share_coeff": float(coeff),
+                "core_majority_committed_share_tau": float(tau),
+                "core_majority_committed_share_commit_thr": float(commit_thr),
+                "core_majority_committed_share_min_n": int(min_n),
+            }
+        )
+        out.append(phase_cfg.model_copy(update={"coeffs": new_coeffs}))
+    return out
+
+
+def apply_core_capacity_quota_config(
+    config: TrainingConfig,
+    *,
+    tau_cap: float = 0.40,
+) -> TrainingConfig:
+    """Enable train-time core capacity quotas (pre-reg CORE_QUOTA_*)."""
+    return config.model_copy(update={"core_capacity_quota_tau": float(tau_cap)})
+
+
 def dehydron_rim_recovery_phase_config(
     lr: float = 2e-5,
     epochs: int = 12,
@@ -585,7 +834,11 @@ def topology_routing_recovery_phase_config(
     routing_save_ceiling_ramp_epochs: int | None = None,
 ) -> PhaseConfig:
     """P2 extension: Gumbel routing + expert depth decouple + structure gate."""
-    ramp = routing_save_ceiling_ramp_epochs if routing_save_ceiling_ramp_epochs is not None else epochs
+    ramp = (
+        routing_save_ceiling_ramp_epochs
+        if routing_save_ceiling_ramp_epochs is not None
+        else epochs
+    )
     return PhaseConfig(
         phase=2,
         name="Topology P2 routing recovery",
@@ -658,7 +911,11 @@ def topology_gate_disc_recovery_phase_config(
     routing_save_ceiling_ramp_epochs: int | None = None,
 ) -> PhaseConfig:
     """Gate + light disc projection touch-up; depth biases frozen (post route_v3)."""
-    ramp = routing_save_ceiling_ramp_epochs if routing_save_ceiling_ramp_epochs is not None else epochs
+    ramp = (
+        routing_save_ceiling_ramp_epochs
+        if routing_save_ceiling_ramp_epochs is not None
+        else epochs
+    )
     return PhaseConfig(
         phase=2,
         name="Topology gate + disc recovery",
@@ -723,8 +980,12 @@ def topology_crescent_recovery_phase_config(
 
     Trains angular_head + fusion + hyp_proj_2d (+ gate disc readout); radial frozen.
     Strong PC2/thickness/eff_rank floors spread mass perpendicular to the streak.
-  """
-    ramp = routing_save_ceiling_ramp_epochs if routing_save_ceiling_ramp_epochs is not None else epochs
+    """
+    ramp = (
+        routing_save_ceiling_ramp_epochs
+        if routing_save_ceiling_ramp_epochs is not None
+        else epochs
+    )
     base = p2_disc_proj_recovery_v3_phase_config(
         lr=lr,
         epochs=epochs,
@@ -812,7 +1073,9 @@ def apply_master_cold_dehydron_phases(phases: list[PhaseConfig]) -> list[PhaseCo
                     "disc_pc_repulsion_coeff": max(
                         phase_cfg.coeffs.disc_pc_repulsion_coeff, 0.35
                     ),
-                    "disc_eff_rank_coeff": max(phase_cfg.coeffs.disc_eff_rank_coeff, 0.4),
+                    "disc_eff_rank_coeff": max(
+                        phase_cfg.coeffs.disc_eff_rank_coeff, 0.4
+                    ),
                 }
             )
         new_coeffs = phase_cfg.coeffs.model_copy(update=coeff_updates)
@@ -843,8 +1106,948 @@ def apply_master_cold_dehydron_config(config: TrainingConfig) -> TrainingConfig:
             "v2_teacher_checkpoint": None,
             "v2_teacher_depth_coeff": 0.0,
             "v2_teacher_epistemic_coeff": 0.0,
+            "structural_disc_frozen": False,
+            "disc_layout_source": "gnn_learned",
         }
     )
+
+
+def _v66_feeler_base_coeffs(**overrides: float | str) -> LossCoeffs:
+    """Minimal feeler whitelist — evidential/shell/epistemic/BCE off."""
+    base = dict(
+        evidential_coeff=0.0,
+        balance_coeff=0.05,
+        cone_coeff=0.30,
+        neighborhood_coeff=0.10,
+        angular_coeff=0.0,
+        domain_sep_2d_coeff=0.0,
+        domain_sep_3d_coeff=0.0,
+        cone_depth_anticollapse_coeff=0.50,
+        shell_corr_coeff=0.0,
+        shell_corr_depth_sasa_weight=0.0,
+        shell_corr_epi_sasa_weight=0.0,
+        shell_corr_proj_depth_weight=0.0,
+        shell_corr_disc_spread_weight=0.0,
+        shell_corr_disc_sasa_weight=0.0,
+        proj_violation_coeff=2.0,
+        disc_depth_scale_coeff=0.0,
+        disc_occupancy_coeff=0.35,
+        disc_occupancy_min_sigma_ratio=0.35,
+        disc_pc_repulsion_coeff=0.25,
+        disc_pc2_min_std=0.08,
+        disc_eff_rank_coeff=0.0,
+        disc_batch_diversity_coeff=0.0,
+        disc_path_align_coeff=0.0,
+        disc_thickness_floor_coeff=0.80,
+        disc_thickness_floor_min=0.022,
+        disc_origin_span_floor_coeff=0.0,
+        x_hyp_thickness_floor_coeff=0.0,
+        shell_floor_coeff=0.0,
+        epistemic_decoupling_coeff=0.0,
+        epi_ale_decorrelation_coeff=0.0,
+        epistemic_bf_align_coeff=0.0,
+        epistemic_sasa_pen_coeff=0.0,
+        epistemic_anticollapse_coeff=0.0,
+        routing_load_floor_coeff=0.0,
+        routing_load_ceiling_coeff=0.0,
+        pocket_bce_coeff=0.0,
+        interface_bce_coeff=0.0,
+        leak_bce_coeff=0.0,
+        v3_aleatoric_shaping_coeff=0.0,
+        cone_target_mode="rho_rim",
+    )
+    base.update(overrides)
+    return LossCoeffs(**base)
+
+
+def apply_v66_feeler_phases(
+    phases: list[PhaseConfig] | None = None,
+    *,
+    base_lr: float = 5e-4,
+    epochs: int = 20,
+    p2_epochs: int | None = None,
+    p3_epochs: int | None = None,
+    p4_epochs: int | None = None,
+) -> list[PhaseConfig]:
+    """v6.6 feeler curriculum: P1 radial → P2 angular → P3 edge barcode → P4 rim fan-out.
+
+    Expert timeout (share>45% → ban 1 epoch, all experts) is the anti-dominance
+    lever — routing floor/ceiling coeffs stay off.
+    """
+    del phases  # feeler replaces the curriculum entirely
+    p2_ep = p2_epochs if p2_epochs is not None else epochs
+    p3_ep = p3_epochs if p3_epochs is not None else epochs
+    p4_ep = p4_epochs if p4_epochs is not None else max(10, epochs // 2)
+    common = dict(
+        freeze_radial=False,
+        freeze_backbone=False,
+        freeze_gate=False,
+        expert_dropout_p=0.0,
+        expert_timeout_max_share=0.45,
+        expert_timeout_eligible_experts=None,
+        slim_moe_structural_ssot_train=False,
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        max_probe_r_epi_sasa_save=None,
+    )
+    return [
+        PhaseConfig(
+            phase=1,
+            name="Phase 1: v6.6 feeler (minimal losses, timeout@45%)",
+            epochs=epochs,
+            lr=base_lr,
+            freeze_angular=True,
+            coeffs=_v66_feeler_base_coeffs(),
+            **common,
+        ),
+        PhaseConfig(
+            phase=2,
+            name="Phase 2: v6.6 feeler (unfreeze angular, soft routing)",
+            epochs=p2_ep,
+            lr=base_lr * 0.5,
+            freeze_angular=False,
+            # Light angular — open disc occupancy without crushing router_H.
+            # Softer balance so experts can commit past ~25% soft share.
+            coeffs=_v66_feeler_base_coeffs(
+                balance_coeff=0.02,
+                cone_coeff=0.15,
+                neighborhood_coeff=0.15,
+                angular_coeff=0.10,
+                cone_depth_anticollapse_coeff=0.30,
+                disc_occupancy_coeff=0.45,
+                disc_pc_repulsion_coeff=0.35,
+            ),
+            **common,
+        ),
+        PhaseConfig(
+            phase=3,
+            name="Phase 3: v6.6 feeler (dehydron edge barcode, no disc occupancy)",
+            epochs=p3_ep,
+            lr=base_lr * 0.25,
+            freeze_angular=False,
+            # P2 recipe + local edge barcode; zero disc occupancy stack (crescent trap).
+            coeffs=_v66_feeler_base_coeffs(
+                balance_coeff=0.02,
+                cone_coeff=0.15,
+                neighborhood_coeff=0.15,
+                angular_coeff=0.10,
+                cone_depth_anticollapse_coeff=0.30,
+                disc_occupancy_coeff=0.0,
+                disc_pc_repulsion_coeff=0.0,
+                disc_thickness_floor_coeff=0.0,
+                disc_origin_span_floor_coeff=0.0,
+                disc_eff_rank_coeff=0.0,
+            ),
+            **common,
+        ),
+        PhaseConfig(
+            phase=4,
+            name="Phase 4: v6.6 feeler (rim fan-out, edge barcode)",
+            epochs=p4_ep,
+            lr=base_lr * 0.20,
+            freeze_angular=False,
+            # P3 recipe + rim-only angular/PC2 spread (no global disc occupancy).
+            coeffs=_v66_feeler_base_coeffs(
+                balance_coeff=0.02,
+                cone_coeff=0.15,
+                neighborhood_coeff=0.15,
+                angular_coeff=0.10,
+                cone_depth_anticollapse_coeff=0.30,
+                disc_occupancy_coeff=0.0,
+                disc_pc_repulsion_coeff=0.0,
+                disc_thickness_floor_coeff=0.0,
+                disc_origin_span_floor_coeff=0.0,
+                disc_eff_rank_coeff=0.0,
+                rim_angular_repulsion_coeff=0.25,
+                rim_angular_min_r=0.35,
+                rim_angular_min_sep=0.12,
+                rim_pc2_floor_coeff=0.15,
+                rim_pc2_min_r=0.35,
+                rim_pc2_min_std=0.06,
+            ),
+            **common,
+        ),
+    ]
+
+
+def v66_feeler_angular_lift_phase_config(
+    *,
+    lr: float = 1.25e-4,
+    epochs: int = 15,
+) -> PhaseConfig:
+    """v6.6 feeler: angular_lift + lift-path recovery; P3 recipe without disc occupancy."""
+    return PhaseConfig(
+        phase=5,
+        name="Phase 5: v6.6 feeler angular_lift (lift-path recovery, no disc occupancy)",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=True,
+        freeze_gate=True,
+        expert_dropout_p=0.0,
+        lift_path_recovery_train=True,
+        expert_timeout_max_share=0.45,
+        expert_timeout_eligible_experts=None,
+        slim_moe_structural_ssot_train=False,
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        max_probe_r_epi_sasa_save=None,
+        coeffs=_v66_feeler_base_coeffs(
+            balance_coeff=0.02,
+            cone_coeff=0.15,
+            neighborhood_coeff=0.15,
+            angular_coeff=0.10,
+            cone_depth_anticollapse_coeff=0.30,
+            disc_occupancy_coeff=0.0,
+            disc_pc_repulsion_coeff=0.0,
+            disc_thickness_floor_coeff=0.0,
+            disc_origin_span_floor_coeff=0.0,
+            disc_eff_rank_coeff=0.0,
+            x_hyp_thickness_floor_coeff=0.0,
+        ),
+    )
+
+
+def _v66_feeler_p3_coeffs() -> LossCoeffs:
+    return _v66_feeler_base_coeffs(
+        balance_coeff=0.02,
+        cone_coeff=0.15,
+        neighborhood_coeff=0.15,
+        angular_coeff=0.10,
+        cone_depth_anticollapse_coeff=0.30,
+        disc_occupancy_coeff=0.0,
+        disc_pc_repulsion_coeff=0.0,
+        disc_thickness_floor_coeff=0.0,
+        disc_origin_span_floor_coeff=0.0,
+        disc_eff_rank_coeff=0.0,
+    )
+
+
+def _v66_feeler_p3_geom_coeffs(*, stack_scale: float = 1.0) -> LossCoeffs:
+    """P3 geometry-fill recipe (angular span + 2D occupancy) from feeler_expand_23_p3_geom_v1."""
+    s = stack_scale
+    return _v66_feeler_base_coeffs(
+        balance_coeff=0.015,
+        cone_coeff=0.10,
+        neighborhood_coeff=0.10,
+        angular_coeff=0.15,
+        cone_depth_anticollapse_coeff=0.25,
+        disc_occupancy_coeff=0.65 * s,
+        disc_occupancy_min_sigma_ratio=0.40,
+        disc_pc_repulsion_coeff=0.50 * s,
+        disc_pc2_min_std=0.10,
+        disc_thickness_floor_coeff=1.20 * s,
+        disc_thickness_floor_min=0.028,
+        disc_origin_span_floor_coeff=2.5 * s,
+        disc_origin_span_min_spread=0.18,
+        disc_eff_rank_coeff=0.35 * s,
+        disc_eff_rank_min=1.55,
+    )
+
+
+def v66_feeler_p3_geom_phase_config(
+    *,
+    lr: float = 1.25e-4,
+    epochs: int = 20,
+    stack_scale: float = 1.0,
+) -> PhaseConfig:
+    """Continue p3_geom champion — angular span + 2D fill, no barcode."""
+    label = "half occupancy stack" if stack_scale < 1.0 else "no barcode"
+    return PhaseConfig(
+        phase=11,
+        name=f"Phase 11: v6.6 feeler (P3 geom continue, {label})",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_radial_epochs=3,
+        freeze_backbone=False,
+        freeze_gate=False,
+        expert_dropout_p=0.0,
+        expert_timeout_max_share=0.45,
+        expert_timeout_eligible_experts=None,
+        slim_moe_structural_ssot_train=False,
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        max_probe_r_epi_sasa_save=None,
+        coeffs=_v66_feeler_p3_geom_coeffs(stack_scale=stack_scale),
+    )
+
+
+def v66_feeler_p3_geom_edges_phase_config(
+    *,
+    lr: float = 1.0e-4,
+    epochs: int = 15,
+) -> PhaseConfig:
+    """Resume p3_geom champion + local dehydron edge barcode (geometry losses on)."""
+    return PhaseConfig(
+        phase=10,
+        name="Phase 10: v6.6 feeler (P3 geom + dehydron edge barcode)",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_radial_epochs=3,
+        freeze_backbone=False,
+        freeze_gate=False,
+        expert_dropout_p=0.0,
+        expert_timeout_max_share=0.45,
+        expert_timeout_eligible_experts=None,
+        slim_moe_structural_ssot_train=False,
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        max_probe_r_epi_sasa_save=None,
+        coeffs=_v66_feeler_p3_geom_coeffs(),
+    )
+
+
+def v66_feeler_no_exclusivity_phase_config(
+    *,
+    lr: float = 1.0e-4,
+    epochs: int = 12,
+) -> PhaseConfig:
+    """v6.6 feeler: allow packing/ribbon on dehydron pairs (P3 recipe)."""
+    return PhaseConfig(
+        phase=7,
+        name="Phase 7: v6.6 feeler no dehydron exclusivity (multi-relation pairs)",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=False,
+        freeze_gate=False,
+        expert_dropout_p=0.0,
+        expert_timeout_max_share=0.45,
+        expert_timeout_eligible_experts=None,
+        slim_moe_structural_ssot_train=False,
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        max_probe_r_epi_sasa_save=None,
+        coeffs=_v66_feeler_p3_coeffs(),
+    )
+
+
+def v66_feeler_dehydron_angular_phase_config(
+    *,
+    lr: float = 1.0e-4,
+    epochs: int = 12,
+) -> PhaseConfig:
+    """v6.6 feeler: weaken dehydron angular SH (P3 recipe)."""
+    return PhaseConfig(
+        phase=8,
+        name="Phase 8: v6.6 feeler dehydron angular scale (radial-strong, θ-weak)",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=False,
+        freeze_gate=False,
+        expert_dropout_p=0.0,
+        expert_timeout_max_share=0.45,
+        expert_timeout_eligible_experts=None,
+        slim_moe_structural_ssot_train=False,
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        max_probe_r_epi_sasa_save=None,
+        coeffs=_v66_feeler_p3_coeffs(),
+    )
+
+
+def v66_feeler_rim_decouple_phase_config(
+    *,
+    lr: float = 1.0e-4,
+    epochs: int = 12,
+) -> PhaseConfig:
+    """v6.6 feeler: no dehydron exclusivity + weakened dehydron angular SH."""
+    return PhaseConfig(
+        phase=9,
+        name="Phase 9: v6.6 feeler rim decouple (multi-rel pairs + dehydron θ-scale)",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=False,
+        freeze_gate=False,
+        expert_dropout_p=0.0,
+        expert_timeout_max_share=0.45,
+        expert_timeout_eligible_experts=None,
+        slim_moe_structural_ssot_train=False,
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        max_probe_r_epi_sasa_save=None,
+        coeffs=_v66_feeler_p3_coeffs(),
+    )
+
+
+def v66_feeler_coupling_phase_config(
+    *,
+    lr: float = 1.0e-4,
+    epochs: int = 12,
+) -> PhaseConfig:
+    """v6.6 feeler: cross-subgraph coupling edges; P3 recipe without disc occupancy."""
+    return PhaseConfig(
+        phase=6,
+        name="Phase 6: v6.6 feeler coupling (propagation edges, no disc occupancy)",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=False,
+        freeze_gate=False,
+        expert_dropout_p=0.0,
+        expert_timeout_max_share=0.45,
+        expert_timeout_eligible_experts=None,
+        slim_moe_structural_ssot_train=False,
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        max_probe_r_epi_sasa_save=None,
+        coeffs=_v66_feeler_p3_coeffs(),
+    )
+
+
+def v66_feeler_rim_fanout_model_phase_config(
+    *,
+    lr: float = 1.0e-4,
+    epochs: int = 12,
+) -> PhaseConfig:
+    """Model-level rim fan-out + spoke/ribbon boost.
+
+    Rim angular spread is handled in forward (RimFanoutSpread), not loss-only rim_* terms.
+    Disc occupancy / thickness / origin-span floors stay on — forward fan-out is a no-op
+    until r >= min_r_rim, so cold starts still need 2D spread pressure.
+    """
+    return PhaseConfig(
+        phase=12,
+        name="Phase 12: v6.6 feeler (rim fan-out forward + spoke/ribbon boost)",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=False,
+        freeze_gate=False,
+        expert_dropout_p=0.0,
+        expert_timeout_max_share=0.45,
+        expert_timeout_eligible_experts=None,
+        slim_moe_structural_ssot_train=False,
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        max_probe_r_epi_sasa_save=None,
+        coeffs=_v66_feeler_p3_geom_coeffs(stack_scale=1.0),
+    )
+
+
+def v66_feeler_rim_fanout_warm_phase_config(
+    *,
+    lr: float = 1.0e-4,
+    epochs: int = 15,
+) -> PhaseConfig:
+    """Warm P4 resume → P12: forward rim fan-out on a disc that already reaches the rim.
+
+    Half P3 geom stack preserves probe_r_proj_depth; loss-only rim_* terms backstop
+    RimFanoutSpread on 4OBE where rim_frac is already ~25–50%.
+    """
+    coeffs = _v66_feeler_p3_geom_coeffs(stack_scale=0.5).model_copy(
+        update={
+            "rim_angular_repulsion_coeff": 0.25,
+            "rim_angular_min_r": 0.35,
+            "rim_angular_min_sep": 0.12,
+            "rim_pc2_floor_coeff": 0.15,
+            "rim_pc2_min_r": 0.35,
+            "rim_pc2_min_std": 0.06,
+        }
+    )
+    return PhaseConfig(
+        phase=12,
+        name="Phase 12: v6.6 feeler (rim fan-out warm, P4 resume)",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=False,
+        freeze_gate=False,
+        expert_dropout_p=0.0,
+        expert_timeout_max_share=0.45,
+        expert_timeout_eligible_experts=None,
+        slim_moe_structural_ssot_train=False,
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        max_probe_r_epi_sasa_save=None,
+        coeffs=coeffs,
+    )
+
+
+def v66_feeler_rim_fanout_polish_phase_config(
+    *,
+    lr: float = 5.0e-5,
+    epochs: int = 10,
+) -> PhaseConfig:
+    """Continue warm rim-fanout from a mid-run sweet spot without burning probe.
+
+    Quarter P3 geom stack + disc_depth_scale to re-lock r↔depth; lighter rim_* losses.
+    Intended resume: p4_v2 epoch_062 (probe≈0.50, σ₂/σ₁≈0.83).
+    """
+    coeffs = _v66_feeler_p3_geom_coeffs(stack_scale=0.25).model_copy(
+        update={
+            "disc_depth_scale_coeff": 1.0,
+            "disc_depth_scale_target": 0.45,
+            "rim_angular_repulsion_coeff": 0.15,
+            "rim_angular_min_r": 0.35,
+            "rim_angular_min_sep": 0.12,
+            "rim_pc2_floor_coeff": 0.10,
+            "rim_pc2_min_r": 0.35,
+            "rim_pc2_min_std": 0.06,
+        }
+    )
+    return PhaseConfig(
+        phase=12,
+        name="Phase 12: v6.6 feeler (rim fan-out polish, depth-lock)",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=False,
+        freeze_gate=False,
+        expert_dropout_p=0.0,
+        expert_timeout_max_share=0.45,
+        expert_timeout_eligible_experts=None,
+        slim_moe_structural_ssot_train=False,
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        max_probe_r_epi_sasa_save=None,
+        coeffs=coeffs,
+    )
+
+
+def v66_feeler_rim_fanout_angular_phase_config(
+    *,
+    lr: float = 5.0e-5,
+    epochs: int = 8,
+) -> PhaseConfig:
+    """Short angular-fill polish: close blank Poincaré wedges before radius push.
+
+    Mid-disc rim_* floors (min_r=0.20) + stronger occupancy/PC2/origin-span, with
+    disc_depth_scale keeping probe_r_proj_depth armed under the feeler probe guard.
+    Intended resume: polish_v1 latest (probe≈0.90).
+    """
+    coeffs = _v66_feeler_p3_geom_coeffs(stack_scale=0.75).model_copy(
+        update={
+            "angular_coeff": 0.20,
+            "disc_depth_scale_coeff": 1.2,
+            "disc_depth_scale_target": 0.45,
+            "rim_angular_repulsion_coeff": 0.35,
+            "rim_angular_min_r": 0.20,
+            "rim_angular_min_sep": 0.10,
+            "rim_pc2_floor_coeff": 0.25,
+            "rim_pc2_min_r": 0.20,
+            "rim_pc2_min_std": 0.08,
+        }
+    )
+    return PhaseConfig(
+        phase=12,
+        name="Phase 12: v6.6 feeler (rim fan-out angular-fill)",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=False,
+        freeze_gate=False,
+        expert_dropout_p=0.0,
+        expert_timeout_max_share=0.45,
+        expert_timeout_eligible_experts=None,
+        slim_moe_structural_ssot_train=False,
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        max_probe_r_epi_sasa_save=None,
+        coeffs=coeffs,
+    )
+
+
+def v66_feeler_rim_fanout_angular_v2_phase_config(
+    *,
+    lr: float = 5.0e-5,
+    epochs: int = 8,
+) -> PhaseConfig:
+    """Angular-fill v2: close remaining ~30° wedges; min_r=0.12 + stronger rim_*.
+
+    Resume from angular_v1 ep80 (probe≈0.92). Keep disc_depth_scale ≥1.2 so the
+    feeler probe guard stays meaningful. Success: 1F88 sparse wedge ≤~20° or stall.
+    """
+    coeffs = _v66_feeler_p3_geom_coeffs(stack_scale=0.75).model_copy(
+        update={
+            "angular_coeff": 0.22,
+            "disc_depth_scale_coeff": 1.25,
+            "disc_depth_scale_target": 0.45,
+            "rim_angular_repulsion_coeff": 0.40,
+            "rim_angular_min_r": 0.12,
+            "rim_angular_min_sep": 0.09,
+            "rim_pc2_floor_coeff": 0.30,
+            "rim_pc2_min_r": 0.12,
+            "rim_pc2_min_std": 0.08,
+        }
+    )
+    return PhaseConfig(
+        phase=12,
+        name="Phase 12: v6.6 feeler (rim fan-out angular-fill v2)",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=False,
+        freeze_gate=False,
+        expert_dropout_p=0.0,
+        expert_timeout_max_share=0.45,
+        expert_timeout_eligible_experts=None,
+        slim_moe_structural_ssot_train=False,
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        max_probe_r_epi_sasa_save=None,
+        coeffs=coeffs,
+    )
+
+
+def v66_feeler_rim_fanout_radius_phase_config(
+    *,
+    lr: float = 5.0e-5,
+    epochs: int = 8,
+) -> PhaseConfig:
+    """Radius push after angular-fill: raise depth→r target; hold occupancy stack.
+
+    Resume from angular_v2 ep88 (probe≈0.95). disc_depth_scale_target 0.45→0.55 is the
+    main lever; rim_* stay at angular_v2 (wedge lock) without cranking occupancy.
+    Keep disc_depth_scale_coeff ≥1.2 so the feeler probe guard stays armed.
+    Gate: rim_frac ↑ (~40% on 4OBE/1F88) with probe ≥ baseline−0.08; don't reopen wedge.
+    """
+    coeffs = _v66_feeler_p3_geom_coeffs(stack_scale=0.75).model_copy(
+        update={
+            "angular_coeff": 0.22,
+            "disc_depth_scale_coeff": 1.25,
+            "disc_depth_scale_target": 0.55,
+            "rim_angular_repulsion_coeff": 0.40,
+            "rim_angular_min_r": 0.12,
+            "rim_angular_min_sep": 0.09,
+            "rim_pc2_floor_coeff": 0.30,
+            "rim_pc2_min_r": 0.12,
+            "rim_pc2_min_std": 0.08,
+        }
+    )
+    return PhaseConfig(
+        phase=12,
+        name="Phase 12: v6.6 feeler (rim fan-out radius push)",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=False,
+        freeze_gate=False,
+        expert_dropout_p=0.0,
+        expert_timeout_max_share=0.45,
+        expert_timeout_eligible_experts=None,
+        slim_moe_structural_ssot_train=False,
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        max_probe_r_epi_sasa_save=None,
+        coeffs=coeffs,
+    )
+
+
+def v66_feeler_rim_fanout_coverage_phase_config(
+    *,
+    lr: float = 5.0e-5,
+    epochs: int = 8,
+) -> PhaseConfig:
+    """Angular coverage: soft empty-sector floor; hold depth/probe lock.
+
+    Resume from radius_v1 ep96 (probe≈0.97). Adds disc_angular_coverage so mass can
+    enter blank θ wedges (rim repulsion cannot invent new rays). Keeps
+    disc_depth_scale ≥1.2 + target 0.55. Gate: 1F88 largest gap ↓ with probe ≥ baseline−0.08.
+    """
+    coeffs = _v66_feeler_p3_geom_coeffs(stack_scale=0.75).model_copy(
+        update={
+            "angular_coeff": 0.22,
+            "disc_depth_scale_coeff": 1.25,
+            "disc_depth_scale_target": 0.55,
+            "rim_angular_repulsion_coeff": 0.35,
+            "rim_angular_min_r": 0.12,
+            "rim_angular_min_sep": 0.09,
+            "rim_pc2_floor_coeff": 0.25,
+            "rim_pc2_min_r": 0.12,
+            "rim_pc2_min_std": 0.08,
+            "disc_angular_coverage_coeff": 0.45,
+            "disc_angular_coverage_min_r": 0.12,
+            "disc_angular_coverage_n_bins": 12,
+            "disc_angular_coverage_min_bin_frac": 0.40,
+            "disc_angular_coverage_temperature": 0.20,
+        }
+    )
+    return PhaseConfig(
+        phase=12,
+        name="Phase 12: v6.6 feeler (rim fan-out angular coverage)",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=False,
+        freeze_gate=False,
+        expert_dropout_p=0.0,
+        expert_timeout_max_share=0.45,
+        expert_timeout_eligible_experts=None,
+        slim_moe_structural_ssot_train=False,
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        max_probe_r_epi_sasa_save=None,
+        coeffs=coeffs,
+    )
+
+
+def v66_feeler_rim_fanout_antibarrier_phase_config(
+    *,
+    lr: float = 5.0e-5,
+    epochs: int = 25,
+) -> PhaseConfig:
+    """Anti-barrier: untie crest experts from shared θ rays; recruit into empty bins.
+
+    Resume from coverage_v2 ep164. Eases global coverage slightly; adds expert circular
+    diversity (R ceiling + mean separation) and per-expert floors on underfilled bins.
+    Hold disc_depth_scale. Gate: gap ↓, e1 wall_share ↓, r̄ ≳ 0.18, probe ≥ baseline−0.08.
+    """
+    coeffs = _v66_feeler_p3_geom_coeffs(stack_scale=0.75).model_copy(
+        update={
+            "angular_coeff": 0.22,
+            "disc_depth_scale_coeff": 1.25,
+            "disc_depth_scale_target": 0.55,
+            "rim_angular_repulsion_coeff": 0.30,
+            "rim_angular_min_r": 0.12,
+            "rim_angular_min_sep": 0.09,
+            "rim_pc2_floor_coeff": 0.22,
+            "rim_pc2_min_r": 0.12,
+            "rim_pc2_min_std": 0.08,
+            "disc_angular_coverage_coeff": 0.30,
+            "disc_angular_coverage_min_r": 0.12,
+            "disc_angular_coverage_n_bins": 12,
+            "disc_angular_coverage_min_bin_frac": 0.35,
+            "disc_angular_coverage_temperature": 0.20,
+            "expert_angular_diversity_coeff": 0.40,
+            "expert_angular_max_R": 0.55,
+            "expert_angular_min_mean_sep": 0.55,
+            "expert_sector_recruit_coeff": 0.35,
+            "expert_sector_recruit_min_bin_frac": 0.25,
+        }
+    )
+    return PhaseConfig(
+        phase=12,
+        name="Phase 12: v6.6 feeler (rim fan-out anti-barrier)",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=False,
+        freeze_gate=False,
+        expert_dropout_p=0.0,
+        expert_timeout_max_share=0.45,
+        expert_timeout_eligible_experts=None,
+        slim_moe_structural_ssot_train=False,
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        max_probe_r_epi_sasa_save=None,
+        coeffs=coeffs,
+    )
+
+
+def v66_feeler_rim_fanout_expert_arc_phase_config(
+    *,
+    lr: float = 5.0e-5,
+    epochs: int = 20,
+) -> PhaseConfig:
+    """Mild expert-arc specialization: soft θ diversity without sector recruit.
+
+    Resume from coverage_v2 ep164. Keeps coverage floor + depth_scale hold; adds
+    mild expert circular R ceiling + mean separation (no expert_sector_recruit —
+    that overdrove anti-barrier). Use with epoch_anchor_pdb_ids including 1F88.
+    Gates: probe ≥ baseline−0.08; 1F88 gap not worse by >10°; 4OBE circ-R ≲ 0.60.
+    """
+    coeffs = _v66_feeler_p3_geom_coeffs(stack_scale=0.75).model_copy(
+        update={
+            "angular_coeff": 0.22,
+            "disc_depth_scale_coeff": 1.25,
+            "disc_depth_scale_target": 0.55,
+            "rim_angular_repulsion_coeff": 0.35,
+            "rim_angular_min_r": 0.12,
+            "rim_angular_min_sep": 0.09,
+            "rim_pc2_floor_coeff": 0.25,
+            "rim_pc2_min_r": 0.12,
+            "rim_pc2_min_std": 0.08,
+            "disc_angular_coverage_coeff": 0.40,
+            "disc_angular_coverage_min_r": 0.12,
+            "disc_angular_coverage_n_bins": 12,
+            "disc_angular_coverage_min_bin_frac": 0.38,
+            "disc_angular_coverage_temperature": 0.20,
+            # Mild vs antibarrier (0.40 / 0.55 / 0.55 + recruit 0.35).
+            "expert_angular_diversity_coeff": 0.18,
+            "expert_angular_max_R": 0.60,
+            "expert_angular_min_mean_sep": 0.40,
+            "expert_sector_recruit_coeff": 0.0,
+        }
+    )
+    return PhaseConfig(
+        phase=12,
+        name="Phase 12: v6.6 feeler (rim fan-out mild expert-arc)",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=False,
+        freeze_gate=False,
+        expert_dropout_p=0.0,
+        expert_timeout_max_share=0.45,
+        expert_timeout_eligible_experts=None,
+        slim_moe_structural_ssot_train=False,
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        max_probe_r_epi_sasa_save=None,
+        coeffs=coeffs,
+    )
+
+
+def v66_feeler_geom_angular_prior_phase_config(
+    *,
+    lr: float = 5.0e-5,
+    epochs: int = 20,
+) -> PhaseConfig:
+    """Geometric angular prior sibling: grounded disc θ + light fidelity.
+
+    Resume from coverage_v2 ep164 with ``geometric_angular_prior`` model flag.
+    Keeps coverage / depth_scale; no sector recruit. Gates: probe hold, 1F88 gap,
+    4OBE circ-R.
+    """
+    coeffs = _v66_feeler_p3_geom_coeffs(stack_scale=0.75).model_copy(
+        update={
+            "angular_coeff": 0.22,
+            "disc_depth_scale_coeff": 1.25,
+            "disc_depth_scale_target": 0.55,
+            "rim_angular_repulsion_coeff": 0.35,
+            "rim_angular_min_r": 0.12,
+            "rim_angular_min_sep": 0.09,
+            "rim_pc2_floor_coeff": 0.25,
+            "rim_pc2_min_r": 0.12,
+            "rim_pc2_min_std": 0.08,
+            "disc_angular_coverage_coeff": 0.40,
+            "disc_angular_coverage_min_r": 0.12,
+            "disc_angular_coverage_n_bins": 12,
+            "disc_angular_coverage_min_bin_frac": 0.38,
+            "disc_angular_coverage_temperature": 0.20,
+            "expert_angular_diversity_coeff": 0.0,
+            "expert_sector_recruit_coeff": 0.0,
+            "geometric_angular_fidelity_coeff": 0.10,
+        }
+    )
+    return PhaseConfig(
+        phase=12,
+        name="Phase 12: v6.6 feeler (geometric angular prior)",
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=False,
+        freeze_angular=False,
+        freeze_backbone=False,
+        freeze_gate=False,
+        expert_dropout_p=0.0,
+        expert_timeout_max_share=0.45,
+        expert_timeout_eligible_experts=None,
+        slim_moe_structural_ssot_train=False,
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        max_probe_r_epi_sasa_save=None,
+        coeffs=coeffs,
+    )
+
+
+def apply_v66_feeler_rim_fanout_cold_phases(
+    *,
+    base_lr: float = 5e-4,
+    p1_epochs: int = 12,
+    p2_epochs: int = 15,
+    p12_epochs: int = 10,
+    p12_lr: float = 1.0e-4,
+) -> list[PhaseConfig]:
+    """Cold rim fan-out: P1 radial → P2 angular/2D fill → P12 model fan-out.
+
+    Single-phase cold (P12 only) learns depth→radius but rank-1 disc filaments —
+    RimFanoutSpread is inactive until r >= min_r_rim, which P12 alone rarely reaches.
+    """
+    common = dict(
+        freeze_radial=False,
+        freeze_backbone=False,
+        freeze_gate=False,
+        expert_dropout_p=0.0,
+        expert_timeout_max_share=0.45,
+        expert_timeout_eligible_experts=None,
+        slim_moe_structural_ssot_train=False,
+        min_probe_r_depth_sasa=None,
+        min_probe_r_depth_sasa_save=None,
+        max_probe_r_epi_sasa_save=None,
+    )
+    return [
+        PhaseConfig(
+            phase=1,
+            name="Phase 1: v6.6 rim fan-out cold (radial shell)",
+            epochs=p1_epochs,
+            lr=base_lr,
+            freeze_angular=True,
+            coeffs=_v66_feeler_base_coeffs(),
+            **common,
+        ),
+        PhaseConfig(
+            phase=2,
+            name="Phase 2: v6.6 rim fan-out cold (angular + 2D occupancy)",
+            epochs=p2_epochs,
+            lr=base_lr * 0.5,
+            freeze_angular=False,
+            coeffs=_v66_feeler_base_coeffs(
+                balance_coeff=0.02,
+                cone_coeff=0.15,
+                neighborhood_coeff=0.15,
+                angular_coeff=0.10,
+                cone_depth_anticollapse_coeff=0.30,
+                disc_occupancy_coeff=0.45,
+                disc_pc_repulsion_coeff=0.35,
+                disc_thickness_floor_coeff=0.40,
+                disc_origin_span_floor_coeff=1.0,
+                disc_eff_rank_coeff=0.25,
+            ),
+            **common,
+        ),
+        v66_feeler_rim_fanout_model_phase_config(lr=p12_lr, epochs=p12_epochs),
+    ]
+
+
+def apply_v66_feeler_config(config: TrainingConfig) -> TrainingConfig:
+    """Learned cold-start feeler: no SSOT freeze, topology gate, no V2 teacher."""
+    return apply_master_cold_dehydron_config(config).model_copy(
+        update={
+            "v66_feeler_lineage": True,
+            "master_cold_lineage": False,
+            "slim_moe_structural_ssot": False,
+            "structural_disc_frozen": False,
+            "disc_layout_source": "gnn_learned",
+            "gnn_lineage": "v6.6",
+            "model_version": "GOSPConeMapper-v6.6",
+            "mlflow_experiment": "tokyo-eyes-v66",
+            "thermo_edge_features": False,
+            "multi_rel_edge_mp": True,
+            "role_edge_mp": True,
+        }
+    )
+
+
+def apply_v66_feeler_lineage(
+    config: TrainingConfig,
+    phases: list[PhaseConfig] | None = None,
+    *,
+    epochs: int = 20,
+) -> tuple[TrainingConfig, list[PhaseConfig]]:
+    """v6.6 feeler: learned GNN + minimal losses + expert timeout@45%/1ep."""
+    cfg = apply_v66_feeler_config(config)
+    return cfg, apply_v66_feeler_phases(phases, base_lr=cfg.lr, epochs=epochs)
 
 
 def apply_master_cold_dehydron_lineage(
@@ -857,7 +2060,9 @@ def apply_master_cold_dehydron_lineage(
     Topology-only routing removes the 128D x_hyp Mobius trunk from gate logits so τ/ρ/degree/ss
     drive prototypes instead of fold-blind backbone embeddings.
     """
-    return apply_master_cold_dehydron_config(config), apply_master_cold_dehydron_phases(phases)
+    return apply_master_cold_dehydron_config(config), apply_master_cold_dehydron_phases(
+        phases
+    )
 
 
 _SLIM_MOE_ZERO_DISC_COEFFS: dict[str, float] = {
@@ -869,6 +2074,10 @@ _SLIM_MOE_ZERO_DISC_COEFFS: dict[str, float] = {
     "disc_path_align_coeff": 0.0,
     "disc_depth_scale_coeff": 0.0,
     "disc_origin_span_floor_coeff": 0.0,
+    "disc_angular_coverage_coeff": 0.0,
+    "expert_angular_diversity_coeff": 0.0,
+    "expert_sector_recruit_coeff": 0.0,
+    "geometric_angular_fidelity_coeff": 0.0,
     "x_hyp_thickness_floor_coeff": 0.0,
     "angular_coeff": 0.0,
     "shell_corr_disc_sasa_weight": 0.0,
@@ -894,7 +2103,9 @@ def _slim_moe_ssot_coeffs(**overrides: float | str) -> LossCoeffs:
     )
 
 
-def apply_slim_moe_structural_ssot_phases(phases: list[PhaseConfig]) -> list[PhaseConfig]:
+def apply_slim_moe_structural_ssot_phases(
+    phases: list[PhaseConfig],
+) -> list[PhaseConfig]:
     """Frozen structural disc SSOT — MoE-alive curriculum (cold_start_v8+).
 
     Geometry is given (radial/angular/backbone frozen). Pressure is on gate +
@@ -1034,6 +2245,7 @@ def apply_slim_moe_structural_ssot_config(config: TrainingConfig) -> TrainingCon
             "structure_gate": True,
             "gate_gumbel": False,
             "track_v6_best_route": True,
+            "disc_layout_source": "structural_ssot_frozen",
         }
     )
 
@@ -1072,10 +2284,17 @@ def apply_phase_coeff_ramp(
             start = phase_cfg.coeffs.disc_depth_scale_target
             end = phase_cfg.disc_depth_scale_target_final
             out["disc_depth_scale_target"] = start + t * (end - start)
-        if phase_cfg.angular_coeff_final is not None and phase_cfg.coeffs.domain_sep_2d_coeff > 0:
+        if (
+            phase_cfg.angular_coeff_final is not None
+            and phase_cfg.coeffs.domain_sep_2d_coeff > 0
+        ):
             sep_scale = 0.5 + 0.5 * t
-            out["domain_sep_2d_coeff"] = phase_cfg.coeffs.domain_sep_2d_coeff * sep_scale
-            out["domain_sep_3d_coeff"] = phase_cfg.coeffs.domain_sep_3d_coeff * sep_scale
+            out["domain_sep_2d_coeff"] = (
+                phase_cfg.coeffs.domain_sep_2d_coeff * sep_scale
+            )
+            out["domain_sep_3d_coeff"] = (
+                phase_cfg.coeffs.domain_sep_3d_coeff * sep_scale
+            )
     n_epi = phase_cfg.epistemic_decoupling_ramp_epochs
     ep = epoch + 1
     if phase_cfg.epistemic_staged_decoupling:
@@ -1102,9 +2321,13 @@ def apply_phase_coeff_ramp(
     elif n_epi > 0:
         t_epi = min(ep, n_epi) / n_epi
         if phase_cfg.epistemic_bf_align_coeff_final is not None:
-            out["epistemic_bf_align_coeff"] = t_epi * phase_cfg.epistemic_bf_align_coeff_final
+            out["epistemic_bf_align_coeff"] = (
+                t_epi * phase_cfg.epistemic_bf_align_coeff_final
+            )
         if phase_cfg.epistemic_sasa_pen_coeff_final is not None:
-            out["epistemic_sasa_pen_coeff"] = t_epi * phase_cfg.epistemic_sasa_pen_coeff_final
+            out["epistemic_sasa_pen_coeff"] = (
+                t_epi * phase_cfg.epistemic_sasa_pen_coeff_final
+            )
     return out
 
 
@@ -1247,7 +2470,11 @@ def p2_bridge_phase_config(
     routing_save_ceiling_ramp_epochs: int | None = None,
 ) -> PhaseConfig:
     """MoE bridge from saturated-P1 routing (H~1.386) with shell + disc protection."""
-    ramp = routing_save_ceiling_ramp_epochs if routing_save_ceiling_ramp_epochs is not None else 10
+    ramp = (
+        routing_save_ceiling_ramp_epochs
+        if routing_save_ceiling_ramp_epochs is not None
+        else 10
+    )
     return PhaseConfig(
         phase=2,
         name="Phase 2 bridge: MoE from saturated P1",
@@ -1298,8 +2525,14 @@ def p2_hypmix_phase_config(
     routing_save_ceiling_ramp_epochs: int | None = None,
 ) -> PhaseConfig:
     """P2 bridge + stronger MoE pressure (hypmix2): higher dropout, shell guard 0.65."""
-    ramp = routing_save_ceiling_ramp_epochs if routing_save_ceiling_ramp_epochs is not None else 15
-    base = p2_bridge_phase_config(lr=lr, epochs=epochs, routing_save_ceiling_ramp_epochs=ramp)
+    ramp = (
+        routing_save_ceiling_ramp_epochs
+        if routing_save_ceiling_ramp_epochs is not None
+        else 15
+    )
+    base = p2_bridge_phase_config(
+        lr=lr, epochs=epochs, routing_save_ceiling_ramp_epochs=ramp
+    )
     return base.model_copy(
         update={
             "name": "Phase 2 hypmix: disc gate + ball mix + MoE pressure",
@@ -1319,8 +2552,14 @@ def p2_hypmix3_phase_config(
     routing_save_ceiling_ramp_epochs: int | None = None,
 ) -> PhaseConfig:
     """Hypmix3: amplify MoE from hypmix2 champion (dropout 0.15, capacity 0.008)."""
-    ramp = routing_save_ceiling_ramp_epochs if routing_save_ceiling_ramp_epochs is not None else 15
-    base = p2_hypmix_phase_config(lr=lr, epochs=epochs, routing_save_ceiling_ramp_epochs=ramp)
+    ramp = (
+        routing_save_ceiling_ramp_epochs
+        if routing_save_ceiling_ramp_epochs is not None
+        else 15
+    )
+    base = p2_hypmix_phase_config(
+        lr=lr, epochs=epochs, routing_save_ceiling_ramp_epochs=ramp
+    )
     return base.model_copy(
         update={
             "name": "Phase 2 hypmix3: lock MoE specialization",
@@ -1338,8 +2577,14 @@ def p2_hypmix_final_phase_config(
     routing_save_ceiling_ramp_epochs: int | None = None,
 ) -> PhaseConfig:
     """Final lock-in: max MoE pressure before full hyperbolic re-arch (dropout 0.18, capacity 0.01)."""
-    ramp = routing_save_ceiling_ramp_epochs if routing_save_ceiling_ramp_epochs is not None else 15
-    base = p2_hypmix_phase_config(lr=lr, epochs=epochs, routing_save_ceiling_ramp_epochs=ramp)
+    ramp = (
+        routing_save_ceiling_ramp_epochs
+        if routing_save_ceiling_ramp_epochs is not None
+        else 15
+    )
+    base = p2_hypmix_phase_config(
+        lr=lr, epochs=epochs, routing_save_ceiling_ramp_epochs=ramp
+    )
     return base.model_copy(
         update={
             "name": "Phase 2 hypmix final: lock MoE + shell",
@@ -1357,8 +2602,14 @@ def full_hyp_moe_theory_config(
     routing_save_ceiling_ramp_epochs: int | None = None,
 ) -> PhaseConfig:
     """Full hyperbolic MoE theory test from hypmix_final lock-in (ep78 warm-start)."""
-    ramp = routing_save_ceiling_ramp_epochs if routing_save_ceiling_ramp_epochs is not None else 15
-    base = p2_hypmix_final_phase_config(lr=lr, epochs=epochs, routing_save_ceiling_ramp_epochs=ramp)
+    ramp = (
+        routing_save_ceiling_ramp_epochs
+        if routing_save_ceiling_ramp_epochs is not None
+        else 15
+    )
+    base = p2_hypmix_final_phase_config(
+        lr=lr, epochs=epochs, routing_save_ceiling_ramp_epochs=ramp
+    )
     return base.model_copy(
         update={
             "name": "Full hyperbolic MoE theory test",
@@ -1386,8 +2637,14 @@ def p2_disc_occupancy_phase_config(
     name: str = "Phase 2 disc occupancy recovery",
 ) -> PhaseConfig:
     """Warm-start recovery: keep shell scalars, penalize rank-1 hyp_projections_2d."""
-    ramp = routing_save_ceiling_ramp_epochs if routing_save_ceiling_ramp_epochs is not None else 12
-    base = p2_hypmix_final_phase_config(lr=lr, epochs=epochs, routing_save_ceiling_ramp_epochs=ramp)
+    ramp = (
+        routing_save_ceiling_ramp_epochs
+        if routing_save_ceiling_ramp_epochs is not None
+        else 12
+    )
+    base = p2_hypmix_final_phase_config(
+        lr=lr, epochs=epochs, routing_save_ceiling_ramp_epochs=ramp
+    )
     return base.model_copy(
         update={
             "name": name,
@@ -1686,7 +2943,11 @@ def p2_disc_gentle_arch_phase_config(
     min_disc_line_thickness_save: float = 0.02,
 ) -> PhaseConfig:
     """Preserve early-recovery visual spread under pre-routing disc path — gentle occupancy."""
-    ramp = routing_save_ceiling_ramp_epochs if routing_save_ceiling_ramp_epochs is not None else 8
+    ramp = (
+        routing_save_ceiling_ramp_epochs
+        if routing_save_ceiling_ramp_epochs is not None
+        else 8
+    )
     base = p2_disc_occupancy_phase_config(
         lr=lr,
         epochs=epochs,
@@ -1736,7 +2997,11 @@ def p2_disc_occupancy_v2_phase_config(
     min_disc_r_std_save: float = 0.02,
 ) -> PhaseConfig:
     """Refined recovery: stronger occupancy + PC2 repulsion + soft shell floor."""
-    ramp = routing_save_ceiling_ramp_epochs if routing_save_ceiling_ramp_epochs is not None else 10
+    ramp = (
+        routing_save_ceiling_ramp_epochs
+        if routing_save_ceiling_ramp_epochs is not None
+        else 10
+    )
     base = p2_disc_occupancy_phase_config(
         lr=lr,
         epochs=epochs,
@@ -1782,7 +3047,11 @@ def p2_disc_occupancy_v3_phase_config(
     min_disc_r_std_save: float = 0.045,
 ) -> PhaseConfig:
     """Cluster-break push: stronger occupancy + PC2 repulsion, finer LR, tighter radial gate."""
-    ramp = routing_save_ceiling_ramp_epochs if routing_save_ceiling_ramp_epochs is not None else 10
+    ramp = (
+        routing_save_ceiling_ramp_epochs
+        if routing_save_ceiling_ramp_epochs is not None
+        else 10
+    )
     base = p2_disc_occupancy_v2_phase_config(
         lr=lr,
         epochs=epochs,
@@ -1821,7 +3090,11 @@ def p2_disc_occupancy_v4_phase_config(
     min_disc_effective_rank_save: float = 1.5,
 ) -> PhaseConfig:
     """Target-structure corpus push: occupancy + eff_rank on gate proteins."""
-    ramp = routing_save_ceiling_ramp_epochs if routing_save_ceiling_ramp_epochs is not None else 10
+    ramp = (
+        routing_save_ceiling_ramp_epochs
+        if routing_save_ceiling_ramp_epochs is not None
+        else 10
+    )
     base = p2_disc_occupancy_v3_phase_config(
         lr=lr,
         epochs=epochs,
@@ -1859,7 +3132,11 @@ def p2_disc_occupancy_v5_phase_config(
     min_disc_effective_rank_save: float = 1.5,
 ) -> PhaseConfig:
     """Batch diversity repulsion on target corpus — break lower-left cluster collinearity."""
-    ramp = routing_save_ceiling_ramp_epochs if routing_save_ceiling_ramp_epochs is not None else 10
+    ramp = (
+        routing_save_ceiling_ramp_epochs
+        if routing_save_ceiling_ramp_epochs is not None
+        else 10
+    )
     base = p2_disc_occupancy_v4_phase_config(
         lr=lr,
         epochs=epochs,
@@ -1899,7 +3176,11 @@ def p4_epistemic_decoupling_phase_config(
     staged_decoupling: bool = False,
 ) -> PhaseConfig:
     """Phase 4: B-factor residual epistemic decoupling on lever_a shell foundation."""
-    ramp = routing_save_ceiling_ramp_epochs if routing_save_ceiling_ramp_epochs is not None else 10
+    ramp = (
+        routing_save_ceiling_ramp_epochs
+        if routing_save_ceiling_ramp_epochs is not None
+        else 10
+    )
     base = p2_disc_occupancy_v4_phase_config(
         lr=lr,
         epochs=epochs,

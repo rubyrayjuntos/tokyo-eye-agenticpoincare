@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
 import torch
 from torch_geometric.data import Data
 
+from science.dtie.common.isolated_init import isolated_torch_seed
 from science.dtie.v66.chem_edge_graph import EDGE_ATTR_CHEM_DIM
+from science.dtie.v66.gnn.model import GOSPConeMapperV66
 from science.dtie.v66.containment_edge_graph import (
     EDGE_ATTR_CONTAIN_DIM,
     ROLE_CONTAIN_DOWN,
@@ -78,3 +81,31 @@ def test_empty_sse_pads_attr_but_does_not_grow_n() -> None:
     assert out.n_parent_nodes == 0
     assert out.edge_attr.size(-1) == EDGE_ATTR_CONTAIN_DIM
     assert out.containment_edge_graph is True
+
+
+def test_containment_radial_mlp_count_is_nine() -> None:
+    with isolated_torch_seed(123):
+        m = GOSPConeMapperV66(
+            node_dim=3,
+            hidden=32,
+            num_layers=1,
+            num_experts=2,
+            role_edge_mp=True,
+            chem_edge_mp=True,
+            containment_edge_mp=True,
+            init_seed=123,
+        )
+    assert len(m.convs[0].radial_mlps) == 9
+
+
+def test_containment_edge_mp_requires_chem_edge_mp() -> None:
+    with pytest.raises(ValueError, match="containment_edge_mp requires chem_edge_mp"):
+        GOSPConeMapperV66(
+            node_dim=3,
+            hidden=32,
+            num_layers=1,
+            num_experts=2,
+            role_edge_mp=True,
+            chem_edge_mp=False,
+            containment_edge_mp=True,
+        )
