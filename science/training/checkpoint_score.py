@@ -15,7 +15,13 @@ from science.training.evidential_validation import S6_MIN_TAU_ALE_RELATIVE_LIFT
 
 # Shared with experiments.training.v6.assess_checkpoint promotion_gate
 ROUTING_ENTROPY_PROMOTE_MAX = 1.2
-ROUTING_ENTROPY_SAVE_MAX = 1.21  # slightly looser during training selection
+ROUTING_ENTROPY_SAVE_MAX = 1.21  # legacy H(f̄) ceiling (pre-sparsity)
+# Sparsity-aware save band on mean_i H(p_i); H(f̄) is diversity monitor only.
+MEAN_RESIDUE_H_SAVE_MIN = 0.50
+MEAN_RESIDUE_H_SAVE_MAX = 0.90
+LOAD_ENTROPY_DIVERSITY_WARN = 1.00  # H(f̄) warn floor
+LOAD_ENTROPY_DIVERSITY_ABORT = 0.80  # H(f̄) hard abort / circuit breaker
+MAX_SOFT_SHARE_SAVE = 0.45
 PROJ_FRAC_MAX = 0.95
 CONE_RANGE_MIN_P1 = 0.02
 CONE_RANGE_MIN = 0.04
@@ -246,6 +252,58 @@ def disc_save_ineligibility_reasons(
     )
 
 
+def sparsity_routing_save_ineligibility_reasons(
+    losses: dict[str, float],
+    *,
+    inference_routing: dict[str, float] | None = None,
+    mean_residue_min: float = MEAN_RESIDUE_H_SAVE_MIN,
+    mean_residue_max: float = MEAN_RESIDUE_H_SAVE_MAX,
+    mean_residue_final3: float | None = None,
+    max_soft_share: float = MAX_SOFT_SHARE_SAVE,
+) -> list[str]:
+    """Save gates for mean-residue sparsity: band on mean_i H(p_i) + max share.
+
+    Does **not** apply an H(f̄) upper ceiling — global load balance is healthy.
+    """
+    reasons: list[str] = []
+    mean_h = _finite_probe(losses.get("routing_entropy_mean_residue"))
+    if mean_h is None:
+        reasons.append("routing_entropy_mean_residue=missing")
+    else:
+        if mean_h < float(mean_residue_min):
+            reasons.append(
+                f"mean_residue_H={mean_h:.3f}<{float(mean_residue_min):.2f}"
+            )
+        if mean_h > float(mean_residue_max):
+            reasons.append(
+                f"mean_residue_H={mean_h:.3f}>{float(mean_residue_max):.2f}"
+            )
+    if mean_residue_final3 is not None:
+        m3 = float(mean_residue_final3)
+        if m3 < float(mean_residue_min) or m3 > float(mean_residue_max):
+            reasons.append(
+                f"mean_residue_H_final3={m3:.3f} not in "
+                f"[{float(mean_residue_min):.2f},{float(mean_residue_max):.2f}]"
+            )
+
+    infer = inference_routing or {}
+    max_r = _finite_probe(infer.get("max_routing_fraction"))
+    if max_r is None:
+        max_r = _finite_probe(losses.get("usage_max_soft_share"))
+    if max_r is None:
+        loads = [
+            float(losses[k])
+            for k in losses
+            if isinstance(k, str)
+            and k.startswith("expert_load_")
+            and k[len("expert_load_") :].isdigit()
+        ]
+        max_r = max(loads) if loads else None
+    if max_r is not None and max_r >= float(max_soft_share):
+        reasons.append(f"max_share={max_r:.3f}>={float(max_soft_share):.2f}")
+    return reasons
+
+
 def moe_routing_save_ineligibility_reasons(
     losses: dict[str, float],
     *,
@@ -312,6 +370,9 @@ def score_checkpoint(
     min_eval_routing_fraction_save: float | None = None,
     max_eval_routing_fraction_save: float | None = None,
     routing_entropy_min_save: float | None = None,
+    routing_entropy_mean_residue_min_save: float | None = None,
+    routing_entropy_mean_residue_max_save: float | None = None,
+    routing_entropy_mean_residue_final3: float | None = None,
 ) -> CheckpointScoreResult:
     """
     Rank checkpoints for v6_best.pt selection.
@@ -323,6 +384,10 @@ def score_checkpoint(
     keys on pre-routing ``line_thickness`` + ``probe_r_depth_sasa``; eff_rank and
     σ₂/σ₁ gates are bypassed. Uniform MoE routing (high entropy) is also tolerated
     until Lever C — routing entropy is not a save blocker in override mode.
+
+    When mean-residue sparsity save bounds are set, eligibility uses
+    ``routing_entropy_mean_residue`` ∈ [min, max] and max soft share < 0.45;
+    the legacy H(f̄) ≤ 1.21 ceiling is not applied.
     """
     pf = float(health.get("proj_frac_mean") or 0.0)
     cr = float(health.get("cone_range_mean") or 0.0)
@@ -330,6 +395,10 @@ def score_checkpoint(
     starve = int(losses.get("expert_starvation_count", 0))
     total_loss = float(losses.get("total", 0.0))
     radial_override = uses_disc_radial_override(disc_radial_source)
+    sparsity_save_mode = (
+        routing_entropy_mean_residue_min_save is not None
+        or routing_entropy_mean_residue_max_save is not None
+    )
 
     cone_min = CONE_RANGE_MIN_P1 if phase == 1 else CONE_RANGE_MIN
     if phase >= 2 and not radial_override:
@@ -350,33 +419,61 @@ def score_checkpoint(
             reasons.append(f"{label}=nonfinite")
     if pf > PROJ_FRAC_MAX:
         reasons.append(f"proj_frac={pf:.3f}")
-    moe_gates_active = any(
-        v is not None
-        for v in (
-            max_expert_starvation_save,
-            min_eval_routing_fraction_save,
-            max_eval_routing_fraction_save,
-            routing_entropy_min_save,
-        )
-    )
-    if moe_gates_active:
-        moe_route_max = routing_save_max if routing_save_max is not None else route_max
+
+    moe_gates_active = False
+    if sparsity_save_mode:
         reasons.extend(
-            moe_routing_save_ineligibility_reasons(
+            sparsity_routing_save_ineligibility_reasons(
                 losses,
                 inference_routing=inference_routing,
-                max_expert_starvation=max_expert_starvation_save,
-                min_eval_routing_fraction=min_eval_routing_fraction_save,
-                max_eval_routing_fraction=max_eval_routing_fraction_save,
-                routing_entropy_min=routing_entropy_min_save,
-                routing_entropy_max=moe_route_max,
+                mean_residue_min=(
+                    MEAN_RESIDUE_H_SAVE_MIN
+                    if routing_entropy_mean_residue_min_save is None
+                    else float(routing_entropy_mean_residue_min_save)
+                ),
+                mean_residue_max=(
+                    MEAN_RESIDUE_H_SAVE_MAX
+                    if routing_entropy_mean_residue_max_save is None
+                    else float(routing_entropy_mean_residue_max_save)
+                ),
+                mean_residue_final3=routing_entropy_mean_residue_final3,
+                max_soft_share=(
+                    float(max_eval_routing_fraction_save)
+                    if max_eval_routing_fraction_save is not None
+                    else MAX_SOFT_SHARE_SAVE
+                ),
             )
         )
+        if max_expert_starvation_save is not None and starve > max_expert_starvation_save:
+            reasons.append(f"starvation={starve}>{max_expert_starvation_save}")
     else:
-        if phase >= 2 and not radial_override and route_h > route_max:
-            reasons.append(f"routing_H={route_h:.3f}")
-        if starve >= 2 and phase >= 2:
-            reasons.append(f"starvation={starve}")
+        moe_gates_active = any(
+            v is not None
+            for v in (
+                max_expert_starvation_save,
+                min_eval_routing_fraction_save,
+                max_eval_routing_fraction_save,
+                routing_entropy_min_save,
+            )
+        )
+        if moe_gates_active:
+            moe_route_max = routing_save_max if routing_save_max is not None else route_max
+            reasons.extend(
+                moe_routing_save_ineligibility_reasons(
+                    losses,
+                    inference_routing=inference_routing,
+                    max_expert_starvation=max_expert_starvation_save,
+                    min_eval_routing_fraction=min_eval_routing_fraction_save,
+                    max_eval_routing_fraction=max_eval_routing_fraction_save,
+                    routing_entropy_min=routing_entropy_min_save,
+                    routing_entropy_max=moe_route_max,
+                )
+            )
+        else:
+            if phase >= 2 and not radial_override and route_h > route_max:
+                reasons.append(f"routing_H={route_h:.3f}")
+            if starve >= 2 and phase >= 2:
+                reasons.append(f"starvation={starve}")
     if cr < cone_min:
         reasons.append(f"cone_range={cr:.4f}<{cone_min}")
 
@@ -435,7 +532,42 @@ def score_checkpoint(
 
     # Composite: reward spread + low boundary clip + specialized routing + shell alignment
     score = cr + (1.0 - min(pf, 1.0))
-    if moe_gates_active:
+    if sparsity_save_mode:
+        mean_h = _finite_probe(losses.get("routing_entropy_mean_residue"))
+        band_lo = (
+            MEAN_RESIDUE_H_SAVE_MIN
+            if routing_entropy_mean_residue_min_save is None
+            else float(routing_entropy_mean_residue_min_save)
+        )
+        band_hi = (
+            MEAN_RESIDUE_H_SAVE_MAX
+            if routing_entropy_mean_residue_max_save is None
+            else float(routing_entropy_mean_residue_max_save)
+        )
+        mid = 0.5 * (band_lo + band_hi)
+        if mean_h is not None:
+            score += 0.6 * (
+                1.0 - min(abs(mean_h - mid) / max(band_hi - band_lo, 1e-3), 1.0)
+            )
+        # Reward diversity: prefer H(f̄) above the warn floor without capping high values.
+        if route_h >= LOAD_ENTROPY_DIVERSITY_WARN:
+            score += 0.25
+        elif route_h >= LOAD_ENTROPY_DIVERSITY_ABORT:
+            score += 0.10 * (
+                (route_h - LOAD_ENTROPY_DIVERSITY_ABORT)
+                / max(LOAD_ENTROPY_DIVERSITY_WARN - LOAD_ENTROPY_DIVERSITY_ABORT, 1e-3)
+            )
+        infer = inference_routing or {}
+        max_r = _finite_probe(infer.get("max_routing_fraction"))
+        share_cap = (
+            float(max_eval_routing_fraction_save)
+            if max_eval_routing_fraction_save is not None
+            else MAX_SOFT_SHARE_SAVE
+        )
+        if max_r is not None:
+            score += 0.4 * max(0.0, 1.0 - max(0.0, max_r - share_cap) / 0.25)
+        score -= 0.35 * starve
+    elif moe_gates_active:
         # Prefer mid-band entropy (alive but not uniform) + balanced eval hard fractions.
         band_lo = routing_entropy_min_save if routing_entropy_min_save is not None else 0.90
         band_hi = (

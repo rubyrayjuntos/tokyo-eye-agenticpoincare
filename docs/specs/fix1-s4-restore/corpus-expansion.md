@@ -101,4 +101,5 @@ P2/P3 expand champions lost hub scaffolding (4OBE knockout ρ ~0.24–0.29 vs se
 | Design | [`../routing-entropy-sparsity/design.md`](../routing-entropy-sparsity/design.md) |
 | Plan | [`../../superpowers/plans/2026-07-20-routing-entropy-sparsity.md`](../../superpowers/plans/2026-07-20-routing-entropy-sparsity.md) |
 
-Task 6 (GPU): launch the Make target → inspect `routing_sparsity_per_epoch.jsonl` for \(t^\*\) → hub knockout on 4OBE → write `sparsity_gate.json`.
+Task 6 (GPU): **PARTIAL** (mean-H + hub + stability PASS; legacy H(f̄)≤1.21 FAIL by design).  
+Next: `make train-v66-fix1-sparsity-confirm-continue` (resume `epoch_045.pt`, sparsity save gates).

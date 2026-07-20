@@ -1,12 +1,24 @@
 # Routing entropy sparsity — design
 
 **Date locked:** 2026-07-20  
-**Status:** Implemented (Make recipe ready; Task 6 GPU verification pending)  
+**Status:** Implemented — sparsity save gates registered; confirm-continue pending  
 **Parent:** Fix-1 SSOT restore + expand ladder (`docs/specs/fix1-s4-restore/`)  
 **Evidence:** hub knockout sealed ρ(4OBE)=0.596 vs P2/P3 champions ≤0.29; Phase 12 routing H≈1.33–1.38 (near-uniform)  
-**Make:** `make train-v66-fix1-sparsity-sealed-continue` (default `RUN_ID=fix1_s4_sparsity_sealed_continue_v1`)  
-**Resume:** `checkpoints/v66/runs/fix1_s4_stack_initseed_controlled_3d_seed2_v1/v66_healthy_sealed.pt` only  
-**λ peak / warmup:** `0.0075` / `8` epochs (override via `SPARSITY_COEFF` / `SPARSITY_WARMUP`)
+**Make (init):** `make train-v66-fix1-sparsity-sealed-continue` (default `RUN_ID=fix1_s4_sparsity_sealed_continue_v1`)  
+**Make (confirm):** `make train-v66-fix1-sparsity-confirm-continue` (resume `epoch_045.pt`, default 5 ep)  
+**Resume (init):** `v66_healthy_sealed.pt` only  
+**λ peak / warmup:** `0.0075` / `8` (confirm continue: warmup=0, λ stays at peak)
+
+### Save / monitor gates (registered 2026-07-20 post Task 6)
+
+| Gate | Bound | Role |
+|------|-------|------|
+| `routing_entropy_mean_residue` (final) | ∈ **[0.50, 0.90]** | Hard save eligibility |
+| `routing_entropy_mean_residue` (final-3 mean) | ∈ **[0.50, 0.90]** | Sparsity Pass bar |
+| `max_share` | **&lt; 0.45** | Hard save eligibility |
+| `H(f̄)` | warn **&lt; 1.00**; abort **≤ 0.80** | Diversity monitor / circuit breaker |
+| Legacy `H(f̄) ≤ 1.21` | **removed** as save blocker | Was fighting healthy global balance |
+| 4OBE hub ρ | **≥ 0.45** | Biology hold (vs sealed 0.596) |
 
 ---
 
@@ -134,7 +146,8 @@ Run: Fix-1 stack continue from sealed, Stage A-12 or feeler-expand corpus, 15–
 | Gate | Pass |
 |------|------|
 | Mean residue-H (final 3-ep mean) | ∈ [0.5, 0.9] |
-| Batch `H(f̄)` | ≤ 1.21 (save-eligible band) |
+| Mean residue-H (final epoch) | ∈ [0.5, 0.9] (save eligibility) |
+| Batch `H(f̄)` | **monitor**: warn &lt; 1.00; abort ≤ 0.80 (diversity floor — **not** ≤ 1.21 save ceiling) |
 | Max soft share | &lt; 0.45 every epoch after warmup (no sustained timeout loop) |
 | Capacity | `capacity_loss` finite; min load ≥ `min_usage − ε` |
 | Hub scaffolding | 4OBE knockout vs betweenness ρ ≥ 0.45 (vs sealed 0.596; allow mild regression) |

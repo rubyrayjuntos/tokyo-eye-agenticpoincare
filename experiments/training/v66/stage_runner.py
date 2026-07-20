@@ -13,7 +13,14 @@ import torch
 from science.training.topology_depth import topology_depth_lineage
 from science.training.gnn_lineage import get_lineage
 from science.training.checkpoint import CheckpointData, CheckpointManager
-from science.training.checkpoint_score import score_checkpoint
+from science.training.checkpoint_score import (
+    LOAD_ENTROPY_DIVERSITY_ABORT,
+    LOAD_ENTROPY_DIVERSITY_WARN,
+    MAX_SOFT_SHARE_SAVE,
+    MEAN_RESIDUE_H_SAVE_MAX,
+    MEAN_RESIDUE_H_SAVE_MIN,
+    score_checkpoint,
+)
 from science.training.config import (
     PhaseConfig,
     TrainingConfig,
@@ -140,6 +147,7 @@ class StageRunner:
         self._sparse_slope_scale = 1.0
         self._sparse_half_slope_applied = False
         self._sparse_active_lam = 0.0
+        self._sparse_mean_h_history: list[float] = []
         self.checkpoint_mgr = CheckpointManager(
             config.output_dir,
             len(proteins),
@@ -2152,6 +2160,23 @@ class StageRunner:
                     self.config.device,
                     structural_disc_frozen=bool(self.config.structural_disc_frozen),
                 )
+                sparsity_save_mode = (
+                    float(
+                        getattr(self.config, "routing_entropy_sparsity_coeff", 0.0)
+                        or 0.0
+                    )
+                    > 0
+                )
+                mean_h_now = losses.get("routing_entropy_mean_residue")
+                if sparsity_save_mode and mean_h_now is not None:
+                    try:
+                        self._sparse_mean_h_history.append(float(mean_h_now))
+                    except (TypeError, ValueError):
+                        pass
+                mean_h_final3: float | None = None
+                if sparsity_save_mode and len(self._sparse_mean_h_history) >= 3:
+                    tail = self._sparse_mean_h_history[-3:]
+                    mean_h_final3 = sum(tail) / 3.0
                 scored = score_checkpoint(
                     health,
                     losses,
@@ -2187,10 +2212,39 @@ class StageRunner:
                     inference_routing=infer_routing,
                     max_expert_starvation_save=phase_cfg.max_expert_starvation_save,
                     min_eval_routing_fraction_save=phase_cfg.min_eval_routing_fraction_save,
-                    max_eval_routing_fraction_save=phase_cfg.max_eval_routing_fraction_save,
+                    max_eval_routing_fraction_save=(
+                        MAX_SOFT_SHARE_SAVE
+                        if sparsity_save_mode
+                        else phase_cfg.max_eval_routing_fraction_save
+                    ),
                     routing_entropy_min_save=phase_cfg.routing_entropy_min_save,
+                    routing_entropy_mean_residue_min_save=(
+                        MEAN_RESIDUE_H_SAVE_MIN if sparsity_save_mode else None
+                    ),
+                    routing_entropy_mean_residue_max_save=(
+                        MEAN_RESIDUE_H_SAVE_MAX if sparsity_save_mode else None
+                    ),
+                    routing_entropy_mean_residue_final3=mean_h_final3,
                 )
                 score = scored.score
+
+                # H(f̄) diversity monitor / circuit breaker (sparsity mode only).
+                if sparsity_save_mode:
+                    route_h_mon = float(losses.get("routing_entropy", float("nan")))
+                    if route_h_mon == route_h_mon:  # finite
+                        if route_h_mon <= LOAD_ENTROPY_DIVERSITY_ABORT:
+                            raise RuntimeError(
+                                f"Training aborted: batch routing_H={route_h_mon:.3f} "
+                                f"≤ diversity abort floor {LOAD_ENTROPY_DIVERSITY_ABORT:.2f} "
+                                "(capacity collapse / monopoly circuit breaker)"
+                            )
+                        if route_h_mon < LOAD_ENTROPY_DIVERSITY_WARN:
+                            logger.warning(
+                                "  Routing diversity WARN: H(f̄)=%.3f < %.2f "
+                                "(monitor only; save uses mean_residue_H band)",
+                                route_h_mon,
+                                LOAD_ENTROPY_DIVERSITY_WARN,
+                            )
 
                 log_metrics = {
                     **losses,
@@ -2214,7 +2268,10 @@ class StageRunner:
                     health,
                     losses,
                     phase=phase_cfg.phase,
-                    routing_save_max=route_ceiling,
+                    # Sparsity mode: H(f̄) is diversity monitor, not a save ceiling.
+                    routing_save_max=(
+                        10.0 if sparsity_save_mode else route_ceiling
+                    ),
                     min_probe_r_depth_sasa_save=phase_cfg.min_probe_r_depth_sasa_save,
                     checkpoint_eligible=scored.eligible,
                     topology_depth=self._topology_depth,

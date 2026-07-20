@@ -2470,6 +2470,57 @@ train-v66-fix1-sparsity-sealed-continue: ## Fix-1 sealed continue + mean-residue
 	@echo "Collision log: .../routing_sparsity_per_epoch.jsonl"
 	@echo "Next: grade hub knockout on 4OBE; record sparsity_gate.json (Task 6)"
 
+# Confirm-continue after sparsity gate rewrite: resume epoch_045, λ=0.0075 locked.
+# Save eligibility uses mean_residue_H ∈ [0.50, 0.90] + max_share < 0.45 (no H(f̄)≤1.21).
+FIX1_SPARSITY_CONFIRM_RUN ?= fix1_s4_sparsity_confirm_continue_v1
+FIX1_SPARSITY_CONFIRM_RESUME ?= checkpoints/v66/runs/fix1_s4_sparsity_sealed_continue_v1/epochs/epoch_045.pt
+
+train-v66-fix1-sparsity-confirm-continue: ## Confirm mean-H band + hub hold from sparsity ep045
+	@test -f $(FIX1_SPARSITY_CONFIRM_RESUME) || \
+		(echo "Missing resume $(FIX1_SPARSITY_CONFIRM_RESUME) — run sparsity sealed continue first" && exit 1)
+	@test -f data/gates/fix1_expand_mlflow_lineage_root.json || \
+		(echo "Missing lineage root — run: make register-v66-fix1-expand-lineage" && exit 1)
+	@case "$(or $(RUN_ID),$(FIX1_SPARSITY_CONFIRM_RUN))" in \
+		fix1_s4_stack_initseed_controlled_3d_seed2_v1|fix1_s4_sparsity_sealed_continue_v1) \
+			echo "ERROR: refuse overwrite of sealed/parent sparsity run dir."; \
+			exit 1 ;; \
+	esac
+	@test -f manifests/$(or $(CORPUS),$(FIX1_SPARSITY_CORPUS)) || \
+		(echo "Missing corpus manifests/$(or $(CORPUS),$(FIX1_SPARSITY_CORPUS))" && exit 1)
+	$(MAKE) gate-p-feature-01 CORPUS=$(or $(CORPUS),$(FIX1_SPARSITY_CORPUS))
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache \
+		checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_SPARSITY_CONFIRM_RUN))
+	@printf '%s\n' \
+		'# Fix-1 sparsity confirm continue — mean-residue save gates' \
+		'run_id: $(or $(RUN_ID),$(FIX1_SPARSITY_CONFIRM_RUN))' \
+		'resume: $(FIX1_SPARSITY_CONFIRM_RESUME)' \
+		'lambda_sparse: $(or $(SPARSITY_COEFF),$(FIX1_SPARSITY_COEFF))' \
+		'save: mean_residue_H in [0.50, 0.90]; max_share < 0.45' \
+		'monitor: H(fbar) warn < 1.00; abort <= 0.80' \
+		'docs: docs/specs/routing-entropy-sparsity/design.md' \
+		> checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_SPARSITY_CONFIRM_RUN))/README.md
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),$(FIX1_SPARSITY_CORPUS)) \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_SPARSITY_CONFIRM_RUN)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),2) \
+		--max-proteins $(or $(MAX_PROTEINS),$(FIX1_SPARSITY_MAX_PROTEINS)) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--epochs $(or $(EPOCHS),5) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment $(FIX1_EXPAND_EXPERIMENT) \
+		--resume /app/$(FIX1_SPARSITY_CONFIRM_RESUME) \
+		--no-warm-start \
+		--epoch-anchor-pdb-ids $(or $(EPOCH_ANCHORS),1F88,4OBE) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--routing-entropy-sparsity-coeff $(or $(SPARSITY_COEFF),$(FIX1_SPARSITY_COEFF)) \
+		--routing-entropy-sparsity-warmup-epochs $(or $(SPARSITY_WARMUP),0) \
+		$(V66_FIX1_EXPAND_STACK)
+	@echo "Sparsity confirm continue complete."
+	@echo "Run: checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_SPARSITY_CONFIRM_RUN))"
+	@echo "Grade: hub knockout 4OBE on final epoch; expect mean_H band + ρ≥0.45"
+
 train-v66-fix1-s4-proto-repulsion-scale-l2-gram-cond-stage-a12: ## Pre-reg: stack + saturating Gram logdet hinge λ=0.001 (Stage A-12 cold)
 	@test -f data/gates/p_feature_01_passed.json || \
 		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_small_v1.json" && exit 1)
