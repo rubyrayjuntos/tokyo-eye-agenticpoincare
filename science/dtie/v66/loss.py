@@ -597,6 +597,8 @@ def gosp_loss_v6(
     routing_load_ceiling_max: float = 0.45,
     # Scheduled λ from stage_runner (warmup applied by caller; default off).
     routing_entropy_sparsity_coeff: float = 0.0,
+    # Accepted from LossCoeffs.model_dump(); schedule lives in stage_runner.
+    routing_entropy_sparsity_warmup_epochs: int = 8,
     prototype_repulsion_coeff: float = 0.0,
     prototype_repulsion_margin: float = 0.25,
     prototype_gram_logdet_coeff: float = 0.0,

@@ -12,7 +12,8 @@ Combines all loss terms for v6 training with phase-aware coefficients:
   - domain_separation_2d/3d: Push domain centroids apart (→ AngularHead only)
   - evidential: Uncertainty calibration
   - capacity_loss: Asymmetric capacity penalty (penalizes starvation only)
-  - routing_entropy: Monitoring metric (not a loss term, just tracked)
+  - routing_entropy: Monitoring metric H(f̄) (not a loss term, just tracked)
+  - routing_entropy_mean_residue: Optional sparsity term λ * mean_i H(p_i)
 
 Phase-aware behavior:
   Phase 1: balance_coeff=0.1, no expert dropout → strong balance pressure
@@ -39,6 +40,77 @@ from science.training.routing_metrics import (
     routing_load_ceiling_penalty,
     routing_load_floor_penalty,
 )
+
+
+def majority_committed_share_hinge(
+    expert_weights: torch.Tensor,
+    *,
+    tau: float = 0.56,
+    commit_thr: float = 0.60,
+    min_committed: int = 20,
+    dehydron: torch.Tensor | None = None,
+    core_only: bool = False,
+) -> torch.Tensor:
+    """STE hinge on within-structure committed hard majority share.
+
+    Forward value equals hard-assignment share of the majority expert among
+    the eligible set. Gradients flow through soft weights on the stopgrad
+    majority mask only.
+
+    When ``core_only=True``, eligible = committed ∧ (dehydron == 0). Direct
+    pressure on dehydron=1 residues is excluded (zero grad from this term);
+    purity floors must still catch indirect dilution onto minority experts.
+
+    Returns unscaled ``ReLU(share − tau)²`` (0 when |eligible| < min_committed
+    or share ≤ tau).
+    """
+    w = expert_weights.float()
+    if w.ndim != 2 or w.shape[0] == 0:
+        return w.new_zeros(())
+    n_experts = int(w.shape[-1])
+    max_p = w.max(dim=-1).values
+    commit = max_p >= float(commit_thr)
+    if core_only:
+        if dehydron is None:
+            return w.new_zeros(())
+        dh = dehydron.reshape(-1).float()[: w.shape[0]]
+        eligible = commit & (dh <= 0.0)
+    else:
+        eligible = commit
+    n_e = int(eligible.sum().item())
+    if n_e < int(min_committed):
+        return w.new_zeros(())
+    hard = w.argmax(dim=-1)
+    elig_idx = eligible.nonzero(as_tuple=False).view(-1)
+    counts = torch.bincount(hard[elig_idx], minlength=n_experts).float()
+    e_star = int(counts.argmax().item())
+    maj = (eligible & (hard == e_star)).detach()
+    # Straight-through: forward hard one-hot, backward soft weights.
+    hard_oh = F.one_hot(hard, num_classes=n_experts).to(dtype=w.dtype)
+    st = hard_oh + (w - w.detach())
+    # Maj-restricted share of e*: forward == hard majority share among eligible.
+    share = (st[:, e_star] * maj.float()).sum() / float(n_e)
+    excess = torch.relu(share - float(tau))
+    return excess * excess
+
+
+def core_majority_committed_share_hinge(
+    expert_weights: torch.Tensor,
+    dehydron: torch.Tensor,
+    *,
+    tau: float = 0.56,
+    commit_thr: float = 0.60,
+    min_committed: int = 20,
+) -> torch.Tensor:
+    """Core-only STE majority hinge (dehydron=0 eligible set)."""
+    return majority_committed_share_hinge(
+        expert_weights,
+        tau=tau,
+        commit_thr=commit_thr,
+        min_committed=min_committed,
+        dehydron=dehydron,
+        core_only=True,
+    )
 
 
 def _pearson_corr(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
@@ -79,6 +151,33 @@ def v3_aleatoric_shaping_loss(
     }
 
 
+def resolve_cone_target_depth(
+    *,
+    target_rho: torch.Tensor | None = None,
+    target_dehydron: torch.Tensor | None = None,
+    mode: str = "rho_wrap",
+) -> torch.Tensor:
+    """Map supervised labels → continuous radial depth target in [0, 1].
+
+    Modes:
+      - ``rho_wrap`` (legacy): high ρ → high depth
+      - ``tau_dehydron_rim``: binary τ=1 → rim
+      - ``rho_rim``: continuous underwrapping — low ρ → rim, high ρ → center
+    """
+    if mode == "tau_dehydron_rim":
+        if target_dehydron is None:
+            raise ValueError("target_dehydron required for tau_dehydron_rim cone mode")
+        return target_dehydron.squeeze(-1).clamp(0.0, 1.0)
+    if mode == "rho_rim":
+        if target_rho is None:
+            raise ValueError("target_rho required for rho_rim cone mode")
+        # Invert legacy polarity: buried/high-ρ → center (low depth).
+        return (1.0 - (target_rho.squeeze(-1) / 30.0).clamp(0.0, 1.0)).clamp(0.0, 1.0)
+    if target_rho is None:
+        raise ValueError(f"target_rho required for cone mode {mode!r}")
+    return (target_rho.squeeze(-1) / 30.0).clamp(0.0, 1.0)
+
+
 def cone_alignment_loss(
     radial_depth: torch.Tensor,
     *,
@@ -91,16 +190,18 @@ def cone_alignment_loss(
 
     rho_wrap (legacy): high ρ (buried wrap) → high depth via ρ/30.
     tau_dehydron_rim (MASTER cold): τ=1 (dehydron) → rim (high depth).
+    rho_rim (feeler continuous): low ρ → rim, high ρ → center (no binary τ).
     """
-    if mode == "tau_dehydron_rim":
-        if target_dehydron is None:
-            raise ValueError("target_dehydron required for tau_dehydron_rim cone mode")
-        target_depth = target_dehydron.squeeze(-1).clamp(0.0, 1.0)
-    else:
+    if mode == "rho_wrap":
         if target_rho is None:
             raise ValueError("target_rho required for rho_wrap cone mode")
         return cone_loss_v5(radial_depth, target_rho)
 
+    target_depth = resolve_cone_target_depth(
+        target_rho=target_rho,
+        target_dehydron=target_dehydron,
+        mode=mode,
+    )
     pred = radial_depth.squeeze(-1)
     correlation = _pearson_corr(pred, target_depth)
     corr_loss = 1.0 - correlation
@@ -378,6 +479,22 @@ def disc_path_align_loss(
     return F.mse_loss(hyp_proj_2d, legacy_teacher.detach())
 
 
+def prototype_gram_logdet_hinge(
+    gram_logdet: torch.Tensor,
+    *,
+    tau_logdet: float = -1.15,
+) -> torch.Tensor:
+    """Saturating full-bank Gram volume hinge: ReLU(τ − logdet)².
+
+    Unit-row Gram logdet is bounded above near 0 (orthogonality). The hinge
+    zeros once logdet ≥ τ (registered bank floor), so pressure does not keep
+    pushing toward full orthogonality past the success criteria.
+    """
+    return torch.relu(
+        float(tau_logdet) - gram_logdet
+    ).pow(2)
+
+
 def weighted_binary_cross_entropy(
     logits: torch.Tensor,
     targets: torch.Tensor,
@@ -441,6 +558,24 @@ def gosp_loss_v6(
     disc_eff_rank_min: float = 1.6,
     disc_batch_diversity_coeff: float = 0.0,
     disc_batch_min_pairwise_dist: float = 0.035,
+    rim_angular_repulsion_coeff: float = 0.0,
+    rim_angular_min_r: float = 0.35,
+    rim_angular_min_sep: float = 0.12,
+    rim_angular_spatial_exempt: float = 8.0,
+    rim_pc2_floor_coeff: float = 0.0,
+    rim_pc2_min_r: float = 0.35,
+    rim_pc2_min_std: float = 0.06,
+    disc_angular_coverage_coeff: float = 0.0,
+    disc_angular_coverage_min_r: float = 0.12,
+    disc_angular_coverage_n_bins: int = 12,
+    disc_angular_coverage_min_bin_frac: float = 0.40,
+    disc_angular_coverage_temperature: float = 0.20,
+    expert_angular_diversity_coeff: float = 0.0,
+    expert_angular_max_R: float = 0.55,
+    expert_angular_min_mean_sep: float = 0.55,
+    expert_sector_recruit_coeff: float = 0.0,
+    expert_sector_recruit_min_bin_frac: float = 0.25,
+    geometric_angular_fidelity_coeff: float = 0.0,
     disc_path_align_coeff: float = 0.0,
     disc_thickness_floor_coeff: float = 0.0,
     disc_thickness_floor_min: float = 0.025,
@@ -460,6 +595,24 @@ def gosp_loss_v6(
     routing_load_floor_min: float = 0.05,
     routing_load_ceiling_coeff: float = 0.0,
     routing_load_ceiling_max: float = 0.45,
+    # Scheduled λ from stage_runner (warmup applied by caller; default off).
+    routing_entropy_sparsity_coeff: float = 0.0,
+    # Accepted from LossCoeffs.model_dump(); schedule lives in stage_runner.
+    routing_entropy_sparsity_warmup_epochs: int = 8,
+    prototype_repulsion_coeff: float = 0.0,
+    prototype_repulsion_margin: float = 0.25,
+    prototype_gram_logdet_coeff: float = 0.0,
+    prototype_gram_logdet_tau: float = -1.15,
+    majority_committed_share_coeff: float = 0.0,
+    majority_committed_share_tau: float = 0.56,
+    majority_committed_share_commit_thr: float = 0.60,
+    majority_committed_share_min_n: int = 20,
+    core_majority_committed_share_coeff: float = 0.0,
+    core_majority_committed_share_tau: float = 0.56,
+    core_majority_committed_share_commit_thr: float = 0.60,
+    core_majority_committed_share_min_n: int = 20,
+    directionality_asym_coeff: float = 0.0,
+    directionality_eligible: bool = False,
     pocket_bce_coeff: float = 0.0,
     interface_bce_coeff: float = 0.0,
     leak_bce_coeff: float = 0.0,
@@ -542,6 +695,85 @@ def gosp_loss_v6(
             load.reshape(-1).float(),
             max_fraction=float(routing_load_ceiling_max),
         )
+
+    # ── Prototype nearest-pair repulsion (hinge on current min pair) ──────
+    prototype_repulsion_loss = torch.tensor(0.0, device=device)
+    prototype_pair_min = output.get("prototype_pair_min_dist")
+    if prototype_pair_min is None:
+        audit = output.get("audit_trail") or {}
+        if isinstance(audit, dict):
+            prototype_pair_min = audit.get("prototype_pair_min_dist")
+    if (
+        prototype_repulsion_coeff > 0
+        and prototype_pair_min is not None
+        and torch.is_tensor(prototype_pair_min)
+    ):
+        prototype_repulsion_loss = prototype_repulsion_coeff * torch.relu(
+            float(prototype_repulsion_margin) - prototype_pair_min
+        )
+
+    # ── Full-bank Gram logdet hinge (saturating; pre-reg GRAM_COND_*) ─────
+    prototype_gram_hinge_loss = torch.tensor(0.0, device=device)
+    prototype_gram_hinge_raw = torch.tensor(0.0, device=device)
+    prototype_gram_logdet = output.get("prototype_gram_logdet")
+    if prototype_gram_logdet is None:
+        audit = output.get("audit_trail") or {}
+        if isinstance(audit, dict):
+            prototype_gram_logdet = audit.get("prototype_gram_logdet")
+    if (
+        prototype_gram_logdet_coeff > 0
+        and prototype_gram_logdet is not None
+        and torch.is_tensor(prototype_gram_logdet)
+    ):
+        prototype_gram_hinge_raw = prototype_gram_logdet_hinge(
+            prototype_gram_logdet,
+            tau_logdet=float(prototype_gram_logdet_tau),
+        )
+        prototype_gram_hinge_loss = (
+            float(prototype_gram_logdet_coeff) * prototype_gram_hinge_raw
+        )
+
+    # ── Majority-conditional committed-share hinge (local monopole) ───────
+    majority_share_loss = torch.tensor(0.0, device=device)
+    majority_share_raw = torch.tensor(0.0, device=device)
+    if majority_committed_share_coeff > 0:
+        weights = output.get("expert_weights")
+        if weights is not None and torch.is_tensor(weights):
+            majority_share_raw = majority_committed_share_hinge(
+                weights,
+                tau=float(majority_committed_share_tau),
+                commit_thr=float(majority_committed_share_commit_thr),
+                min_committed=int(majority_committed_share_min_n),
+            )
+            majority_share_loss = (
+                float(majority_committed_share_coeff) * majority_share_raw
+            )
+
+    # ── Core-only majority hinge (dh=0 eligible; no direct grad on dh=1) ──
+    core_majority_share_loss = torch.tensor(0.0, device=device)
+    core_majority_share_raw = torch.tensor(0.0, device=device)
+    if core_majority_committed_share_coeff > 0:
+        weights = output.get("expert_weights")
+        if (
+            weights is not None
+            and torch.is_tensor(weights)
+            and target_dehydron is not None
+        ):
+            dh = (
+                target_dehydron.squeeze(-1)
+                if target_dehydron.dim() > 1
+                else target_dehydron
+            )
+            core_majority_share_raw = core_majority_committed_share_hinge(
+                weights,
+                dh,
+                tau=float(core_majority_committed_share_tau),
+                commit_thr=float(core_majority_committed_share_commit_thr),
+                min_committed=int(core_majority_committed_share_min_n),
+            )
+            core_majority_share_loss = (
+                float(core_majority_committed_share_coeff) * core_majority_share_raw
+            )
 
     # ── Cone loss — flows through RadialHead only ─────────────────────────
     cone_loss = cone_alignment_loss(
@@ -675,6 +907,107 @@ def gosp_loss_v6(
             min_disc_r_mean=disc_min_r_mean,
         )
         disc_batch_total = disc_batch_losses["disc_batch_diversity"]
+
+    rim_fanout_losses: Dict[str, torch.Tensor] = {}
+    rim_angular_total = torch.tensor(0.0, device=device)
+    rim_pc2_total = torch.tensor(0.0, device=device)
+    if (
+        (rim_angular_repulsion_coeff > 0 or rim_pc2_floor_coeff > 0)
+        and "hyp_projections_2d" in output
+        and ca_coords is not None
+    ):
+        from science.training.rim_fanout import rim_angular_repulsion_loss, rim_pc2_floor_loss
+
+        hyp2d = output["hyp_projections_2d"]
+        if rim_angular_repulsion_coeff > 0:
+            rim_fanout_losses.update(
+                rim_angular_repulsion_loss(
+                    hyp2d,
+                    ca_coords,
+                    min_r_rim=rim_angular_min_r,
+                    min_angular_sep=rim_angular_min_sep,
+                    spatial_exempt_cutoff=rim_angular_spatial_exempt,
+                )
+            )
+            rim_angular_total = rim_fanout_losses["rim_angular_repulsion"]
+        if rim_pc2_floor_coeff > 0:
+            pc2_losses = rim_pc2_floor_loss(
+                hyp2d,
+                min_r_rim=rim_pc2_min_r,
+                min_pc2_std=rim_pc2_min_std,
+            )
+            rim_fanout_losses.update(pc2_losses)
+            rim_pc2_total = pc2_losses["rim_pc2_floor"]
+
+    disc_coverage_losses: Dict[str, torch.Tensor] = {}
+    disc_coverage_total = torch.tensor(0.0, device=device)
+    if disc_angular_coverage_coeff > 0 and "hyp_projections_2d" in output:
+        from science.training.disc_occupancy import disc_angular_coverage_loss
+
+        disc_coverage_losses = disc_angular_coverage_loss(
+            output["hyp_projections_2d"],
+            min_r=disc_angular_coverage_min_r,
+            n_bins=disc_angular_coverage_n_bins,
+            min_bin_frac=disc_angular_coverage_min_bin_frac,
+            temperature=disc_angular_coverage_temperature,
+        )
+        disc_coverage_total = disc_coverage_losses["disc_angular_coverage"]
+
+    expert_ang_losses: Dict[str, torch.Tensor] = {}
+    expert_ang_total = torch.tensor(0.0, device=device)
+    expert_recruit_total = torch.tensor(0.0, device=device)
+    if (
+        (expert_angular_diversity_coeff > 0 or expert_sector_recruit_coeff > 0)
+        and "hyp_projections_2d" in output
+        and output.get("expert_weights") is not None
+    ):
+        from science.training.expert_angular import (
+            expert_angular_diversity_loss,
+            expert_sector_recruit_loss,
+        )
+
+        hyp2d = output["hyp_projections_2d"]
+        ew = output["expert_weights"]
+        if expert_angular_diversity_coeff > 0:
+            expert_ang_losses.update(
+                expert_angular_diversity_loss(
+                    hyp2d,
+                    ew,
+                    min_r=disc_angular_coverage_min_r,
+                    max_resultant_length=expert_angular_max_R,
+                    min_mean_sep=expert_angular_min_mean_sep,
+                )
+            )
+            expert_ang_total = expert_ang_losses["expert_angular_diversity"]
+        if expert_sector_recruit_coeff > 0:
+            recruit = expert_sector_recruit_loss(
+                hyp2d,
+                ew,
+                min_r=disc_angular_coverage_min_r,
+                n_bins=disc_angular_coverage_n_bins,
+                temperature=disc_angular_coverage_temperature,
+                global_min_bin_frac=disc_angular_coverage_min_bin_frac,
+                expert_min_bin_frac=expert_sector_recruit_min_bin_frac,
+            )
+            expert_ang_losses.update(recruit)
+            expert_recruit_total = recruit["expert_sector_recruit"]
+
+    geom_fidelity_losses: Dict[str, torch.Tensor] = {}
+    geom_fidelity_total = torch.tensor(0.0, device=device)
+    if (
+        geometric_angular_fidelity_coeff > 0
+        and "hyp_projections_2d" in output
+        and output.get("geom_theta_prior") is not None
+    ):
+        from science.dtie.v66.geometric_angular_prior import (
+            geometric_angular_fidelity_loss,
+        )
+
+        geom_fidelity_losses = geometric_angular_fidelity_loss(
+            output["hyp_projections_2d"],
+            output["geom_theta_prior"],
+        )
+        geom_fidelity_total = geom_fidelity_losses["geometric_angular_fidelity"]
 
     disc_path_align_total = torch.tensor(0.0, device=device)
     if (
@@ -817,6 +1150,24 @@ def gosp_loss_v6(
             "v3_aleatoric_shaping_total"
         ]
 
+    # Path 2 directionality (diam≤9 eligibility set by caller / train_loop).
+    from science.dtie.common.directionality_objective import directionality_asym_loss
+
+    encoder_h = output.get("encoder_h")
+    if encoder_h is None or not torch.is_tensor(encoder_h):
+        dir_terms = {
+            "directionality_asym": torch.tensor(0.0, device=device),
+            "directionality_asym_raw": torch.tensor(0.0, device=device),
+            "directionality_asym_index": torch.tensor(float("nan"), device=device),
+        }
+    else:
+        dir_terms = directionality_asym_loss(
+            encoder_h,
+            coeff=float(directionality_asym_coeff),
+            eligible=bool(directionality_eligible),
+        )
+    directionality_asym_term = dir_terms["directionality_asym"]
+
     # ── Total loss ────────────────────────────────────────────────────────
     total = (
         (ev_loss if evidential_coeff > 0 else torch.tensor(0.0, device=device))
@@ -832,6 +1183,12 @@ def gosp_loss_v6(
         + disc_pc_repulsion_coeff * disc_pc_total
         + disc_eff_rank_coeff * disc_eff_rank_total
         + disc_batch_diversity_coeff * disc_batch_total
+        + rim_angular_repulsion_coeff * rim_angular_total
+        + rim_pc2_floor_coeff * rim_pc2_total
+        + disc_angular_coverage_coeff * disc_coverage_total
+        + expert_angular_diversity_coeff * expert_ang_total
+        + expert_sector_recruit_coeff * expert_recruit_total
+        + geometric_angular_fidelity_coeff * geom_fidelity_total
         + disc_path_align_coeff * disc_path_align_total
         + disc_thickness_floor_coeff * disc_thickness_total
         + disc_origin_span_floor_coeff * disc_span_total
@@ -841,6 +1198,11 @@ def gosp_loss_v6(
         + epi_ale_decorrelation_coeff * epi_ale_decorrelation_total
         + routing_load_floor_loss
         + routing_load_ceiling_loss
+        + prototype_repulsion_loss
+        + prototype_gram_hinge_loss
+        + majority_share_loss
+        + core_majority_share_loss
+        + directionality_asym_term
         + pocket_bce_coeff * pocket_bce
         + interface_bce_coeff * interface_bce
         + leak_bce_coeff * leak_bce
@@ -858,8 +1220,17 @@ def gosp_loss_v6(
     )
     total = total + proj_violation_coeff * proj_violation
 
-    # ── Routing entropy (monitoring only, not a loss term) ────────────────
+    # ── Routing entropy (H(f̄) monitor) + optional mean-residue sparsity ──
     routing_entropy = output["routing_entropy"]
+    L_sparse = output.get("routing_entropy_mean_residue")
+    sparse_coeff = float(routing_entropy_sparsity_coeff)
+    if L_sparse is not None and sparse_coeff > 0:
+        if not torch.is_tensor(L_sparse):
+            L_sparse = torch.as_tensor(float(L_sparse), device=device)
+        sparse_term = sparse_coeff * L_sparse
+    else:
+        sparse_term = torch.tensor(0.0, device=device)
+    total = total + sparse_term
 
     result: Dict[str, Any] = {
         "total": total,
@@ -867,6 +1238,38 @@ def gosp_loss_v6(
         "capacity_loss": capacity_loss,
         "routing_load_floor": routing_load_floor_loss,
         "routing_load_ceiling": routing_load_ceiling_loss,
+        "prototype_repulsion": prototype_repulsion_loss,
+        "prototype_gram_logdet_hinge": prototype_gram_hinge_loss,
+        "prototype_gram_logdet_hinge_raw": (
+            float(prototype_gram_hinge_raw.detach())
+            if torch.is_tensor(prototype_gram_hinge_raw)
+            else float("nan")
+        ),
+        "prototype_gram_logdet": (
+            float(prototype_gram_logdet.detach())
+            if torch.is_tensor(prototype_gram_logdet)
+            else float("nan")
+        ),
+        "majority_committed_share": majority_share_loss,
+        "majority_committed_share_raw": (
+            float(majority_share_raw.detach())
+            if torch.is_tensor(majority_share_raw)
+            else float("nan")
+        ),
+        "core_majority_committed_share": core_majority_share_loss,
+        "core_majority_committed_share_raw": (
+            float(core_majority_share_raw.detach())
+            if torch.is_tensor(core_majority_share_raw)
+            else float("nan")
+        ),
+        "directionality_asym": directionality_asym_term,
+        "directionality_asym_raw": dir_terms["directionality_asym_raw"],
+        "directionality_asym_index": dir_terms["directionality_asym_index"],
+        "prototype_pair_min_dist": (
+            float(prototype_pair_min.detach())
+            if torch.is_tensor(prototype_pair_min)
+            else float("nan")
+        ),
         "cone_consistency": cone_loss,
         "cone_depth_anticollapse": anticollapse_loss,
         "disc_depth_scale": disc_scale_loss,
@@ -874,6 +1277,12 @@ def gosp_loss_v6(
         "disc_pc_repulsion": disc_pc_total,
         "disc_eff_rank": disc_eff_rank_total,
         "disc_batch_diversity": disc_batch_total,
+        "rim_angular_repulsion": rim_angular_total,
+        "rim_pc2_floor": rim_pc2_total,
+        "disc_angular_coverage": disc_coverage_total,
+        "expert_angular_diversity": expert_ang_total,
+        "expert_sector_recruit": expert_recruit_total,
+        "geometric_angular_fidelity": geom_fidelity_total,
         "disc_path_align": disc_path_align_total,
         "disc_thickness_floor": disc_thickness_total,
         "disc_origin_span_floor": disc_span_total,
@@ -887,6 +1296,9 @@ def gosp_loss_v6(
         "domain_separation_3d": dom_loss_3d,
         "projection_violation": proj_violation,
         "routing_entropy": routing_entropy,
+        "routing_entropy_mean_residue": L_sparse,
+        "routing_entropy_sparsity_loss": sparse_term,
+        "routing_entropy_sparsity_coeff": sparse_coeff,
         "expert_load": output["expert_load"],
         "pocket_bce": pocket_bce,
         "interface_bce": interface_bce,
@@ -919,6 +1331,27 @@ def gosp_loss_v6(
         result["disc_line_thickness_rms"] = disc_thickness_losses["disc_line_thickness_rms"]
     if disc_span_losses:
         result["disc_origin_circular_spread"] = disc_span_losses["disc_origin_circular_spread"]
+    if disc_coverage_losses:
+        result["disc_angular_coverage_empty_bins"] = disc_coverage_losses[
+            "disc_angular_coverage_empty_bins"
+        ]
+        result["disc_angular_coverage_min_mass"] = disc_coverage_losses[
+            "disc_angular_coverage_min_mass"
+        ]
+    if expert_ang_losses:
+        if "expert_angular_mean_R" in expert_ang_losses:
+            result["expert_angular_mean_R"] = expert_ang_losses["expert_angular_mean_R"]
+            result["expert_angular_min_sep"] = expert_ang_losses["expert_angular_min_sep"]
+            result["expert_angular_concentration"] = expert_ang_losses[
+                "expert_angular_concentration"
+            ]
+            result["expert_angular_separation"] = expert_ang_losses[
+                "expert_angular_separation"
+            ]
+        if "expert_sector_empty_bins" in expert_ang_losses:
+            result["expert_sector_empty_bins"] = expert_ang_losses[
+                "expert_sector_empty_bins"
+            ]
     if x_hyp_thickness_losses:
         result["x_hyp_line_thickness_rms"] = x_hyp_thickness_losses["x_hyp_line_thickness_rms"]
     if epistemic_decoupling_losses:
