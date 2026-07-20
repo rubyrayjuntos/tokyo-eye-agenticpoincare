@@ -3,7 +3,11 @@ SHELL := /bin/bash -o pipefail
 
 # Map container UID/GID to host so bind mounts (mlruns, checkpoints) are writable
 DOCKER_USER := $(shell id -u):$(shell id -g)
-SCIENCE_RUN := docker compose run --rm -e DB_POOL_MIN_SIZE=2 -e DB_POOL_MAX_SIZE=10 --user $(DOCKER_USER)
+# Forward GNN_INPUT_MODE into the science container. Prefixing
+# `GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN)` alone does NOT reach the
+# container — compose must receive `-e GNN_INPUT_MODE` (or an environment: entry).
+# Without this, targets silently defaulted to legacy_four_vector (node_dim=4).
+SCIENCE_RUN := docker compose run --rm -e DB_POOL_MIN_SIZE=2 -e DB_POOL_MAX_SIZE=10 -e GNN_INPUT_MODE --user $(DOCKER_USER)
 STAGE_A_MAX_RESIDUES := $(shell PYTHONPATH=. python3 -c "from science.training.corpus_governance import STAGE_A_MAX_RESIDUES; print(STAGE_A_MAX_RESIDUES)" 2>/dev/null || echo 650)
 # Host-mapped UID often has no writable $HOME in the container; install test deps to /tmp.
 TEST_DEPS_DIR := /tmp/tokyoeye-pytest-deps
@@ -36,7 +40,7 @@ train-v6-benchmark: ## GPU smoke on science/dtie benchmark_pdbs + v3 teacher (EP
 	@test -d science/dtie/assets/benchmark_pdbs || (echo "Missing science/dtie/assets/benchmark_pdbs" && exit 1)
 	@test -f science/dtie/v3/checkpoints/v2_bridge_epoch_014.pt || (echo "Missing v2_bridge teacher checkpoint" && exit 1)
 	@mkdir -p mlruns checkpoints/v6/runs pdb_cache
-	$(if $(TRAINING_LOAD_FROM_PDB),docker compose run --rm -e DB_POOL_MIN_SIZE=2 -e DB_POOL_MAX_SIZE=10 -e TRAINING_LOAD_FROM_PDB=1 --user $(DOCKER_USER),$(SCIENCE_RUN)) science python -m experiments.training.v6.launch_training \
+	$(if $(TRAINING_LOAD_FROM_PDB),docker compose run --rm -e DB_POOL_MIN_SIZE=2 -e DB_POOL_MAX_SIZE=10 -e GNN_INPUT_MODE -e TRAINING_LOAD_FROM_PDB=1 --user $(DOCKER_USER),$(SCIENCE_RUN)) science python -m experiments.training.v6.launch_training \
 		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_benchmark.json) \
 		--output-dir /app/checkpoints/v6/runs/$(or $(RUN_ID),benchmark_$(shell date +%Y%m%d_%H%M%S)) \
 		--pdb-dir $(or $(PDB_DIR),$(BENCHMARK_PDB_CONTAINER)) \
@@ -431,44 +435,74 @@ ingest-corpus-master-features: ## MASTER features → dim_residue for 12-prot co
 ingest-corpus-master-features-dry-run: ## Dry-run MASTER feature ingest (compute only)
 	$(MAKE) ingest-corpus-master-features DRY_RUN=1
 
-precompute-dehydron-barcodes: ## Cache dehydron_barcode_v1 sidecars for Stage A small corpus
-	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
-	@mkdir -p checkpoints/v65/dehydron_barcode_v1 pdb_cache
+# Active default: v66 feeler-expand corpus. Stage A-12 archive regeneration:
+#   make precompute-dehydron-barcodes CORPUS=v6_corpus_stage_a_small_v1.json \
+#     OUT_DIR=checkpoints/v65/dehydron_barcode_v1 MAX_PROTEINS=12
+precompute-dehydron-barcodes: ## Cache dehydron_barcode_v1_2 sidecars (CORPUS=, OUT_DIR=; default=v66 feeler)
+	@test -f manifests/$(or $(CORPUS),v6_corpus_stage_a_feeler_expand_v1.json) || (echo "Missing manifest manifests/$(or $(CORPUS),v6_corpus_stage_a_feeler_expand_v1.json)" && exit 1)
+	@mkdir -p $(or $(OUT_DIR),checkpoints/v66/dehydron_barcode_v1) pdb_cache
 	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v6.precompute_dehydron_barcodes \
-		--manifest /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--manifest /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_feeler_expand_v1.json) \
 		--pdb-dir /tmp/dtie_pdb_cache \
-		--out-dir /app/checkpoints/v65/dehydron_barcode_v1 \
+		--out-dir /app/$(or $(OUT_DIR),checkpoints/v66/dehydron_barcode_v1) \
 		$(if $(BINNED),--binned,) \
 		$(if $(MAX_PROTEINS),--max-proteins $(MAX_PROTEINS),)
+
+diagnose-dehydron-bar-length: ## Pure-TDA bar-length + dehydron-count diagnostic (long-lived threshold)
+	@test -f manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) || (echo "Missing manifest manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json)" && exit 1)
+	@mkdir -p $(or $(OUT_DIR),checkpoints/v65/diagnostics/dehydron_bar_length_v1) pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.dehydron_bar_length_threshold \
+		--manifest /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--out-dir /app/$(or $(OUT_DIR),checkpoints/v65/diagnostics/dehydron_bar_length_v1) \
+		$(if $(MAX_PROTEINS),--max-proteins $(MAX_PROTEINS),) \
+		$(if $(NOISE_FLOOR),--noise-floor $(NOISE_FLOOR),) \
+		-v
+	@echo "Bar-length diagnostic written under $(or $(OUT_DIR),checkpoints/v65/diagnostics/dehydron_bar_length_v1)"
+
+diagnose-dehydron-scalar-orthogonality: ## Scalar redundancy vs rho/tau/SS + peers (Stage A-12)
+	@test -f manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) || (echo "Missing manifest manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json)" && exit 1)
+	@test -d $(or $(RAW_BARS_DIR),checkpoints/v65/diagnostics/dehydron_bar_length_v1/bars_raw) || (echo "Missing raw bars — run: make diagnose-dehydron-bar-length" && exit 1)
+	@mkdir -p $(or $(OUT_DIR),checkpoints/v65/diagnostics/dehydron_scalar_orthogonality_v1) pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.dehydron_scalar_orthogonality \
+		--manifest /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--raw-bars-dir /app/$(or $(RAW_BARS_DIR),checkpoints/v65/diagnostics/dehydron_bar_length_v1/bars_raw) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--out-dir /app/$(or $(OUT_DIR),checkpoints/v65/diagnostics/dehydron_scalar_orthogonality_v1) \
+		$(if $(MAX_PROTEINS),--max-proteins $(MAX_PROTEINS),) \
+		$(if $(REDUNDANCY_THRESHOLD),--redundancy-threshold $(REDUNDANCY_THRESHOLD),) \
+		-v
+
+V66_DBH_BARCODE_DIR := checkpoints/v66/dehydron_barcode_v1
+V66_DBH_P2_RESUME := checkpoints/v66/runs/feeler_expand_23_rho_rim_p2_v1/v66_phase2_23prot.pt
+V66_FEELER_P3_RESUME := checkpoints/v66/runs/feeler_expand_23_p3_geom_v1/v66_best_disc.pt
+V66_FEELER_P4_RESUME := checkpoints/v66/runs/feeler_expand_23_p3_geom_p4_v1/v66_best_disc.pt
+V66_FEELER_CHAMPION := $(V66_FEELER_P4_RESUME)
+V66_DBH_P3_RESUME := $(V66_FEELER_P3_RESUME)
+
+precompute-dehydron-barcodes-feeler-expand: ## Barcode sidecars for feeler expand 23-prot corpus
+	$(MAKE) precompute-dehydron-barcodes \
+		CORPUS=v6_corpus_stage_a_feeler_expand_v1.json \
+		OUT_DIR=$(V66_DBH_BARCODE_DIR) \
+		MAX_PROTEINS=$(or $(MAX_PROTEINS),23)
 
 # ---------------------------------------------------------------------------
 # V6.5 GNN training (isolated checkpoint namespace + MLflow experiment)
 # ---------------------------------------------------------------------------
 
-DBH_RESUME_DEFAULT := checkpoints/v65/runs/cold_start_v8_p3e/v65_best.pt
+# Learned-GNN parent for barcode ablation (NOT slim MoE). Override with RESUME=.
+# ARCHIVE: current dehydron investigation is v66 feeler + edge barcode
+# (docs/specs/dehydron-barcode-input-channel/ablation.md). Do not use these
+# train-v65-dbh-* targets for feeler work.
+DBH_RESUME_DEFAULT := checkpoints/v65/runs/master_cold_v1/v65_best.pt
 DBH_BARCODE_DIR := checkpoints/v65/dehydron_barcode_v1
 
-train-v65: ## Train v6.5 fork (STAGE=1|2|3, RUN_ID=..., separate MLflow experiment tokyo-eyes-v65)
-	@mkdir -p mlruns checkpoints/v65/runs pdb_cache
-	$(SCIENCE_RUN) science python -m experiments.training.v65.launch_training \
-		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_120.json) \
-		--output-dir /app/checkpoints/v65/runs/$(or $(RUN_ID),$(shell date +%Y%m%d_%H%M%S)) \
-		--pdb-dir /tmp/dtie_pdb_cache \
-		--device $(or $(DEVICE),cuda) \
-		--mlflow-uri http://mlflow:5000 \
-		--mlflow-experiment tokyo-eyes-v65 \
-		$(if $(STAGE),--phase $(STAGE),) \
-		$(if $(MAX_PROTEINS),--max-proteins $(MAX_PROTEINS),) \
-		$(if $(MAX_RESIDUES),--max-residues $(MAX_RESIDUES),) \
-		$(if $(NO_MLFLOW),--no-mlflow,) \
-		$(if $(NO_WARM_START),--no-warm-start,) \
-		$(if $(RESUME),--resume /app/$(RESUME),)
-
-train-v65-dbh-baseline: ## Dehydron barcode ablation — baseline (no barcode; RESUME= EPOCHS= RUN_ID=)
+train-v65-dbh-baseline: ## [ARCHIVE] v65 barcode ablation baseline — use train-v66-feeler-p3-geom-edges
+	@echo "WARNING: train-v65-dbh-baseline is archive path; active investigation is v66 feeler edges (ablation.md)"
 	@test -f data/gates/p_feature_01_passed.json || \
 		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
 	@test -f $(or $(RESUME),$(DBH_RESUME_DEFAULT)) || \
-		(echo "Missing resume checkpoint — set RESUME=..." && exit 1)
+		(echo "Missing learned resume checkpoint — run: make train-v65-master-cold RUN_ID=master_cold_v1" && exit 1)
 	@mkdir -p mlruns checkpoints/v65/runs pdb_cache
 	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v65.launch_training \
 		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
@@ -480,19 +514,20 @@ train-v65-dbh-baseline: ## Dehydron barcode ablation — baseline (no barcode; R
 		--mlflow-uri http://mlflow:5000 \
 		--mlflow-experiment tokyo-eyes-v65 \
 		--no-warm-start \
-		--slim-moe-structural-ssot \
 		--num-experts $(or $(NUM_EXPERTS),4) \
 		--phase 3 \
 		--epochs $(or $(EPOCHS),15) \
 		--resume /app/$(or $(RESUME),$(DBH_RESUME_DEFAULT)) \
+		--feature-liveness-probe \
 		--save-epoch-snapshots
 	@echo "DBH ablation baseline complete. Run: checkpoints/v65/runs/$(or $(RUN_ID),dbh_ablation_baseline)"
 
-train-v65-dbh-scalars: ## Dehydron barcode ablation — scalars only (--use-dehydron-barcode)
+train-v65-dbh-scalars: ## [ARCHIVE] v65 node-global scalars — use train-v66-feeler-p3-geom-edges
+	@echo "WARNING: train-v65-dbh-scalars is archive path; node-global scalars deprecated on v66 feeler"
 	@test -f data/gates/p_feature_01_passed.json || \
 		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
 	@test -f $(or $(RESUME),$(DBH_RESUME_DEFAULT)) || \
-		(echo "Missing resume checkpoint — set RESUME=..." && exit 1)
+		(echo "Missing learned resume checkpoint — run: make train-v65-master-cold RUN_ID=master_cold_v1" && exit 1)
 	@test -d $(DBH_BARCODE_DIR) || \
 		(echo "Missing barcode sidecars — run: make precompute-dehydron-barcodes" && exit 1)
 	@mkdir -p mlruns checkpoints/v65/runs pdb_cache
@@ -506,21 +541,22 @@ train-v65-dbh-scalars: ## Dehydron barcode ablation — scalars only (--use-dehy
 		--mlflow-uri http://mlflow:5000 \
 		--mlflow-experiment tokyo-eyes-v65 \
 		--no-warm-start \
-		--slim-moe-structural-ssot \
 		--num-experts $(or $(NUM_EXPERTS),4) \
 		--phase 3 \
 		--epochs $(or $(EPOCHS),15) \
 		--resume /app/$(or $(RESUME),$(DBH_RESUME_DEFAULT)) \
 		--use-dehydron-barcode \
 		--dehydron-barcode-dir /app/$(DBH_BARCODE_DIR) \
+		--feature-liveness-probe \
 		--save-epoch-snapshots
 	@echo "DBH ablation scalars complete. Run: checkpoints/v65/runs/$(or $(RUN_ID),dbh_ablation_scalars)"
 
-train-v65-dbh-full: ## Dehydron barcode ablation — scalars + binned (precompute with BINNED=1)
+train-v65-dbh-full: ## [ARCHIVE] v65 scalars+binned — deferred; active path is v66 edges
+	@echo "WARNING: train-v65-dbh-full is archive path; active investigation is v66 feeler edges (ablation.md)"
 	@test -f data/gates/p_feature_01_passed.json || \
 		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
 	@test -f $(or $(RESUME),$(DBH_RESUME_DEFAULT)) || \
-		(echo "Missing resume checkpoint — set RESUME=..." && exit 1)
+		(echo "Missing learned resume checkpoint — run: make train-v65-master-cold RUN_ID=master_cold_v1" && exit 1)
 	@test -d $(DBH_BARCODE_DIR) || \
 		(echo "Missing barcode sidecars — run: make precompute-dehydron-barcodes BINNED=1" && exit 1)
 	@mkdir -p mlruns checkpoints/v65/runs pdb_cache
@@ -534,7 +570,6 @@ train-v65-dbh-full: ## Dehydron barcode ablation — scalars + binned (precomput
 		--mlflow-uri http://mlflow:5000 \
 		--mlflow-experiment tokyo-eyes-v65 \
 		--no-warm-start \
-		--slim-moe-structural-ssot \
 		--num-experts $(or $(NUM_EXPERTS),4) \
 		--phase 3 \
 		--epochs $(or $(EPOCHS),15) \
@@ -542,62 +577,9 @@ train-v65-dbh-full: ## Dehydron barcode ablation — scalars + binned (precomput
 		--use-dehydron-barcode \
 		--use-binned-dehydron \
 		--dehydron-barcode-dir /app/$(DBH_BARCODE_DIR) \
+		--feature-liveness-probe \
 		--save-epoch-snapshots
 	@echo "DBH ablation full complete. Run: checkpoints/v65/runs/$(or $(RUN_ID),dbh_ablation_full)"
-
-# Path B hierarchical containment: matched Stage A-12 cold arms on chem-MVP parent stack.
-# Baseline = chem on, no containment; Path B = same + contain_up/down (+2 radial MLPs).
-train-v66-containment-baseline: ## Containment matched baseline: chem stack, no containment (Stage A-12 cold)
-	@test -f data/gates/p_feature_01_passed.json || \
-		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
-	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
-	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
-	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
-		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
-		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),containment_baseline_chem_stage_a12_cold_v1) \
-		--pdb-dir /tmp/dtie_pdb_cache \
-		--device $(or $(DEVICE),cuda) \
-		--seed $(or $(SEED),1) \
-		--max-proteins $(or $(MAX_PROTEINS),12) \
-		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--epochs $(or $(EPOCHS),20) \
-		--mlflow-uri http://mlflow:5000 \
-		--mlflow-experiment tokyo-eyes-v66 \
-		--no-warm-start \
-		--v66-feeler-lineage \
-		--chem-edge-mp \
-		--phase 1 \
-		--num-experts $(or $(NUM_EXPERTS),4) \
-		--feature-liveness-probe \
-		--save-epoch-snapshots
-	@echo "Containment baseline complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),containment_baseline_chem_stage_a12_cold_v1)"
-
-train-v66-containment-pathb: ## Containment Path B cold: chem + contain_up/down (Stage A-12; matched vs baseline)
-	@test -f data/gates/p_feature_01_passed.json || \
-		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
-	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
-	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
-	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
-		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
-		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),containment_pathb_stage_a12_cold_v1) \
-		--pdb-dir /tmp/dtie_pdb_cache \
-		--device $(or $(DEVICE),cuda) \
-		--seed $(or $(SEED),1) \
-		--max-proteins $(or $(MAX_PROTEINS),12) \
-		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
-		--epochs $(or $(EPOCHS),20) \
-		--mlflow-uri http://mlflow:5000 \
-		--mlflow-experiment tokyo-eyes-v66 \
-		--no-warm-start \
-		--v66-feeler-lineage \
-		--chem-edge-mp \
-		--containment-edge-mp \
-		--phase 1 \
-		--num-experts $(or $(NUM_EXPERTS),4) \
-		--feature-liveness-probe \
-		--save-epoch-snapshots
-	@echo "Containment Path B cold complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),containment_pathb_stage_a12_cold_v1)"
-	@echo "Gate order: isolated-seed → liveness → oversmoothing-at-root → flow-influence (ablation.md)"
 
 run-9est-pipeline: ## Re-run discovery pathway on ingested 9EST (science container)
 	@docker compose exec -T science python -c "import urllib.request,json; print(json.dumps(json.load(urllib.request.urlopen(urllib.request.Request('http://localhost:8001/compute/pipeline', data=json.dumps({'structure_id':'9est'}).encode(), headers={'Content-Type':'application/json'}, method='POST'))), indent=2))"
@@ -835,7 +817,2082 @@ train-v65: ## Train v6.5 fork (STAGE=1|2|3, RUN_ID=..., separate MLflow experime
 		$(if $(NO_WARM_START),--no-warm-start,) \
 		$(if $(RESUME),--resume /app/$(RESUME),)
 
-train-v65-cold-start: ## v6.5 true cold start: slim MoE + frozen structural disc, no warm-start/resume
+train-v65-master-cold: ## v6.5 learned-GNN cold start (MP→geometry→MoE; recommended)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v65/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v65.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v65/runs/$(or $(RUN_ID),master_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),1) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v65 \
+		--no-warm-start \
+		--master-cold-lineage \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.5 master-cold (learned GNN) complete. Run: checkpoints/v65/runs/$(or $(RUN_ID),master_cold_v1)"
+	@echo "MLflow experiment: tokyo-eyes-v65 — trainable node_emb/convs/radial→angular→gate"
+
+train-v65-cold-start: train-v65-master-cold ## Alias: recommended v6.5 cold start = learned master-cold
+
+# ---------------------------------------------------------------------------
+# V6.6 GNN lineage — feeler cold-start (see science/dtie/v66/README.md)
+# ---------------------------------------------------------------------------
+
+# Plain master-cold topology-three-vector under the v6.6 entrypoint (P1 barcode parent).
+# Do NOT pass --v66-feeler-lineage or Fix-1 routing-stack flags. Matches the recipe that
+# produced checkpoints/v6/runs/master_cold_topology_three_vector_v1 (mislabeled launch;
+# see docs/specs/dehydron-barcode-input-channel/ablation.md) but tags lineage/path correctly.
+train-v66-master-cold-topology-three-vector: ## P1 parent: plain v6.6 master-cold three-vector (cold, ~200 ep)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),master_cold_topology_three_vector_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--master-cold-lineage \
+		--seed $(or $(SEED),1) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--save-epoch-snapshots
+	@echo "v66 plain master-cold complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),master_cold_topology_three_vector_v1)"
+	@echo "P1 parent artifact: phase_2.pt (expect Training node_dim=3; no feeler/routing-stack flags)"
+
+# P1 matched continues off the locked plain v66 master-cold parent (ablation.md).
+# Stage A-12 v1_2 sidecars currently live under checkpoints/v65/dehydron_barcode_v1
+# (orthogonality SSOT). Do NOT point these at feeler / Fix-1 resume defaults.
+P1_DBH_PARENT := checkpoints/v66/runs/master_cold_topology_three_vector_v1/phase_2.pt
+P1_DBH_BARCODE_DIR := checkpoints/v65/dehydron_barcode_v1
+
+train-v66-dbh-baseline: ## P1 baseline continue: [ρ,τ,ss] off locked v66 phase_2 (15 ep)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_small_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@test -f $(or $(RESUME),$(P1_DBH_PARENT)) || \
+		(echo "Missing P1 parent — run: make train-v66-master-cold-topology-three-vector" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),dbh_ablation_baseline_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),1) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--master-cold-lineage \
+		--phase 2 \
+		--epochs $(or $(EPOCHS),15) \
+		--resume /app/$(or $(RESUME),$(P1_DBH_PARENT)) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "P1 baseline complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),dbh_ablation_baseline_v1)"
+	@echo "Expect Training node_dim=3; physics_investigation audit path"
+
+train-v66-dbh-scalars: ## P1 scalars continue: + orthogonal dehydron scalars off locked v66 phase_2 (15 ep)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_small_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@test -f $(or $(RESUME),$(P1_DBH_PARENT)) || \
+		(echo "Missing P1 parent — run: make train-v66-master-cold-topology-three-vector" && exit 1)
+	@test -d $(or $(DBH_DIR),$(P1_DBH_BARCODE_DIR)) || \
+		(echo "Missing barcode sidecars — run: make precompute-dehydron-barcodes CORPUS=v6_corpus_stage_a_small_v1.json OUT_DIR=$(P1_DBH_BARCODE_DIR) MAX_PROTEINS=12" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),dbh_ablation_scalars_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),1) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--master-cold-lineage \
+		--phase 2 \
+		--epochs $(or $(EPOCHS),15) \
+		--resume /app/$(or $(RESUME),$(P1_DBH_PARENT)) \
+		--use-dehydron-barcode \
+		--dehydron-barcode-dir /app/$(or $(DBH_DIR),$(P1_DBH_BARCODE_DIR)) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "P1 scalars complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),dbh_ablation_scalars_v1)"
+	@echo "Expect Training node_dim=7; liveness_barcode_alive=1 before interpreting audits"
+
+train-v66: ## Train v6.6 fork (STAGE=1|2|3, RUN_ID=..., MLflow tokyo-eyes-v66)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	$(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_120.json) \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),$(shell date +%Y%m%d_%H%M%S)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		$(if $(STAGE),--phase $(STAGE),) \
+		$(if $(MAX_PROTEINS),--max-proteins $(MAX_PROTEINS),) \
+		$(if $(MAX_RESIDUES),--max-residues $(MAX_RESIDUES),) \
+		$(if $(NO_MLFLOW),--no-mlflow,) \
+		$(if $(NO_WARM_START),--no-warm-start,) \
+		$(if $(RESUME),--resume /app/$(RESUME),)
+
+train-v66-feeler: ## v6.6 feeler: learned GNN, 20-ep P1, minimal losses, timeout@45% (no weight transfer)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_p1_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--phase 1 \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler P1 complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_p1_v1)"
+	@echo "MLflow experiment: tokyo-eyes-v66 — viewers under .../viewers/"
+
+# Chem-MVP (_struct_conn typed edges): PARKED 2026-07-19 — compare-only.
+# Active biology/routing SSOT: docs/specs/fix1-s4-restore/README.md
+# Historical replay: ALLOW_PARKED=1 make train-v66-chem-mvp-...
+# Baseline = role edges only; Chem = role + disulf/covale from fact_covalent_bond.
+define _v66_require_allow_parked
+	@if [ "$(ALLOW_PARKED)" != "1" ]; then \
+		echo "ERROR: $@ is PARKED (chem-MVP successor track; disc fill collapsed vs Fix-1)."; \
+		echo "Active SSOT: docs/specs/fix1-s4-restore/README.md"; \
+		echo "Recommended train: make train-v66-fix1-healthy-restore"; \
+		echo "Historical replay only: ALLOW_PARKED=1 make $@"; \
+		exit 1; \
+	fi
+endef
+
+train-v66-chem-mvp-baseline: ## [PARKED] Chem-MVP matched baseline: role edges, no chem
+	$(call _v66_require_allow_parked)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),chem_mvp_baseline_role_stage_a12_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),1) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--epochs $(or $(EPOCHS),20) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--phase 1 \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "Chem-MVP baseline complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),chem_mvp_baseline_role_stage_a12_cold_v1)"
+
+train-v66-chem-mvp: ## [PARKED] Chem-MVP cold: role + disulf/covale edges
+	$(call _v66_require_allow_parked)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),chem_mvp_stage_a12_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),1) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--epochs $(or $(EPOCHS),20) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--chem-edge-mp \
+		--phase 1 \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "Chem-MVP cold complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),chem_mvp_stage_a12_cold_v1)"
+	@echo "Score per-structure on 1LYZ/1F88/1IVO; refuse 1IVO-dominated pools (ablation.md)"
+
+# Euclidean reach Top-K: matched chem-MVP Stage A-12 cold + euclidean_shortcut_mp.
+# SSOT: docs/specs/v66_chem_MVP/ablation_euclidean_reach.md
+# Do NOT overwrite locked baseline chem_mvp_stage_a12_cold_v1.
+RUN_ID_EUC_REACH_MANIFOLD ?= chem_mvp_euc_reach_manifold_v1
+
+preflight-v66-chem-mvp-euc-reach-manifold: ## Part0 + manifold gate before euc-reach train
+	@mkdir -p logs/diagnostics checkpoints/v66/runs/$(RUN_ID_EUC_REACH_MANIFOLD)
+	PYTHONPATH=. python experiments/diagnostics/euclidean_reach_preflight.py \
+		--run-id $(or $(RUN_ID),$(RUN_ID_EUC_REACH_MANIFOLD)) \
+		2>&1 | tee logs/diagnostics/preflight_euc_reach_manifold_$$(date +%Y%m%d_%H%M%S).log
+
+train-v66-chem-mvp-euc-reach-manifold: ## [PARKED] Manifold-sync euc-reach cold (v2)
+	$(call _v66_require_allow_parked)
+	@$(MAKE) preflight-v66-chem-mvp-euc-reach-manifold RUN_ID=$(or $(RUN_ID),$(RUN_ID_EUC_REACH_MANIFOLD))
+	@test -f checkpoints/v66/runs/$(or $(RUN_ID),$(RUN_ID_EUC_REACH_MANIFOLD))/TRAIN_READY.json || \
+		(echo "Missing TRAIN_READY.json — preflight failed" && exit 1)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@test -f checkpoints/v66/runs/chem_mvp_stage_a12_cold_v1/v66_best.pt || \
+		(echo "Missing locked chem-MVP baseline checkpoint" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache logs/training
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),$(RUN_ID_EUC_REACH_MANIFOLD)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),1) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--epochs $(or $(EPOCHS),20) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--chem-edge-mp \
+		--euclidean-shortcut-mp \
+		--phase 1 \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "Manifold-sync euc-reach cold complete: checkpoints/v66/runs/$(or $(RUN_ID),$(RUN_ID_EUC_REACH_MANIFOLD))"
+	@echo "Grade: PYTHONPATH=. python experiments/diagnostics/euclidean_reach_grade_first_ckpt.py --treatment-dir checkpoints/v66/runs/$(or $(RUN_ID),$(RUN_ID_EUC_REACH_MANIFOLD))"
+
+# Prior authorized id (INVALIDATED — construction mismatch): chem_mvp_euc_reach_v1
+train-v66-chem-mvp-euc-reach: ## [PARKED] Chem-MVP + Top-K euclidean_shortcut [prior run]
+	$(call _v66_require_allow_parked)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@test -f checkpoints/v66/runs/chem_mvp_stage_a12_cold_v1/v66_best.pt || \
+		(echo "Missing locked chem-MVP baseline checkpoint" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),chem_mvp_euc_reach_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),1) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--epochs $(or $(EPOCHS),20) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--chem-edge-mp \
+		--euclidean-shortcut-mp \
+		--phase 1 \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "Euc-reach cold complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),chem_mvp_euc_reach_v1)"
+	@echo "Grade vs chem_mvp_stage_a12_cold_v1 on cone_depth + trunk P@K (ablation_euclidean_reach.md §5)"
+
+
+# ha_edges_v1: heavy-atom packing/dehydron aux on matched chem-MVP Stage A-12 cold.
+# Do NOT run until Part 0 passes (docs/specs/graph-communication/ablation.md §2).
+train-v66-ha-edges-v1: ## PARKED — ha_edges_v1 stopped (errors on purpose)
+	@echo "ERROR: train-v66-ha-edges-v1 is PARKED/STOP (2026-07-19)."
+	@echo "D4 Partial + instrument_b par/worse — do not retrain HA packing aux."
+	@echo "Active SSOT: docs/specs/fix1-s4-restore/README.md"
+	@echo "Checkpoint kept for compare only:"
+	@echo "  checkpoints/v66/runs/ha_edges_v1_stage_a12_cold_v1/v66_best.pt"
+	@echo "SSOT: docs/specs/graph-communication/ablation.md"
+	@exit 1
+
+# |ρ−TAU| swap: matched Stage A-12 cold arms on chem-MVP + T1a z-norm (both arms).
+# Scale check locked z-norm ON (std(|ρ−TAU|)/std(τ)≈8.1); do not grade vs chem_mvp without z-norm.
+train-v66-chem-mvp-znorm-baseline: ## [PARKED] |ρ−TAU| matched baseline: chem-MVP + z-norm
+	$(call _v66_require_allow_parked)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),chem_mvp_znorm_stage_a12_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),1) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--epochs $(or $(EPOCHS),20) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--chem-edge-mp \
+		--input-feature-zscore \
+		--phase 1 \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "Chem-MVP z-norm baseline complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),chem_mvp_znorm_stage_a12_cold_v1)"
+
+train-v66-chem-mvp-tau-abs-dist: ## [PARKED] |ρ−TAU| swap arm: chem-MVP + z-norm + |ρ−TAU|
+	$(call _v66_require_allow_parked)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),chem_mvp_tau_abs_dist_stage_a12_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),1) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--epochs $(or $(EPOCHS),20) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--chem-edge-mp \
+		--input-feature-zscore \
+		--replace-tau-abs-dist \
+		--phase 1 \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "Chem-MVP |ρ−TAU| swap complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),chem_mvp_tau_abs_dist_stage_a12_cold_v1)"
+
+# Path 2 Move 3: ORPHANED (2026-07-18 cleanup). Do not train.
+# See docs/specs/learned-flow-influence/PATH2_DIRECTIONALITY.md
+PATH2_SWAP_PARENT := checkpoints/v66/runs/chem_mvp_tau_abs_dist_stage_a12_cold_v1/v66_best.pt
+train-v66-path2-dir-diam9: ## ORPHANED — Path 2 agent pilot withdrawn (errors on purpose)
+	@echo "ERROR: train-v66-path2-dir-diam9 is ORPHANED (2026-07-18 cleanup)."
+	@echo "Do not warm-start Path 2. Resume from locked |ρ−TAU| / matched z-norm trunk."
+	@echo "SSOT: docs/specs/learned-flow-influence/PATH2_DIRECTIONALITY.md"
+	@exit 1
+
+# Path B hierarchical containment: matched Stage A-12 cold arms on chem-MVP parent stack.
+# Baseline = chem on, no containment; Path B = same + contain_up/down (+2 radial MLPs).
+train-v66-containment-baseline: ## [PARKED] Containment matched baseline: chem stack, no containment
+	$(call _v66_require_allow_parked)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),containment_baseline_chem_stage_a12_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),1) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--epochs $(or $(EPOCHS),20) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--chem-edge-mp \
+		--phase 1 \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "Containment baseline complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),containment_baseline_chem_stage_a12_cold_v1)"
+
+train-v66-containment-pathb: ## [PARKED] Containment Path B cold: chem + contain_up/down
+	$(call _v66_require_allow_parked)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),containment_pathb_stage_a12_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),1) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--epochs $(or $(EPOCHS),20) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--chem-edge-mp \
+		--containment-edge-mp \
+		--phase 1 \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "Containment Path B cold complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),containment_pathb_stage_a12_cold_v1)"
+	@echo "Gate order: isolated-seed → liveness → oversmoothing-at-root → flow-influence (ablation.md)"
+
+train-v66-feeler-dbh-scalars: ## v6.6 feeler P3: barcode scalars off P2 parent (15 ep, no disc occupancy) [deprecated — disc collapse]
+	@echo "WARNING: node-global barcode caused disc collapse; use train-v66-feeler-p3-geom-edges instead"
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_DBH_P2_RESUME)) || \
+		(echo "Missing P2 resume — set RESUME=..." && exit 1)
+	@test -d $(or $(DBH_DIR),$(V66_DBH_BARCODE_DIR)) || \
+		(echo "Missing barcode sidecars — run: make precompute-dehydron-barcodes-feeler-expand" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_dbh_scalars_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),1) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--phase 3 \
+		--resume /app/$(or $(RESUME),$(V66_DBH_P2_RESUME)) \
+		--epochs $(or $(EPOCHS),15) \
+		--use-dehydron-barcode \
+		--dehydron-barcode-dir /app/$(or $(DBH_DIR),$(V66_DBH_BARCODE_DIR)) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler barcode P3 complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_dbh_scalars_v1)"
+	@echo "Gate: liveness_barcode_alive=1; compare viewers vs P2 parent"
+
+train-v66-feeler-dbh-edges: ## v6.6 feeler P3: local dehydron edge barcode off P2 parent (15 ep)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_DBH_P2_RESUME)) || \
+		(echo "Missing P2 resume — set RESUME=..." && exit 1)
+	@test -d $(or $(DBH_DIR),$(V66_DBH_BARCODE_DIR)) || \
+		(echo "Missing barcode sidecars — run: make precompute-dehydron-barcodes-feeler-expand" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_dbh_edges_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--phase 3 \
+		--resume /app/$(or $(RESUME),$(V66_DBH_P2_RESUME)) \
+		--epochs $(or $(EPOCHS),15) \
+		--dehydron-edge-barcode \
+		--dehydron-barcode-dir /app/$(or $(DBH_DIR),$(V66_DBH_BARCODE_DIR)) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler edge-barcode P3 complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_dbh_edges_v1)"
+	@echo "Gate: liveness_barcode_edge_alive=1; compare viewers vs P2 parent (grid fill, not teardrop)"
+
+train-v66-feeler-p3-geom: ## v6.6 feeler: continue P3 geom from best_disc (20 ep, no barcode)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_FEELER_P3_RESUME)) || \
+		(echo "Missing p3_geom resume — set RESUME=..." && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_p3_geom_v2) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-p3-geom \
+		--resume /app/$(or $(RESUME),$(V66_FEELER_P3_RESUME)) \
+		--epochs $(or $(EPOCHS),20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler P3 geom continue complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_p3_geom_v2)"
+	@echo "Gate: probe_r_proj_depth ≥ 0.30 + 4OBE viewer (ignore corpus σ₂/σ₁ alone)"
+
+train-v66-feeler-p3-geom-half: ## v6.6 feeler: P3 geom continue with 0.5× occupancy stack (20 ep)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_FEELER_P3_RESUME)) || \
+		(echo "Missing p3_geom resume — set RESUME=..." && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_p3_geom_half_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-p3-geom \
+		--v66-feeler-p3-geom-half-stack \
+		--resume /app/$(or $(RESUME),$(V66_FEELER_P3_RESUME)) \
+		--epochs $(or $(EPOCHS),20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler P3 geom half-stack complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_p3_geom_half_v1)"
+	@echo "Gate: probe_r_proj_depth ≥ 0.30 + 4OBE viewer (compare vs full-stack v2 drift)"
+
+train-v66-feeler-p3-geom-edges: ## v6.6 feeler: P3 geom + edge barcode off p3_geom champion (15 ep)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_FEELER_P3_RESUME)) || \
+		(echo "Missing p3_geom resume — set RESUME=... or finish feeler_expand_23_p3_geom_v1" && exit 1)
+	@test -d $(or $(DBH_DIR),$(V66_DBH_BARCODE_DIR)) || \
+		(echo "Missing barcode sidecars — run: make precompute-dehydron-barcodes-feeler-expand" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_p3_geom_edges_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-p3-geom-edges \
+		--resume /app/$(or $(RESUME),$(V66_FEELER_P3_RESUME)) \
+		--epochs $(or $(EPOCHS),15) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--dehydron-edge-barcode \
+		--dehydron-barcode-dir /app/$(or $(DBH_DIR),$(V66_DBH_BARCODE_DIR)) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler P3 geom + edge barcode complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_p3_geom_edges_v1)"
+	@echo "Gate: σ₂/σ₁ ≥ 0.80, disc thick pre ≥ 0.22; compare 4OBE/1R69 viewers vs p3_geom parent"
+
+train-v66-feeler-rim-fanout: ## v6.6 feeler P4: rim fan-out off p3_geom champion (10 ep, no barcode)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_FEELER_CHAMPION)) || \
+		(echo "Missing champion resume — set RESUME=..." && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_p3_geom_p4_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--phase 4 \
+		--resume /app/$(or $(RESUME),$(V66_FEELER_CHAMPION)) \
+		--epochs $(or $(EPOCHS),10) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler P4 rim fan-out complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_p3_geom_p4_v1)"
+	@echo "Gate: probe_r_proj_depth ≥ baseline−0.08 + 4OBE viewer (no disc occupancy stack)"
+
+train-v66-feeler-rim-fanout-model: ## v6.6 warm: P4 ep58 → rim fan-out P12 (15 ep, half geom + rim loss)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_FEELER_P4_RESUME)) || \
+		(echo "Missing P4 ep58 resume — set RESUME=..." && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_fanout_p4_v2) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--resume /app/$(or $(RESUME),$(V66_FEELER_P4_RESUME)) \
+		--epochs $(or $(EPOCHS),15) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--spoke-edge-scale $(or $(SPOKE_SCALE),1.5) \
+		--ribbon-edge-scale $(or $(RIBBON_SCALE),1.35) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.12) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler rim fan-out WARM complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_fanout_p4_v2)"
+	@echo "Gate: 4OBE rim_frac + angular span + probe_r_proj_depth ≥ P4−0.08"
+
+V66_FEELER_RIM_FANOUT_POLISH_RESUME := checkpoints/v66/runs/feeler_expand_23_rim_fanout_p4_v2/epochs/epoch_062.pt
+
+train-v66-feeler-rim-fanout-polish: ## v6.6 polish: resume p4_v2 ep62; depth-lock + light rim (10 ep)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_FEELER_RIM_FANOUT_POLISH_RESUME)) || \
+		(echo "Missing polish resume — set RESUME=... or finish feeler_expand_23_rim_fanout_p4_v2" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_fanout_polish_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-rim-fanout-polish \
+		--resume /app/$(or $(RESUME),$(V66_FEELER_RIM_FANOUT_POLISH_RESUME)) \
+		--epochs $(or $(EPOCHS),10) \
+		--p2-bridge-lr $(or $(LR),5.0e-5) \
+		--spoke-edge-scale $(or $(SPOKE_SCALE),1.5) \
+		--ribbon-edge-scale $(or $(RIBBON_SCALE),1.35) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.12) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler rim fan-out POLISH complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_fanout_polish_v1)"
+	@echo "Gate: 4OBE rim_frac ≥ P4, σ₂/σ₁ ≥ 0.60, probe_r_proj_depth ≥ baseline−0.08"
+
+V66_FEELER_ANGULAR_FILL_RESUME := checkpoints/v66/runs/feeler_expand_23_rim_fanout_polish_v1/epochs/epoch_072.pt
+
+train-v66-feeler-rim-fanout-angular: ## v6.6 angular-fill: resume polish ep72; mid-disc rim_* + depth-lock (8 ep)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_FEELER_ANGULAR_FILL_RESUME)) || \
+		(echo "Missing angular-fill resume — set RESUME=... or finish feeler_expand_23_rim_fanout_polish_v1" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_fanout_angular_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-rim-fanout-angular \
+		--resume /app/$(or $(RESUME),$(V66_FEELER_ANGULAR_FILL_RESUME)) \
+		--epochs $(or $(EPOCHS),8) \
+		--p2-bridge-lr $(or $(LR),5.0e-5) \
+		--spoke-edge-scale $(or $(SPOKE_SCALE),1.5) \
+		--ribbon-edge-scale $(or $(RIBBON_SCALE),1.35) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.12) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler rim fan-out ANGULAR-FILL complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_fanout_angular_v1)"
+	@echo "Gate: 1F88/4OBE sparse wedge ↓, R↓, probe ≥ baseline−0.08 (then radius)"
+
+V66_FEELER_ANGULAR_V2_RESUME := checkpoints/v66/runs/feeler_expand_23_rim_fanout_angular_v1/epochs/epoch_080.pt
+
+train-v66-feeler-rim-fanout-angular-v2: ## v6.6 angular-fill v2: resume angular ep80; min_r=0.12 (8 ep)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_FEELER_ANGULAR_V2_RESUME)) || \
+		(echo "Missing angular-v2 resume — set RESUME=... or finish feeler_expand_23_rim_fanout_angular_v1" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_fanout_angular_v2) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-rim-fanout-angular-v2 \
+		--resume /app/$(or $(RESUME),$(V66_FEELER_ANGULAR_V2_RESUME)) \
+		--epochs $(or $(EPOCHS),8) \
+		--p2-bridge-lr $(or $(LR),5.0e-5) \
+		--spoke-edge-scale $(or $(SPOKE_SCALE),1.5) \
+		--ribbon-edge-scale $(or $(RIBBON_SCALE),1.35) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.12) \
+		--rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler rim fan-out ANGULAR-FILL v2 complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_fanout_angular_v2)"
+	@echo "Gate: 1F88 sparse wedge ≤~20° or stall; probe ≥ baseline−0.08; then radius"
+
+V66_FEELER_RADIUS_RESUME := checkpoints/v66/runs/feeler_expand_23_rim_fanout_angular_v2/epochs/epoch_088.pt
+
+train-v66-feeler-rim-fanout-radius: ## v6.6 radius push: resume angular_v2 ep88; depth_tgt=0.55 (8 ep)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_FEELER_RADIUS_RESUME)) || \
+		(echo "Missing radius resume — set RESUME=... or finish feeler_expand_23_rim_fanout_angular_v2" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_fanout_radius_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-rim-fanout-radius \
+		--resume /app/$(or $(RESUME),$(V66_FEELER_RADIUS_RESUME)) \
+		--epochs $(or $(EPOCHS),8) \
+		--p2-bridge-lr $(or $(LR),5.0e-5) \
+		--spoke-edge-scale $(or $(SPOKE_SCALE),1.5) \
+		--ribbon-edge-scale $(or $(RIBBON_SCALE),1.35) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.14) \
+		--rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler rim fan-out RADIUS complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_fanout_radius_v1)"
+	@echo "Gate: rim_frac ↑ (~40% 4OBE/1F88); probe ≥ baseline−0.08; wedge must not reopen"
+
+V66_FEELER_COVERAGE_RESUME := checkpoints/v66/runs/feeler_expand_23_rim_fanout_radius_v1/epochs/epoch_096.pt
+
+train-v66-feeler-rim-fanout-coverage: ## v6.6 angular coverage: resume radius ep96; empty-sector bin floor (8 ep)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_FEELER_COVERAGE_RESUME)) || \
+		(echo "Missing coverage resume — set RESUME=... or finish feeler_expand_23_rim_fanout_radius_v1" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_fanout_coverage_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-rim-fanout-coverage \
+		--resume /app/$(or $(RESUME),$(V66_FEELER_COVERAGE_RESUME)) \
+		--epochs $(or $(EPOCHS),8) \
+		--p2-bridge-lr $(or $(LR),5.0e-5) \
+		--spoke-edge-scale $(or $(SPOKE_SCALE),1.5) \
+		--ribbon-edge-scale $(or $(RIBBON_SCALE),1.35) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.14) \
+		--rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler rim fan-out COVERAGE complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_fanout_coverage_v1)"
+	@echo "Gate: 1F88 largest angular gap ↓; probe ≥ baseline−0.08; radius must hold"
+
+V66_FEELER_ANTIBARRIER_RESUME := checkpoints/v66/runs/feeler_expand_23_rim_fanout_coverage_v2/epochs/epoch_164.pt
+V66_RAF1_PPI_RESUME := checkpoints/v66/runs/feeler_expand_23_rim_fanout_coverage_v2/epochs/epoch_164.pt
+
+train-v66-raf1-ppi-coverage: ## v6.6 RAF1 PPI pathway corpus: coverage transfer from ep164 (40 ep)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json (pathway corpus loads from PDB; stamp is lineage hygiene)" && exit 1)
+	@test -f manifests/v6_corpus_raf1_ppi_v1.json || (echo "Missing RAF1 PPI manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_RAF1_PPI_RESUME)) || \
+		(echo "Missing RAF1 PPI resume — set RESUME=... or need coverage_v2 epoch_164.pt" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	@echo "NOTE: RAF1 PPI pathway corpus trains via TRAINING_LOAD_FROM_PDB=1 (structures need not be DB-ingested)."
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) -e TRAINING_LOAD_FROM_PDB=1 -e GNN_INPUT_MODE=topology_three_vector science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_raf1_ppi_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),raf1_ppi_coverage_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-rim-fanout-coverage \
+		--resume /app/$(or $(RESUME),$(V66_RAF1_PPI_RESUME)) \
+		--epochs $(or $(EPOCHS),40) \
+		--p2-bridge-lr $(or $(LR),5.0e-5) \
+		--spoke-edge-scale $(or $(SPOKE_SCALE),1.5) \
+		--ribbon-edge-scale $(or $(RIBBON_SCALE),1.35) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.14) \
+		--rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 RAF1 PPI coverage transfer complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),raf1_ppi_coverage_v1)"
+	@echo "Gate: 4OBE disc vs ep164 baseline; new pathway discs (3OMV/3EQI/2O02) occupancy; probe hold"
+
+train-v66-feeler-rim-fanout-antibarrier: ## v6.6 anti-barrier: resume coverage_v2 ep164; expert θ diversity (25 ep)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_FEELER_ANTIBARRIER_RESUME)) || \
+		(echo "Missing anti-barrier resume — set RESUME=... or finish feeler_expand_23_rim_fanout_coverage_v2" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_fanout_antibarrier_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-rim-fanout-antibarrier \
+		--resume /app/$(or $(RESUME),$(V66_FEELER_ANTIBARRIER_RESUME)) \
+		--epochs $(or $(EPOCHS),25) \
+		--p2-bridge-lr $(or $(LR),5.0e-5) \
+		--spoke-edge-scale $(or $(SPOKE_SCALE),1.5) \
+		--ribbon-edge-scale $(or $(RIBBON_SCALE),1.35) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.14) \
+		--rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler rim fan-out ANTI-BARRIER complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_fanout_antibarrier_v1)"
+	@echo "Gate: gap ↓; crest wall_share ↓; r̄ ≳ 0.18; probe ≥ baseline−0.08"
+
+V66_FEELER_EXPERT_ARC_RESUME := checkpoints/v66/runs/feeler_expand_23_rim_fanout_coverage_v2/epochs/epoch_164.pt
+
+train-v66-feeler-rim-fanout-expert-arc: ## v6.6 mild expert-arc: resume coverage_v2 ep164; soft θ sep, 1F88 anchor (20 ep)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_FEELER_EXPERT_ARC_RESUME)) || \
+		(echo "Missing expert-arc resume — set RESUME=... or need coverage_v2 epoch_164.pt" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_fanout_expert_arc_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-rim-fanout-expert-arc \
+		--epoch-anchor-pdb-ids $(or $(EPOCH_ANCHORS),1F88) \
+		--resume /app/$(or $(RESUME),$(V66_FEELER_EXPERT_ARC_RESUME)) \
+		--epochs $(or $(EPOCHS),20) \
+		--p2-bridge-lr $(or $(LR),5.0e-5) \
+		--spoke-edge-scale $(or $(SPOKE_SCALE),1.5) \
+		--ribbon-edge-scale $(or $(RIBBON_SCALE),1.35) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.14) \
+		--rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler mild EXPERT-ARC complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_fanout_expert_arc_v1)"
+	@echo "Gates: probe ≥ baseline−0.08; 1F88 gap not worse >~10°; 4OBE circ-R ≲ 0.60"
+
+V66_FEELER_GEOM_PRIOR_RESUME := checkpoints/v66/runs/feeler_expand_23_rim_fanout_coverage_v2/epochs/epoch_164.pt
+
+train-v66-feeler-geom-angular-prior: ## v6.6 geometric angular prior: resume ep164; dehydron/peptide θ (20 ep)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_FEELER_GEOM_PRIOR_RESUME)) || \
+		(echo "Missing geom-prior resume — set RESUME=... or need coverage_v2 epoch_164.pt" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_geom_angular_prior_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-geom-angular-prior \
+		--geometric-angular-kappa $(or $(GEOM_KAPPA),1.0) \
+		--geometric-angular-alpha $(or $(GEOM_ALPHA),0.7853981633974483) \
+		--epoch-anchor-pdb-ids $(or $(EPOCH_ANCHORS),1F88) \
+		--resume /app/$(or $(RESUME),$(V66_FEELER_GEOM_PRIOR_RESUME)) \
+		--epochs $(or $(EPOCHS),20) \
+		--p2-bridge-lr $(or $(LR),5.0e-5) \
+		--spoke-edge-scale $(or $(SPOKE_SCALE),1.5) \
+		--ribbon-edge-scale $(or $(RIBBON_SCALE),1.35) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.14) \
+		--rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler GEOMETRIC ANGULAR PRIOR complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_geom_angular_prior_v1)"
+	@echo "Gates: probe ≥ baseline−0.08; 1F88 gap; 4OBE circ-R; corr(r,depth) hold"
+
+train-v66-feeler-geom-angular-prior-cold: ## v6.6 geom angular prior COLD: no resume, 10 ep; judge Poincaré HTML viewers
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_geom_angular_prior_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-geom-angular-prior \
+		--geometric-angular-kappa $(or $(GEOM_KAPPA),1.0) \
+		--geometric-angular-alpha $(or $(GEOM_ALPHA),0.7853981633974483) \
+		--epoch-anchor-pdb-ids $(or $(EPOCH_ANCHORS),1F88) \
+		--epochs $(or $(EPOCHS),10) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--spoke-edge-scale $(or $(SPOKE_SCALE),1.5) \
+		--ribbon-edge-scale $(or $(RIBBON_SCALE),1.35) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.14) \
+		--rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler GEOM ANGULAR PRIOR COLD complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_geom_angular_prior_cold_v1)"
+	@echo "True test: open viewers/ HTML Poincaré discs (1F88, 4OBE) — no resume weights"
+
+train-v66-feeler-geom-angular-prior-cold-continue: ## continue cold geom-prior to ≥20 ep; Fix-1 gates+H each epoch
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),checkpoints/v66/runs/feeler_expand_23_geom_angular_prior_cold_v1/epochs/epoch_010.pt) || \
+		(echo "Missing cold epoch_010 resume — set RESUME=..." && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_geom_angular_prior_cold_to20_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-geom-angular-prior \
+		--geometric-angular-kappa $(or $(GEOM_KAPPA),1.0) \
+		--geometric-angular-alpha $(or $(GEOM_ALPHA),0.7853981633974483) \
+		--epoch-anchor-pdb-ids $(or $(EPOCH_ANCHORS),1F88,4OBE) \
+		--resume /app/$(or $(RESUME),checkpoints/v66/runs/feeler_expand_23_geom_angular_prior_cold_v1/epochs/epoch_010.pt) \
+		--epochs $(or $(EPOCHS),10) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--spoke-edge-scale $(or $(SPOKE_SCALE),1.5) \
+		--ribbon-edge-scale $(or $(RIBBON_SCALE),1.35) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.14) \
+		--rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "Continue →20 complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_geom_angular_prior_cold_to20_v1)"
+	@echo "Per-epoch Fix-1 + H: .../fix1_gates_per_epoch.jsonl"
+
+train-v66-fix1-s4-stage-a12: ## Fix-1 + S4 hyp-MP, cold, locked Stage A-12; IBU usage gates
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_small_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing Stage A-12 manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_stage_a12_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-geom-angular-prior \
+		--hyperbolic-mp-graph \
+		--geometric-angular-kappa $(or $(GEOM_KAPPA),1.0) \
+		--geometric-angular-alpha $(or $(GEOM_ALPHA),0.7853981633974483) \
+		--epoch-anchor-pdb-ids $(or $(EPOCH_ANCHORS),1F88,4OBE) \
+		--epochs $(or $(EPOCHS),20) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.14) \
+		--rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots \
+		$(if $(SEED),--seed $(SEED),)
+	@echo "Fix-1+S4 Stage A-12 complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_stage_a12_cold_v1)"
+	@echo "Pre-registered usage: USAGE_MOVED / IBU_HOLDS / AMBIGUOUS — see GNNV7_SUCCESS_CRITERIA.md"
+	@echo "Log: .../fix1_gates_per_epoch.jsonl (H, max_share, Fix-1 gates)"
+
+train-v66-fix1-s4-t1a-znorm-stage-a12: ## Fix-1+S4 + T1a input z-norm cold Stage A-12 (no |ρ−TAU| yet)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_small_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing Stage A-12 manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_t1a_znorm_stage_a12_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-geom-angular-prior \
+		--hyperbolic-mp-graph \
+		--input-feature-zscore \
+		$(if $(REPLACE_TAU_ABS_DIST),--replace-tau-abs-dist,) \
+		--geometric-angular-kappa $(or $(GEOM_KAPPA),1.0) \
+		--geometric-angular-alpha $(or $(GEOM_ALPHA),0.7853981633974483) \
+		--epoch-anchor-pdb-ids $(or $(EPOCH_ANCHORS),1F88,4OBE) \
+		--epochs $(or $(EPOCHS),20) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.14) \
+		--rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots \
+		$(if $(SEED),--seed $(SEED),)
+	@echo "T1a z-norm cold retrain complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_t1a_znorm_stage_a12_cold_v1)"
+	@echo "Pre-registered: T1A_RANK_MET / SURPASSED_FWD / ROUTING_RESPONDED / T1A_ROOT_CAUSE_FOR_ROUTING — GNNV7_SUCCESS_CRITERIA.md"
+	@echo "Logs: fix1_gates_per_epoch.jsonl + t1a_trunk_rank_per_epoch.jsonl"
+
+train-v66-fix1-s4-gate-sasa-stage-a12: ## Pre-reg: Fix-1+S4 + T1a z-norm + explicit SASA on topology gate (Stage A-12 cold)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_small_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing Stage A-12 manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_gate_sasa_stage_a12_cold_v1)
+	@printf '%s\n' \
+		'# SASA board enrichment — pre-registered 2026-07-14' \
+		'lever: explicit normalized SASA on topology gate board' \
+		'baseline_lineage: Fix-1 + S4 + T1a input z-norm (no |ρ−TAU|, no scale L3)' \
+		'input_feature_zscore: on' \
+		'gate_include_sasa: on' \
+		'comparators: L2 ge20 soft structure; route_v1 committed tail' \
+		'success: GROWS_REAL_NICHE_TWIN_COMMIT | GROWS_REAL_NICHE_CLEAN_EXPOSURE_SPLIT' \
+		'see: docs/audit/GNNV7_SUCCESS_CRITERIA.md (HEADLINE / SASA enrichment gate)' \
+		> checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_gate_sasa_stage_a12_cold_v1)/README.md
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_gate_sasa_stage_a12_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-geom-angular-prior \
+		--hyperbolic-mp-graph \
+		--input-feature-zscore \
+		--gate-include-sasa \
+		--geometric-angular-kappa $(or $(GEOM_KAPPA),1.0) \
+		--geometric-angular-alpha $(or $(GEOM_ALPHA),0.7853981633974483) \
+		--epoch-anchor-pdb-ids $(or $(EPOCH_ANCHORS),1F88,4OBE) \
+		--epochs $(or $(EPOCHS),20) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.14) \
+		--rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots \
+		$(if $(SEED),--seed $(SEED),)
+	@echo "SASA gate enrichment complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_gate_sasa_stage_a12_cold_v1)"
+	@echo "Score vs GNNV7_SUCCESS_CRITERIA.md SASA enrichment pre-reg (GROWS_REAL_NICHE_* only)"
+
+train-v66-fix1-s4-proto-repulsion-stage-a12: ## Pre-reg: SASA lineage + nearest-pair prototype repulsion (Stage A-12 cold)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_small_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing Stage A-12 manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_proto_repulsion_stage_a12_cold_v1)
+	@printf '%s\n' \
+		'# Prototype nearest-pair repulsion — pre-registered 2026-07-14 (frozen before train)' \
+		'lever: ongoing nearest-pair prototype hyp-distance hinge' \
+		'loss: relu(m − min_{i<j} d_H(p_i,p_j))' \
+		'prototype_repulsion_coeff: $(or $(PROTO_REPULSION_COEFF),1.0)' \
+		'prototype_repulsion_margin: $(or $(PROTO_REPULSION_MARGIN),0.25)' \
+		'L0_orthogonal_init: off' \
+		'baseline_lineage: Fix-1 + S4 + T1a z-norm + gate_include_sasa' \
+		'run_structure: ONE run, ONE coeff; L1/L2/L3 = within-run escalating floors' \
+		'no: encoder_h→gate, new board channel, logit_scale L3' \
+		'success: PROTO_SEP_L1 | PROTO_SEP_L2 only (see GNNV7_SUCCESS_CRITERIA.md)' \
+		'logs: prototype_repulsion_per_epoch.jsonl (all 6 pairs + re-measured degree-swap)' \
+		> checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_proto_repulsion_stage_a12_cold_v1)/README.md
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_proto_repulsion_stage_a12_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-geom-angular-prior \
+		--hyperbolic-mp-graph \
+		--input-feature-zscore \
+		--gate-include-sasa \
+		--prototype-repulsion-coeff $(or $(PROTO_REPULSION_COEFF),1.0) \
+		--prototype-repulsion-margin $(or $(PROTO_REPULSION_MARGIN),0.25) \
+		--geometric-angular-kappa $(or $(GEOM_KAPPA),1.0) \
+		--geometric-angular-alpha $(or $(GEOM_ALPHA),0.7853981633974483) \
+		--epoch-anchor-pdb-ids $(or $(EPOCH_ANCHORS),1F88,4OBE) \
+		--epochs $(or $(EPOCHS),20) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.14) \
+		--rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots \
+		$(if $(SEED),--seed $(SEED),)
+	@echo "Prototype repulsion complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_proto_repulsion_stage_a12_cold_v1)"
+	@echo "Score vs GNNV7_SUCCESS_CRITERIA.md PROTO_SEP_L1 / PROTO_SEP_L2 (re-measured sensitivity required)"
+
+train-v66-fix1-s4-proto-repulsion-scale-l2-stage-a12: ## Pre-reg: repulsion × elevated scale (~6.61) stack (Stage A-12 cold)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_small_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing Stage A-12 manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_proto_repulsion_scale_l2_stage_a12_cold_v1)
+	@printf '%s\n' \
+		'# Repulsion × elevated scale stack — pre-registered 2026-07-14 (frozen before train)' \
+		'lever: nearest-pair prototype repulsion + L2 softplus init/floor' \
+		'prototype_repulsion_coeff: $(or $(PROTO_REPULSION_COEFF),1.0)' \
+		'prototype_repulsion_margin: $(or $(PROTO_REPULSION_MARGIN),0.25)' \
+		'gate_logit_softplus_init: $(or $(GATE_SOFTPLUS),6.612216472625732)' \
+		'gate_logit_softplus_floor: $(or $(GATE_SOFTPLUS_FLOOR),6.612216472625732)' \
+		'baseline_lineage: Fix-1 + S4 + T1a z-norm + gate_include_sasa' \
+		'STACK_COMMIT_L1: frac max-p≥0.60 ≥5% (anchored to route_v1 ~6% niche)' \
+		'DIST_RANGE_KILLS_SCALE: softplus≥5 AND mean dist_range≤0.15 AND frac_mp≥0.60<2%' \
+		'success: STACK_WIN_L1 | STACK_WIN_L2 (see GNNV7_SUCCESS_CRITERIA.md)' \
+		'logs: prototype_repulsion_per_epoch.jsonl (pairs + dist_range + softplus + max-p + hard_share + committed_hard_share + per_structure_soft/hard_max)' \
+		> checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_proto_repulsion_scale_l2_stage_a12_cold_v1)/README.md
+	GNN_INPUT_MODE=$(or $(GNN_INPUT_MODE),topology_three_vector) $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_proto_repulsion_scale_l2_stage_a12_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-geom-angular-prior \
+		--hyperbolic-mp-graph \
+		--input-feature-zscore \
+		--gate-include-sasa \
+		--prototype-repulsion-coeff $(or $(PROTO_REPULSION_COEFF),1.0) \
+		--prototype-repulsion-margin $(or $(PROTO_REPULSION_MARGIN),0.25) \
+		--gate-logit-softplus-init $(or $(GATE_SOFTPLUS),6.612216472625732) \
+		--gate-logit-softplus-floor $(or $(GATE_SOFTPLUS_FLOOR),6.612216472625732) \
+		--geometric-angular-kappa $(or $(GEOM_KAPPA),1.0) \
+		--geometric-angular-alpha $(or $(GEOM_ALPHA),0.7853981633974483) \
+		--epoch-anchor-pdb-ids $(or $(EPOCH_ANCHORS),1F88,4OBE) \
+		--epochs $(or $(EPOCHS),20) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.14) \
+		--rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots \
+		$(if $(SEED),--seed $(SEED),) \
+		$(if $(RESUME),--resume /app/$(RESUME),)
+	@echo "Stack complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_proto_repulsion_scale_l2_stage_a12_cold_v1)"
+	@echo "Score vs GNNV7_SUCCESS_CRITERIA.md STACK_WIN_L1 / STACK_WIN_L2"
+
+train-v66-fix1-s4-proto-repulsion-scale-l2-majority-hinge-stage-a12: ## Pre-reg: stack + majority committed-share hinge λ=0.5 (Stage A-12 cold)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_small_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing Stage A-12 manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_stack_majority_hinge_stage_a12_cold_v1)
+	@printf '%s\n' \
+		'# Majority-conditional committed-share hinge — pre-registered 2026-07-14' \
+		'baseline: Fix-1 + S4 + SASA + proto repulsion + softplus floor ≈6.612' \
+		'lever: STE hard committed majority share hinge (maj-mask grads)' \
+		'majority_committed_share_coeff: $(or $(MAJORITY_SHARE_COEFF),0.5)' \
+		'majority_committed_share_tau: $(or $(MAJORITY_SHARE_TAU),0.56)' \
+		'coeff_proxy: checkpoints/v66/diagnostics/proto_repulsion_scale_l2_stack/majority_hinge_coeff_proxy.json' \
+		'NO_MOVE at 0.5 → pre-auth rematch 2.5; COMMIT_KILLED → rematch 0.1' \
+		'success: MAJORITY_SPLIT_WIN (local cleared + purity + commit L2 + axis)' \
+		'logs: prototype_repulsion_per_epoch.jsonl (majority_conditional + dehydron_partition_purity)' \
+		> checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_stack_majority_hinge_stage_a12_cold_v1)/README.md
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_stack_majority_hinge_stage_a12_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-geom-angular-prior \
+		--hyperbolic-mp-graph \
+		--input-feature-zscore \
+		--gate-include-sasa \
+		--prototype-repulsion-coeff $(or $(PROTO_REPULSION_COEFF),1.0) \
+		--prototype-repulsion-margin $(or $(PROTO_REPULSION_MARGIN),0.25) \
+		--gate-logit-softplus-init $(or $(GATE_SOFTPLUS),6.612216472625732) \
+		--gate-logit-softplus-floor $(or $(GATE_SOFTPLUS_FLOOR),6.612216472625732) \
+		--majority-committed-share-coeff $(or $(MAJORITY_SHARE_COEFF),0.5) \
+		--majority-committed-share-tau $(or $(MAJORITY_SHARE_TAU),0.56) \
+		--geometric-angular-kappa $(or $(GEOM_KAPPA),1.0) \
+		--geometric-angular-alpha $(or $(GEOM_ALPHA),0.7853981633974483) \
+		--epoch-anchor-pdb-ids $(or $(EPOCH_ANCHORS),1F88,4OBE) \
+		--epochs $(or $(EPOCHS),30) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.14) \
+		--rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots \
+		$(if $(SEED),--seed $(SEED),) \
+		$(if $(RESUME),--resume /app/$(RESUME),)
+	@echo "Majority hinge complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_stack_majority_hinge_stage_a12_cold_v1)"
+	@echo "Score MAJORITY_SPLIT_WIN / COEFF_INCONCLUSIVE / AXIS_SCRAMBLED / COMMIT_KILLED"
+
+train-v66-fix1-s4-proto-repulsion-scale-l2-core-majority-hinge-stage-a12: ## Pre-reg: stack + core-only (dh=0) majority hinge (Stage A-12 cold)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_small_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing Stage A-12 manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_stack_core_majority_hinge_stage_a12_cold_v1)
+	@printf '%s\n' \
+		'# Core-only majority hinge — pre-registered 2026-07-14' \
+		'baseline: Fix-1 + S4 + SASA + proto repulsion + softplus floor ≈6.612' \
+		'lever: STE hard share among committed∧dehydron=0 only' \
+		'core_majority_committed_share_coeff: $(or $(CORE_MAJORITY_SHARE_COEFF),0.25)' \
+		'agnostic majority_committed_share_coeff: 0' \
+		'direct grad on dh=1: excluded; purity still monitors indirect dilution' \
+		'eligible purity: n_committed≥20 and n_minority≥5' \
+		'coeff_proxy: core_majority_hinge_coeff_proxy.json (λ=0.25; rematch 1.25 / 0.05)' \
+		'success: CORE_MAJORITY_SPLIT_WIN' \
+		'logs: prototype_repulsion_per_epoch.jsonl (core_majority_conditional + dehydron_partition_purity)' \
+		> checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_stack_core_majority_hinge_stage_a12_cold_v1)/README.md
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_stack_core_majority_hinge_stage_a12_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-geom-angular-prior \
+		--hyperbolic-mp-graph \
+		--input-feature-zscore \
+		--gate-include-sasa \
+		--prototype-repulsion-coeff $(or $(PROTO_REPULSION_COEFF),1.0) \
+		--prototype-repulsion-margin $(or $(PROTO_REPULSION_MARGIN),0.25) \
+		--gate-logit-softplus-init $(or $(GATE_SOFTPLUS),6.612216472625732) \
+		--gate-logit-softplus-floor $(or $(GATE_SOFTPLUS_FLOOR),6.612216472625732) \
+		--majority-committed-share-coeff 0 \
+		--core-majority-committed-share-coeff $(or $(CORE_MAJORITY_SHARE_COEFF),0.25) \
+		--core-majority-committed-share-tau $(or $(CORE_MAJORITY_SHARE_TAU),0.56) \
+		--geometric-angular-kappa $(or $(GEOM_KAPPA),1.0) \
+		--geometric-angular-alpha $(or $(GEOM_ALPHA),0.7853981633974483) \
+		--epoch-anchor-pdb-ids $(or $(EPOCH_ANCHORS),1F88,4OBE) \
+		--epochs $(or $(EPOCHS),30) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.14) \
+		--rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots \
+		$(if $(SEED),--seed $(SEED),) \
+		$(if $(RESUME),--resume /app/$(RESUME),)
+	@echo "Core majority hinge complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_stack_core_majority_hinge_stage_a12_cold_v1)"
+	@echo "Score CORE_MAJORITY_SPLIT_WIN / COEFF_INCONCLUSIVE / AXIS_SCRAMBLED / COMMIT_KILLED"
+
+train-v66-fix1-s4-proto-repulsion-scale-l2-core-quota-stage-a12: ## Pre-reg: stack + core capacity quotas τ=0.40 (Stage A-12 cold)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_small_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing Stage A-12 manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_stack_core_quota_stage_a12_cold_v1)
+	@printf '%s\n' \
+		'# Core capacity quotas — pre-registered 2026-07-14' \
+		'baseline: Fix-1 + S4 + SASA + proto repulsion + softplus floor ≈6.612' \
+		'lever: hard core (dh=0) capacity τ_cap=0.40 + frozen dehydron-dominant second-choice ban' \
+		'tie-break: unplaced wins over force cross-axis (QUOTA_STARVE if mean unplaced>5%)' \
+		'snapshot: ge0 freeze of dehydron-dominant mask; never recomputed' \
+		'agnostic/core majority share coeffs: 0' \
+		'success: CORE_QUOTA_WIN' \
+		'logs: prototype_repulsion_per_epoch.jsonl (core_quota_conditional + dehydron_partition_purity)' \
+		'artifact: core_quota_dominant_ge0.json' \
+		> checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_stack_core_quota_stage_a12_cold_v1)/README.md
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_stack_core_quota_stage_a12_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-geom-angular-prior \
+		--hyperbolic-mp-graph \
+		--input-feature-zscore \
+		--gate-include-sasa \
+		--prototype-repulsion-coeff $(or $(PROTO_REPULSION_COEFF),1.0) \
+		--prototype-repulsion-margin $(or $(PROTO_REPULSION_MARGIN),0.25) \
+		--gate-logit-softplus-init $(or $(GATE_SOFTPLUS),6.612216472625732) \
+		--gate-logit-softplus-floor $(or $(GATE_SOFTPLUS_FLOOR),6.612216472625732) \
+		--majority-committed-share-coeff 0 \
+		--core-majority-committed-share-coeff 0 \
+		--core-capacity-quota-tau $(or $(CORE_QUOTA_TAU),0.40) \
+		--geometric-angular-kappa $(or $(GEOM_KAPPA),1.0) \
+		--geometric-angular-alpha $(or $(GEOM_ALPHA),0.7853981633974483) \
+		--epoch-anchor-pdb-ids $(or $(EPOCH_ANCHORS),1F88,4OBE) \
+		--epochs $(or $(EPOCHS),30) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.14) \
+		--rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots \
+		$(if $(SEED),--seed $(SEED),) \
+		$(if $(RESUME),--resume /app/$(RESUME),)
+	@echo "Core quota complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_stack_core_quota_stage_a12_cold_v1)"
+	@echo "Score CORE_QUOTA_WIN / CORE_QUOTA_NO_MOVE / AXIS_SCRAMBLED_BY_QUOTA / COMMIT_KILLED_BY_QUOTA / QUOTA_STARVE"
+
+train-v66-fix1-s4-proto-repulsion-scale-l2-stage-a12-seed2: ## Seed-2 cold continuous ge1→30 (no resume); distribution floors pre-reg
+	@if [ -n "$(RESUME)" ]; then \
+		echo "Seed-2 forbids RESUME (seed-1 ge21 seam confound). Unset RESUME and use cold EPOCHS=30."; \
+		exit 1; \
+	fi
+	$(MAKE) train-v66-fix1-s4-proto-repulsion-scale-l2-stage-a12 \
+		RUN_ID=$(or $(RUN_ID),fix1_s4_proto_repulsion_scale_l2_stage_a12_cold_seed2_v1) \
+		SEED=$(or $(SEED),2) \
+		EPOCHS=$(or $(EPOCHS),30)
+	@echo "Seed-2 cold complete. Score STACK_WIN_* + committed_distribution (COMMITTED_DISTRIBUTION_PASS)."
+	@echo "Floors: ≥8/12 committed proteins, protein share≤35%, committed_hard_max<0.56, per_structure_committed_hard_max<0.56"
+
+# Recommended v6.6 biology/routing cold train (2026-07-19 restore).
+# Never overwrite the locked sealed run dir; default RUN_ID is a new restore sibling.
+# Sealed SSOT: checkpoints/v66/runs/fix1_s4_stack_initseed_controlled_3d_seed2_v1/v66_healthy_sealed.pt
+# Docs: docs/specs/fix1-s4-restore/README.md
+train-v66-fix1-healthy-restore: ## Recommended: Fix-1+S4 healthy recipe (seed2, 30 ep, new RUN_ID)
+	@if [ -n "$(RESUME)" ]; then \
+		echo "Healthy restore forbids RESUME (cold Fix-1 stack only). Unset RESUME."; \
+		exit 1; \
+	fi
+	@case "$(or $(RUN_ID),fix1_s4_stack_initseed_controlled_3d_seed2_restore_v1)" in \
+		fix1_s4_stack_initseed_controlled_3d_seed2_v1) \
+			echo "ERROR: refuse overwrite of locked healthy run dir."; \
+			echo "Omit RUN_ID or use a new id (default: ..._restore_v1)."; \
+			exit 1 ;; \
+	esac
+	$(MAKE) train-v66-fix1-s4-proto-repulsion-scale-l2-stage-a12 \
+		RUN_ID=$(or $(RUN_ID),fix1_s4_stack_initseed_controlled_3d_seed2_restore_v1) \
+		SEED=$(or $(SEED),2) \
+		EPOCHS=$(or $(EPOCHS),30) \
+		GNN_INPUT_MODE=topology_three_vector
+	@echo "Healthy restore train complete."
+	@echo "Locked SSOT (do not overwrite): checkpoints/v66/runs/fix1_s4_stack_initseed_controlled_3d_seed2_v1/v66_healthy_sealed.pt"
+	@echo "Docs: docs/specs/fix1-s4-restore/README.md"
+
+# ---------------------------------------------------------------------------
+# Fix-1 expand lineage (post-restore) — MLflow experiment tokyo-eyes-v66-fix1-expand
+# Docs: docs/specs/fix1-s4-restore/corpus-expansion.md
+# ---------------------------------------------------------------------------
+FIX1_SEALED_CKPT := checkpoints/v66/runs/fix1_s4_stack_initseed_controlled_3d_seed2_v1/v66_healthy_sealed.pt
+FIX1_EXPAND_EXPERIMENT := tokyo-eyes-v66-fix1-expand
+FIX1_EXPAND23_RUN ?= fix1_s4_expand23_continue_v1
+FIX1_STAGE_A25_RUN ?= fix1_s4_stage_a25_continue_v2
+FIX1_RAF1_RUN ?= fix1_s4_raf1_mix_continue_v1
+FIX1_SPARSITY_RUN ?= fix1_s4_sparsity_sealed_continue_v1
+# Default corpus for sparsity bet (Stage A-12 preferred for hub grade; override CORPUS=…_feeler_expand_v1.json)
+FIX1_SPARSITY_CORPUS ?= v6_corpus_stage_a_small_v1.json
+FIX1_SPARSITY_MAX_PROTEINS ?= 12
+FIX1_SPARSITY_COEFF ?= 0.0075
+FIX1_SPARSITY_WARMUP ?= 8
+
+register-v66-fix1-expand-lineage: ## P0: register MLflow lineage root for Fix-1 expand
+	@test -f $(FIX1_SEALED_CKPT) || (echo "Missing sealed ckpt $(FIX1_SEALED_CKPT)" && exit 1)
+	$(SCIENCE_RUN) science python -m experiments.training.v66.register_fix1_expand_lineage \
+		--tracking-uri http://mlflow:5000 \
+		--experiment $(FIX1_EXPAND_EXPERIMENT)
+	@echo "Lineage stamp: data/gates/fix1_expand_mlflow_lineage_root.json"
+	@echo "UI: http://localhost:5000 → experiment $(FIX1_EXPAND_EXPERIMENT)"
+
+# Shared Fix-1 stack flags for expand continues (hyp-MP + repulsion + z-norm + SASA + geom prior).
+V66_FIX1_EXPAND_STACK := --v66-feeler-lineage --v66-feeler-rim-fanout-model --v66-feeler-geom-angular-prior --hyperbolic-mp-graph --input-feature-zscore --gate-include-sasa --prototype-repulsion-coeff $(or $(PROTO_REPULSION_COEFF),1.0) --prototype-repulsion-margin $(or $(PROTO_REPULSION_MARGIN),0.25) --gate-logit-softplus-init $(or $(GATE_SOFTPLUS),6.612216472625732) --gate-logit-softplus-floor $(or $(GATE_SOFTPLUS_FLOOR),6.612216472625732) --geometric-angular-kappa $(or $(GEOM_KAPPA),1.0) --geometric-angular-alpha $(or $(GEOM_ALPHA),0.7853981633974483) --rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.14) --rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) --num-experts $(or $(NUM_EXPERTS),4) --feature-liveness-probe --save-epoch-snapshots
+
+train-v66-fix1-expand23-continue: ## P1: Fix-1 stack continue 12→23 (resume sealed; new MLflow lineage)
+	@test -f data/gates/fix1_expand_mlflow_lineage_root.json || \
+		(echo "Missing lineage root — run: make register-v66-fix1-expand-lineage" && exit 1)
+	@test -f $(FIX1_SEALED_CKPT) || (echo "Missing sealed ckpt" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	$(MAKE) gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_EXPAND23_RUN))
+	@printf '%s\n' \
+		'# Fix-1 expand P1 — feeler_expand 23 continue from sealed SSOT' \
+		'mlflow_experiment: $(FIX1_EXPAND_EXPERIMENT)' \
+		'resume: $(FIX1_SEALED_CKPT)' \
+		'docs: docs/specs/fix1-s4-restore/corpus-expansion.md' \
+		> checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_EXPAND23_RUN))/README.md
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_EXPAND23_RUN)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),2) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--epochs $(or $(EPOCHS),15) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment $(FIX1_EXPAND_EXPERIMENT) \
+		--resume /app/$(FIX1_SEALED_CKPT) \
+		--no-warm-start \
+		--epoch-anchor-pdb-ids $(or $(EPOCH_ANCHORS),1F88,4OBE) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		$(V66_FIX1_EXPAND_STACK)
+	PYTHONPATH=. python -m experiments.training.v66.grade_fix1_expand_resilience \
+		--run-dir checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_EXPAND23_RUN)) \
+		--continue-epochs $(or $(EPOCHS),15)
+	@echo "P1 complete. Grade: checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_EXPAND23_RUN))/resilience_gate.json"
+
+train-v66-fix1-stage-a25-continue: ## P2: Fix-1 Stage A hold continue (MASTER-safe; 3CON/4GQB off)
+	@test -f data/gates/fix1_expand_mlflow_lineage_root.json || \
+		(echo "Missing lineage root — run: make register-v66-fix1-expand-lineage" && exit 1)
+	@test -f checkpoints/v66/runs/$(or $(RESUME_RUN),$(FIX1_EXPAND23_RUN))/resilience_gate.json || \
+		(echo "Missing P1 Pass stamp — run: make train-v66-fix1-expand23-continue" && exit 1)
+	@python -c "import json,sys; r=json.load(open('checkpoints/v66/runs/$(or $(RESUME_RUN),$(FIX1_EXPAND23_RUN))/resilience_gate.json')); sys.exit(0 if r.get('passed') else 1)" || \
+		(echo "P1 resilience gate FAIL — do not start P2" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_fix1_hold_v1.json || (echo "Missing fix1 hold manifest" && exit 1)
+	$(MAKE) gate-p-feature-01 CORPUS=v6_corpus_stage_a_fix1_hold_v1.json
+	@RESUME_CKPT=$$(ls checkpoints/v66/runs/$(or $(RESUME_RUN),$(FIX1_EXPAND23_RUN))/phase_12.pt checkpoints/v66/runs/$(or $(RESUME_RUN),$(FIX1_EXPAND23_RUN))/v66_phase12_*.pt 2>/dev/null | head -1); \
+	test -n "$$RESUME_CKPT" || RESUME_CKPT=checkpoints/v66/runs/$(or $(RESUME_RUN),$(FIX1_EXPAND23_RUN))/epochs/$$(ls checkpoints/v66/runs/$(or $(RESUME_RUN),$(FIX1_EXPAND23_RUN))/epochs/ 2>/dev/null | sort | tail -1); \
+	test -f "$$RESUME_CKPT" || (echo "Missing P1 resume ckpt" && exit 1); \
+	mkdir -p mlruns checkpoints/v66/runs pdb_cache checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_STAGE_A25_RUN)); \
+	printf '%s\n' \
+		'# Fix-1 expand P2 — Stage A hold continue (3CON/4GQB MASTER-blocked; true 25 deferred)' \
+		"resume: $$RESUME_CKPT" \
+		'mlflow_experiment: $(FIX1_EXPAND_EXPERIMENT)' \
+		'corpus: v6_corpus_stage_a_fix1_hold_v1.json' \
+		> checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_STAGE_A25_RUN))/README.md; \
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_fix1_hold_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_STAGE_A25_RUN)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),2) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--epochs $(or $(EPOCHS),15) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment $(FIX1_EXPAND_EXPERIMENT) \
+		--resume /app/$$RESUME_CKPT \
+		--no-warm-start \
+		--epoch-anchor-pdb-ids $(or $(EPOCH_ANCHORS),1F88,4OBE) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		$(V66_FIX1_EXPAND_STACK)
+	PYTHONPATH=. python -m experiments.training.v66.grade_fix1_expand_resilience \
+		--run-dir checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_STAGE_A25_RUN)) \
+		--continue-epochs $(or $(EPOCHS),15)
+	@echo "P2 complete. Grade: checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_STAGE_A25_RUN))/resilience_gate.json"
+
+train-v66-fix1-raf1-continue: ## P3: Fix-1 RAF1 mix transfer (RAF1 hold + Stage A anchors)
+	@test -f checkpoints/v66/runs/$(or $(RESUME_RUN),$(FIX1_STAGE_A25_RUN))/resilience_gate.json || \
+		(echo "Missing P2 Pass stamp — run: make train-v66-fix1-stage-a25-continue" && exit 1)
+	@python -c "import json,sys; r=json.load(open('checkpoints/v66/runs/$(or $(RESUME_RUN),$(FIX1_STAGE_A25_RUN))/resilience_gate.json')); sys.exit(0 if r.get('passed') else 1)" || \
+		(echo "P2 resilience gate FAIL — do not start P3" && exit 1)
+	@test -f manifests/v6_corpus_raf1_ppi_fix1_mix_v1.json || (echo "Missing RAF1 fix1 mix manifest" && exit 1)
+	$(MAKE) gate-p-feature-01 CORPUS=v6_corpus_raf1_ppi_fix1_mix_v1.json
+	@RESUME_CKPT=$$(ls checkpoints/v66/runs/$(or $(RESUME_RUN),$(FIX1_STAGE_A25_RUN))/phase_12.pt checkpoints/v66/runs/$(or $(RESUME_RUN),$(FIX1_STAGE_A25_RUN))/v66_phase12_*.pt 2>/dev/null | head -1); \
+	test -n "$$RESUME_CKPT" || RESUME_CKPT=checkpoints/v66/runs/$(or $(RESUME_RUN),$(FIX1_STAGE_A25_RUN))/epochs/$$(ls checkpoints/v66/runs/$(or $(RESUME_RUN),$(FIX1_STAGE_A25_RUN))/epochs/ 2>/dev/null | sort | tail -1); \
+	test -f "$$RESUME_CKPT" || (echo "Missing P2 resume ckpt" && exit 1); \
+	mkdir -p mlruns checkpoints/v66/runs pdb_cache checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_RAF1_RUN)); \
+	printf '%s\n' \
+		'# Fix-1 expand P3 — RAF1 mix continue (pathway hold + Stage A anchors; not PPI edges)' \
+		"resume: $$RESUME_CKPT" \
+		'mlflow_experiment: $(FIX1_EXPAND_EXPERIMENT)' \
+		'corpus: v6_corpus_raf1_ppi_fix1_mix_v1.json' \
+		> checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_RAF1_RUN))/README.md; \
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_raf1_ppi_fix1_mix_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_RAF1_RUN)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),2) \
+		--max-proteins $(or $(MAX_PROTEINS),13) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--epochs $(or $(EPOCHS),15) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment $(FIX1_EXPAND_EXPERIMENT) \
+		--resume /app/$$RESUME_CKPT \
+		--no-warm-start \
+		--epoch-anchor-pdb-ids $(or $(EPOCH_ANCHORS),1F88,4OBE) \
+		--p2-bridge-lr $(or $(LR),3.0e-5) \
+		$(V66_FIX1_EXPAND_STACK)
+	PYTHONPATH=. python -m experiments.training.v66.grade_fix1_expand_resilience \
+		--run-dir checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_RAF1_RUN)) \
+		--continue-epochs $(or $(EPOCHS),15) \
+		--profile transfer
+	@echo "P3 complete. Grade: checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_RAF1_RUN))/resilience_gate.json"
+
+grade-v66-fix1-biology: ## P4: biology grade pack vs sealed + optional promoted champion
+	@test -f $(FIX1_SEALED_CKPT) || (echo "Missing sealed ckpt" && exit 1)
+	$(SCIENCE_RUN) science python -m experiments.training.v66.grade_fix1_biology_pack \
+		--sealed-checkpoint /app/$(FIX1_SEALED_CKPT) \
+		--champion-dir /app/checkpoints/v66/runs/$(or $(CHAMPION_RUN),$(FIX1_RAF1_RUN)) \
+		--output-dir /app/checkpoints/v66/diagnostics/fix1_expand_biology \
+		--device $(or $(DEVICE),cuda)
+	@echo "P4 biology pack → checkpoints/v66/diagnostics/fix1_expand_biology/"
+
+# Fix-1 sealed continue + mean-residue routing entropy sparsity (hub-rehab bet).
+# Resume ONLY v66_healthy_sealed.pt — never P2/P3 expand champions.
+# Default RUN_ID: fix1_s4_sparsity_sealed_continue_v1
+# Docs: docs/specs/routing-entropy-sparsity/design.md
+train-v66-fix1-sparsity-sealed-continue: ## Fix-1 sealed continue + mean-residue entropy sparsity
+	# resume HEALTHY_FIX1_CKPT / v66_healthy_sealed.pt
+	# --routing-entropy-sparsity-coeff 0.0075
+	# --routing-entropy-sparsity-warmup-epochs 8
+	# corpus: Stage A-12 small OR feeler_expand
+	# mlflow experiment tokyo-eyes-v66-fix1-expand
+	# Fix-1 stack flags unchanged
+	@test -f data/gates/fix1_expand_mlflow_lineage_root.json || \
+		(echo "Missing lineage root — run: make register-v66-fix1-expand-lineage" && exit 1)
+	@test -f $(FIX1_SEALED_CKPT) || (echo "Missing sealed ckpt $(FIX1_SEALED_CKPT)" && exit 1)
+	@case "$(or $(RUN_ID),$(FIX1_SPARSITY_RUN))" in \
+		fix1_s4_stack_initseed_controlled_3d_seed2_v1) \
+			echo "ERROR: refuse overwrite of locked healthy sealed run dir."; \
+			exit 1 ;; \
+	esac
+	@test -f manifests/$(or $(CORPUS),$(FIX1_SPARSITY_CORPUS)) || \
+		(echo "Missing corpus manifests/$(or $(CORPUS),$(FIX1_SPARSITY_CORPUS))" && exit 1)
+	$(MAKE) gate-p-feature-01 CORPUS=$(or $(CORPUS),$(FIX1_SPARSITY_CORPUS))
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache \
+		checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_SPARSITY_RUN))
+	@printf '%s\n' \
+		'# Fix-1 sparsity sealed continue — mean-residue routing entropy' \
+		'run_id: $(or $(RUN_ID),$(FIX1_SPARSITY_RUN))' \
+		'resume: $(FIX1_SEALED_CKPT)' \
+		'mlflow_experiment: $(FIX1_EXPAND_EXPERIMENT)' \
+		'corpus: $(or $(CORPUS),$(FIX1_SPARSITY_CORPUS))' \
+		'routing_entropy_sparsity_coeff: $(or $(SPARSITY_COEFF),$(FIX1_SPARSITY_COEFF))' \
+		'routing_entropy_sparsity_warmup_epochs: $(or $(SPARSITY_WARMUP),$(FIX1_SPARSITY_WARMUP))' \
+		'telemetry: routing_sparsity_per_epoch.jsonl' \
+		'docs: docs/specs/routing-entropy-sparsity/design.md' \
+		> checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_SPARSITY_RUN))/README.md
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),$(FIX1_SPARSITY_CORPUS)) \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_SPARSITY_RUN)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),2) \
+		--max-proteins $(or $(MAX_PROTEINS),$(FIX1_SPARSITY_MAX_PROTEINS)) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--epochs $(or $(EPOCHS),15) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment $(FIX1_EXPAND_EXPERIMENT) \
+		--resume /app/$(FIX1_SEALED_CKPT) \
+		--no-warm-start \
+		--epoch-anchor-pdb-ids $(or $(EPOCH_ANCHORS),1F88,4OBE) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--routing-entropy-sparsity-coeff $(or $(SPARSITY_COEFF),$(FIX1_SPARSITY_COEFF)) \
+		--routing-entropy-sparsity-warmup-epochs $(or $(SPARSITY_WARMUP),$(FIX1_SPARSITY_WARMUP)) \
+		$(V66_FIX1_EXPAND_STACK)
+	@echo "Sparsity sealed continue complete."
+	@echo "Run: checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_SPARSITY_RUN))"
+	@echo "Collision log: .../routing_sparsity_per_epoch.jsonl"
+	@echo "Next: grade hub knockout on 4OBE; record sparsity_gate.json (Task 6)"
+
+train-v66-fix1-s4-proto-repulsion-scale-l2-gram-cond-stage-a12: ## Pre-reg: stack + saturating Gram logdet hinge λ=0.001 (Stage A-12 cold)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_small_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing Stage A-12 manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_stack_gram_cond_stage_a12_cold_v1)
+	@printf '%s\n' \
+		'# Full-bank Gram logdet hinge — frozen 2026-07-15 (before train)' \
+		'baseline: Fix-1 + S4 + SASA + proto repulsion + softplus floor ≈6.612' \
+		'lever: saturating ReLU(τ − logdet(G+εI))² on unit-normalized prototype tangents' \
+		'prototype_gram_logdet_coeff: $(or $(GRAM_LOGDET_COEFF),0.001)' \
+		'prototype_gram_logdet_tau: $(or $(GRAM_LOGDET_TAU),-1.15)' \
+		'keep: nearest-pair repulsion coeff=1.0 margin=0.25' \
+		'monopole: OUT OF SCOPE (log only)' \
+		'coeff_proxy: checkpoints/v66/diagnostics/proto_repulsion_scale_l2_stack/gram_logdet_hinge_coeff_proxy.json' \
+		'NO_MOVE → rematch 0.005; COMMIT_KILLED → rematch 0.0002' \
+		'success: GRAM_COND_WIN on BOTH seeds (bank + relative purity + commit + axis)' \
+		'logs: prototype_repulsion_per_epoch.jsonl (gram_conditional + gram_eig_* + gram_logdet)' \
+		> checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_stack_gram_cond_stage_a12_cold_v1)/README.md
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_stack_gram_cond_stage_a12_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-geom-angular-prior \
+		--hyperbolic-mp-graph \
+		--input-feature-zscore \
+		--gate-include-sasa \
+		--prototype-repulsion-coeff $(or $(PROTO_REPULSION_COEFF),1.0) \
+		--prototype-repulsion-margin $(or $(PROTO_REPULSION_MARGIN),0.25) \
+		--prototype-gram-logdet-coeff $(or $(GRAM_LOGDET_COEFF),0.001) \
+		--prototype-gram-logdet-tau $(or $(GRAM_LOGDET_TAU),-1.15) \
+		--gate-logit-softplus-init $(or $(GATE_SOFTPLUS),6.612216472625732) \
+		--gate-logit-softplus-floor $(or $(GATE_SOFTPLUS_FLOOR),6.612216472625732) \
+		--geometric-angular-kappa $(or $(GEOM_KAPPA),1.0) \
+		--geometric-angular-alpha $(or $(GEOM_ALPHA),0.7853981633974483) \
+		--epoch-anchor-pdb-ids $(or $(EPOCH_ANCHORS),1F88,4OBE) \
+		--epochs $(or $(EPOCHS),30) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.14) \
+		--rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots \
+		$(if $(SEED),--seed $(SEED),) \
+		$(if $(RESUME),--resume /app/$(RESUME),)
+	@echo "Gram cond complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_stack_gram_cond_stage_a12_cold_v1)"
+	@echo "Score GRAM_COND_WIN / GRAM_COND_NO_MOVE / AXIS_SCRAMBLED_BY_GRAM / COMMIT_KILLED_BY_GRAM"
+
+train-v66-fix1-s4-proto-repulsion-scale-l2-gram-cond-stage-a12-seed2: ## Gram cond seed-2 cold (same λ; both seeds required)
+	$(MAKE) train-v66-fix1-s4-proto-repulsion-scale-l2-gram-cond-stage-a12 \
+		RUN_ID=$(or $(RUN_ID),fix1_s4_stack_gram_cond_stage_a12_cold_seed2_v1) \
+		SEED=$(or $(SEED),2) \
+		EPOCHS=$(or $(EPOCHS),30)
+
+train-v66-fix1-s4-scale-l1-stage-a12: ## L1: Fix-1+S4 + gate softplus≈2.65 (×2); Stage A-12 cold
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_small_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing Stage A-12 manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_scale_l1_stage_a12_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-geom-angular-prior \
+		--hyperbolic-mp-graph \
+		--input-feature-zscore \
+		--gate-logit-softplus-init $(or $(GATE_SOFTPLUS),2.6451666355133057) \
+		--gate-logit-softplus-floor $(or $(GATE_SOFTPLUS_FLOOR),2.6451666355133057) \
+		--geometric-angular-kappa $(or $(GEOM_KAPPA),1.0) \
+		--geometric-angular-alpha $(or $(GEOM_ALPHA),0.7853981633974483) \
+		--epoch-anchor-pdb-ids $(or $(EPOCH_ANCHORS),1F88,4OBE) \
+		--epochs $(or $(EPOCHS),20) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.14) \
+		--rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots \
+		$(if $(SEED),--seed $(SEED),)
+	@echo "L1 scale train complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),fix1_s4_scale_l1_stage_a12_cold_v1)"
+	@echo "Pre-registered: SCALE_TRAIN_FIX / SHARPENED_NOISE / IBU / AMBIGUOUS — GNNV7_SUCCESS_CRITERIA.md"
+	@echo "Logs: fix1_gates_per_epoch.jsonl + scale_train_structure_per_epoch.jsonl"
+
+audit-hyperbolic-gate-logit-spread: ## Pre-softmax hyp gate logit spread (IBU commitment / saturation)
+	@test -n "$(CHECKPOINT)" || (echo "Set CHECKPOINT=..." && exit 1)
+	$(SCIENCE_RUN) science python -m experiments.diagnostics.hyperbolic_gate_logit_spread \
+		--checkpoint /app/$(CHECKPOINT) \
+		--corpus /app/$(or $(CORPUS),manifests/v6_corpus_stage_a_small_v1.json) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output-dir /app/$(or $(OUT),checkpoints/v66/diagnostics/hyperbolic_gate_logit_spread)
+
+audit-trunk-hidden-occupancy: ## T1 trunk: HD encoder/pre-gate rank (not 2D disc)
+	@test -n "$(CHECKPOINT)" || (echo "Set CHECKPOINT=..." && exit 1)
+	$(SCIENCE_RUN) science python -m experiments.diagnostics.trunk_hidden_occupancy \
+		--checkpoint /app/$(CHECKPOINT) \
+		--corpus /app/$(or $(CORPUS),manifests/v6_corpus_stage_a_small_v1.json) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output-dir /app/$(or $(OUT),checkpoints/v66/diagnostics/trunk_hidden_occupancy)
+
+audit-t1-trunk-origin: ## T1a/T1b: raw x vs embed; init vs early vs late rank
+	@test -n "$(CHECKPOINT_LATE)" || (echo "Set CHECKPOINT_LATE=... [CHECKPOINT_EARLY=...]" && exit 1)
+	$(SCIENCE_RUN) science python -m experiments.diagnostics.t1_trunk_origin_audit \
+		--checkpoint-late /app/$(CHECKPOINT_LATE) \
+		$(if $(CHECKPOINT_EARLY),--checkpoint-early /app/$(CHECKPOINT_EARLY),) \
+		--corpus /app/$(or $(CORPUS),manifests/v6_corpus_stage_a_small_v1.json) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output-dir /app/$(or $(OUT),checkpoints/v66/diagnostics/t1_trunk_origin)
+
+audit-t1a-znorm-forward: ## T1a fwd-only z-norm: pre_mp vs encoder_h ceiling check
+	@test -n "$(CHECKPOINT)" || (echo "Set CHECKPOINT=..." && exit 1)
+	$(SCIENCE_RUN) science python -m experiments.diagnostics.t1a_znorm_forward_probe \
+		--checkpoint /app/$(CHECKPOINT) \
+		--corpus /app/$(or $(CORPUS),manifests/v6_corpus_stage_a_small_v1.json) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output-dir /app/$(or $(OUT),checkpoints/v66/diagnostics/t1a_znorm_forward_probe)
+
+train-v66-feeler-rim-fanout-cold: ## v6.6 cold: P1+P2 angular fill → rim fan-out P12 (37 ep default; EPOCHS=P12 only)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_rim_fanout_cold_23_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-fanout-model \
+		--v66-feeler-rim-fanout-cold-curriculum \
+		--epochs $(or $(EPOCHS),10) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--spoke-edge-scale $(or $(SPOKE_SCALE),1.5) \
+		--ribbon-edge-scale $(or $(RIBBON_SCALE),1.35) \
+		--rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.12) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler rim fan-out COLD complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_rim_fanout_cold_23_v1)"
+	@echo "Gate: 4OBE σ₂/σ₁ + rim_frac + viewer vs feeler_expand_23_v1 (P12-only cold → rank-1 filament)"
+
+train-v66-feeler-angular-lift: ## v6.6 feeler: angular_lift + lift-path recovery off P3 (15 ep, no disc occupancy)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_FEELER_P3_RESUME)) || \
+		(echo "Missing P3 resume — set RESUME=... or finish feeler_expand_23_p3_geom_v1" && exit 1)
+	@test -d $(or $(DBH_DIR),$(V66_DBH_BARCODE_DIR)) || \
+		(echo "Missing barcode sidecars — run: make precompute-dehydron-barcodes-feeler-expand" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_angular_lift_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-angular-lift \
+		--resume /app/$(or $(RESUME),$(V66_FEELER_P3_RESUME)) \
+		--epochs $(or $(EPOCHS),15) \
+		--p2-bridge-lr $(or $(LR),1.25e-4) \
+		--dehydron-edge-barcode \
+		--dehydron-barcode-dir /app/$(or $(DBH_DIR),$(V66_DBH_BARCODE_DIR)) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler angular_lift complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_angular_lift_v1)"
+
+train-v66-feeler-coupling: ## v6.6 feeler: cross-subgraph coupling edges off P3 (12 ep, no disc occupancy)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_FEELER_P3_RESUME)) || \
+		(echo "Missing P3 resume — set RESUME=... or finish feeler_expand_23_p3_geom_v1" && exit 1)
+	@test -d $(or $(DBH_DIR),$(V66_DBH_BARCODE_DIR)) || \
+		(echo "Missing barcode sidecars — run: make precompute-dehydron-barcodes-feeler-expand" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_coupling_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-coupling \
+		--resume /app/$(or $(RESUME),$(V66_FEELER_P3_RESUME)) \
+		--epochs $(or $(EPOCHS),12) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--dehydron-edge-barcode \
+		--dehydron-barcode-dir /app/$(or $(DBH_DIR),$(V66_DBH_BARCODE_DIR)) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler coupling complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_coupling_v1)"
+	@echo "Compare 4OBE/1F88 viewers: spike should pull body cloud vs P3 parent"
+
+train-v66-feeler-no-exclusivity: ## v6.6 feeler Exp1: dehydron pairs keep packing/ribbon/spoke (12 ep, P3 parent)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_FEELER_P3_RESUME)) || \
+		(echo "Missing P3 resume — set RESUME=... or finish feeler_expand_23_p3_geom_v1" && exit 1)
+	@test -d $(or $(DBH_DIR),$(V66_DBH_BARCODE_DIR)) || \
+		(echo "Missing barcode sidecars — run: make precompute-dehydron-barcodes-feeler-expand" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_no_excl_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-no-exclusivity \
+		--no-dehydron-exclusivity \
+		--resume /app/$(or $(RESUME),$(V66_FEELER_P3_RESUME)) \
+		--epochs $(or $(EPOCHS),12) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--dehydron-edge-barcode \
+		--dehydron-barcode-dir /app/$(or $(DBH_DIR),$(V66_DBH_BARCODE_DIR)) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler no-exclusivity complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_no_excl_v1)"
+	@echo "Gate: make audit-rim-dehydron-angular CHECKPOINT=... STRUCTURES='4OBE 1R69' LEARNED=1"
+
+train-v66-feeler-dehydron-angular: ## v6.6 feeler Exp2: dehydron angular scale 0.3 off P3 (12 ep)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_FEELER_P3_RESUME)) || \
+		(echo "Missing P3 resume — set RESUME=... or finish feeler_expand_23_p3_geom_v1" && exit 1)
+	@test -d $(or $(DBH_DIR),$(V66_DBH_BARCODE_DIR)) || \
+		(echo "Missing barcode sidecars — run: make precompute-dehydron-barcodes-feeler-expand" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_dbh_ang_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-dehydron-angular \
+		--dehydron-angular-scale $(or $(DEHYDRON_ANGULAR_SCALE),0.3) \
+		--resume /app/$(or $(RESUME),$(V66_FEELER_P3_RESUME)) \
+		--epochs $(or $(EPOCHS),12) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--dehydron-edge-barcode \
+		--dehydron-barcode-dir /app/$(or $(DBH_DIR),$(V66_DBH_BARCODE_DIR)) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler dehydron-angular complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_dbh_ang_v1)"
+
+train-v66-feeler-rim-decouple: ## v6.6 feeler Exp1+2: no exclusivity + dehydron angular 0.3 off P3 (12 ep)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_FEELER_P3_RESUME)) || \
+		(echo "Missing P3 resume — set RESUME=... or finish feeler_expand_23_p3_geom_v1" && exit 1)
+	@test -d $(or $(DBH_DIR),$(V66_DBH_BARCODE_DIR)) || \
+		(echo "Missing barcode sidecars — run: make precompute-dehydron-barcodes-feeler-expand" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_decouple_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-decouple \
+		--dehydron-angular-scale $(or $(DEHYDRON_ANGULAR_SCALE),0.3) \
+		--resume /app/$(or $(RESUME),$(V66_FEELER_P3_RESUME)) \
+		--epochs $(or $(EPOCHS),12) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--dehydron-edge-barcode \
+		--dehydron-barcode-dir /app/$(or $(DBH_DIR),$(V66_DBH_BARCODE_DIR)) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler rim-decouple complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_decouple_v1)"
+	@echo "Gate: make audit-rim-dehydron-angular CHECKPOINT=checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_decouple_v1)/v66_phase9_23prot.pt STRUCTURES='4OBE 1R69' LEARNED=1"
+
+train-v66-feeler-rim-detach: ## v6.6 feeler: full dehydron θ-detach (scale=0) + no exclusivity, 200 ep off P3
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),$(V66_FEELER_P3_RESUME)) || \
+		(echo "Missing P3 resume — set RESUME=... (do not resume failed no-excl/ang/coupling runs)" && exit 1)
+	@test -d $(or $(DBH_DIR),$(V66_DBH_BARCODE_DIR)) || \
+		(echo "Missing barcode sidecars — run: make precompute-dehydron-barcodes-feeler-expand" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_detach_200ep_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--v66-feeler-rim-decouple \
+		--dehydron-angular-scale $(or $(DEHYDRON_ANGULAR_SCALE),0.0) \
+		--resume /app/$(or $(RESUME),$(V66_FEELER_P3_RESUME)) \
+		--epochs $(or $(EPOCHS),200) \
+		--p2-bridge-lr $(or $(LR),1.0e-4) \
+		--dehydron-edge-barcode \
+		--dehydron-barcode-dir /app/$(or $(DBH_DIR),$(V66_DBH_BARCODE_DIR)) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler rim-detach complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_rim_detach_200ep_v1)"
+
+audit-rim-dehydron-angular: ## Exp3: within-rim dehydron angular spread (SSOT vs learned)
+	@test -n "$(CHECKPOINT)" || (echo "Set CHECKPOINT=path/to/model.pt" && exit 1)
+	@mkdir -p checkpoints/v66/diagnostics/rim_dehydron_angular
+	$(SCIENCE_RUN) science python -m experiments.diagnostics.rim_dehydron_angular_audit \
+		--checkpoint /app/$(CHECKPOINT) \
+		--structures $(or $(STRUCTURES),4OBE 1R69) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cpu) \
+		--output-dir /app/checkpoints/v66/diagnostics/rim_dehydron_angular \
+		$(if $(LEARNED),--learned-disc,--structural-ssot)
+	@echo "Compare 4OBE/1F88 viewers vs P3 parent — wedge should open without disc occupancy pressure"
+
+train-v66-feeler-p2: ## v6.6 feeler P2: resume P1, unfreeze angular, soft routing (20 ep, timeout@45%)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
+	@test -f $(or $(RESUME),checkpoints/v66/runs/feeler_p1_v1/v66_best.pt) || \
+		(echo "Missing P1 resume checkpoint — run: make train-v66-feeler" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_p2_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--phase 2 \
+		--resume /app/$(or $(RESUME),checkpoints/v66/runs/feeler_p1_v1/v66_best.pt) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler P2 complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_p2_v1)"
+	@echo "Compare viewers vs P1; watch routing_H / max expert share / disc_r_std"
+
+train-v66-feeler-expand: ## v6.6 feeler expand: resume P2 → Stage A 23-prot (ex-3CON/4GQB), same light recipe (50 ep)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json" && exit 1)
+	@test -f manifests/v6_corpus_stage_a_feeler_expand_v1.json || (echo "Missing feeler expand manifest" && exit 1)
+	@test -f $(or $(RESUME),checkpoints/v66/runs/feeler_p2_v4_50ep/v66_phase2_12prot.pt) || \
+		(echo "Missing expand resume checkpoint — set RESUME=... or finish feeler_p2_v4_50ep" && exit 1)
+	@mkdir -p mlruns checkpoints/v66/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v66.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_feeler_expand_v1.json \
+		--output-dir /app/checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--max-proteins $(or $(MAX_PROTEINS),23) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--epochs $(or $(EPOCHS),50) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v66 \
+		--no-warm-start \
+		--v66-feeler-lineage \
+		--phase 2 \
+		--resume /app/$(or $(RESUME),checkpoints/v66/runs/feeler_p2_v4_50ep/v66_phase2_12prot.pt) \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "v6.6 feeler expand complete. Run: checkpoints/v66/runs/$(or $(RUN_ID),feeler_expand_23_v1)"
+	@echo "Watch σ2/σ1, e1/e3 geometry split, routing_H drift, e0 core niche — no new losses"
+
+train-v65-slim-cold-start: ## LEGACY: slim MoE + frozen structural disc (not representation learning)
 	@test -f data/gates/p_feature_01_passed.json || \
 		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
 	@test -f manifests/v6_corpus_stage_a_small_v1.json || (echo "Missing small Stage A manifest" && exit 1)
@@ -854,9 +2911,8 @@ train-v65-cold-start: ## v6.5 true cold start: slim MoE + frozen structural disc
 		--num-experts $(or $(NUM_EXPERTS),4) \
 		--phase $(or $(STAGE),1) \
 		--save-epoch-snapshots
-	@echo "v6.5 cold-start complete. Run: checkpoints/v65/runs/$(or $(RUN_ID),cold_start_v8)"
-	@echo "MLflow experiment: tokyo-eyes-v65 (separate from tokyo-eyes-v6)"
-	@echo "Curriculum: P1-only 40ep (light floor/ceiling, timeout>30%; override STAGE=2|3 for full)"
+	@echo "LEGACY slim MoE cold-start complete. Run: checkpoints/v65/runs/$(or $(RUN_ID),cold_start_v8)"
+	@echo "Prefer: make train-v65-master-cold — slim freezes node_emb/convs and bypasses learned geometry"
 
 train-v65-slim-p2: ## Continue slim MoE P2 (timeout@50%/1ep, no floor/ceiling; RESUME=... EPOCHS=...)
 	@test -f data/gates/p_feature_01_passed.json || \
@@ -906,6 +2962,39 @@ train-v65-slim-p3: ## P3 routing consolidate: freeze e2 + e2-only timeout@45%/1e
 		--save-epoch-snapshots
 	@echo "Slim MoE P3 complete. Run: checkpoints/v65/runs/$(or $(RUN_ID),cold_start_v8_p3b)"
 	@echo "P3: freeze e2, e2-only timeout@45%/1ep, eval_min≥0.05 eval_max≤0.55 H≤1.30"
+
+validate-learned-ssot-gate: ## Print SSOT policy for CHECKPOINT=... (pre-production flip gate)
+	@test -n "$(CHECKPOINT)" || (echo "Set CHECKPOINT=path/to/v65_best.pt" && exit 1)
+	PYTHONPATH=. python -m experiments.diagnostics.validate_learned_ssot_gate \
+		--checkpoint $(CHECKPOINT) \
+		$(if $(OUT),--out $(OUT),)
+
+train-v65-dbh-scalars-cold: ## [ARCHIVE] v65 cold scalars — wrong lineage for feeler investigation
+	@echo "WARNING: train-v65-dbh-scalars-cold is archive; active path is make train-v66-feeler-p3-geom-edges"
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01" && exit 1)
+	@test -d $(DBH_BARCODE_DIR) || \
+		(echo "Missing barcode sidecars — run: make precompute-dehydron-barcodes" && exit 1)
+	@mkdir -p mlruns checkpoints/v65/runs pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v65.launch_training \
+		--corpus /app/manifests/v6_corpus_stage_a_small_v1.json \
+		--output-dir /app/checkpoints/v65/runs/$(or $(RUN_ID),dbh_scalars_master_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),1) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--max-residues $(or $(MAX_RESIDUES),$(STAGE_A_MAX_RESIDUES)) \
+		--mlflow-uri http://mlflow:5000 \
+		--mlflow-experiment tokyo-eyes-v65 \
+		--no-warm-start \
+		--master-cold-lineage \
+		--num-experts $(or $(NUM_EXPERTS),4) \
+		--use-dehydron-barcode \
+		--dehydron-barcode-dir /app/$(DBH_BARCODE_DIR) \
+		--feature-liveness-probe \
+		--save-epoch-snapshots
+	@echo "DBH scalars master-cold complete. Run: checkpoints/v65/runs/$(or $(RUN_ID),dbh_scalars_master_cold_v1)"
+	@echo "Liveness probe must stay green before claiming barcode inference influence."
 
 train-v6-slim-moe-routing-recovery: ## MoE routing recovery off slim SSOT checkpoint (structural disc frozen)
 	@test -f data/gates/p_feature_01_passed.json || \
