@@ -82,6 +82,10 @@ class LossCoeffs(BaseModel):
     routing_load_floor_min: float = 0.05
     routing_load_ceiling_coeff: float = 0.0
     routing_load_ceiling_max: float = 0.45
+    # Mean-residue routing entropy sparsity: λ * mean_i H(p_i). Peak + warmup on
+    # TrainingConfig; stage_runner writes the scheduled λ into this coeff each epoch.
+    routing_entropy_sparsity_coeff: float = 0.0
+    routing_entropy_sparsity_warmup_epochs: int = 8
     # Nearest-pair prototype repulsion: relu(m − min_{i<j} d_H(p_i, p_j)).
     prototype_repulsion_coeff: float = 0.0
     prototype_repulsion_margin: float = 0.25
@@ -98,6 +102,8 @@ class LossCoeffs(BaseModel):
     core_majority_committed_share_tau: float = 0.56
     core_majority_committed_share_commit_thr: float = 0.60
     core_majority_committed_share_min_n: int = 20
+    # Path 2 directionality asym reward (diam≤9 mask applied in train_loop).
+    directionality_asym_coeff: float = 0.0
     pocket_bce_coeff: float = 0.0
     interface_bce_coeff: float = 0.0
     leak_bce_coeff: float = 0.0
@@ -271,6 +277,9 @@ class TrainingConfig(BaseModel):
     max_residues: int = STAGE_A_MAX_RESIDUES
     topology_only_gate: bool = False
     gate_include_sasa: bool = False
+    # Mean-residue routing entropy sparsity peak λ + linear warmup (stage_runner schedules).
+    routing_entropy_sparsity_coeff: float = 0.0
+    routing_entropy_sparsity_warmup_epochs: int = 8
     # Prototype nearest-pair repulsion (pre-reg PROTO_SEP_*); applied to all phases when >0.
     prototype_repulsion_coeff: float = 0.0
     prototype_repulsion_margin: float = 0.25
@@ -287,6 +296,8 @@ class TrainingConfig(BaseModel):
     core_majority_committed_share_tau: float = 0.56
     core_majority_committed_share_commit_thr: float = 0.60
     core_majority_committed_share_min_n: int = 20
+    # Path 2: explicit directionality asym on diam≤9 (Move 3).
+    directionality_asym_coeff: float = 0.0
     # Core capacity quotas (pre-reg CORE_QUOTA_*); 0 = off.
     core_capacity_quota_tau: float = 0.0
     hyperbolic_gate: bool = True
@@ -436,9 +447,15 @@ class TrainingConfig(BaseModel):
     # Training-only Chem-MVP: append disulf/covale rows from fact_covalent_bond.
     # Requires role_edge_mp; does not write Normalizer / fact_graph_edge.
     chem_edge_mp: bool = False
+    # Training-only ha_edges_v1: heavy-atom packing existence + dehydron/packing strength aux.
+    # Requires role_edge_mp; same relation IDs as chem-MVP; does not write Normalizer.
+    ha_edge_mp: bool = False
     # Training-only Path B: SSE parent nodes + contain_up/down relations (9 total).
     # Requires chem_edge_mp; does not write Normalizer / fact_graph_edge.
     containment_edge_mp: bool = False
+    # Training-only Euclidean reach: spatial shortcuts with hop>6 + seq≥10 (rel 7).
+    # Requires chem_edge_mp; mutually exclusive with containment_edge_mp; no Normalizer writes.
+    euclidean_shortcut_mp: bool = False
     dehydron_exclusivity: bool = True
     dehydron_angular_scale: float = 1.0
     dehydron_rim_recovery: bool = False
@@ -705,6 +722,23 @@ def apply_prototype_nearest_pair_repulsion(
                 "prototype_repulsion_coeff": float(coeff),
                 "prototype_repulsion_margin": float(margin),
             }
+        )
+        out.append(phase_cfg.model_copy(update={"coeffs": new_coeffs}))
+    return out
+
+
+def apply_directionality_asym_reward(
+    phases: list[PhaseConfig],
+    *,
+    coeff: float,
+) -> list[PhaseConfig]:
+    """Enable Path 2 directionality asym reward on every phase (diam mask in train_loop)."""
+    if coeff <= 0:
+        return phases
+    out: list[PhaseConfig] = []
+    for phase_cfg in phases:
+        new_coeffs = phase_cfg.coeffs.model_copy(
+            update={"directionality_asym_coeff": float(coeff)}
         )
         out.append(phase_cfg.model_copy(update={"coeffs": new_coeffs}))
     return out
