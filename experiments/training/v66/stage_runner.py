@@ -1885,8 +1885,9 @@ class StageRunner:
                 )
                 sparse_warmup = int(
                     getattr(self.config, "routing_entropy_sparsity_warmup_epochs", 8)
-                    or 8
                 )
+                if sparse_warmup < 0:
+                    sparse_warmup = 0
                 if sparse_peak > 0:
                     holding = int(self._sparse_hold_remaining) > 0
                     self._sparse_prev_lam = float(self._sparse_lam)

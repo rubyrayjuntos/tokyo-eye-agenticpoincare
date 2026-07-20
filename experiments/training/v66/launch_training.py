@@ -1439,7 +1439,9 @@ def main() -> None:
             getattr(args, "routing_entropy_sparsity_coeff", 0.0) or 0.0
         ),
         routing_entropy_sparsity_warmup_epochs=int(
-            getattr(args, "routing_entropy_sparsity_warmup_epochs", 8) or 8
+            getattr(args, "routing_entropy_sparsity_warmup_epochs", 8)
+            if getattr(args, "routing_entropy_sparsity_warmup_epochs", None) is not None
+            else 8
         ),
         prototype_repulsion_coeff=float(
             getattr(args, "prototype_repulsion_coeff", 0.0) or 0.0
