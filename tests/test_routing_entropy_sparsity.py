@@ -7,9 +7,12 @@ import math
 import torch
 
 from science.training.routing_sparsity import (
+    advance_sparse_lam,
     detect_sparse_capacity_collision,
     mean_residue_routing_entropy,
     sparse_coeff_at_epoch,
+    sparse_vs_cap_ratio,
+    sparsity_governor_update,
 )
 
 
@@ -42,6 +45,82 @@ def test_warmup_linear() -> None:
 
 def test_warmup_zero_epochs_is_peak() -> None:
     assert sparse_coeff_at_epoch(1, peak=0.0075, warmup=0) == 0.0075
+
+
+def test_advance_sparse_lam_matches_linear_warmup() -> None:
+    peak, warmup = 0.008, 8
+    lam = 0.0
+    for t in range(1, 9):
+        lam, hold = advance_sparse_lam(
+            peak=peak, warmup=warmup, last_lam=lam, slope_scale=1.0
+        )
+        assert hold == 0
+        assert lam == sparse_coeff_at_epoch(t, peak=peak, warmup=warmup)
+
+
+def test_advance_sparse_lam_hold_freezes_then_resumes() -> None:
+    lam, hold = advance_sparse_lam(
+        peak=0.008,
+        warmup=8,
+        last_lam=0.003,
+        hold_remaining=2,
+        hold_lam=0.002,
+    )
+    assert lam == 0.002
+    assert hold == 1
+    lam2, hold2 = advance_sparse_lam(
+        peak=0.008,
+        warmup=8,
+        last_lam=lam,
+        slope_scale=1.0,
+        hold_remaining=hold,
+        hold_lam=0.002,
+    )
+    assert lam2 == 0.002
+    assert hold2 == 0
+    lam3, _ = advance_sparse_lam(
+        peak=0.008, warmup=8, last_lam=lam2, slope_scale=1.0
+    )
+    assert lam3 == 0.002 + (0.008 / 8)
+
+
+def test_governor_half_ramp_in_warning_band() -> None:
+    out = sparsity_governor_update(
+        max_soft_share=0.42,
+        newly_banned=[],
+        prev_lam=0.003,
+        slope_scale=1.0,
+        half_slope_applied=False,
+    )
+    assert out["events"] == ["half_ramp"]
+    assert out["slope_scale"] == 0.5
+    assert out["half_slope_applied"] is True
+    assert out["hold_remaining"] == 0
+
+
+def test_governor_timeout_hold_on_ban_and_045() -> None:
+    out = sparsity_governor_update(
+        max_soft_share=0.45,
+        newly_banned=[2],
+        prev_lam=0.004,
+        slope_scale=1.0,
+        half_slope_applied=False,
+    )
+    assert "timeout_hold" in out["events"]
+    assert out["hold_remaining"] == 2
+    assert out["hold_lam"] == 0.004
+    # timeout band is exclusive of half_ramp
+    assert "half_ramp" not in out["events"]
+
+
+def test_sparse_vs_cap_ratio() -> None:
+    r = sparse_vs_cap_ratio(
+        lam_sparse=0.0075,
+        l_sparse=1.2,
+        balance_coeff=0.015,
+        capacity_loss=0.0,
+    )
+    assert r > 1e6  # capacity near zero → large ratio
 
 
 def test_collision_detector_triggers_on_capacity_rise() -> None:
@@ -101,6 +180,20 @@ def test_v66_model_exports_mean_residue_entropy_key() -> None:
     src = inspect.getsource(model_mod.GOSPConeMapperV66.forward)
     assert "routing_entropy_mean_residue" in src
     assert "mean_residue_routing_entropy" in src
+
+
+def test_stage_runner_wires_sparsity_schedule_and_jsonl() -> None:
+    """Stage runner must schedule λ and write routing_sparsity_per_epoch.jsonl."""
+    import inspect
+
+    from experiments.training.v66 import stage_runner as sr
+
+    src = inspect.getsource(sr.StageRunner)
+    assert "advance_sparse_lam" in src
+    assert "sparsity_governor_update" in src
+    assert "routing_sparsity_per_epoch.jsonl" in src
+    assert "_log_routing_sparsity_epoch" in src
+    assert "routing_entropy_sparsity_coeff" in src
 
 
 def test_loss_coeffs_default_sparsity_off() -> None:
