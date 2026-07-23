@@ -62,7 +62,7 @@ We lean on MLflow for the full lifecycle. Catalog automation **orchestrates** th
 **Locked choices vs common MLflow prose:**
 
 1. **Aliases, not registry Stages** — MLflow deprecated Stages (`Staging` / `Production`) in favor of aliases/tags. We **do not** build on Stages.  
-2. **Not the Transformers flavor** — institutional copy often says “Transformers flavor.” Our models are custom hyperbolic GNN stacks. Package with **`mlflow.pytorch` or `mlflow.pyfunc`**, not `mlflow.transformers` (HF).  
+2. **Not the Transformers flavor** — institutional copy often says “Transformers flavor” (Hugging Face). Package Tokyo Eye weights with **`mlflow.pytorch` or `mlflow.pyfunc`**, not `mlflow.transformers`. Flavor is a packaging choice, not a product identity.  
 3. **Webhooks are the preferred CI hook** — alias creation/deletion and model-version creation fire automation; the catalog CLI also remains callable for the same transitions (idempotent).  
 4. **Catalog remains the definition of stage order** — MLflow does not know “validate_definition → train → VSD → register → alias”; the catalog + CLI encode that; MLflow stores outcomes.
 
