@@ -46,6 +46,28 @@ Failure modes prevented:
 
 ---
 
+## 0.1 MLflow platform mapping (use native surfaces)
+
+We lean on MLflow for the full lifecycle. Catalog automation **orchestrates** these surfaces; it does not reinvent them.
+
+| Lifecycle need | MLflow surface | Our binding |
+|----------------|----------------|-------------|
+| Experiment tracking | **Tracking** (experiments, runs, params, metrics, artifacts) | Catalog `experiment` path; every train is a run |
+| Packaging | **Models** (`mlflow.pytorch` / `mlflow.pyfunc`) | Log/register the chosen artifact role (`best`, …) |
+| Versioning + named pointers | **Model Registry** + **aliases** (`models:/Name@alias`) | `@champion`, `@candidate`, `@<family>-seal` |
+| Evaluation gates | Metrics on the run + optional MLflow evaluation APIs | Catalog VSD stage before register/alias |
+| CI/CD triggers | **Webhooks** / Registry APIs | On `model_version.created`, `model_version_alias.created` / `.deleted` → CI jobs (status sync, deploy, notify) |
+| Serving (later) | **Deployments** / serving URI from alias | Resolve `@champion` only; out of band until onboard runner is wired |
+
+**Locked choices vs common MLflow prose:**
+
+1. **Aliases, not registry Stages** — MLflow deprecated Stages (`Staging` / `Production`) in favor of aliases/tags. We **do not** build on Stages.  
+2. **Not the Transformers flavor** — institutional copy often says “Transformers flavor.” Our models are custom hyperbolic GNN stacks. Package with **`mlflow.pytorch` or `mlflow.pyfunc`**, not `mlflow.transformers` (HF).  
+3. **Webhooks are the preferred CI hook** — alias creation/deletion and model-version creation fire automation; the catalog CLI also remains callable for the same transitions (idempotent).  
+4. **Catalog remains the definition of stage order** — MLflow does not know “validate_definition → train → VSD → register → alias”; the catalog + CLI encode that; MLflow stores outcomes.
+
+---
+
 ## 1. Frozen policy decisions
 
 1. **Single catalog file** — one hierarchical JSON is the operational definition of the model and its lineages/families/history/automation hooks.  
@@ -240,12 +262,13 @@ Train/VSD JSON remain the **payload** for a stage; the **catalog** decides *whic
 | Entry | Behavior |
 |-------|----------|
 | `experiments/training/governance_cli.py` (name TBD) | `lineage open`, `run`, `promote`, `status`, `sync-history` |
-| `governance run -l L -f F` | Execute family’s `lifecycle[]` via MLflow |
-| `governance promote -l L -f F --alias champion` | VSD+approval gates from catalog, then alias |
+| `governance run -l L -f F` | Execute family’s `lifecycle[]` via MLflow Tracking |
+| `governance promote -l L -f F --alias champion` | VSD+approval gates from catalog, then Registry alias |
 | `governance status -l L` | Print catalog aliases + last history vs live MLflow |
 | `governance sync-history` | Reconcile catalog history with MLflow registry (detect drift) |
+| **MLflow webhooks** | On `model_version.created` / `model_version_alias.created` / `.deleted` → CI: sync catalog, smoke `resolve_check`, notify, optional deploy |
 
-CI: on train PRs / scheduled jobs, invoke `governance run` / `status` — not ad-hoc train scripts that skip register/alias.
+CI: on train PRs / scheduled jobs, invoke `governance run` / `status` — not ad-hoc train scripts that skip register/alias. Webhooks cover **post-registry** events so promotion is not “hope someone ran the next script.”
 
 Makefile targets become **thin wrappers** around the CLI with lineage/family args from the catalog’s `active_lineage`.
 
@@ -298,6 +321,7 @@ Makefile targets become **thin wrappers** around the CLI with lineage/family arg
 | 4 | Aliases replace HEALTHY restore SSOT — **LOCKED** |
 | 5 | History index in catalog; bytes/metrics in MLflow — **LOCKED** |
 | 6 | Shared `science/tokyo_eye/governance/` — **LOCKED** |
+| 7 | MLflow Tracking + Registry aliases + webhooks; **no** Stages; **no** Transformers flavor — **LOCKED** |
 
 ---
 
