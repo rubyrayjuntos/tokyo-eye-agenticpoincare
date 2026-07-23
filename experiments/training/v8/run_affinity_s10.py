@@ -6,6 +6,8 @@ Modes
 ``head_only``: freeze frontend + hyp trunk + MoE; train PocketGatedAffinityHead.
 ``finetune_hyp`` (rematch): freeze Equiformer / SE(3) frontend; train projector,
   HypGraphAttention, MoE, mechanism head (aux), and affinity head.
+``finetune_all``: unfreeze frontend bank + hyp trunk + MoE + affinity head with
+  differential LRs (``lr_backbone`` ≪ ``lr_hyperbolic`` ≪ ``lr_head``).
 """
 
 from __future__ import annotations
@@ -118,6 +120,38 @@ def configure_finetune_hyp(system: TokyoEyeV8WithFrontend) -> dict[str, Any]:
         "n_frozen_tensors": frozen,
         "n_trainable_spine_tensors": trainable,
         "train_modules": list(train_names),
+    }
+
+
+def configure_finetune_all(system: TokyoEyeV8WithFrontend) -> dict[str, Any]:
+    """Full rematch: unfreeze Equiformer/SE(3) frontend + hyp trunk + MoE."""
+    frozen = 0
+    trainable_front = 0
+    trainable_spine = 0
+    for param in system.frontend.parameters():
+        param.requires_grad = True
+        trainable_front += 1
+    spine = system.spine
+    train_names = ("projector", "attn_layers", "moe", "euc_skip", "mechanism_head")
+    freeze_names = ("sdrp_head", "evidential_head")
+    for name in train_names:
+        mod = getattr(spine, name, None)
+        if isinstance(mod, nn.Module):
+            for param in mod.parameters():
+                param.requires_grad = True
+                trainable_spine += 1
+    for name in freeze_names:
+        mod = getattr(spine, name, None)
+        if isinstance(mod, nn.Module):
+            for param in mod.parameters():
+                param.requires_grad = False
+                frozen += 1
+    return {
+        "mode": "finetune_all",
+        "n_frozen_tensors": frozen,
+        "n_trainable_frontend_tensors": trainable_front,
+        "n_trainable_spine_tensors": trainable_spine,
+        "train_modules": ["frontend", *train_names],
     }
 
 
@@ -491,6 +525,7 @@ def build_optimizer(
     *,
     lr_head: float,
     lr_hyperbolic: float,
+    lr_backbone: float = 1e-5,
 ) -> torch.optim.Optimizer:
     if mode == "head_only":
         params = [p for p in head.parameters() if p.requires_grad]
@@ -501,8 +536,20 @@ def build_optimizer(
 
     hyp_params = [p for p in system.spine.parameters() if p.requires_grad]
     head_params = [p for p in head.parameters() if p.requires_grad]
-    assert hyp_params, "finetune_hyp: no trainable spine params"
-    assert head_params, "finetune_hyp: no trainable head params"
+    assert hyp_params, f"{mode}: no trainable spine params"
+    assert head_params, f"{mode}: no trainable head params"
+
+    if mode == "finetune_all":
+        front_params = [p for p in system.frontend.parameters() if p.requires_grad]
+        assert front_params, "finetune_all: no trainable frontend params"
+        return torch.optim.Adam(
+            [
+                {"params": front_params, "lr": float(lr_backbone), "name": "backbone"},
+                {"params": hyp_params, "lr": float(lr_hyperbolic), "name": "hyperbolic"},
+                {"params": head_params, "lr": float(lr_head), "name": "affinity_head"},
+            ]
+        )
+
     for p in system.frontend.parameters():
         assert not p.requires_grad, "frontend must stay frozen in finetune_hyp"
     return torch.optim.Adam(
@@ -546,7 +593,7 @@ def parse_args() -> argparse.Namespace:
         "--mode",
         type=str,
         default="head_only",
-        choices=["head_only", "finetune_hyp"],
+        choices=["head_only", "finetune_hyp", "finetune_all"],
     )
     p.add_argument("--splits", type=Path, default=DEFAULT_SPLITS)
     p.add_argument("--init-ckpt", type=Path, default=DEFAULT_INIT)
@@ -558,6 +605,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--epochs", type=int, default=12)
     p.add_argument("--lr", type=float, default=1e-3, help="Affinity head LR")
     p.add_argument("--lr-hyperbolic", type=float, default=3e-4)
+    p.add_argument(
+        "--lr-backbone",
+        type=float,
+        default=1e-5,
+        help="Equiformer/SE(3) frontend LR (finetune_all only)",
+    )
     p.add_argument("--aux-coeff", type=float, default=0.10, help="λ_aux dehydron BCE")
     p.add_argument("--cv-coeff", type=float, default=1.0)
     p.add_argument("--moe-quota-coeff", type=float, default=1.0)
@@ -618,8 +671,10 @@ def main() -> None:
     device = torch.device(args.device)
     cfg = load_weight_map(args.weight_map)
     system = build_system(cfg, device)
+    init_blob: dict[str, Any] | None = None
     if args.init_ckpt.is_file():
         blob = torch.load(args.init_ckpt, map_location=device, weights_only=False)
+        init_blob = blob if isinstance(blob, dict) else None
         state = blob["model"] if isinstance(blob, dict) and "model" in blob else blob
         missing, unexpected = system.load_state_dict(state, strict=False)
         print(
@@ -631,6 +686,8 @@ def main() -> None:
 
     if mode == "head_only":
         freeze_info = freeze_geometry_banks(system)
+    elif mode == "finetune_all":
+        freeze_info = configure_finetune_all(system)
     else:
         freeze_info = configure_finetune_hyp(system)
     print(f"[s10] freeze_config={json.dumps(freeze_info)}")
@@ -653,12 +710,15 @@ def main() -> None:
         )
     ).to(device)
     print(f"[s10] joint_head={bool(args.joint_head)} head={type(head).__name__}")
-    if args.affinity_init is not None and Path(args.affinity_init).is_file():
-        ablob = torch.load(args.affinity_init, map_location=device, weights_only=False)
-        hstate = ablob.get("affinity_head", ablob)
+    affinity_src = args.affinity_init
+    if affinity_src is None and init_blob is not None and "affinity_head" in init_blob:
+        affinity_src = args.init_ckpt
+    if affinity_src is not None and Path(affinity_src).is_file():
+        ablob = torch.load(affinity_src, map_location=device, weights_only=False)
+        hstate = ablob.get("affinity_head", ablob) if isinstance(ablob, dict) else ablob
         missing, unexpected = head.load_state_dict(hstate, strict=False)
         print(
-            f"[s10] affinity_init={args.affinity_init} "
+            f"[s10] affinity_init={affinity_src} "
             f"missing={len(missing)} unexpected={len(unexpected)}"
         )
 
@@ -668,10 +728,11 @@ def main() -> None:
         head,
         lr_head=float(args.lr),
         lr_hyperbolic=float(args.lr_hyperbolic),
+        lr_backbone=float(args.lr_backbone),
     )
     print(
         f"[s10] mode={mode} lr_head={args.lr} lr_hyp={args.lr_hyperbolic} "
-        f"aux_coeff={args.aux_coeff}"
+        f"lr_backbone={args.lr_backbone} aux_coeff={args.aux_coeff}"
     )
 
     use_cache = not args.no_graph_cache
