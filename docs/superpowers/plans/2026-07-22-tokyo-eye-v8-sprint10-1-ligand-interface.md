@@ -73,7 +73,7 @@ R6_PROTEIN_LIGAND = 6  # affinity-path constant only; not MoE num_relations
   - `build_r6_edges(res_proxy_xyz, lig_xyz, cutoff=4.5) -> (edge_index [2,E], meta)`
   - `LigandAtoms`: coords `[N,3]`, elements `list[str]`, charges `list[float|None]`, resname, n_atoms
 
-- [ ] **Step 1: Write failing tests** for water/ion drop, largest multi-atom hetero selection, 10-ch shape/neutral default, R6 bidirectional ≤4.5Å, empty R6 meta flag, and assert builder never imports/calls graph-cache write.
+- [x] **Step 1: Write failing tests** for water/ion drop, largest multi-atom hetero selection, 10-ch shape/neutral default, R6 bidirectional ≤4.5Å, empty R6 meta flag, and assert builder never imports/calls graph-cache write.
 
 ```python
 def test_ten_channel_neutral_default():
@@ -88,18 +88,18 @@ def test_r6_bidirectional_cutoff():
     ...
 ```
 
-- [ ] **Step 2: Run tests — expect fail** (`pytest tests/v8/test_ligand_interface_sprint101.py -q`)
+- [x] **Step 2: Run tests — expect fail** (`pytest tests/v8/test_ligand_interface_sprint101.py -q`)
 
-- [ ] **Step 3: Implement `ligand_interface.py`**
+- [x] **Step 3: Implement `ligand_interface.py`**
   - Drop resnames `{HOH,WAT,DOD,TIP}` and `{CL,NA,K,MG,ZN,CA,SO4,PO4}`
   - Select largest contiguous multi-atom hetero (\(N\ge 2\))
   - Element → channels 0–6; charge bins 7–9 (default neutral)
   - R6: residue proxy = CB else CA; both directions; inclusive ≤4.5
   - Empty edges → `meta={"r6_empty": 1, "n_edges": 0}` and `edge_index` shape `[2,0]`
 
-- [ ] **Step 4: Re-export from `pdbbind_loader.py`**
+- [x] **Step 4: Re-export from `pdbbind_loader.py`**
 
-- [ ] **Step 5: Run tests — expect pass**
+- [x] **Step 5: Run tests — expect pass** (`9 passed`)
 
 - [ ] **Step 6: Commit** `feat(v8): Sprint 10.1.0 ligand HETATM sanitize + R6 off-cache`
 
