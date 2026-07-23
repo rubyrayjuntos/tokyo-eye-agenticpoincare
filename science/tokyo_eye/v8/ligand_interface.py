@@ -88,6 +88,55 @@ def _is_aromatic_type(atom_type: str) -> bool:
     return False
 
 
+def _formalize_mol2_charge(raw: float | None, atom_type: str = "") -> float | None:
+    """Map PDBbind GAST_HUCK partials → formal-ish bins (not raw sign).
+
+    Continuous Gasteiger charges are almost never exactly 0, so treating
+    ``q<0`` / ``q>0`` as formal Neg/Pos zeros the Neutral channel and
+    destroys the HETATM-comparable charge prior. Keep near-integer formals;
+    otherwise require |q|≥0.5 (captures O.co2 ≈ −0.66). Sybyl N.4 → +1.
+    """
+    t = (atom_type or "").strip().lower()
+    if t.startswith("n.4"):
+        return 1.0
+    if raw is None:
+        return None
+    q = float(raw)
+    nearest = round(q)
+    if abs(q - nearest) <= 0.1 and nearest != 0:
+        return float(nearest)
+    if abs(q) < 0.5:
+        return None  # → Neutral bin
+    return -1.0 if q < 0 else 1.0
+
+
+def _drop_hydrogens(
+    atoms: list[dict[str, Any]], deg: list[int]
+) -> tuple[list[dict[str, Any]], list[int]]:
+    """Strip explicit H (PDBbind mol2 is protonated; HETATM path is heavy-only)."""
+    keep = [i for i, a in enumerate(atoms) if str(a.get("element", "")).upper() != "H"]
+    if len(keep) == len(atoms):
+        return atoms, deg
+    if not keep:
+        return atoms, deg
+    old_to_new = {old: new for new, old in enumerate(keep)}
+    # Rebuild degree among surviving heavy atoms only (H–X bonds discarded).
+    new_deg = [0] * len(keep)
+    # deg currently counts all neighbors including H; recompute from adjacency
+    # if we only have degrees, approximate: subtract is wrong without adj.
+    # Callers pass deg built from bonds — rebuild via optional bond list on atoms.
+    kept_atoms = [atoms[i] for i in keep]
+    for i, old_i in enumerate(keep):
+        # Prefer per-atom neighbor lists if present
+        nbrs = atoms[old_i].get("neighbors")
+        if nbrs is not None:
+            new_deg[i] = sum(1 for j in nbrs if j in old_to_new)
+        else:
+            # Fallback: keep prior degree (slightly inflated if H neighbors existed)
+            new_deg[i] = int(deg[old_i]) if old_i < len(deg) else 0
+    return kept_atoms, new_deg
+
+
 def resolve_ligand_path(
     pdb_id: str,
     *,
@@ -179,7 +228,11 @@ def extract_ligand_hetatm(pdb_path: Path | str) -> LigandAtoms | None:
 
 
 def extract_ligand_mol2(path: Path | str) -> LigandAtoms | None:
-    """Native ``@<TRIPOS>ATOM`` / ``@<TRIPOS>BOND`` scan (no RDKit)."""
+    """Native ``@<TRIPOS>ATOM`` / ``@<TRIPOS>BOND`` scan (no RDKit).
+
+    Drops explicit hydrogens (PDBbind refined mol2 is protonated; HETATM
+    bootstrap is heavy-atom). Formalizes GAST_HUCK partials before binning.
+    """
     text = Path(path).read_text(errors="replace")
     lines = text.splitlines()
     # Find ATOM block
@@ -212,18 +265,19 @@ def extract_ligand_mol2(path: Path | str) -> LigandAtoms | None:
             continue
         atom_type = parts[5] if len(parts) > 5 else ""
         elem = _norm_element(atom_type.split(".")[0], parts[1] if len(parts) > 1 else "")
-        charge: float | None = None
+        raw_charge: float | None = None
         if len(parts) >= 9:
             try:
-                charge = float(parts[8])
+                raw_charge = float(parts[8])
             except ValueError:
-                charge = None
+                raw_charge = None
         atoms.append(
             {
                 "coord": np.array([x, y, z], dtype=np.float32),
                 "element": elem,
-                "charge": charge,
+                "charge": _formalize_mol2_charge(raw_charge, atom_type),
                 "aromatic": _is_aromatic_type(atom_type),
+                "neighbors": [],
             }
         )
     if len(atoms) < 1:
@@ -247,6 +301,12 @@ def extract_ligand_mol2(path: Path | str) -> LigandAtoms | None:
             if 0 <= a < n and 0 <= b < n:
                 deg[a] += 1
                 deg[b] += 1
+                atoms[a]["neighbors"].append(b)
+                atoms[b]["neighbors"].append(a)
+
+    atoms, deg = _drop_hydrogens(atoms, deg)
+    if len(atoms) < 1:
+        return None
 
     return LigandAtoms(
         coords=np.stack([a["coord"] for a in atoms], axis=0),
@@ -309,6 +369,7 @@ def extract_ligand_sdf(path: Path | str) -> LigandAtoms | None:
                 "element": elem,
                 "charge": charge,
                 "aromatic": False,
+                "neighbors": [],
             }
         )
     n = len(atoms)
@@ -328,11 +389,13 @@ def extract_ligand_sdf(path: Path | str) -> LigandAtoms | None:
         if 0 <= a < n and 0 <= b < n:
             deg[a] += 1
             deg[b] += 1
+            atoms[a]["neighbors"].append(b)
+            atoms[b]["neighbors"].append(a)
             if btype == 4:
                 atoms[a]["aromatic"] = True
                 atoms[b]["aromatic"] = True
 
-    # M  CHG lines
+    # M  CHG lines (true formal charges — keep as-is)
     for line in lines[4 + n_atoms + n_bonds :]:
         if line.startswith("M  END"):
             break
@@ -351,6 +414,10 @@ def extract_ligand_sdf(path: Path | str) -> LigandAtoms | None:
                     break
                 if 0 <= idx < n:
                     atoms[idx]["charge"] = chg
+
+    atoms, deg = _drop_hydrogens(atoms, deg)
+    if len(atoms) < 1:
+        return None
 
     return LigandAtoms(
         coords=np.stack([a["coord"] for a in atoms], axis=0),

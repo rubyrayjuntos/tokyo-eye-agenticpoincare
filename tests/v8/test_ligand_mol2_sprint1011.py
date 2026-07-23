@@ -62,6 +62,38 @@ def test_mol2_charge_aromatic_degree(tmp_path: Path) -> None:
     assert feats[1, 11] == 2.0 / 4.0  # degree
 
 
+def test_mol2_strips_h_and_neutralizes_gasteiger(tmp_path: Path) -> None:
+    """PDBbind mol2 is protonated + GAST_HUCK; do not treat |q|<0.5 as formal."""
+    mol2 = textwrap.dedent(
+        """
+        @<TRIPOS>MOLECULE
+        toy
+        4 3 0 0 0
+        @<TRIPOS>ATOM
+              1 C1         0.0000    0.0000    0.0000 C.ar      1 LIG      -0.0428
+              2 C2         1.4000    0.0000    0.0000 C.ar      1 LIG      -0.0603
+              3 O1         2.4000    0.0000    0.0000 O.co2     1 LIG      -0.6653
+              4 H1         0.0000    1.0000    0.0000 H         1 LIG       0.0557
+        @<TRIPOS>BOND
+             1    1    2 ar
+             2    2    3 1
+             3    1    4 1
+        """
+    ).lstrip()
+    path = tmp_path / "prot.mol2"
+    path.write_text(mol2)
+    atoms = extract_ligand_mol2(path)
+    assert atoms is not None
+    assert atoms.n_atoms == 3
+    assert "H" not in atoms.elements
+    assert atoms.charges[0] is None and atoms.charges[1] is None
+    assert atoms.charges[2] is not None and atoms.charges[2] < 0
+    assert atoms.degrees[0] == 1  # H neighbor dropped
+    feats = ligand_feature_matrix(atoms)
+    assert feats[0, 8] == 1.0  # Neutral
+    assert feats[2, 7] == 1.0  # Negative (O.co2)
+
+
 def test_sdf_aromatic_bond_type4_and_chg(tmp_path: Path) -> None:
     # Minimal V2000: 2 atoms, 1 aromatic bond, M CHG on atom 2
     sdf = (
