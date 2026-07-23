@@ -22,7 +22,7 @@ def test_training_config_serializes_paths() -> None:
     cfg = TrainingConfig(output_dir="checkpoints/v6/test", corpus_manifest="manifests/v6_corpus_120.json")
     params = cfg.to_mlflow_params()
     assert "checkpoints/v6/test" in params["output_dir"]
-    assert params["model_version"] == "GOSPConeMapper-v6"
+    assert params["model_version"] == "TokyoEye-v8"
     assert params["num_experts"] == 4
 
 

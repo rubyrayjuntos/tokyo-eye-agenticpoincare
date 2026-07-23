@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v8_biology_roadmap",
+  "recorded_at": "2026-07-23T16:20:00Z",
+  "status": "OPEN",
+  "spec": "docs/specs/tokyo-eye-v8/biology-roadmap.md",
+  "theta_ssot": "checkpoints/v8/runs/tokyo_eye_v8_mode_c_moe_rebalance_s9/v8_best.pt",
+  "ported_from": "data/gates/tokyo_eye_v7_biology_roadmap.json",
+  "note": "v7 B0 PASS / B1 FAIL do not transfer — different architecture; all items are v8 TODOs",
+  "priority": ["B0", "B1", "B2", "B3_prime"],
+  "deferred": ["B4_phylo", "B5_ligand"],
+  "active": "B0",
+  "items": {
+    "B0": {
+      "name": "prep_on_v8",
+      "status": "TODO",
+      "tasks": ["theta_lock", "forward_smoke_v8", "probe_inventory", "b1_prereg_v8"]
+    },
+    "B1": {
+      "name": "teleconnections_allostery",
+      "status": "TODO_REPREREG",
+      "archaeology_closeout": "data/gates/tokyo_eye_v7_b1_teleconnections_closeout.json",
+      "metrics": ["AlleleSens", "conduit_vs_scramble", "investigation_hub_and_pocket"]
+    },
+    "B2": {
+      "name": "epistasis_cascades",
+      "status": "BLOCKED_ON_B1",
+      "metrics": ["Epistasis"]
+    },
+    "B3_prime": {
+      "name": "directional_topography",
+      "status": "DEFERRED_AFTER_B2",
+      "forbidden_claims": ["free_energy", "thermodynamic_saddle", "folding_pathway"]
+    },
+    "B4_phylo": {
+      "name": "evolutionary_trajectories",
+      "status": "DEFERRED",
+      "reason": "ball_origin_is_not_phylogeny"
+    },
+    "B5_ligand": {
+      "name": "zero_shot_ligand",
+      "status": "DEFERRED",
+      "reason": "affinity_casf_seal_is_not_zero_shot; chem_mvp_parked"
+    }
+  },
+  "forbidden_claims": [
+    "v7_sealed_equals_v8_biology_champion",
+    "affinity_casf_equals_teleconnection_pass",
+    "disc_rim_equals_pathway",
+    "nig_ale_epi_equals_allele_epistasis",
+    "embedding_density_equals_free_energy"
+  ]
+}

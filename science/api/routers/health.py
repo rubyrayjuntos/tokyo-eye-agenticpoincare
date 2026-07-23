@@ -87,6 +87,36 @@ def _gnn_production_summary() -> dict:
 def _verify_production_checkpoint_cached() -> dict:
     """Load production weights once per process — catches code/checkpoint drift."""
     try:
+        from science.contracts.model_registry import get_production_model
+
+        prod = get_production_model()
+        if prod.model_id == "tokyo_eye_v8" or prod.model_version == "TokyoEye-v8":
+            from science.tokyo_eye.v8.runner import TokyoEyeV8Runner
+
+            runner = TokyoEyeV8Runner(device="cpu")
+            runner._load_model_sync()
+            return {
+                "ok": True,
+                "missing_keys": 0,
+                "model_class": "TokyoEyeV8WithFrontend",
+                "lineage": "v8",
+            }
+
+        if prod.model_id == "tokyo_eye_v7" or prod.model_version == "TokyoEye-v7":
+            from science.tokyo_eye.TokyoEye import verify_tokyo_eye_checkpoint
+
+            result = verify_tokyo_eye_checkpoint()
+            return {
+                "ok": result["load_ok"],
+                "missing_keys": len(result["missing_keys"]),
+                "model_class": "TokyoEye",
+                "hyp_mp_primary": result.get("hyp_mp_primary", True),
+                "deep_hyperbolic_gate": result["deep_hyperbolic_gate"],
+                "gate_disc_scale": result["gate_disc_scale"],
+                "hyperbolic_expert_mix": result["hyperbolic_expert_mix"],
+                "lineage": "v7_archaeology",
+            }
+
         from science.dtie.v6.gnn.model import verify_v6_checkpoint
 
         result = verify_v6_checkpoint()

@@ -550,12 +550,26 @@ readiness:
       - allosteric_sites
       - allele_selectivity
 gnn_models:
-  production_model_id: gospc_v6
+  production_model_id: tokyo_eye_v8
   models:
+    tokyo_eye_v8:
+      model_version: TokyoEye-v8
+      api_alias: v8
+      status: production
+      runner_module: science.tokyo_eye.v8.runner
+      runner_class: TokyoEyeV8Runner
+      production_checkpoint_id: tokyo_eye_v8_mode_c_moe_rebalance_s9
+    tokyo_eye_v7:
+      model_version: TokyoEye-v7
+      api_alias: v7
+      status: deprecated
+      runner_module: science.tokyo_eye.runner
+      runner_class: TokyoEyeRunner
+      production_checkpoint_id: tokyo_eye_v7_cutover_scaffold
     gospc_v6:
       model_version: GOSPConeMapper-v6
       api_alias: v6
-      status: production
+      status: legacy
       runner_module: science.dtie.v6.gnn.runner
       runner_class: V6GNNRunner
       production_checkpoint_id: lever_a_clean_slate_v1
@@ -574,10 +588,18 @@ gnn_models:
       runner_class: V65GNNRunner
       production_checkpoint_id: v65_champion
   checkpoints:
+    tokyo_eye_v8_mode_c_moe_rebalance_s9:
+      model_id: tokyo_eye_v8
+      path: checkpoints/v8/runs/tokyo_eye_v8_mode_c_moe_rebalance_s9/v8_best.pt
+      status: production
+    tokyo_eye_v7_cutover_scaffold:
+      model_id: tokyo_eye_v7
+      path: checkpoints/v7/tokyo_eye_v7_cutover_scaffold.pt
+      status: deprecated
     lever_a_clean_slate_v1:
       model_id: gospc_v6
       path: checkpoints/v6/runs/lever_a_clean_slate_v1/v6_best_disc.pt
-      status: production
+      status: legacy
     tokyo_eyes_v6:
       model_id: gospc_v6
       path: checkpoints/v6/tokyo_eyes_v6.pt
@@ -590,6 +612,10 @@ gnn_models:
       model_id: gospc_v5
       path: checkpoints/v5/tokyo_eyes_v5.pt
       status: legacy
+    v65_champion:
+      model_id: gospc_v65
+      path: checkpoints/v65/v65_champion.pt
+      status: candidate
 api_surfaces:
   ModelsResponse:
     fields:

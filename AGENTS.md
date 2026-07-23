@@ -5,6 +5,7 @@
 **Purpose:** Hyperbolic GNN platform for protein allostery detection, source-leak identification, and agentic structural biology workflows.
 
 > **New developers:** Read [`docs/DEVELOPER_ONBOARDING.md`](docs/DEVELOPER_ONBOARDING.md) before starting feature work — it walks through write path, compute path, onboard contract, geometry, and audit compliance.  
+> **Project Hub (roadmap + doc map):** [`docs/PROJECT_HUB.md`](docs/PROJECT_HUB.md) — stitch point for Fix-1 biology status, open work, and key specs. Live print: `make project-hub`.  
 > **AI agents:** Follow [`docs/AI_DEVELOPER_CONTRACT.md`](docs/AI_DEVELOPER_CONTRACT.md) (STOP conditions + gate output). Enforcement map: [`docs/ENFORCEMENT_MATRIX.md`](docs/ENFORCEMENT_MATRIX.md).
 
 ---
@@ -48,7 +49,8 @@ data/provenance/            Provenance lineage tracing
 
 science/compute/            Job registry, scheduler, 15 peeled atomic runners (Acts 01–05); monolith = gnn_inference only
 science/contracts/          Master onboard contract (artifacts, geometry, readiness, API types)
-science/dtie/v5/            Production GNN + orchestrator (compatibility façade during migration)
+science/tokyo_eye/          Tokyo Eye GNN product (v7+); production module TokyoEye.py — not versioned under dtie
+science/dtie/               Structural biology (historical name; do not version the GNN here). Future rename → structural-biology
 science/dtie/common/        Shared: keys, adapters, interfaces, payloads, graph builder
 
 shared/audit/               Structured pipeline audit event bus (logs + persistence)
@@ -75,15 +77,18 @@ infra/terraform/            Aurora PostgreSQL + S3 (AWS)
 10. **Phase functions run in threads**: CPU-bound numpy/scipy work uses `asyncio.to_thread`.
 11. **Token budget on LLM calls**: Agent loop stops at `max_tokens` (default 100k) to prevent runaway costs.
 12. **Hyperbolic geometry by default**: All geometric computations run in hyperbolic (Poincaré) space unless the onboard contract marks an artifact or job as `euclidean` or `mixed`. The contract (`science/contracts/onboard_contract.yaml`) is the SSOT for which jobs and artifacts are hyperbolic. **Curvature is learned at GNN inference** (`gnn_inference` → `embedding_space.curvature`) and must passthrough to downstream hyperbolic jobs — never hardcode a numeric curvature. Enforcement defaults to `warning`; set `GEOMETRIC_ENFORCEMENT_LEVEL=error` and `GEOMETRIC_ENFORCEMENT_ERROR_JOBS` in CI/staging for critical jobs. See `science/contracts/README.md`.
-13. **Pipeline runtime audit**: Compute orchestration emits structured events to logs and `audit_pipeline_events` (migrations 049–050) for historical query — geometric validation, curvature passthrough, preconditions, pathway lifecycle, enforcement. Complements `normalization_audit` (governed writes). Full reference: `docs/audit/PIPELINE_AUDIT.md`.
+13. **Tokyo Eye v8 — active trunk SSOT (2026-07-23):** Production GNN is [`science/tokyo_eye/v8/`](science/tokyo_eye/v8/) (`TokyoEye-v8`, contract `tokyo_eye_v8`). Equiformer/SE(3) frontend + hyperbolic spine + MoE. Checkpoints: `checkpoints/v8/`. **Spine restore:** `HEALTHY_V8_SPINE_CKPT` (`tokyo_eye_v8_mode_c_moe_rebalance_s9/v8_best.pt`). **Affinity seal:** `HEALTHY_V8_AFFINITY_CKPT` (CASF Core \(R\approx0.407\)). Spec: [`docs/specs/tokyo-eye-v8/README.md`](docs/specs/tokyo-eye-v8/README.md). Biology TODOs: [`biology-roadmap.md`](docs/specs/tokyo-eye-v8/biology-roadmap.md). **v7 is dead archaeology** (different architecture; never production) — do not open `HEALTHY_V7_CKPT` / `docs/specs/tokyo-eye-v7/` for new work. Trunk stamp: [`data/gates/tokyo_eye_v8_trunk_ssot.json`](data/gates/tokyo_eye_v8_trunk_ssot.json).
+14. **July-19 Euc-MP lock historical:** [`docs/audit/EUCLIDEAN_CONSTRUCTION_HYPERBOLIC_INFERENCE.md`](docs/audit/EUCLIDEAN_CONSTRUCTION_HYPERBOLIC_INFERENCE.md) remains historical for **frozen v6.x** only. Complements [`docs/audit/DISC_PROJECTION_NOT_TRUNK_PROXY.md`](docs/audit/DISC_PROJECTION_NOT_TRUNK_PROXY.md).
+15. **v6.x / v7 frozen archaeology:** Sealed Fix-1 under `checkpoints/v66/` and Hyp-MP v7 under `checkpoints/v7/` are compare-only. Chem-MVP **PARKED**: [`docs/specs/chem-mvp-reengage/README.md`](docs/specs/chem-mvp-reengage/README.md). Run names containing `s4` are historical labels, not a backbone version.
+16. **Pipeline runtime audit**: Compute orchestration emits structured events to logs and `audit_pipeline_events` (migrations 049–050) for historical query — geometric validation, curvature passthrough, preconditions, pathway lifecycle, enforcement. Complements `normalization_audit` (governed writes). Full reference: `docs/audit/PIPELINE_AUDIT.md`.
 
 ---
 
 ## Agent Tools (20 total)
 
 ### Discovery signals (read-only; 4)
-- `get_source_leaks` — High uncertainty + deep residues
-- `get_high_uncertainty_residues` — Top-N by uncertainty type
+- `get_source_leaks` — Physics-rim triage (high cone_depth, prefer τ=1); evidential ranking opt-in only
+- `get_high_uncertainty_residues` — Prefer `cone_depth`; epistemic/aleatoric marked experimental (G5b)
 - `get_residue_state` — Current governed state of residues
 - `compare_wt_mutant` — WT vs mutant displacement in hyperbolic space
 
@@ -105,6 +110,8 @@ infra/terraform/            Aurora PostgreSQL + S3 (AWS)
 - `focus_residues` — Animate camera to residues
 - `clear_highlights` — Remove all highlights
 
+> **Investigation coloring (CLOSED 2026-07-16):** Default GNN HTML viewers use ρ/τ physics underwrap, not evidential `ale×(1−epi)`. See [`docs/audit/VIEWER_INVESTIGATION_CORRECTNESS.md`](docs/audit/VIEWER_INVESTIGATION_CORRECTNESS.md).
+
 ### Plotting (1)
 - `generate_plot` — Matplotlib figures (poincare_disc, uncertainty_profile, cone_depth_histogram, wt_vs_mutant, persistence_barcode, source_leak_map)
 
@@ -121,7 +128,7 @@ infra/terraform/            Aurora PostgreSQL + S3 (AWS)
 2. **Validate user input** — uncertainty_type against allowlist, structure_id format, residue_id count limits.
 3. **No raw exceptions to users** — log details, return generic messages in prod.
 4. **Run tests after changes** — `make test` must pass before considering work done.
-5. **V5 is the only production model** — V3/V4 are for provenance/backward compat only.
+5. **TokyoEye-v8 is the production GNN** — `science.tokyo_eye.v8` via contract `tokyo_eye_v8`. **Never open v7 as an active trunk** (`TokyoEye.py` / `HEALTHY_V7_CKPT` are archaeology). Legacy `GOSPConeMapper-v*` / `gospc_v*` remain compare-only. Pathway/orchestrator code under `science/dtie/v5` is not the GNN trunk.
 6. **Canonical keys** — Always use `science/dtie/common/keys.py` for ID generation.
 7. **Thread-safe model loading** — GNN runner uses asyncio.Lock to prevent duplicate loads.
 8. **Never hardcode secrets** — JWT_SECRET must come from env, fail fast in prod if missing.

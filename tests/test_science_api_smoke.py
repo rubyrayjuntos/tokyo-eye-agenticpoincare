@@ -54,7 +54,7 @@ async def test_health_endpoint_responds():
         assert "job_registry" in body
         assert body["status"] == "healthy"
         assert body["contract_version"] == "1.6"
-        assert body["gnn_production"]["model_id"] == "gospc_v6"
+        assert body["gnn_production"]["model_id"] == "tokyo_eye_v8"
         assert body["gpu"]["available"] is False
         assert body["checkpoints"] == ["v5_stage4_11prot.pt"]
 
@@ -164,8 +164,8 @@ def test_compute_models_importable():
     # Test with default values where available
     gnn_req = GNNRequest(structure_id="test_4obe")
     assert gnn_req.structure_id == "test_4obe"
-    assert gnn_req.model_version == "v6"
-    assert gnn_req.checkpoint_path == "checkpoints/v6/tokyo_eyes_v6.pt"
+    assert gnn_req.model_version == "v8"
+    assert gnn_req.checkpoint_path == "checkpoints/v8/runs/tokyo_eye_v8_mode_c_moe_rebalance_s9/v8_best.pt"
     assert gnn_req.device == "cpu"
 
     gnn_resp = GNNResponse(

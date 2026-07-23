@@ -11,12 +11,16 @@ from science.training.config import TrainingConfig
 if TYPE_CHECKING:
     import torch.nn as nn
 
-GnnLineageId = Literal["v6", "v6.5", "v6.6"]
+GnnLineageId = Literal["v6", "v6.5", "v6.6", "v7", "v8"]
 
 
 @dataclass(frozen=True)
 class GnnLineageSpec:
-    """One trainable GNN architecture line under ``science/dtie/``."""
+    """One trainable GNN architecture line.
+
+    v8+ production models live under ``science/tokyo_eye/v8/``.
+    v7 Hyp-MP under ``science/tokyo_eye/TokyoEye.py`` is frozen archaeology.
+    """
 
     lineage_id: GnnLineageId
     package: str
@@ -61,6 +65,28 @@ LINEAGE_REGISTRY: dict[GnnLineageId, GnnLineageSpec] = {
         checkpoint_prefix="v66",
         checkpoint_root=Path("checkpoints/v66/runs"),
         mlflow_experiment="tokyo-eyes-v66",
+        frozen_baseline=True,
+    ),
+    "v7": GnnLineageSpec(
+        lineage_id="v7",
+        package="science.tokyo_eye.TokyoEye",
+        model_class_name="TokyoEye",
+        model_version="TokyoEye-v7",
+        architecture_version="v7",
+        checkpoint_prefix="v7",
+        checkpoint_root=Path("checkpoints/v7/runs"),
+        mlflow_experiment="tokyo-eyes-v7",
+        frozen_baseline=True,  # dead archaeology — do not open as trunk
+    ),
+    "v8": GnnLineageSpec(
+        lineage_id="v8",
+        package="science.tokyo_eye.v8.model",
+        model_class_name="TokyoEyesHyperbolicV8",
+        model_version="TokyoEye-v8",
+        architecture_version="v8",
+        checkpoint_prefix="v8",
+        checkpoint_root=Path("checkpoints/v8/runs"),
+        mlflow_experiment="tokyo-eyes-v8",
         frozen_baseline=False,
     ),
 }
@@ -170,7 +196,20 @@ def build_model(config: TrainingConfig, node_dim: int | None = None) -> nn.Modul
     )
     if getattr(config, "init_seed", None) is not None:
         model_kwargs["init_seed"] = int(config.init_seed)
-    if spec.lineage_id == "v6.6":
+    if spec.lineage_id == "v8":
+        # Prefer experiments/training/v8 harness for Equiformer+spine; this path
+        # builds the hyp spine only for lineage registry / unit smoke.
+        model = model_cls(
+            scalar_dim=int(getattr(config, "scalar_dim", 128) or 128),
+            vector_dim=int(getattr(config, "vector_dim", 3) or 3),
+            hidden_dim=int(getattr(config, "hidden_dim", 64) or 64),
+            num_attn_layers=int(getattr(config, "num_attn_layers", 2) or 2),
+            num_relations=int(getattr(config, "num_relations", 6) or 6),
+            num_sdrp_classes=int(getattr(config, "num_sdrp_classes", 5) or 5),
+        )
+        model.hyperbolic_mp_graph = False
+        return model
+    if spec.lineage_id in {"v6.6", "v7"}:
         model_kwargs["gate_include_sasa"] = bool(
             getattr(config, "gate_include_sasa", False)
         )
@@ -185,8 +224,12 @@ def build_model(config: TrainingConfig, node_dim: int | None = None) -> nn.Modul
             getattr(config, "role_coupling_edges", False)
         )
         model_kwargs["chem_edge_mp"] = bool(getattr(config, "chem_edge_mp", False))
+        model_kwargs["ha_edge_mp"] = bool(getattr(config, "ha_edge_mp", False))
         model_kwargs["containment_edge_mp"] = bool(
             getattr(config, "containment_edge_mp", False)
+        )
+        model_kwargs["euclidean_shortcut_mp"] = bool(
+            getattr(config, "euclidean_shortcut_mp", False)
         )
         model_kwargs["dehydron_exclusivity"] = bool(
             getattr(config, "dehydron_exclusivity", True)
@@ -222,9 +265,25 @@ def build_model(config: TrainingConfig, node_dim: int | None = None) -> nn.Modul
         model_kwargs["thermo_edge_message_gate"] = bool(
             getattr(config, "thermo_edge_features", False)
         ) and (not multi_rel)
+    if spec.lineage_id == "v7":
+        model_kwargs["hyp_mp_primary"] = bool(
+            getattr(config, "hyp_mp_primary", True)
+        )
+        model_kwargs["se3_aux"] = bool(getattr(config, "se3_aux", False))
+        model_kwargs["hyp_mp_layers"] = int(getattr(config, "hyp_mp_layers", 3))
+        model_kwargs["hyperbolic_gate"] = bool(
+            getattr(config, "hyperbolic_gate", True)
+        )
+        model_kwargs["hyperbolic_expert_mix"] = bool(
+            getattr(config, "hyperbolic_expert_mix", True)
+        )
     model = model_cls(**model_kwargs)
     # Marker for prepare_training_batch (not a nn.Parameter).
-    model.hyperbolic_mp_graph = bool(getattr(config, "hyperbolic_mp_graph", False))
+    # v7: Hyp MP primary — do not use S4 "euc conv on hyp edges" flag.
+    if spec.lineage_id == "v7":
+        model.hyperbolic_mp_graph = False
+    else:
+        model.hyperbolic_mp_graph = bool(getattr(config, "hyperbolic_mp_graph", False))
     return model
 
 
@@ -246,7 +305,11 @@ def load_model_from_checkpoint(
     resolved_lineage = lineage_id
     if resolved_lineage is None and isinstance(arch, dict):
         version = str(arch.get("version", "v6"))
-        if version in {"v6.6", "v66"}:
+        if version in {"v8", "TokyoEye-v8"}:
+            resolved_lineage = "v8"
+        if version in {"v7", "TokyoEye-v7"}:
+            resolved_lineage = "v7"
+        elif version in {"v6.6", "v66"}:
             resolved_lineage = "v6.6"
         elif version in {"v6.5", "v65"}:
             resolved_lineage = "v6.5"
@@ -329,16 +392,52 @@ def apply_lineage_defaults(config: TrainingConfig) -> TrainingConfig:
     """Fill lineage-derived fields when callers only set ``gnn_lineage``."""
     spec = get_lineage(config.gnn_lineage)
     updates: dict[str, Any] = {}
-    if config.model_version == "GOSPConeMapper-v6" and spec.lineage_id != "v6":
+    default_versions = {
+        "GOSPConeMapper-v6",
+        "GOSPConeMapper-v6.5",
+        "GOSPConeMapper-v6.6",
+        "TokyoEye-v7",
+        "TokyoEye-v8",
+    }
+    if (
+        config.model_version in default_versions
+        and config.model_version != spec.model_version
+    ):
         updates["model_version"] = spec.model_version
-    if config.mlflow_experiment == "tokyo-eyes-v6" and spec.lineage_id != "v6":
+    default_experiments = {
+        "tokyo-eyes-v6",
+        "tokyo-eyes-v65",
+        "tokyo-eyes-v66",
+        "tokyo-eyes-v7",
+        "tokyo-eyes-v8",
+    }
+    if (
+        config.mlflow_experiment in default_experiments
+        and config.mlflow_experiment != spec.mlflow_experiment
+    ):
         updates["mlflow_experiment"] = spec.mlflow_experiment
     out = config.output_dir.as_posix()
-    if spec.lineage_id != "v6" and out.startswith("checkpoints/v6/runs"):
-        suffix = out.removeprefix("checkpoints/v6/runs").lstrip("/")
-        updates["output_dir"] = (
-            spec.checkpoint_root / suffix if suffix else spec.checkpoint_root
-        )
+    default_roots = (
+        "checkpoints/v6/runs",
+        "checkpoints/v65/runs",
+        "checkpoints/v66/runs",
+        "checkpoints/v7/runs",
+        "checkpoints/v8/runs",
+    )
+    if any(out == root or out.startswith(root + "/") for root in default_roots):
+        if not out.startswith(spec.checkpoint_root.as_posix()):
+            # Preserve run suffix after the lineage root.
+            suffix = ""
+            for root in default_roots:
+                if out == root:
+                    suffix = ""
+                    break
+                if out.startswith(root + "/"):
+                    suffix = out[len(root) + 1 :]
+                    break
+            updates["output_dir"] = (
+                spec.checkpoint_root / suffix if suffix else spec.checkpoint_root
+            )
     if updates:
         return config.model_copy(update=updates)
     return config

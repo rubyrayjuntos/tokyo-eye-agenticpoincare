@@ -1,0 +1,27 @@
+{
+  "gate_id": "tokyo_eye_v8_trunk_ssot",
+  "timestamp": "2026-07-23T16:20:00Z",
+  "status": "ACTIVE",
+  "decision": "v8 is the only open trunk; v7 is dead archaeology (different architecture, never production)",
+  "production_model_id": "tokyo_eye_v8",
+  "production_model_version": "TokyoEye-v8",
+  "theta_spine": "checkpoints/v8/runs/tokyo_eye_v8_mode_c_moe_rebalance_s9/v8_best.pt",
+  "theta_affinity_seal": "checkpoints/v8/runs/tokyo_eye_v8_affinity_s1011_finetune_all/v8_affinity_best.pt",
+  "spec": "docs/specs/tokyo-eye-v8/README.md",
+  "biology_roadmap": "docs/specs/tokyo-eye-v8/biology-roadmap.md",
+  "closed_lineages": [
+    "tokyo_eye_v7",
+    "HEALTHY_V7_CKPT",
+    "science/tokyo_eye/TokyoEye.py Hyp-MP production claims"
+  ],
+  "todos": [
+    "Wire TokyoEyeV8Runner.run_inference → GNNInferenceResult for onboard ingest",
+    "Re-prereg B0/B1 biology on v8 Θ (do not resume v7 grades)",
+    "Sprint 10.2 multisite ligand remains PRE-REG only"
+  ],
+  "forbidden": [
+    "Recommend v7 B1 as next open trunk work",
+    "Treat HEALTHY_V7_CKPT as production restore",
+    "Silently fall back to science.tokyo_eye.runner for new training"
+  ]
+}

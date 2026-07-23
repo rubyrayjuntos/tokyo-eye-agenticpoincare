@@ -1,4 +1,4 @@
-"""Integration gates for production V6 GNN architecture + checkpoint pairing."""
+"""Integration gates for production TokyoEye GNN + legacy v6 module smoke."""
 
 from __future__ import annotations
 
@@ -6,16 +6,24 @@ import pytest
 
 from science.contracts.model_registry import (
     checkpoint_exists,
+    get_model_spec,
     get_production_checkpoint_path,
     get_production_model,
 )
 from science.dtie.v6.gnn.hyperbolic_moe import HyperbolicPrototypeGate
-from science.dtie.v6.gnn.model import verify_v6_checkpoint
 
 
-def test_production_runner_points_at_v6_module() -> None:
+def test_production_runner_points_at_tokyo_eye() -> None:
     model = get_production_model()
-    assert model.runner_module == "science.dtie.v6.gnn.runner"
+    assert model.model_id == "tokyo_eye_v8"
+    assert model.runner_module == "science.tokyo_eye.v8.runner"
+    assert model.runner_class == "TokyoEyeV8Runner"
+    assert model.model_version == "TokyoEye-v8"
+
+
+def test_legacy_v6_still_registered() -> None:
+    model = get_model_spec("gospc_v6")
+    assert model.status == "legacy"
     assert model.runner_class == "V6GNNRunner"
     assert model.model_version == "GOSPConeMapper-v6"
 
@@ -28,26 +36,10 @@ def test_hyperbolic_moe_importable() -> None:
     not checkpoint_exists(get_production_checkpoint_path()),
     reason="production checkpoint not present in workspace",
 )
-def test_production_checkpoint_matches_v6_architecture() -> None:
-    result = verify_v6_checkpoint()
-    assert result["load_ok"], f"missing keys: {result['missing_keys']}"
-    assert result["unexpected_keys"] == []
-    assert result["hyperbolic_moe_ok"]
-    assert result["mobius3_in_checkpoint"]
-    assert result["deep_hyperbolic_gate"] is True
-    assert result["gate_disc_scale"] == pytest.approx(2.5)
-    assert result["hyperbolic_expert_mix"] is True
+def test_production_checkpoint_loads_tokyo_eye() -> None:
+    from science.tokyo_eye.v8.runner import TokyoEyeV8Runner
 
-
-@pytest.mark.skipif(
-    not checkpoint_exists(get_production_checkpoint_path()),
-    reason="production checkpoint not present in workspace",
-)
-def test_gnn_inference_job_imports_v6_runner() -> None:
-    import inspect
-
-    from science.compute.jobs import gnn_inference as job
-
-    source = inspect.getsource(job.run_gnn_inference)
-    assert "V6GNNRunner" in source
-    assert "science.dtie.v6.gnn.runner" in source
+    runner = TokyoEyeV8Runner(checkpoint_path=get_production_checkpoint_path(), device="cpu")
+    runner._load_model_sync()
+    assert runner._loaded is True
+    assert runner.model_version == "TokyoEye-v8"

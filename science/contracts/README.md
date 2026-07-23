@@ -29,9 +29,17 @@ Downstream hyperbolic jobs must receive this learned value via `JobRunContext.le
 make contract-sync   # job_schema.json + frontend TypeScript types
 ```
 
-### V6 GNN (production inference)
+### Tokyo Eye v8 (production inference)
 
-Architecture lives in `science/dtie/v6/gnn/`; weights at `checkpoints/v6/tokyo_eyes_v6.pt`. **Dev commands run in the science container** — see [`science/dtie/v6/README.md`](../dtie/v6/README.md) (`make verify-v6-gnn`, `make promote-production-v6`).
+Architecture lives in `science/tokyo_eye/v8/`; contract id `tokyo_eye_v8`;
+weights at `checkpoints/v8/runs/tokyo_eye_v8_mode_c_moe_rebalance_s9/v8_best.pt`
+(`HEALTHY_V8_SPINE_CKPT`). Spec: [`docs/specs/tokyo-eye-v8/README.md`](../../docs/specs/tokyo-eye-v8/README.md).
+v7 Hyp-MP (`tokyo_eye_v7`) is **deprecated archaeology**.
+
+### Legacy V6 GNN (compare-only)
+
+Architecture lives in `science/dtie/v6/gnn/`; contract id `gospc_v6` (status `legacy`).
+See [`science/dtie/v6/README.md`](../dtie/v6/README.md).
 
 ## Pipeline runtime audit
 

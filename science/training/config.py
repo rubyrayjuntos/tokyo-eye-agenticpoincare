@@ -37,6 +37,9 @@ class LossCoeffs(BaseModel):
     disc_occupancy_min_sigma_ratio: float = 0.35
     disc_min_r_mean: float = 0.05
     disc_r_collapse_scale: float = 10.0
+    # Soft min-r for high-ρ low-τ (core) residues — e1 origin drag without rim push.
+    core_radial_floor_coeff: float = 0.0
+    core_radial_floor_min_r: float = 0.15
     disc_pc_repulsion_coeff: float = 0.0
     disc_pc2_min_std: float = 0.08
     disc_eff_rank_coeff: float = 0.0
@@ -255,8 +258,8 @@ class TrainingConfig(BaseModel):
 
     model_config = ConfigDict(protected_namespaces=())
 
-    model_version: str = "GOSPConeMapper-v6"
-    gnn_lineage: Literal["v6", "v6.5", "v6.6"] = "v6"
+    model_version: str = "TokyoEye-v8"
+    gnn_lineage: Literal["v6", "v6.5", "v6.6", "v7", "v8"] = "v8"
     device: str = "cpu"
     lr: float = 5e-4
     hidden: int = 128
@@ -265,13 +268,13 @@ class TrainingConfig(BaseModel):
     # When set (from --seed), gate/prototype bank init uses an isolated RNG keyed
     # only by this value — stable across node_emb width (3 vs 4). See isolated_init.py.
     init_seed: int | None = None
-    output_dir: Path = Path("checkpoints/v6/runs")
+    output_dir: Path = Path("checkpoints/v8/runs")
     pdb_dir: Path = Path("/tmp/dtie_pdb_cache")
     corpus_manifest: Path = Path("manifests/v6_corpus_120.json")
     phase: int | None = None  # None = full 3-phase curriculum
     resume: Path | None = None
     warm_start_v5: Path | None = None
-    mlflow_experiment: str = "tokyo-eyes-v6"
+    mlflow_experiment: str = "tokyo-eyes-v8"
     mlflow_tracking_uri: str = "http://mlflow:5000"
     max_proteins: int | None = None
     max_residues: int = STAGE_A_MAX_RESIDUES
@@ -280,6 +283,16 @@ class TrainingConfig(BaseModel):
     # Mean-residue routing entropy sparsity peak λ + linear warmup (stage_runner schedules).
     routing_entropy_sparsity_coeff: float = 0.0
     routing_entropy_sparsity_warmup_epochs: int = 8
+    # Sparsity-*style* save without λ (drop legacy H(f̄)≤1.21; use mean_residue band).
+    sparsity_style_save: bool = False
+    routing_entropy_mean_residue_min_save: float | None = None
+    routing_entropy_mean_residue_max_save: float | None = None
+    # Optional phase LossCoeffs bumps (applied in stage_runner when set).
+    disc_occupancy_coeff_override: float | None = None
+    disc_depth_scale_coeff_override: float | None = None
+    disc_depth_scale_target_override: float | None = None
+    core_radial_floor_coeff_override: float | None = None
+    core_radial_floor_min_r_override: float | None = None
     # Prototype nearest-pair repulsion (pre-reg PROTO_SEP_*); applied to all phases when >0.
     prototype_repulsion_coeff: float = 0.0
     prototype_repulsion_margin: float = 0.25
@@ -374,6 +387,12 @@ class TrainingConfig(BaseModel):
     shell_corr_epi_sasa_weight: float | None = None
     p4_epistemic_staged: bool = False
     p4_uncertainty_calibration: bool = False
+    # Tokyo Eye v7 B′: heads-only ale/epi recovery from sealed health trunk.
+    v7_bprime_uncertainty_heads: bool = False
+    # Pre-authorized rematch-1 (higher anticollapse/decorrelation; still heads-only).
+    v7_bprime_uncertainty_heads_rematch: bool = False
+    # Abort train if disc_r_mean falls below this for 2 consecutive epochs (None = off).
+    min_disc_r_mean_hold: float | None = None
     p4_head_decouple: bool = False
     p4_head_decouple_decorr_only: bool = False
     p4_v3_aleatoric_shaping: bool = False
@@ -420,6 +439,10 @@ class TrainingConfig(BaseModel):
     geometric_angular_alpha: float = 0.7853981633974483  # π/4
     # S4: hyp disc k-NN for MP during training (no SSOT freeze). Exclusive with role_edge_mp.
     hyperbolic_mp_graph: bool = False
+    # Tokyo Eye v7 — Hyp MP primary (not S4 euc-conv-on-hyp-edges).
+    hyp_mp_primary: bool = True
+    se3_aux: bool = False
+    hyp_mp_layers: int = 3
     # T1a: per-channel z-score of node features before node_emb (corpus-fit mean/std).
     input_feature_zscore: bool = False
     # T1a optional: replace binary tau_flag with |ρ−TAU| before z-score.
@@ -518,6 +541,12 @@ class TrainingConfig(BaseModel):
             return "residue_stage1"
         if self.p4_epistemic_decoupling:
             return "p4_epistemic_decoupling"
+        if self.v7_bprime_uncertainty_heads or self.v7_bprime_uncertainty_heads_rematch:
+            return (
+                "v7_bprime_uncertainty_heads_rematch"
+                if self.v7_bprime_uncertainty_heads_rematch
+                else "v7_bprime_uncertainty_heads"
+            )
         if self.p4_uncertainty_calibration:
             return "p4_uncertainty_calibration"
         if self.p4_head_decouple_decorr_only:
@@ -2055,22 +2084,33 @@ def apply_v66_feeler_rim_fanout_cold_phases(
 
 
 def apply_v66_feeler_config(config: TrainingConfig) -> TrainingConfig:
-    """Learned cold-start feeler: no SSOT freeze, topology gate, no V2 teacher."""
-    return apply_master_cold_dehydron_config(config).model_copy(
-        update={
-            "v66_feeler_lineage": True,
-            "master_cold_lineage": False,
-            "slim_moe_structural_ssot": False,
-            "structural_disc_frozen": False,
-            "disc_layout_source": "gnn_learned",
-            "gnn_lineage": "v6.6",
-            "model_version": "GOSPConeMapper-v6.6",
-            "mlflow_experiment": "tokyo-eyes-v66",
-            "thermo_edge_features": False,
-            "multi_rel_edge_mp": True,
-            "role_edge_mp": True,
-        }
-    )
+    """Learned cold-start feeler: no SSOT freeze, topology gate, no V2 teacher.
+
+    When ``gnn_lineage`` is already ``v7``, preserve TokyoEye identity / MLflow
+    experiment (B′ surgical warmstart). Otherwise default to v6.6 feeler labels.
+    """
+    updates: dict[str, Any] = {
+        "v66_feeler_lineage": True,
+        "master_cold_lineage": False,
+        "slim_moe_structural_ssot": False,
+        "structural_disc_frozen": False,
+        "disc_layout_source": "gnn_learned",
+        "thermo_edge_features": False,
+        "multi_rel_edge_mp": True,
+        "role_edge_mp": True,
+    }
+    if str(config.gnn_lineage) == "v7":
+        updates["gnn_lineage"] = "v7"
+        updates["model_version"] = "TokyoEye-v7"
+        updates["mlflow_experiment"] = "tokyo-eyes-v7"
+        updates["hyp_mp_primary"] = True
+        updates["se3_aux"] = False
+        updates["hyperbolic_mp_graph"] = False
+    else:
+        updates["gnn_lineage"] = "v6.6"
+        updates["model_version"] = "GOSPConeMapper-v6.6"
+        updates["mlflow_experiment"] = "tokyo-eyes-v66"
+    return apply_master_cold_dehydron_config(config).model_copy(update=updates)
 
 
 def apply_v66_feeler_lineage(
@@ -3313,6 +3353,72 @@ def p4_uncertainty_calibration_phase_config(
     )
 
 
+def v7_bprime_uncertainty_heads_phase_config(
+    lr: float = 5e-5,
+    epochs: int = 24,
+    *,
+    rematch: bool = False,
+) -> PhaseConfig:
+    """v7 B′ rematch-0/1: freeze trunk; mild→stronger ale/epi recovery (no v3 ale hinge)."""
+    if rematch:
+        # Pre-authorized rematch-1: raise anticollapse / decorrelation only.
+        decoupling = 1.0
+        decorr = 0.85
+        anticollapse = 0.30
+        min_epi = 0.03
+        name = "v7 B′ uncertainty heads rematch-1 (sealed health; trunk frozen)"
+    else:
+        decoupling = 0.50
+        decorr = 0.40
+        anticollapse = 0.10
+        min_epi = 0.01
+        name = "v7 B′ uncertainty heads (sealed health; trunk frozen)"
+    return PhaseConfig(
+        phase=4,
+        name=name,
+        epochs=epochs,
+        lr=lr,
+        freeze_radial=True,
+        freeze_angular=True,
+        freeze_backbone=True,
+        freeze_gate=True,
+        expert_dropout_p=0.0,
+        epistemic_decoupling_ramp_epochs=4,
+        epistemic_bf_align_coeff_final=0.0,
+        epistemic_sasa_pen_coeff_final=0.0,
+        epistemic_staged_decoupling=False,
+        epistemic_uncertainty_only_train=True,
+        min_disc_line_thickness_save=0.04,
+        max_probe_r_epi_ale_save=0.70,
+        min_epistemic_std_save=0.01,
+        min_aleatoric_std_save=0.02,
+        require_tau_ale_elevation_save=False,
+        # Heads-only: do not gate saves on routing H drift.
+        routing_save_ceiling_start=1.45,
+        routing_save_ceiling_final=1.45,
+        routing_save_ceiling_ramp_epochs=1,
+        coeffs=LossCoeffs(
+            evidential_coeff=0.01,
+            balance_coeff=0.0,
+            cone_coeff=0.0,
+            neighborhood_coeff=0.0,
+            angular_coeff=0.0,
+            domain_sep_2d_coeff=0.0,
+            domain_sep_3d_coeff=0.0,
+            cone_depth_anticollapse_coeff=0.0,
+            shell_corr_coeff=0.0,
+            shell_corr_epi_sasa_weight=0.0,
+            disc_occupancy_coeff=0.0,
+            epistemic_decoupling_coeff=decoupling,
+            epi_ale_decorrelation_coeff=decorr,
+            epistemic_bf_align_coeff=0.0,
+            epistemic_sasa_pen_coeff=0.0,
+            epistemic_anticollapse_coeff=anticollapse,
+            epistemic_min_epi_std=min_epi,
+        ),
+    )
+
+
 def p4_head_decouple_phase_config(
     lr: float = 5e-5,
     epochs: int = 20,
@@ -3778,7 +3884,7 @@ class PromotionConfig(BaseModel):
 
     checkpoint_path: Path
     checkpoint_id: str = "tokyo_eyes_v6_candidate"
-    model_id: str = "gospc_v6"
+    model_id: str = "tokyo_eye_v7"
     status: Literal["candidate", "production"] = "candidate"
     run_id: str | None = None
 
