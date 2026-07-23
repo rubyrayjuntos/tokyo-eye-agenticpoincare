@@ -101,7 +101,7 @@ def test_r6_bidirectional_cutoff():
 
 - [x] **Step 5: Run tests — expect pass** (`9 passed`)
 
-- [ ] **Step 6: Commit** `feat(v8): Sprint 10.1.0 ligand HETATM sanitize + R6 off-cache`
+- [x] **Step 6: Commit** `feat(v8): Sprint 10.1.0 ligand HETATM sanitize + R6 off-cache` (`bec6214`)
 
 ---
 
