@@ -2,247 +2,305 @@
 
 **Status:** DRAFT — awaiting user review before implementation  
 **Date:** 2026-07-23  
-**Scope:** Generalized model lifecycle for the **active trunk and all future lineages**. Archaeology lines are not migrated into this scaffold unless explicitly opted in.  
-**Approach:** Config-driven train entry + MLflow identity SSOT  
-**Supersedes:** ad-hoc `HEALTHY_*` path seals, Makefile “which `.pt`” tribal knowledge, lineage-hardcoded experiment/docs sprawl  
-**Informs:** onboard contract runtime resolution (resolve **aliases**, not sacred paths)  
+**Scope:** Generalized **definition + automation** for the model lifecycle (active trunk and all future lineages). Archaeology may appear in the catalog as `status: archived` history without requiring trainer migration.  
+**Approach:** One hierarchical **model catalog JSON** drives all automations; **MLflow** holds runs, metrics, artifacts, registry versions, and aliases.  
+**Supersedes:** ad-hoc `HEALTHY_*` seals, manual “open a lineage” checklists, lineage-hardcoded process docs  
 **Seed pattern:** `tokyoeye_governance_implementation_spec.py` (manifests, VSD, promotion gate)
 
 ---
 
 ## 0. Purpose
 
-Cement a single process so model management is **auditable, reproducible, and controllable** — without baking a particular architecture revision into the language of the process.
+Stop lifecycle steps from being left to chance. Every new lineage / family / train / promote / resolve path must be:
 
-| Classifier | Meaning | Example values (not the schema) |
-|------------|---------|----------------------------------|
-| **model** | Registered model name | `TokyoEye-<lineage>` |
-| **lineage** | Architecture family id | whatever the active trunk declares |
-| **version** | MLflow Model Registry version | `1`, `2`, … |
-| **experiment** | MLflow experiment path | `tokyoeye/<lineage>/<family>` |
-| **run** | MLflow training run id | UUID |
-| **alias** | Mutable pointer on a registered model | `@champion`, `@candidate`, family seals |
+1. **Defined** in one hierarchical catalog file  
+2. **Executed** by automation that reads that file  
+3. **Recorded** in MLflow (and mirrored as history entries in the catalog)
 
-**SSOT = MLflow Model Registry + run lineage.** Local filesystem checkpoints are **cache mirrors only**, never authority for “what is production / sealed.”
+### Classifiers (data, not prose)
 
-Two failure modes this design prevents:
+| Classifier | Meaning |
+|------------|---------|
+| **model** | Product model id (root of the catalog) |
+| **lineage** | Architecture family under that model |
+| **version** | MLflow Model Registry version |
+| **experiment** | MLflow experiment path |
+| **run** | MLflow training run id |
+| **alias** | Mutable registry pointer |
 
-1. **Wild-west paths** — sacred local filenames / symlinks with no registry link.  
-2. **Non-self-describing trains** — runs that cannot be reproduced because config, corpus manifest, and gate thresholds were not pinned on the run.  
-3. **Lineage-hardcoded process docs** — treating one revision id as if it were the governance system itself.
+**Dual SSOT (clear split):**
+
+| Store | Owns |
+|-------|------|
+| **Model catalog JSON** | Hierarchy, lifecycle stage definitions, automation bindings, pointers to configs/manifests/VSD, **historical index** (run ids, registry versions, alias moves, gate stamps) |
+| **MLflow** | Actual runs, metrics, logged artifacts, registered model versions, live alias targets |
+
+Local `.pt` files are **cache only** after download from MLflow.
+
+Failure modes prevented:
+
+1. Dropped steps when opening a lineage (manual ritual)  
+2. Sacred filesystem paths as “production”  
+3. Process docs that hardcode one revision id as if it were governance  
+4. History scattered across chat / hub / random gate files with no single index  
 
 ---
 
 ## 1. Frozen policy decisions
 
-1. **Process is lineage-parameterized** — every API, JSON schema, and path template takes `lineage` (and `family`) as data, not as prose baked into titles and tables.  
-2. **Aliases replace `HEALTHY_*` as SSOT** — no institutional reliance on local symlinks; local paths are optional caches after download from MLflow.  
-3. **Promotion is alias-only** — after gate Pass: `register_model` → `set_registered_model_alias`. No “copy this file to HEALTHY.”  
-4. **Generic trainer + JSON configs** — scaffolding imports a versioned train config; model-specific weights/hparams live in that config, not in the trainer’s identity.  
-5. **Checkpoint on-disk name embeds short run id + role** — human convenience; **full `mlflow_run_id` lives in registry tags / run metadata** (authoritative).  
-6. **Within-run roles** — `best` / `last` / `improve_*` are artifacts of that run; only one role (usually `best` after Pass) is registered.  
-7. **Rollout** — implement and enforce first on the **active trunk**; do not require archaeology migration.
+1. **Single catalog file** — one hierarchical JSON is the operational definition of the model and its lineages/families/history/automation hooks.  
+2. **Automations key only off the catalog (+ MLflow)** — no Makefile one-liner that bypasses catalog stage machine.  
+3. **Lifecycle stages are enumerated and mandatory** — automation refuses to skip or reorder unless the catalog marks a stage `optional` (default: required).  
+4. **Aliases replace `HEALTHY_*` as restore SSOT** — resolve `models:/{registered_model}@{alias}`.  
+5. **Promotion is automated after VSD Pass** — register → update catalog history → set alias per catalog rules (human approval only where catalog requires `approval: required`).  
+6. **Process is lineage-parameterized** — `{lineage}` / `{family}` are fields in the catalog, never the name of the governance system.  
+7. **Checkpoint cache names** — `{lineage}_{family}_{run_short}_{role}.pt`; full `mlflow_run_id` in MLflow + catalog history.  
 
 ---
 
-## 2. Identity taxonomy
+## 2. The model catalog (single hierarchical JSON)
 
-### 2.1 Experiment paths (template)
+**Path (proposed):** `data/model_catalog/tokyoeye.model.json`  
+**Schema id:** `tokyoeye.model_catalog` / `schema_version: 1`
 
-```
-tokyoeye/{lineage}/{family}
-```
-
-Examples of `{family}`: `spine`, `affinity`, `biology`, … — defined per lineage config, not in this spec’s identity table.
-
-Do not invent parallel experiment naming schemes in Makefile without updating the lineage’s config pack.
-
-### 2.2 Registered model (template)
-
-- Name: `TokyoEye-{lineage}` (one registered model per lineage unless an architecture fork requires a new registered model name).  
-- Each **registry version** tags at minimum:
-
-| Tag / field | Required |
-|-------------|----------|
-| `lineage` | architecture family id |
-| `family` | train family within lineage |
-| `mlflow_run_id` | full run UUID |
-| `artifact_role` | `best` \| `last` \| … |
-| `git_commit` | SHA |
-| `train_config_id` + hash | JSON train config |
-| `dataset_manifest_id` + hash | corpus/split manifest |
-| `vsd_id` + hash | validation / gate spec |
-
-### 2.3 Aliases (mutable; names are convention)
-
-| Alias | Intent |
-|-------|--------|
-| `@champion` | Default production / onboard restore for that lineage |
-| `@candidate` | Latest gate-eligible build awaiting promotion |
-| `@staging` | Optional pre-prod |
-| `@<family>-seal` | Optional claim-scoped seal (e.g. affinity ranking Pass) — **family-defined**, not process-hardcoded |
-
-Alias moves **do not** rewrite history: old registry versions remain immutable.
-
-### 2.4 Resolving “what to load”
-
-Order for tooling / onboard:
-
-1. Explicit `--model-uri models:/TokyoEye-{lineage}@{alias}` or registry version  
-2. Else config `init.alias` (+ `lineage` from config)  
-3. Else **fail** — do not silently fall back to a hardcoded `checkpoints/...` path except as an explicit `cache_path` after download from MLflow
-
----
-
-## 3. Config + manifest layers
-
-Layout is **under the active package root**, parameterized by lineage id in filenames/fields — not a separate governance system per revision:
-
-```
-science/tokyo_eye/{lineage}/configs/
-  train/           # hyperparams, init alias, epochs, family
-  vsd/             # gate thresholds + required metrics
-manifests/         # corpus / split JSON (shared or lineage-scoped)
-science/tokyo_eye/governance/   # shared typed helpers (lineage-agnostic)
-```
-
-If the active code package is nested (e.g. `science/tokyo_eye/<lineage>/`), configs live beside that package; **governance code stays shared** so the next lineage does not fork the process.
-
-### 3.1 Train config (JSON)
-
-Minimum fields:
-
-- `schema_version`, `lineage`, `family`, `model_name` (`TokyoEye-{lineage}`)  
-- `experiment` path (`tokyoeye/{lineage}/{family}`)  
-- `init`: `{ "alias": "champion" }` or `{ "model_uri": "..." }`  
-- `data`: `{ "manifest": "manifests/...", ... }`  
-- `vsd`: path to VSD JSON  
-- `hparams`, `seed`, `device` policy  
-- `artifacts_to_log`: list of roles (`best`, `last`, …)
-
-Trainer computes hashes at start and logs them; config file itself is logged as an MLflow artifact.
-
-### 3.2 Dataset / corpus manifest
-
-Existing manifests remain valid inputs. Governance wrapper records:
-
-- `dataset_id`, `version`, path, content hash  
-- split keys present  
-- leak / identity policy assertion results logged as metric/tag  
-
-Typed shape may follow `DatasetManifest` / `CorpusSpecification`.
-
-### 3.3 VSD (validation specification)
-
-JSON gate file:
-
-- `required_metrics`  
-- `thresholds` (e.g. `{ "metric": { "ge": ... } }`)  
-- optional `geometry_version` / `graph_version` tokens  
-
-Promotion evaluates VSD **before** alias update (`PipelineAutomator` + `ValidationSpecification` pattern).
-
----
-
-## 4. Run lifecycle
+### 2.1 Hierarchy
 
 ```text
-load train JSON + manifests + VSD
-    → start MLflow run under tokyoeye/{lineage}/{family}
-    → tag identity + hashes + git commit
-    → train; log metrics each epoch
-    → log artifacts: best / last / (optional improve_*)
-    → evaluate VSD
-    → if Pass: register artifact → new registry version
-         → optionally set @candidate; human or CI sets @champion / @<family>-seal
-    → if Fail: no alias move; run remains audit trail
+model
+ └── lineages{}
+      └── families{}
+           ├── definition (experiment, package, configs, vsd, manifests)
+           ├── lifecycle[]          # ordered stages + automation
+           ├── aliases{}            # intended alias policy + current pointer summary
+           └── history[]            # append-only index into MLflow
 ```
 
-### 4.1 On-disk cache naming
+### 2.2 Sketch (illustrative — values are placeholders)
+
+```json
+{
+  "schema_version": 1,
+  "schema_id": "tokyoeye.model_catalog",
+  "model": {
+    "id": "TokyoEye",
+    "registered_model_template": "TokyoEye-{lineage}",
+    "active_lineage": "<lineage_id>",
+    "lineages": {
+      "<lineage_id>": {
+        "status": "active",
+        "opened_at": "ISO-8601",
+        "package": "science.tokyo_eye.<…>",
+        "registered_model": "TokyoEye-<lineage_id>",
+        "families": {
+          "<family_id>": {
+            "experiment": "tokyoeye/<lineage_id>/<family_id>",
+            "train_config": "science/tokyo_eye/<…>/configs/train/<family>.json",
+            "vsd": "science/tokyo_eye/<…>/configs/vsd/<family>.json",
+            "data_manifest": "manifests/<…>.json",
+            "lifecycle": [
+              {
+                "stage": "validate_definition",
+                "automation": "governance.stages.validate_definition",
+                "required": true
+              },
+              {
+                "stage": "train",
+                "automation": "governance.stages.train_from_config",
+                "required": true
+              },
+              {
+                "stage": "evaluate_vsd",
+                "automation": "governance.stages.evaluate_vsd",
+                "required": true
+              },
+              {
+                "stage": "register",
+                "automation": "governance.stages.register_best",
+                "required": true,
+                "on_fail": "stop"
+              },
+              {
+                "stage": "alias",
+                "automation": "governance.stages.set_alias",
+                "required": true,
+                "alias": "candidate",
+                "approval": "none"
+              },
+              {
+                "stage": "promote_champion",
+                "automation": "governance.stages.set_alias",
+                "required": false,
+                "alias": "champion",
+                "approval": "required"
+              }
+            ],
+            "aliases": {
+              "champion": { "registry_version": null, "mlflow_run_id": null },
+              "candidate": { "registry_version": null, "mlflow_run_id": null }
+            },
+            "history": [
+              {
+                "at": "ISO-8601",
+                "event": "register",
+                "mlflow_run_id": "<uuid>",
+                "registry_version": 1,
+                "artifact_role": "best",
+                "git_commit": "<sha>",
+                "train_config_hash": "<hash>",
+                "vsd_id": "<id>",
+                "gate_status": "pass",
+                "aliases_set": ["candidate"]
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### 2.3 What “includes historical” means
+
+- **Deep history** (metrics, plots, full artifact bytes) stays in **MLflow**.  
+- **Catalog `history[]`** is the **append-only institutional index**: every register / alias move / gate Pass|Fail with `mlflow_run_id` + `registry_version` + config/VSD hashes + git commit.  
+- Closing a lineage sets `status: archived` but **retains** its families and history (no delete).  
+- Opening a lineage is a **catalog transaction** (add node + required families + lifecycle templates), not a wiki edit.
+
+### 2.4 Definition docs
+
+Human-readable docs (README, sprint notes) **must cite catalog paths** (`model.lineages.<id>.families.<id>`). They are narrative, not SSOT. Automation never reads prose for stage order.
+
+---
+
+## 3. Lifecycle stages (locked set)
+
+Every family lifecycle is an ordered list. Default stages:
+
+| Stage | Purpose | Automation |
+|-------|---------|------------|
+| `validate_definition` | Configs/manifests/VSD exist; hashes recordable; experiment path legal | Fail if missing |
+| `ensure_mlflow` | Experiment created; tracking URI set | Idempotent |
+| `train` | Run training from family’s `train_config` | Logs run under catalog experiment |
+| `evaluate_vsd` | Apply family’s VSD to run metrics | Fail → no register |
+| `register` | Log artifact role → Model Registry version | Writes catalog history entry |
+| `alias` | Set alias per stage config (`candidate`, seals, …) | MLflow alias + catalog `aliases` + history |
+| `promote_champion` | Optional; may require approval | Same as alias with `approval: required` |
+| `resolve_check` | Smoke: load `models:/…@alias` | CI / pre-deploy |
+
+**Rule:** CLI `governance run --lineage L --family F` executes stages in order and **stops on first required failure**. No silent skip.
+
+**Opening a new lineage:**  
+`governance lineage open --id <id> --from-template default` → inserts lineage + required families + default lifecycle from a **template in the catalog schema** (or `templates/` referenced by catalog). No hand-built Makefile forest.
+
+---
+
+## 4. Identity + MLflow mapping
+
+### 4.1 Experiment path
+
+From catalog: `families.<family>.experiment`  
+Template convention: `tokyoeye/{lineage}/{family}`
+
+### 4.2 Registered model
+
+From catalog: `lineages.<id>.registered_model`  
+Template: `TokyoEye-{lineage}`
+
+### 4.3 Resolve order
+
+1. Explicit model URI  
+2. Catalog `aliases.<name>` → registry version / run id  
+3. Fail  
+
+### 4.4 Cache naming
 
 ```text
 {lineage}_{family}_{run_id_short8}_{artifact_role}.pt
 ```
 
-- Full run id in MLflow tags / registry metadata (authoritative).  
-- Short id in filename for grep-ability.  
-- **Do not** treat filename as SSOT.
+---
 
-### 4.2 Within-run “best”
+## 5. Config packs (referenced by catalog, not parallel SSOTs)
 
-- `best` = training loop’s selection rule, logged on the run.  
-- Registration chooses which role to promote (default `best` after VSD Pass).  
-- Epoch `improve_*` files are optional diagnostics.
+```
+science/tokyo_eye/governance/     # shared stage machine + catalog IO
+science/tokyo_eye/{lineage}/configs/train/*.json
+science/tokyo_eye/{lineage}/configs/vsd/*.json
+manifests/                        # data splits
+data/model_catalog/tokyoeye.model.json
+```
+
+Train/VSD JSON remain the **payload** for a stage; the **catalog** decides *which* payload and *which* stage runs next.
 
 ---
 
-## 5. Code layout (implementation target)
+## 6. Automation surface
 
-| Path | Role |
-|------|------|
-| `science/tokyo_eye/governance/` | Lineage-agnostic: manifests, VSD eval, identity helpers, promotion |
-| `science/tokyo_eye/{lineage}/configs/train/*.json` | Train configs for that lineage |
-| `science/tokyo_eye/{lineage}/configs/vsd/*.json` | Gates for that lineage |
-| `experiments/training/train_from_config.py` | Generic entry: load JSON → run → register |
-| `experiments/training/promote_alias.py` | CLI: set alias after VSD check / audited override |
+| Entry | Behavior |
+|-------|----------|
+| `experiments/training/governance_cli.py` (name TBD) | `lineage open`, `run`, `promote`, `status`, `sync-history` |
+| `governance run -l L -f F` | Execute family’s `lifecycle[]` via MLflow |
+| `governance promote -l L -f F --alias champion` | VSD+approval gates from catalog, then alias |
+| `governance status -l L` | Print catalog aliases + last history vs live MLflow |
+| `governance sync-history` | Reconcile catalog history with MLflow registry (detect drift) |
 
-Active-trunk harnesses emit governance tags + register path first; “train only via `train_from_config`” follows in the same program.
+CI: on train PRs / scheduled jobs, invoke `governance run` / `status` — not ad-hoc train scripts that skip register/alias.
 
-Legacy `science/training/mlflow_governance.py` (older schema) is **not** the SSOT for this process — do not extend it as the institutional core.
-
----
-
-## 6. Contract / onboard
-
-- Production restore resolves `models:/TokyoEye-{lineage}@{champion}` (or documented staging alias).  
-- Runner accepts model URI / alias; downloads to cache if needed.  
-- Full Normalizer `run_inference` parity remains a separate adapter TODO where unfinished.
+Makefile targets become **thin wrappers** around the CLI with lineage/family args from the catalog’s `active_lineage`.
 
 ---
 
-## 7. Migration of existing local seals
+## 7. Contract / onboard
 
-| Current habit | Target |
-|---------------|--------|
-| Local “healthy” / seal symlinks | Register the producing run’s chosen artifact → set the appropriate **alias**; record `mlflow_run_id` + registry version on the closeout gate JSON |
-| Hub/AGENTS language naming sacred paths | Point to **alias** (+ how to resolve URI) |
-
-Closeout stamps gain `mlflow_run_id`, `registry_version`, `alias` when migrated.
+- Onboard production pointer reads catalog `active_lineage` + family alias policy (default `@champion`).  
+- Runner resolves MLflow URI; cache optional.  
+- Normalizer `run_inference` adapter remains a separate completion item where unfinished.
 
 ---
 
-## 8. Out of scope (later)
+## 8. Migration
 
-- S3 tier storage automation  
-- Live production drift monitors  
-- Full biophysical plugin registry (stub OK)  
-- Sprint governance automation  
-- Forced migration of archaeology trainers  
-
----
-
-## 9. Acceptance (when implemented)
-
-1. Unit tests: identity tag schema; VSD pass/fail; alias set mocked via `MlflowClient` — **parameterized by lineage string**, not a single hard-coded revision.  
-2. Smoke: `train_from_config` on a tiny JSON → run tags present → artifact logged with naming convention.  
-3. Docs: active-trunk README points here; AGENTS/hub say **alias SSOT**, not HEALTHY paths.  
-4. No new code path that promotes by copying a file to a sacred path.  
-5. Spec and code comments do not treat one lineage id as synonymous with “governance.”
+1. Create catalog with `active_lineage` + families for current trunk work.  
+2. Backfill `history[]` from known seals (affinity / spine) with `mlflow_run_id` when available; if a seal never had a run id, **register once** then record.  
+3. Retire hub/AGENTS language that treats local HEALTHY paths as SSOT.  
+4. Mark older lineages `archived` in catalog with history stubs as needed (optional).
 
 ---
 
-## 10. Open points (locked unless reopened)
+## 9. Out of scope (later)
+
+- Object store tiering beyond MLflow artifact store  
+- Live traffic drift monitors  
+- Rich biophysical plugin registry (stub hooks OK on `evaluate_vsd`)  
+- Auto-writing sprint prose from catalog  
+
+---
+
+## 10. Acceptance
+
+1. Catalog schema validated by unit tests (hierarchy + required lifecycle stages).  
+2. `governance lineage open` creates a legal node; `governance run` cannot skip a required stage.  
+3. Train smoke: catalog-driven run → MLflow metrics/artifacts → register → history append → alias.  
+4. `governance status` detects catalog vs MLflow alias drift.  
+5. Docs: AGENTS/hub point to **catalog + aliases**, not sacred paths; process language stays lineage-agnostic.  
+6. No promote-by-file-copy path.
+
+---
+
+## 11. Locked decisions
 
 | # | Decision |
 |---|----------|
-| 1 | Registered model template `TokyoEye-{lineage}` + aliases — **LOCKED** |
-| 2 | Aliases replace HEALTHY as SSOT — **LOCKED** |
-| 3 | Filename = `{lineage}_{family}_{run_short}_{role}.pt`; full run id in metadata — **LOCKED** |
-| 4 | Shared `science/tokyo_eye/governance/`; per-lineage JSON configs — **LOCKED** |
-| 5 | Process docs stay lineage-agnostic — **LOCKED** |
+| 1 | Single hierarchical `tokyoeye.model.json` catalog — **LOCKED** |
+| 2 | Automations key off catalog; MLflow holds deep run/registry state — **LOCKED** |
+| 3 | Mandatory ordered lifecycle stages; no silent skip — **LOCKED** |
+| 4 | Aliases replace HEALTHY restore SSOT — **LOCKED** |
+| 5 | History index in catalog; bytes/metrics in MLflow — **LOCKED** |
+| 6 | Shared `science/tokyo_eye/governance/` — **LOCKED** |
 
 ---
 
-## 11. Next step
+## 12. Next step
 
-User reviews this file. On approval → implementation plan, then code.
+User reviews this file. On approval → implementation plan, then code (catalog schema + CLI stage machine first).
