@@ -1,0 +1,46 @@
+{
+  "gate_id": "tokyo_eye_v8_affinity_s1011_finetune_all_closeout",
+  "timestamp": "2026-07-23T07:51:00Z",
+  "status": "PASS",
+  "run_dir": "checkpoints/v8/runs/tokyo_eye_v8_affinity_s1011_finetune_all",
+  "checkpoint": "checkpoints/v8/runs/tokyo_eye_v8_affinity_s1011_finetune_all/v8_affinity_best.pt",
+  "healthy_pointer": "checkpoints/v8/HEALTHY_V8_AFFINITY_CKPT.pt",
+  "lineage": {
+    "spine_s9": "checkpoints/v8/runs/tokyo_eye_v8_mode_c_moe_rebalance_s9/v8_best.pt",
+    "stage_b_mol2_finetune_hyp": "checkpoints/v8/runs/tokyo_eye_v8_affinity_s1011b_finetune_hyp/v8_affinity_best.pt",
+    "mode": "finetune_all",
+    "splits": "manifests/v8_pdbbind_refined_cluster30_v1.json",
+    "joint_head": true,
+    "ligand_feat_dim": 12
+  },
+  "metrics": {
+    "core_pearson_r": 0.4068579301313183,
+    "core_spearman_rho": 0.4103602049588272,
+    "core_rmse": 1.9957022330500507,
+    "core_n": 257,
+    "core_n_skip": 28,
+    "ligand_source_rate_mol2": 0.9299610894941635,
+    "ligand_source_rate_hetatm": 0.07003891050583658,
+    "best_val_pearson": 0.2892547194345549,
+    "gate_core_pearson_ge_0_40": true
+  },
+  "escalation_ladder": [
+    {"stage": "protein_only_finetune_hyp", "core_pearson_r": 0.007, "note": "capacity floor"},
+    {"stage": "hetatm_r6_s101", "core_pearson_r": 0.366, "note": "Sprint 10.1.0"},
+    {"stage": "mol2_12ch_finetune_hyp_s1011b", "core_pearson_r": 0.382, "note": "H-strip + formalized Gasteiger bins"},
+    {"stage": "finetune_all_s1011", "core_pearson_r": 0.407, "note": "this seal; clears 0.40 gate"}
+  ],
+  "claims_boundary": {
+    "validates": [
+      "Leak-proof PDB-Bind refined / CASF-2016 Core affinity regression (cluster30 NO_LEAK)",
+      "12-channel MOL2/SDF native organic features (aromatic + degree) via Option C resolver",
+      "Asymmetric R6 cross-attention pocket gating under joint affinity head"
+    ],
+    "does_not_buy": [
+      "Zero-shot cryptic-pocket apo→holo opening",
+      "Absolute ΔΔG / free-energy estimation",
+      "Multi-site allosteric modulation trajectories",
+      "Promotion to Mol* / onboard production GNN (still TokyoEye-v7 HEALTHY_V7_CKPT)"
+    ]
+  }
+}

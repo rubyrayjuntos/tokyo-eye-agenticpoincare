@@ -114,22 +114,22 @@ PYTHONUNBUFFERED=1 PYTHONPATH=. python experiments/training/v8/run_affinity_s10.
 
 - [x] **Step 1: Wire `ligand_source` into dataset + summary ratios**
 
-- [ ] **Step 2: `head_only` smoke** (after ligand staging)
+- [x] **Step 2: HF ligand fetch + `finetune_hyp` (s1011b)** — Core \(R\approx0.382\) (short of 0.40)
 
-- [ ] **Step 3: Full `finetune_hyp` + Core report**
+- [x] **Step 3: `finetune_all` rematch** — Core \(R\approx0.407\) · `gate_core_pearson_ge_0_40: true`
 
-- [ ] **Step 4: Commit harness telemetry + plan checklist update**
+- [x] **Step 4: Seal** — `data/gates/tokyo_eye_v8_affinity_s1011_finetune_all_closeout.json` · local `HEALTHY_V8_AFFINITY_CKPT.pt`
 ---
 
 ## Acceptance checklist
 
-- [ ] `LIGAND_FEAT_DIM == 12`; aromatic + degree unit-locked
-- [ ] Native MOL2/SDF only (no RDKit import in `ligand_interface.py`)
-- [ ] Resolver: mol2 → sdf → HETATM with pad telemetry
-- [ ] Staging script populates / reports `data/pdbbind/ligands/`
-- [ ] `run_summary.ligand_source_rates` present
-- [ ] Core Pearson vs 0.40 gate recorded
-- [ ] No edits to R0–R5 / MoE / cluster30 manifest
+- [x] `LIGAND_FEAT_DIM == 12`; aromatic + degree unit-locked
+- [x] Native MOL2/SDF only (no RDKit import in `ligand_interface.py`)
+- [x] Resolver: mol2 → sdf → HETATM with pad telemetry
+- [x] Staging / HF fetch populates `data/pdbbind/ligands/`
+- [x] `run_summary.ligand_source_rates` present
+- [x] Core Pearson vs 0.40 gate recorded (**PASS** via `finetune_all`)
+- [x] No edits to R0–R5 / MoE / cluster30 manifest
 
 ---
 
