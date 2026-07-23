@@ -1,0 +1,3 @@
+# Ligand assets for Sprint 10.1.1 (Option C).
+# Populate via: PYTHONPATH=. python experiments/training/v8/stage_ligand_assets.py --src ...
+# Resolver looks for {pdb_id}.mol2 then {pdb_id}.sdf here before HETATM fallback.

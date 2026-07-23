@@ -57,13 +57,13 @@
 - `ligand_feature_matrix(...) -> [N, 12]` with aromatic + degree
 - `LigandAtoms` gains optional `aromatic: tuple[bool,...]`, `degrees: tuple[int,...]`
 
-- [ ] **Step 1: Write failing tests** (toy MOL2/SDF fixtures: charge, aromatic `@`/`ar`/bond-type-4, degree, resolver order, HETATM pad ch10–11 + `hetatm_feature_pad`)
+- [x] **Step 1: Write failing tests** (toy MOL2/SDF fixtures: charge, aromatic `@`/`ar`/bond-type-4, degree, resolver order, HETATM pad ch10–11 + `hetatm_feature_pad`)
 
-- [ ] **Step 2: Run — expect fail**
+- [x] **Step 2: Run — expect fail**
 
-- [ ] **Step 3: Implement parsers + bump `LIGAND_FEAT_DIM=12`** (keep 10.1.0 HETATM path; pad new channels)
+- [x] **Step 3: Implement parsers + bump `LIGAND_FEAT_DIM=12`** (keep 10.1.0 HETATM path; pad new channels)
 
-- [ ] **Step 4: Tests pass; commit** `feat(v8): Sprint 10.1.1 native MOL2/SDF 12-ch ligand parse`
+- [x] **Step 4: Tests pass; commit** `feat(v8): Sprint 10.1.1 native MOL2/SDF 12-ch ligand parse`
 
 ---
 
@@ -87,26 +87,24 @@ PYTHONPATH=. python experiments/training/v8/stage_ligand_assets.py \
 - Report coverage: n_mol2 / n_sdf / n_missing for train∪val∪core.
 - Do **not** fail the whole stage if some IDs missing (coverage report only).
 
-- [ ] **Step 1: Implement staging script + dry-run coverage**
+- [x] **Step 1: Implement staging script + dry-run coverage**
 
-- [ ] **Step 2: Run against available local dump (or document missing)**
+- [ ] **Step 2: Run against available local dump** — **blocked:** no local PDBBind ligand tree yet (dry-run → n_missing=all)
 
-- [ ] **Step 3: Commit** `feat(v8): stage_ligand_assets for Sprint 10.1.1`
+- [x] **Step 3: Commit** staging script (bundled with Phase 1 commit)
 
 ---
 
 ### Phase 3: Production rematch
 
 **Files:**
-- Modify: `experiments/training/v8/run_affinity_s10.py` (source telemetry)
+- Modify: `experiments/training/v8/run_affinity_s10.py` (source telemetry) — **done** (`ligand_source_rates` in `run_summary`)
 
 ```bash
-# smoke
-PYTHONUNBUFFERED=1 PYTHONPATH=. python experiments/training/v8/run_affinity_s10.py \
-  --mode head_only --joint-head --smoke --device cuda \
-  --run-name tokyo_eye_v8_affinity_s1011_head_only_smoke
+# after staging ligands:
+PYTHONPATH=. python experiments/training/v8/stage_ligand_assets.py \
+  --src /path/to/PDBbind/refined-set --dst data/pdbbind/ligands --mode symlink
 
-# full rematch
 PYTHONUNBUFFERED=1 PYTHONPATH=. python experiments/training/v8/run_affinity_s10.py \
   --mode finetune_hyp --joint-head --device cuda --epochs 12 \
   --lr 1e-3 --lr-hyperbolic 3e-4 --aux-coeff 0.10 \
@@ -114,22 +112,13 @@ PYTHONUNBUFFERED=1 PYTHONPATH=. python experiments/training/v8/run_affinity_s10.
   --run-name tokyo_eye_v8_affinity_s1011_finetune_hyp
 ```
 
-`run_summary.json` must include:
+- [x] **Step 1: Wire `ligand_source` into dataset + summary ratios**
 
-```json
-"ligand_source_rates": {"mol2": 0.0, "sdf": 0.0, "hetatm": 0.0}
-```
-
-Gate: Core Pearson \(R \ge 0.40\). Compare to 10.1.0 Core \(R \approx 0.366\).
-
-- [ ] **Step 1: Wire `ligand_source` into dataset + summary ratios**
-
-- [ ] **Step 2: `head_only` smoke** (finite loss; rates logged)
+- [ ] **Step 2: `head_only` smoke** (after ligand staging)
 
 - [ ] **Step 3: Full `finetune_hyp` + Core report**
 
 - [ ] **Step 4: Commit harness telemetry + plan checklist update**
-
 ---
 
 ## Acceptance checklist

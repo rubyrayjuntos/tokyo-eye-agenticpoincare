@@ -29,7 +29,7 @@ def _write_pdb(tmp_path: Path, body: str) -> Path:
 
 
 def test_ligand_feat_dim_is_ten() -> None:
-    assert LIGAND_FEAT_DIM == 10
+    assert LIGAND_FEAT_DIM == 12
     assert R6_DISTANCE_A == 4.5
     assert "F" in HALOGENS and "CL" in HALOGENS
 
@@ -66,11 +66,13 @@ def test_ten_channel_neutral_default_and_halogen() -> None:
         icode="",
     )
     feats = ligand_feature_matrix(atoms)
-    assert feats.shape == (3, 10)
+    assert feats.shape == (3, 12)
     assert feats.dtype == np.float32
     assert feats[0, 0] == 1.0 and feats[0, 8] == 1.0  # C + neutral
     assert feats[1, 5] == 1.0 and feats[1, 8] == 1.0  # halogen + neutral
     assert feats[2, 6] == 1.0 and feats[2, 7] == 1.0  # other + negative
+    # HETATM pad: aromatic + degree channels zero when unset
+    assert feats[0, 10] == 0.0 and feats[0, 11] == 0.0
 
 
 def test_r6_bidirectional_inclusive_cutoff() -> None:
@@ -172,7 +174,7 @@ def test_joint_head_empty_r6_short_circuit() -> None:
     z = torch.randn(n, d) * 0.05
     mech = torch.randn(n)
     dehyd = torch.zeros(n)
-    lig = torch.zeros(0, 10)
+    lig = torch.zeros(0, 12)
     ei = torch.zeros(2, 0, dtype=torch.long)
     out = head(
         z,
@@ -198,7 +200,7 @@ def test_joint_head_r6_attn_variable_sizes() -> None:
     mech = torch.zeros(n)
     dehyd = torch.zeros(n)
     dehyd[:2] = 1.0
-    lig = torch.zeros(l, 10)
+    lig = torch.zeros(l, 12)
     lig[:, 0] = 1.0
     lig[:, 8] = 1.0  # neutral
     # residue 0 ↔ lig 0,1 ; residue 3 ↔ lig 2 (bidirectional dup columns)

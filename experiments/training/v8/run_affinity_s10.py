@@ -36,8 +36,9 @@ from science.tokyo_eye.v8.equiformer_frontend import (
     load_weight_map,
 )
 from science.tokyo_eye.v8.ligand_interface import (
+    LIGAND_FEAT_DIM,
     build_r6_edges,
-    extract_ligand_hetatm,
+    extract_ligand_auto,
     ligand_feature_matrix,
     residue_proxy_coords,
 )
@@ -148,25 +149,24 @@ class AffinityEntryDataset(Dataset):
     def _attach_ligand_r6(self, batch: dict[str, Any], pdb_id: str, chain: str) -> dict[str, Any] | None:
         """On-the-fly ligand + R6 (never writes protein graph cache)."""
         pdb_path = ensure_pdb_cached(pdb_id, self.pdb_dir)
-        lig = extract_ligand_hetatm(pdb_path)
+        lig, source, lig_meta = extract_ligand_auto(pdb_id, pdb_path=pdb_path)
         if lig is None:
             if self.require_ligand:
-                raise ValueError("no ligand after HETATM sanitize")
-            batch["lig_feat"] = torch.zeros(0, 10, dtype=torch.float32)
+                raise ValueError("no ligand after mol2/sdf/HETATM resolve")
+            batch["lig_feat"] = torch.zeros(0, LIGAND_FEAT_DIM, dtype=torch.float32)
             batch["edge_index_r6"] = torch.zeros(2, 0, dtype=torch.long)
             batch["r6_empty"] = 1
             batch["n_lig"] = 0
             batch["n_r6_edges"] = 0
+            batch["ligand_source"] = source
+            batch["hetatm_feature_pad"] = int(lig_meta.get("hetatm_feature_pad", 1))
             return batch
         records = parse_residue_records_from_pdb_chain(pdb_path, chain)
         records = [r for r in records if r.get_atom("CA") is not None]
-        if len(records) != int(batch["num_nodes"]):
-            # Align to CA-complete count used by protein batch
-            if len(records) < 1:
-                raise ValueError("no CA residues for R6 proxy")
+        if len(records) < 1:
+            raise ValueError("no CA residues for R6 proxy")
         proxy = residue_proxy_coords(records)
         if proxy.shape[0] != int(batch["num_nodes"]):
-            # Fallback: use CA coords already in batch (cache-aligned)
             proxy = batch["x"].detach().cpu().numpy().astype(np.float32)
         feats = ligand_feature_matrix(lig)
         ei, meta = build_r6_edges(proxy, lig.coords, cutoff=4.5)
@@ -175,6 +175,8 @@ class AffinityEntryDataset(Dataset):
         batch["r6_empty"] = int(meta["r6_empty"])
         batch["n_lig"] = int(lig.n_atoms)
         batch["n_r6_edges"] = int(meta["n_edges"])
+        batch["ligand_source"] = source
+        batch["hetatm_feature_pad"] = int(lig_meta.get("hetatm_feature_pad", 0))
         return batch
 
     def _load(self, idx: int) -> dict[str, Any] | None:
@@ -197,11 +199,13 @@ class AffinityEntryDataset(Dataset):
                 batch = self._attach_ligand_r6(batch, pdb_id, chain)
                 assert batch is not None
             else:
-                batch["lig_feat"] = torch.zeros(0, 10, dtype=torch.float32)
+                batch["lig_feat"] = torch.zeros(0, LIGAND_FEAT_DIM, dtype=torch.float32)
                 batch["edge_index_r6"] = torch.zeros(2, 0, dtype=torch.long)
                 batch["r6_empty"] = 1
                 batch["n_lig"] = 0
                 batch["n_r6_edges"] = 0
+                batch["ligand_source"] = "none"
+                batch["hetatm_feature_pad"] = 0
             self._ok_cache[idx] = batch
             return batch
         except Exception as exc:  # noqa: BLE001 — soft skip missing/corrupt PDB
@@ -313,6 +317,7 @@ def evaluate_split(
     r6_empty_count = 0
     n_lig_atoms = 0
     n_r6_edges = 0
+    source_counts = {"mol2": 0, "sdf": 0, "hetatm": 0, "none": 0}
     for batch in loader:
         if batch is None:
             n_skip += 1
@@ -337,12 +342,20 @@ def evaluate_split(
         r6_empty_count += int(batch.get("r6_empty", 0))
         n_lig_atoms += int(batch.get("n_lig", 0))
         n_r6_edges += int(batch.get("n_r6_edges", 0))
+        src = str(batch.get("ligand_source", "none"))
+        if src not in source_counts:
+            source_counts[src] = 0
+        source_counts[src] += 1
     metrics = pearson_spearman_rmse(np.array(preds), np.array(targets))
     metrics["n"] = float(len(preds))
     metrics["n_skip"] = float(n_skip)
     metrics["r6_empty_count"] = float(r6_empty_count)
     metrics["lig_atoms_mean"] = float(n_lig_atoms) / max(len(preds), 1)
     metrics["r6_edges_mean"] = float(n_r6_edges) / max(len(preds), 1)
+    n_ok = max(len(preds), 1)
+    metrics["ligand_source_rate_mol2"] = float(source_counts.get("mol2", 0)) / n_ok
+    metrics["ligand_source_rate_sdf"] = float(source_counts.get("sdf", 0)) / n_ok
+    metrics["ligand_source_rate_hetatm"] = float(source_counts.get("hetatm", 0)) / n_ok
     return metrics
 
 
@@ -815,6 +828,11 @@ def main() -> None:
         "ckpt_baseline": baseline,
         "n_improve_saves": n_improve_saves,
         "core": core,
+        "ligand_source_rates": {
+            "mol2": float(core.get("ligand_source_rate_mol2", 0.0)),
+            "sdf": float(core.get("ligand_source_rate_sdf", 0.0)),
+            "hetatm": float(core.get("ligand_source_rate_hetatm", 0.0)),
+        },
         "gate_core_pearson_ge_0_40": bool(
             core.get("pearson", float("nan")) >= 0.40
             if core.get("pearson") == core.get("pearson")
