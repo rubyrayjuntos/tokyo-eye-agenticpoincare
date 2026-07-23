@@ -161,3 +161,61 @@ def test_frozen_split_manifest_untouched() -> None:
     assert path.is_file()
     src = inspect.getsource(li)
     assert "v8_pdbbind_refined_cluster30" not in src
+
+
+def test_joint_head_empty_r6_short_circuit() -> None:
+    from science.tokyo_eye.v8.affinity_head import JointPocketAffinityHead
+
+    torch = __import__("torch")
+    head = JointPocketAffinityHead(hidden_dim=16)
+    n, d = 11, 16
+    z = torch.randn(n, d) * 0.05
+    mech = torch.randn(n)
+    dehyd = torch.zeros(n)
+    lig = torch.zeros(0, 10)
+    ei = torch.zeros(2, 0, dtype=torch.long)
+    out = head(
+        z,
+        mechanism_score=mech,
+        dehydron_labels=dehyd,
+        lig_feat=lig,
+        edge_index_r6=ei,
+    )
+    assert torch.isfinite(out["affinity_pred"])
+    assert float(out["r6_empty"]) == 1.0
+    assert torch.allclose(out["r6_messages"], torch.zeros_like(out["r6_messages"]))
+    assert out["pocket_weights"].shape == (n, 1)
+    assert torch.allclose(out["pocket_weights"].sum(), torch.tensor(1.0), atol=1e-5)
+
+
+def test_joint_head_r6_attn_variable_sizes() -> None:
+    from science.tokyo_eye.v8.affinity_head import JointPocketAffinityHead
+
+    torch = __import__("torch")
+    head = JointPocketAffinityHead(hidden_dim=8)
+    n, l = 9, 5
+    z = torch.randn(n, 8) * 0.05
+    mech = torch.zeros(n)
+    dehyd = torch.zeros(n)
+    dehyd[:2] = 1.0
+    lig = torch.zeros(l, 10)
+    lig[:, 0] = 1.0
+    lig[:, 8] = 1.0  # neutral
+    # residue 0 ↔ lig 0,1 ; residue 3 ↔ lig 2 (bidirectional dup columns)
+    ei = torch.tensor(
+        [[0, 0, 0, 0, 3, 3], [0, 0, 1, 1, 2, 2]],
+        dtype=torch.long,
+    )
+    out = head(
+        z,
+        mechanism_score=mech,
+        dehydron_labels=dehyd,
+        lig_feat=lig,
+        edge_index_r6=ei,
+    )
+    assert torch.isfinite(out["affinity_pred"])
+    assert float(out["r6_empty"]) == 0.0
+    # Residues without neighbors stay zero-message
+    assert torch.allclose(out["r6_messages"][1], torch.zeros(head.attn_dim))
+    assert not torch.allclose(out["r6_messages"][0], torch.zeros(head.attn_dim))
+    assert torch.allclose(out["pocket_weights"].sum(), torch.tensor(1.0), atol=1e-5)
