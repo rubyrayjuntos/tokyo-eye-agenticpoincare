@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_bprime_core_radial_floor_prereg",
+  "recorded_at": "2026-07-21T15:25:00+00:00",
+  "status": "PREREG",
+  "option": "core_radial_floor",
+  "resume": "checkpoints/v7/runs/tokyo_eye_v7_bprime_disc_continue_v1/v7_best_disc.pt",
+  "run_id_default": "tokyo_eye_v7_bprime_core_floor_continue_v1",
+  "locks": {
+    "hyp_mp_primary": true,
+    "se3_aux": false,
+    "hyperbolic_mp_graph": false
+  },
+  "stack_delta": {
+    "core_radial_floor_coeff": 1.0,
+    "core_radial_floor_min_r": 0.15,
+    "weight": "rho_norm * (1 - tau)",
+    "disc_occupancy_coeff": 0.7,
+    "disc_depth_scale_coeff": 1.6,
+    "disc_depth_scale_target": 0.6,
+    "sparsity_style_save": true,
+    "routing_entropy_mean_residue_min_save": 0.25,
+    "routing_entropy_mean_residue_max_save": 0.9
+  },
+  "health_bars": {
+    "disc_r_mean_min": 0.25,
+    "hyp_mp_primary_audit": true,
+    "curvature_finite_positive": true,
+    "no_nan_loss": true
+  },
+  "forbidden_claims": [
+    "biology_pass_vs_fix1",
+    "kras_hub_migration",
+    "promote"
+  ],
+  "spec": "docs/specs/tokyo-eye-v7/bprime-core-radial-floor-prereg.md"
+}

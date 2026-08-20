@@ -131,8 +131,14 @@ def compute_role_edge_graph(
     coupling_cutoff: float = COUPLING_CUTOFF,
     spoke_edge_scale: float = 1.0,
     ribbon_edge_scale: float = 1.0,
+    ha_edges: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return ``edge_index [2,E]`` and ``edge_attr [E, EDGE_ATTR_ROLE_DIM]``."""
+    """Return ``edge_index [2,E]`` and ``edge_attr [E, D]``.
+
+    ``D = EDGE_ATTR_ROLE_DIM`` (chem-MVP) or ``EDGE_ATTR_ROLE_HA_DIM`` when
+    ``ha_edges=True`` (appends HA_MIN_DIST_NORM + HA_STRENGTH).
+    """
+    del ribbon_edge_scale  # reserved for message scaling in the conv, not graph build
     coords = np.asarray(coords, dtype=np.float64)
     rho = np.asarray(rho, dtype=np.float64).reshape(-1)
     n = int(coords.shape[0])
@@ -173,6 +179,9 @@ def compute_role_edge_graph(
     spoke_pairs: set[tuple[int, int]] = set()
     ribbon_pairs: set[tuple[int, int]] = set()
     coupling_pairs: dict[tuple[int, int], float] = {}
+    # Per undirected pair: (rho_bond, d_no, ha_min) for HA aux scoring.
+    dehydron_meta: dict[tuple[int, int], tuple[float, float, float]] = {}
+    packing_ha_min: dict[tuple[int, int], float] = {}
 
     def _add_coupling(i: int, j: int, d: float) -> None:
         if not enable_coupling_edges:
@@ -187,6 +196,11 @@ def compute_role_edge_graph(
         )
         coupling_pairs[key] = max(coupling_pairs.get(key, 0.0), w)
 
+    def _records_for(i: int, j: int) -> tuple[ResidueRecord | None, ResidueRecord | None]:
+        if by_seq is None:
+            return None, None
+        return by_seq.get(int(seq[i])), by_seq.get(int(seq[j]))
+
     for i in range(n):
         for j in range(i + 1, n):
             d = float(dists[i, j])
@@ -199,6 +213,8 @@ def compute_role_edge_graph(
             is_hbond_cand = seq_sep <= HBOND_SEQ_CUTOFF and d < HBOND_SPATIAL_CUTOFF
             if is_hbond_cand:
                 rho_bond = -1.0
+                donor_used: ResidueRecord | None = None
+                acceptor_used: ResidueRecord | None = None
                 if by_seq is not None and all_atoms is not None:
                     donor = by_seq.get(int(seq[i]))
                     acceptor = by_seq.get(int(seq[j]))
@@ -209,6 +225,8 @@ def compute_role_edge_graph(
                             all_atoms,
                             carbon_coords=carbon_coords,
                         )
+                        if rho_bond >= 0:
+                            donor_used, acceptor_used = donor, acceptor
                     if rho_bond < 0:
                         # try reverse donor/acceptor
                         donor_r = by_seq.get(int(seq[j]))
@@ -220,21 +238,49 @@ def compute_role_edge_graph(
                                 all_atoms,
                                 carbon_coords=carbon_coords,
                             )
+                            if rho_bond >= 0:
+                                donor_used, acceptor_used = donor_r, acceptor_r
                 if rho_bond < 0:
                     rho_bond = 0.5 * (float(rho[i]) + float(rho[j]))
                 if rho_bond < float(tau):
                     dehydron_pairs.add(key)
+                    if ha_edges:
+                        from science.dtie.v66.ha_edge_graph import (
+                            donor_acceptor_no_distance,
+                            heavy_atom_min_distance,
+                        )
+
+                        d_no = donor_acceptor_no_distance(
+                            donor_used, acceptor_used, ca_fallback=d
+                        )
+                        ha_min = heavy_atom_min_distance(
+                            *_records_for(i, j), ca_fallback=d
+                        )
+                        dehydron_meta[key] = (float(rho_bond), float(d_no), float(ha_min))
                     _add_coupling(i, j, d)
                     if dehydron_exclusivity:
                         continue  # dehydron wins over packing/spoke for this pair
 
-            if d < float(contact_cutoff) and d > 0.1:
-                oi, oj = bool(ordered[i]), bool(ordered[j])
-                if oi and oj:
+            oi, oj = bool(ordered[i]), bool(ordered[j])
+            if oi and oj:
+                if ha_edges:
+                    from science.dtie.v66.ha_edge_graph import (
+                        heavy_atom_min_distance,
+                        packing_contact_ha,
+                    )
+
+                    ha_min = heavy_atom_min_distance(
+                        *_records_for(i, j), ca_fallback=d
+                    )
+                    if packing_contact_ha(d, ha_min_dist=ha_min, contact_cutoff=contact_cutoff):
+                        packing_pairs.add(key)
+                        packing_ha_min[key] = float(ha_min if ha_min >= 0 else d)
+                elif d < float(contact_cutoff) and d > 0.1:
                     packing_pairs.add(key)
-                elif oi != oj:
-                    spoke_pairs.add(key)
-                    _add_coupling(i, j, d)
+            elif oi != oj and d < float(contact_cutoff) and d > 0.1:
+                # Spoke membership unchanged (Cα band only).
+                spoke_pairs.add(key)
+                _add_coupling(i, j, d)
 
             # Rim ↔ core propagation beyond strict contact when coupling enabled.
             if (
@@ -283,6 +329,36 @@ def compute_role_edge_graph(
             edge_attr[k, COUPLING_STRENGTH_COL] = float(
                 coupling_pairs.get(key, 0.0)
             )
+
+    if ha_edges:
+        from science.dtie.v66.ha_edge_graph import (
+            append_ha_aux_columns,
+            dehydron_strength,
+            normalize_ha_min_dist,
+            packing_strength,
+        )
+
+        ha_min_norm = np.zeros(e, dtype=np.float32)
+        ha_str = np.zeros(e, dtype=np.float32)
+        for k, role in enumerate(roles):
+            i, j = int(src[k]), int(dst[k])
+            key = _pair_key(i, j)
+            ca_d = float(geo[k][3])
+            if int(role) == ROLE_PACKING:
+                ha_d = float(packing_ha_min.get(key, ca_d))
+                ha_min_norm[k] = normalize_ha_min_dist(ha_d, scale=float(contact_cutoff))
+                ha_str[k] = packing_strength(ha_d, scale=float(contact_cutoff))
+            elif int(role) == ROLE_DEHYDRON:
+                rho_b, d_no, ha_d = dehydron_meta.get(
+                    key, (0.5 * (float(rho[i]) + float(rho[j])), ca_d, ca_d)
+                )
+                ha_min_norm[k] = normalize_ha_min_dist(
+                    float(d_no), scale=float(HBOND_SPATIAL_CUTOFF)
+                )
+                ha_str[k] = dehydron_strength(float(rho_b), float(d_no), tau=tau)
+        edge_attr = append_ha_aux_columns(
+            edge_attr, ha_min_dist_norm=ha_min_norm, ha_strength=ha_str
+        )
     return edge_index, edge_attr
 
 
@@ -324,6 +400,7 @@ def attach_role_edge_graph(
     coupling_cutoff: float = COUPLING_CUTOFF,
     spoke_edge_scale: float = 1.0,
     ribbon_edge_scale: float = 1.0,
+    ha_edges: bool = False,
 ) -> Data:
     """Replace ``edge_index`` / ``edge_attr`` with role-typed graph."""
     if not isinstance(data, Data):
@@ -358,6 +435,7 @@ def attach_role_edge_graph(
         coupling_cutoff=coupling_cutoff,
         spoke_edge_scale=spoke_edge_scale,
         ribbon_edge_scale=ribbon_edge_scale,
+        ha_edges=ha_edges,
     )
     if dehydron_edge_lookup:
         edge_attr_np = inject_dehydron_edge_barcode(
@@ -370,6 +448,7 @@ def attach_role_edge_graph(
     data.edge_index = torch.tensor(edge_index_np, dtype=torch.long, device=device)
     data.edge_attr = torch.tensor(edge_attr_np, dtype=dtype, device=device)
     data.role_edge_graph = True  # type: ignore[attr-defined]
+    data.ha_edge_graph = bool(ha_edges)  # type: ignore[attr-defined]
     # Counts for logging / tests
     oh = edge_attr_np[:, GEO_DIM:]
     data.role_edge_counts = {  # type: ignore[attr-defined]

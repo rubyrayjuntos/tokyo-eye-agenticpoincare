@@ -17,9 +17,8 @@ from fastapi import APIRouter
 from data.db import get_connection
 from science.compute.registry import JOB_REGISTRY
 from science.contracts.model_registry import (
-    checkpoint_status,
-    get_production_checkpoint_path,
     get_production_model,
+    get_production_restore_summary,
 )
 from science.contracts.onboard_contract import geometric_enforcement_level, load_contract
 
@@ -66,19 +65,21 @@ def _job_registry_summary() -> dict[str, int]:
 
 def _gnn_production_summary() -> dict:
     model = get_production_model()
-    checkpoint_path = get_production_checkpoint_path()
-    status = checkpoint_status(checkpoint_path)
+    restore = get_production_restore_summary(
+        resolve_cache=os.environ.get("HEALTH_RESOLVE_MLFLOW_MODEL", "").strip().lower()
+        in {"1", "true", "yes", "on"}
+    )
     summary = {
         "model_id": model.model_id,
         "model_version": model.model_version,
         "api_alias": model.api_alias,
         "runner_module": model.runner_module,
         "runner_class": model.runner_class,
-        "checkpoint_path": checkpoint_path,
-        "checkpoint_exists": status["exists"],
-        "checkpoint_sha256_prefix": status["sha256_prefix"],
+        "restore": restore,
+        "checkpoint_exists": bool(restore.get("cache_path")),
+        "checkpoint_sha256_prefix": restore.get("checkpoint_sha256_16"),
     }
-    if status["exists"]:
+    if restore.get("cache_path"):
         summary["architecture_compat"] = _verify_production_checkpoint_cached()
     return summary
 
@@ -90,7 +91,7 @@ def _verify_production_checkpoint_cached() -> dict:
         from science.contracts.model_registry import get_production_model
 
         prod = get_production_model()
-        if prod.model_id == "tokyo_eye_v8" or prod.model_version == "TokyoEye-v8":
+        if prod.model_id == "TokyoEye" or prod.model_version == "TokyoEye@champion":
             from science.tokyo_eye.v8.runner import TokyoEyeV8Runner
 
             runner = TokyoEyeV8Runner(device="cpu")
@@ -99,7 +100,7 @@ def _verify_production_checkpoint_cached() -> dict:
                 "ok": True,
                 "missing_keys": 0,
                 "model_class": "TokyoEyeV8WithFrontend",
-                "lineage": "v8",
+                "lineage": "equiformer-v3-moe",
             }
 
         if prod.model_id == "tokyo_eye_v7" or prod.model_version == "TokyoEye-v7":
@@ -155,7 +156,8 @@ async def health_check():
     gnn_production = _gnn_production_summary()
 
     status = "healthy" if db.get("connected") else "degraded"
-    if status == "healthy" and not gnn_production["checkpoint_exists"]:
+    restore = gnn_production.get("restore") or {}
+    if status == "healthy" and not restore.get("ok"):
         status = "degraded"
     compat = gnn_production.get("architecture_compat") or {}
     if status == "healthy" and compat and not compat.get("ok", True):

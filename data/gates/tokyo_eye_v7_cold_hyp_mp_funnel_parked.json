@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_cold_hyp_mp_funnel_parked",
+  "recorded_at": "2026-07-22T06:17:00+00:00",
+  "status": "PARKED",
+  "lineages": [
+    "tokyo_eye_v7_cold_hyp_mp_funnel_v1",
+    "tokyo_eye_v7_cold_hyp_mp_funnel_angfill_v1"
+  ],
+  "reason": "Not usable as trunk: cold/angfill disc does not recover sealed dehydron=rim ontology; soft MoE under-committed despite ER Pass and hard-monopoly reduction.",
+  "keep_as": "compare_only_archaeology",
+  "restore_ssot": "HEALTHY_V7_CKPT",
+  "specs": [
+    "docs/specs/tokyo-eye-v7/cold-hyp-mp-funnel-prereg.md",
+    "docs/specs/tokyo-eye-v7/cold-hyp-mp-funnel-angfill-prereg.md"
+  ]
+}

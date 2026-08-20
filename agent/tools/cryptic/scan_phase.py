@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 HEURISTIC_VERSION = "v1.0"
 
 # Model version (default, overridden by DB provenance if available)
-DEFAULT_MODEL_VERSION = "GOSPConeMapper-v6"
+DEFAULT_MODEL_VERSION = "TokyoEye-v7"
 
 
 @dataclass

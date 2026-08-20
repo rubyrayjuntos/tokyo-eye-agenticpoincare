@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_lineage_opened",
+  "recorded_at": "2026-07-21T12:00:00+00:00",
+  "status": "OPEN",
+  "cutover": {
+    "production_model_id": "tokyo_eye_v7",
+    "scaffold_checkpoint": "checkpoints/v7/tokyo_eye_v7_cutover_scaffold.pt",
+    "biology_graded": false,
+    "make_targets": [
+      "seal-v7-cutover-scaffold",
+      "mlflow-register-v7-lineage",
+      "train-v7",
+      "promote-production-v7",
+      "verify-v7-production"
+    ]
+  },
+  "lineage_id": "v7",
+  "production_module": "science.tokyo_eye.TokyoEye",
+  "checkpoint_root": "checkpoints/v7",
+  "training_package": "experiments.training.v7",
+  "ssot": "docs/specs/tokyo-eye-v7/README.md",
+  "design": "docs/specs/tokyo-eye-v7/design.md",
+  "decisions": {
+    "hyp_mp_primary": true,
+    "euclidean_3d": "reference_only",
+    "se3_label": "SE3_backbone_not_S4",
+    "curvature": "learned_nn_Parameter_only",
+    "dtie_policy": "untouched_structural_biology_no_gnn_versioning",
+    "july19_mp_euclidean_lock": "superseded_for_v7",
+    "chem_mvp": "parked",
+    "v6x": "frozen_compare_only",
+    "mlflow_experiment": "tokyo-eyes-v7",
+    "registered_model_name": "TokyoEye-v7",
+    "embedding_space_name": "tokyoeye_v7_hyp128"
+  },
+  "mlflow": {
+    "experiment": "tokyo-eyes-v7",
+    "register_make": "mlflow-register-v7-lineage",
+    "lineage_stamp": "data/gates/tokyo_eye_v7_mlflow_lineage_root.json"
+  },
+  "forbidden": [
+    "science/dtie/v7 package",
+    "hardcoded curvature on v7 paths",
+    "promoting lineage by relocating out of TokyoEye.py",
+    "new *_s4_* technology labels for v7 runs"
+  ]
+}

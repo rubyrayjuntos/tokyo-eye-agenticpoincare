@@ -160,6 +160,20 @@ class TrainingTracker:
 
             mlf.set_tag(MLFLOW_TAG_TELEMETRY, "true")
             mlf.set_tag(MLFLOW_TAG_NOT_GATE, "true")
+            mlf.set_tag("gnn_lineage", str(self.config.gnn_lineage))
+            if str(self.config.gnn_lineage) == "v7":
+                from experiments.training.v7 import (
+                    PRODUCTION_MODULE,
+                    V7_HYP_SPACE_NAME,
+                )
+
+                mlf.set_tag("production_module", PRODUCTION_MODULE)
+                mlf.set_tag(
+                    "hyp_mp_primary",
+                    str(bool(getattr(self.config, "hyp_mp_primary", True))).lower(),
+                )
+                mlf.set_tag("se3_label", "SE3_aux_not_S4")
+                mlf.set_tag("space_name", V7_HYP_SPACE_NAME)
             if parent_id and not (
                 self.config.master_cold_lineage or self.config.slim_moe_structural_ssot
             ):

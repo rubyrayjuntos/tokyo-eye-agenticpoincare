@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_bprime_health_closeout",
+  "recorded_at": "2026-07-21T12:58:25+00:00",
+  "status": "FAIL",
+  "run_id": "tokyo_eye_v7_bprime_health_v1",
+  "lineage": "v7",
+  "mlflow_experiment": "tokyo-eyes-v7",
+  "warmstart": "checkpoints/v7/tokyo_eye_v7_bprime_warmstart.pt",
+  "artifacts": {
+    "v7_best_disc": "checkpoints/v7/runs/tokyo_eye_v7_bprime_health_v1/v7_best_disc.pt",
+    "phase_12": "checkpoints/v7/runs/tokyo_eye_v7_bprime_health_v1/phase_12.pt",
+    "metrics": "checkpoints/v7/runs/tokyo_eye_v7_bprime_health_v1/metrics.json"
+  },
+  "bars": {
+    "disc_r_mean_min": {
+      "threshold": 0.25,
+      "observed_final": 0.20282491172353426,
+      "pass": false
+    },
+    "no_nan_loss": {
+      "pass": true,
+      "loss_first": 0.2881,
+      "loss_last": 0.1448
+    },
+    "train_completed": {
+      "pass": true,
+      "epochs": 8
+    },
+    "checkpoint_eligible_v7_best": {
+      "pass": false,
+      "note": "routing_entropy ~1.35 > save ceiling ~1.21; only v7_best_disc saved"
+    }
+  },
+  "trend": "disc occupancy improving (expert disc_r up to ~0.27) but mean still under 0.25 after 8 epochs",
+  "next": "extend health continue from v7_best_disc or phase_12 with same B′ stack; do not promote or claim biology",
+  "spec": "docs/specs/tokyo-eye-v7/bprime-health-warmstart-prereg.md"
+}

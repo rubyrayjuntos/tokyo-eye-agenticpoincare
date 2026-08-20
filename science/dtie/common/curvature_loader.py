@@ -13,11 +13,26 @@ from typing import Any
 from data.db import DBAdapter, get_connection
 
 # Production v6 hyperbolic space (embedding_space.name / space_id suffix).
+# Legacy GOSPConeMapper naming — frozen compare-only after Tokyo Eye v7 cutover.
 V6_HYP_SPACE_NAME = "gospconemapper_v6_hyp128"
 V6_HYP_SPACE_ID = "space_gospconemapper_v6_hyp128"
 
+# Tokyo Eye v7 production hyperbolic space (learned curvature; no hardcoded pin).
+V7_HYP_SPACE_NAME = "tokyoeye_v7_hyp128"
+V7_HYP_SPACE_ID = "space_tokyoeye_v7_hyp128"
+
 # Pin from lever_a_clean_slate_v1/v6_best_disc.pt — ckpt['curvature'] at full precision.
+# Do not use as v7 production pin — v7 curvature is learned per checkpoint.
 CANONICAL_V6_CURVATURE = 0.7026273608207703
+
+
+def production_hyp_space_name(*, lineage: str | None = None) -> str:
+    """Resolve embedding_space.name for the active GNN lineage."""
+    if lineage in {None, "", "production", "v7"}:
+        return V7_HYP_SPACE_NAME
+    if lineage in {"v6", "v6.6", "v66"}:
+        return V6_HYP_SPACE_NAME
+    return V7_HYP_SPACE_NAME
 
 
 class CurvatureSSOTError(RuntimeError):

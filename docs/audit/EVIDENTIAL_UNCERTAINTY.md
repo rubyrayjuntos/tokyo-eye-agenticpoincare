@@ -151,3 +151,17 @@ flat-std guard, P7 logic at edge granularity (`edge_epistemic_var_std`, etc.).
 `track/epistemic_std`, `track/aleatoric_std`, `track/epi_ale_corr`,
 `track/uncertainty_informative_ale`, `track/epistemic_non_degenerate` — see
 `docs/TRAINING_GOVERNANCE_AND_MLFLOW_SCHEMA.md` §3.2.
+
+## Product viewer (CLOSED 2026-07-16)
+
+Do **not** ship evidential `ale×(1−epi)` as the trusted Investigation default.
+G5b + 4OBE measurement showed near-flat heads min-max ranked into a map that
+highlights well-wrapped core (ρ↑, τ=0). SSOT:
+`docs/audit/VIEWER_INVESTIGATION_CORRECTNESS.md`.
+
+**Lineage corroboration (same close-out):** on controlled
+`fix1_s4_stack_initseed_controlled_4d_seed1_v1` Stage A-12 viewers,
+`r(aleatoric, epistemic)` mean **0.994** (min 0.990) across all 12 structures —
+head near-duplication **generalizes to the 4-D/seed1 feeler-stack lineage**, not
+only the original G5b diagnosis site. Product default (physics Investigation /
+evidential experimental) unchanged; this strengthens the case.

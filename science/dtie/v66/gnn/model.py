@@ -38,7 +38,8 @@ DESIGN CONTRACT:
     All v5 outputs preserved, plus:
     capacity_loss: scalar           Asymmetric capacity penalty
     expert_load: Tensor[4]          Per-expert mean routing probability
-    routing_entropy: scalar         H(expert_weights) for monitoring
+    routing_entropy: scalar         H(mean load f̄) for monitoring / save ceiling
+    routing_entropy_mean_residue: scalar  mean_i H(p_i) for sparsity loss
     gate_features_used: list[str]   Audit: which features fed the gate
 """
 
@@ -59,12 +60,12 @@ from science.dtie.v5.gnn.model import (
 )
 from science.dtie.v66.gnn.equivariant_conv_multirel import EquivariantConvMultiRel
 from science.dtie.v66.gnn.equivariant_conv_thermo import EquivariantConvThermo
-from science.dtie.v6.gnn.evidential import (
+from science.dtie.v66.gnn.evidential import (
     DecoupledEvidentialHead,
     expand_coupled_uncertainty_state_dict,
     uncertainty_head_is_decoupled,
 )
-from science.dtie.v6.gnn.hyperbolic_moe import (
+from science.dtie.v66.gnn.hyperbolic_moe import (
     HyperbolicPrototypeGate,
     mobius_weighted_combine,
     project_ball,
@@ -72,6 +73,7 @@ from science.dtie.v6.gnn.hyperbolic_moe import (
     project_disc_2d_legacy,
 )
 from science.training.routing_metrics import routing_load_floor_penalty
+from science.training.routing_sparsity import mean_residue_routing_entropy
 
 
 def resolve_message_passing_edges(data: Data) -> tuple[torch.Tensor, torch.Tensor]:
@@ -461,13 +463,31 @@ def infer_v66_model_kwargs(
                 ),
             )
         ),
+        "ha_edge_mp": bool(
+            arch.get(
+                "ha_edge_mp",
+                tc.get("ha_edge_mp", False),
+            )
+        ),
         "containment_edge_mp": bool(
             arch.get(
                 "containment_edge_mp",
                 tc.get(
                     "containment_edge_mp",
                     any(k.startswith("convs.0.radial_mlps.7.") for k in state_dict)
-                    or any(k.startswith("convs.0.radial_mlps.8.") for k in state_dict),
+                    and any(k.startswith("convs.0.radial_mlps.8.") for k in state_dict),
+                ),
+            )
+        ),
+        "euclidean_shortcut_mp": bool(
+            arch.get(
+                "euclidean_shortcut_mp",
+                tc.get(
+                    "euclidean_shortcut_mp",
+                    any(k.startswith("convs.0.radial_mlps.7.") for k in state_dict)
+                    and not any(
+                        k.startswith("convs.0.radial_mlps.8.") for k in state_dict
+                    ),
                 ),
             )
         ),
@@ -700,7 +720,9 @@ class GOSPConeMapperV66(nn.Module):
         role_edge_mp: bool = False,
         role_coupling_edges: bool = False,
         chem_edge_mp: bool = False,
+        ha_edge_mp: bool = False,
         containment_edge_mp: bool = False,
+        euclidean_shortcut_mp: bool = False,
         dehydron_exclusivity: bool = True,
         dehydron_angular_scale: float = 1.0,
         dehydron_edge_barcode: bool = False,
@@ -735,11 +757,21 @@ class GOSPConeMapperV66(nn.Module):
         self.role_edge_mp = bool(role_edge_mp)
         self.role_coupling_edges = bool(role_coupling_edges)
         self.chem_edge_mp = bool(chem_edge_mp) and self.role_edge_mp
+        self.ha_edge_mp = bool(ha_edge_mp) and self.role_edge_mp
         if bool(containment_edge_mp) and not self.chem_edge_mp:
             raise ValueError(
                 "containment_edge_mp requires chem_edge_mp in v1 matched arm"
             )
         self.containment_edge_mp = bool(containment_edge_mp) and self.chem_edge_mp
+        if bool(euclidean_shortcut_mp) and not self.chem_edge_mp:
+            raise ValueError(
+                "euclidean_shortcut_mp requires chem_edge_mp in v1 matched arm"
+            )
+        if bool(euclidean_shortcut_mp) and self.containment_edge_mp:
+            raise ValueError(
+                "euclidean_shortcut_mp and containment_edge_mp are mutually exclusive"
+            )
+        self.euclidean_shortcut_mp = bool(euclidean_shortcut_mp) and self.chem_edge_mp
         self.dehydron_exclusivity = bool(dehydron_exclusivity)
         self.dehydron_angular_scale = float(dehydron_angular_scale)
         self.multi_rel_edge_mp = bool(multi_rel_edge_mp) or self.role_edge_mp
@@ -822,6 +854,28 @@ class GOSPConeMapperV66(nn.Module):
                 coupling_strength_col = COUPLING_STRENGTH_COL_CONTAIN
                 dehydron_barcode_col = DEHYDRON_BARCODE_COL_CONTAIN
 
+            if self.euclidean_shortcut_mp:
+                from science.dtie.v66.euclidean_shortcut_graph import (
+                    COUPLING_STRENGTH_COL_EUC,
+                    DEHYDRON_BARCODE_COL_EUC,
+                    NUM_ROLE_RELATIONS_WITH_EUC_SHORTCUT,
+                    SPOKE_RHO_COL_EUC,
+                )
+
+                if not self.chem_edge_mp:
+                    raise ValueError(
+                        "euclidean_shortcut_mp requires chem_edge_mp in v1 matched arm"
+                    )
+                if self.containment_edge_mp:
+                    raise ValueError(
+                        "euclidean_shortcut_mp and containment_edge_mp are "
+                        "mutually exclusive"
+                    )
+                num_relations = NUM_ROLE_RELATIONS_WITH_EUC_SHORTCUT
+                spoke_rho_col = SPOKE_RHO_COL_EUC
+                coupling_strength_col = COUPLING_STRENGTH_COL_EUC
+                dehydron_barcode_col = DEHYDRON_BARCODE_COL_EUC
+
             conv_kwargs = dict(
                 hidden_dim=hidden,
                 irreps_hidden="32x0e + 8x1e",
@@ -842,6 +896,18 @@ class GOSPConeMapperV66(nn.Module):
             if self.dehydron_angular_scale != 1.0:
                 conv_kwargs["dehydron_angular_scale"] = self.dehydron_angular_scale
                 conv_kwargs.setdefault("dehydron_relation_id", ROLE_DEHYDRON)
+            if self.ha_edge_mp:
+                from science.dtie.v66.ha_edge_graph import (
+                    HA_STRENGTH_COL_CHEM,
+                    HA_STRENGTH_COL_ROLE,
+                )
+                from science.dtie.v66.role_edge_graph import ROLE_PACKING
+
+                conv_kwargs["ha_strength_col"] = (
+                    HA_STRENGTH_COL_CHEM if self.chem_edge_mp else HA_STRENGTH_COL_ROLE
+                )
+                conv_kwargs["ha_packing_relation_id"] = ROLE_PACKING
+                conv_kwargs["ha_dehydron_relation_id"] = ROLE_DEHYDRON
             self.convs = nn.ModuleList(
                 [
                     EquivariantConvMultiRel(**conv_kwargs)
@@ -1369,9 +1435,12 @@ class GOSPConeMapperV66(nn.Module):
 
         # ── V6 monitoring metrics ─────────────────────────────────────────
         expert_load = scores.mean(dim=0).detach()  # [num_experts]
+        # Batch load entropy H(f̄) — monitor / save ceiling only (not sparsity loss).
         routing_entropy = -(
             scores.mean(dim=0) * torch.log(scores.mean(dim=0) + 1e-8)
         ).sum()
+        # Per-residue mean entropy — sparsity objective (design: L_sparse).
+        routing_entropy_mean_residue = mean_residue_routing_entropy(scores)
 
         # ── Audit trail ───────────────────────────────────────────────────
         proj_count_total = (proj_count_s1 + proj_count_s2).detach()
@@ -1399,7 +1468,9 @@ class GOSPConeMapperV66(nn.Module):
             "role_edge_mp": self.role_edge_mp,
             "role_coupling_edges": self.role_coupling_edges,
             "chem_edge_mp": self.chem_edge_mp,
+            "ha_edge_mp": self.ha_edge_mp,
             "containment_edge_mp": self.containment_edge_mp,
+            "euclidean_shortcut_mp": self.euclidean_shortcut_mp,
             "dehydron_exclusivity": self.dehydron_exclusivity,
             "dehydron_angular_scale": self.dehydron_angular_scale,
             "dehydron_edge_barcode": self.dehydron_edge_barcode,
@@ -1462,6 +1533,7 @@ class GOSPConeMapperV66(nn.Module):
                 "capacity_loss",
                 "expert_load",
                 "routing_entropy",
+                "routing_entropy_mean_residue",
             ],
             "affected_losses": ["cone_consistency", "capacity_loss"],
             "tangent_space_used_for": ["experts", "euclidean_projection"],
@@ -1507,6 +1579,8 @@ class GOSPConeMapperV66(nn.Module):
             "hyp_projections_3d": hyp_proj_3d,
             "radial_features": radial_depth,
             "angular_features": angular_direction,
+            # Trunk pre-geometry (Path 2 directionality + flow probes).
+            "encoder_h": x,
             # V6 NEW outputs
             "capacity_loss": capacity_loss,
             "routing_load_floor": routing_load_floor,
@@ -1514,6 +1588,7 @@ class GOSPConeMapperV66(nn.Module):
             "prototype_gram_logdet": gate_audit.get("prototype_gram_logdet"),
             "expert_load": expert_load,
             "routing_entropy": routing_entropy,
+            "routing_entropy_mean_residue": routing_entropy_mean_residue,
             "gate_features_used": gate_features,
             "binding_logits_pocket": binding_logits_pocket,
             "binding_logits_interface": binding_logits_interface,
@@ -1606,7 +1681,7 @@ def load_v66_state_dict(
     state_dict: dict[str, torch.Tensor],
 ) -> tuple[list[str], list[str]]:
     """Load weights tolerating gate topo expansion and barcode node_emb widen."""
-    from science.dtie.v6.gnn.model import adapt_checkpoint_node_emb_width
+    from science.dtie.v66.gnn.checkpoint_adapt import adapt_checkpoint_node_emb_width
 
     adapted = dict(state_dict)
     if getattr(model, "decoupled_uncertainty_heads", False):
@@ -1665,7 +1740,7 @@ def verify_v66_checkpoint(
         raise FileNotFoundError(f"V6.6 checkpoint not found: {logical}")
 
     # Import gate module first — missing file fails fast with ImportError.
-    from science.dtie.v6.gnn import hyperbolic_moe  # noqa: F401
+    from science.dtie.v66.gnn import hyperbolic_moe  # noqa: F401
 
     checkpoint_data = torch.load(resolved, map_location=device, weights_only=False)
     if isinstance(checkpoint_data, dict) and "model_state_dict" in checkpoint_data:

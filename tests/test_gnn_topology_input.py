@@ -60,3 +60,45 @@ def test_residue_sasa_from_data_legacy_x_fallback() -> None:
 def test_gnn_input_dim() -> None:
     assert rf.gnn_input_dim(rf.GnnInputMode.TOPOLOGY_THREE_VECTOR) == 3
     assert rf.gnn_input_dim(rf.GnnInputMode.LEGACY_FOUR_VECTOR) == 4
+
+
+def test_corpus_cache_key_includes_feature_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Changing GNN_INPUT_MODE must not reuse the other mode's graphs_*.pt."""
+    import hashlib
+    from pathlib import Path
+
+    monkeypatch.setenv("GNN_INPUT_MODE", "topology_three_vector")
+    tag3 = rf.gnn_feature_set_id()
+    monkeypatch.setenv("GNN_INPUT_MODE", "legacy_four_vector")
+    tag4 = rf.gnn_feature_set_id()
+    assert tag3 != tag4
+    manifest = Path("/tmp/fake_manifest.json")
+    base = f"{manifest.resolve()}|12|1200|bf_v1|rs0"
+    k3 = hashlib.sha256(f"{base}|{tag3}".encode()).hexdigest()[:16]
+    k4 = hashlib.sha256(f"{base}|{tag4}".encode()).hexdigest()[:16]
+    assert k3 != k4
+
+
+def test_resolve_training_node_dim_rejects_stale_four_vector_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from torch_geometric.data import Data
+
+    from experiments.training.v6.launch_training import _resolve_training_node_dim
+
+    monkeypatch.setenv("GNN_INPUT_MODE", "topology_three_vector")
+    proteins = [{"pdb_id": "1MBN", "chain": "A", "data": Data(x=torch.zeros(5, 4))}]
+    with pytest.raises(ValueError, match="node_dim=4.*expects 3"):
+        _resolve_training_node_dim(proteins)
+
+
+def test_resolve_training_node_dim_accepts_three_vector(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from torch_geometric.data import Data
+
+    from experiments.training.v6.launch_training import _resolve_training_node_dim
+
+    monkeypatch.setenv("GNN_INPUT_MODE", "topology_three_vector")
+    proteins = [{"pdb_id": "1MBN", "chain": "A", "data": Data(x=torch.zeros(5, 3))}]
+    assert _resolve_training_node_dim(proteins) == 3

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_hyp_biology_mp_three_arm_prereg",
+  "recorded_at": "2026-07-22T02:45:00+00:00",
+  "status": "LOCKED",
+  "claim": "On a fixed biology graph, Hyp MP must beat classical readout and be compared to sealed weights+biology graph (wiring-only).",
+  "lineage_id": "tokyo_eye_v7_hyp_biology_mp_v1",
+  "spec": "docs/specs/tokyo-eye-v7/hyp-biology-mp-three-arm-prereg.md",
+  "arms": {
+    "classical": "betweenness + rho/tau R* vector on biology edges only",
+    "sealed_biology": "HEALTHY_V7_CKPT + biology graph attach (hyp_biology_mp)",
+    "hyp_mp_trained": "v7_hyp_biology_mp_best.pt + biology graph attach"
+  },
+  "shared_graph": ["hbond", "dehydron", "pi_stack", "salt_bridge"],
+  "forbidden": ["ca_contact_in_mp", "different_graphs_per_arm"],
+  "bars": {
+    "basin_sep_gap_min": 0.10,
+    "migration_pass": "R_4DSO > R_4OBE",
+    "gnn_beats_classical_basin": "gap_gnn > gap_classical",
+    "gnn_beats_classical_migration": "delta_R_gnn > delta_R_classical",
+    "trained_beats_sealed_biology": "report"
+  },
+  "pdbs": {
+    "telemetry": ["4OBE:A", "4LPK:A", "6GOD:A"],
+    "basin": ["4LPK:A", "5US4:A", "6GOD:A", "6GOF:A"],
+    "migration": ["4OBE:A", "4DSO:A"]
+  }
+}

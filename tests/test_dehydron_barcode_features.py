@@ -57,9 +57,26 @@ def _make_backbone_pair(
 
 
 def test_constants_defined():
-    assert BARCODE_FEATURE_VERSION == "dehydron_barcode_v1"
-    assert SCALAR_DIM == 11
+    from science.dtie.common.dehydron_barcode_features import (
+        LONG_LIVED_PERSISTENCE_ANGSTROM,
+    )
+
+    assert BARCODE_FEATURE_VERSION == "dehydron_barcode_v1_2"
+    assert SCALAR_DIM == 3
     assert BINNED_DIM == 40
+    assert LONG_LIVED_PERSISTENCE_ANGSTROM == 3.11
+
+
+def test_current_version_changes_writer_and_loader_sidecar_path(tmp_path):
+    from experiments.training.v6._data import _barcode_sidecar_path
+    from experiments.training.v6.precompute_dehydron_barcodes import _sidecar_path
+
+    expected = tmp_path / "4OBE_A_dehydron_barcode_v1_2.pt"
+    stale = tmp_path / "4OBE_A_dehydron_barcode_v1.pt"
+
+    assert _sidecar_path(tmp_path, "4obe", "A") == expected
+    assert _barcode_sidecar_path(tmp_path, "4obe", "A") == expected
+    assert expected != stale
 
 
 def test_extract_midpoints_requires_inter_residue_hbond():
@@ -159,7 +176,7 @@ def test_aggregate_missing_mask_when_no_midpoints():
     from science.dtie.common.dehydron_barcode_features import aggregate_residue_barcode_features
 
     out = aggregate_residue_barcode_features(5, [], [])
-    assert out["scalars"].shape == (5, 11)
+    assert out["scalars"].shape == (5, 3)
     assert out["binned"] is None
     assert out["missing"].shape == (5, 1)
     assert np.allclose(out["missing"], 1.0)
@@ -172,9 +189,12 @@ def test_aggregate_binned_shape_when_enabled(simple_midpoints, simple_bars):
     assert out["binned"].shape == (10, 40)
 
 
-def test_aggregate_structure_stats_not_kfold_duplicated(simple_bars):
+def test_aggregate_structure_stats_not_kfold_duplicated():
     """Residue touching K midpoints must not K-fold duplicate structure-level bar stats."""
-    from science.dtie.common.dehydron_barcode_features import aggregate_residue_barcode_features
+    from science.dtie.common.dehydron_barcode_features import (
+        PersistenceBar,
+        aggregate_residue_barcode_features,
+    )
 
     midpoints = [
         DehydronMidpoint(
@@ -190,12 +210,53 @@ def test_aggregate_structure_stats_not_kfold_duplicated(simple_bars):
             wrapping_count=5.0,
         ),
     ]
-    out = aggregate_residue_barcode_features(5, midpoints, simple_bars)
+    bars = [
+        PersistenceBar(dim=0, birth=0.0, death=20.0, persistence=20.0),
+        PersistenceBar(dim=1, birth=0.0, death=2.0, persistence=2.0),
+        PersistenceBar(dim=1, birth=0.0, death=3.0, persistence=3.0),
+    ]
+    out = aggregate_residue_barcode_features(5, midpoints, bars)
     scalars = out["scalars"]
 
-    assert scalars[0, 0] == pytest.approx(np.log1p(len(simple_bars)))
-    assert scalars[0, 0] != pytest.approx(np.log1p(2 * len(simple_bars)))
-    assert scalars[0, 10] == pytest.approx(np.log1p(2))
+    total_h1 = 5.0
+    assert scalars[0, 0] == pytest.approx(np.log1p(total_h1))
+    assert scalars[0, 0] != pytest.approx(np.log1p(2 * total_h1))
+    # local count stays residue-local (2 midpoints touch residue 0)
+    assert scalars[0, 2] == pytest.approx(np.log1p(2))
+
+
+def test_edge_barcode_features_are_pair_local(simple_midpoints, simple_bars):
+    from science.dtie.common.dehydron_barcode_features import (
+        EDGE_BARCODE_DIM,
+        aggregate_dehydron_edge_barcode_features,
+    )
+
+    out = aggregate_dehydron_edge_barcode_features(simple_midpoints, simple_bars)
+    assert out["edge_pairs"].shape[1] == 2
+    assert out["edge_scalars"].shape == (len(simple_midpoints), EDGE_BARCODE_DIM)
+    assert out["edge_scalars"][0, 0] >= 0.0
+    assert out["edge_scalars"][0, 1] >= 0.0
+
+
+def test_align_edge_barcode_to_graph_resseq():
+    from science.dtie.common.dehydron_barcode_features import (
+        EDGE_BARCODE_DIM,
+        align_edge_barcode_to_graph,
+    )
+
+    pairs = np.array([[0, 1], [2, 3]], dtype=np.int32)
+    scalars = np.array(
+        [
+            [1.0, 0.1, 0.2, 0.3, 0.4],
+            [0.5, 0.1, 0.2, 0.3, 0.4],
+        ],
+        dtype=np.float32,
+    )
+    barcode_resseq = [10, 11, 12, 13]
+    graph_resseq = [10, 11, 12, 13]
+    lookup = align_edge_barcode_to_graph(pairs, scalars, barcode_resseq, graph_resseq)
+    assert (0, 1) in lookup
+    assert lookup[(0, 1)].shape == (EDGE_BARCODE_DIM,)
 
 
 def test_stack_dims_scalars_only():
@@ -203,12 +264,12 @@ def test_stack_dims_scalars_only():
 
     x = np.zeros((8, 3), np.float32)
     barcode = {
-        "scalars": np.zeros((8, 11), np.float32),
+        "scalars": np.zeros((8, 3), np.float32),
         "binned": None,
         "missing": np.ones((8, 1), np.float32),
     }
     y = stack_node_features_with_barcode(x, barcode, use_binned=False)
-    assert y.shape == (8, 15)
+    assert y.shape == (8, 7)
 
 
 def test_stack_dims_full():
@@ -216,12 +277,12 @@ def test_stack_dims_full():
 
     x = np.zeros((8, 3), np.float32)
     barcode = {
-        "scalars": np.zeros((8, 11), np.float32),
+        "scalars": np.zeros((8, 3), np.float32),
         "binned": np.zeros((8, 40), np.float32),
         "missing": np.zeros((8, 1), np.float32),
     }
     y = stack_node_features_with_barcode(x, barcode, use_binned=True)
-    assert y.shape == (8, 55)
+    assert y.shape == (8, 47)
 
 
 def test_feature_set_ids():
@@ -240,12 +301,12 @@ def test_feature_set_ids():
         )
         == gnn_feature_set_id(GnnInputMode.TOPOLOGY_THREE_VECTOR)
     )
-    assert "dbh_scalars_v1" in gnn_feature_set_id_for_barcode(
+    assert "dbh_scalars_v1_2" in gnn_feature_set_id_for_barcode(
         use_barcode=True,
         use_binned=False,
         mode=GnnInputMode.TOPOLOGY_THREE_VECTOR,
     )
-    assert "dbh_full_v1" in gnn_feature_set_id_for_barcode(
+    assert "dbh_full_v1_2" in gnn_feature_set_id_for_barcode(
         use_barcode=True,
         use_binned=True,
         mode=GnnInputMode.TOPOLOGY_THREE_VECTOR,
@@ -256,7 +317,7 @@ def test_feature_set_ids():
             use_binned=False,
             mode=GnnInputMode.TOPOLOGY_THREE_VECTOR,
         )
-        == 15
+        == 7
     )
     assert (
         gnn_input_dim_for_barcode(
@@ -264,7 +325,7 @@ def test_feature_set_ids():
             use_binned=True,
             mode=GnnInputMode.TOPOLOGY_THREE_VECTOR,
         )
-        == 55
+        == 47
     )
 
 
@@ -277,15 +338,16 @@ def test_attach_missing_sidecar_zeros_shape(tmp_path):
     prot = {
         "pdb_id": "4OBE",
         "chain": "A",
+        "residue_ids": ["A:1:", "A:2:", "A:3:", "A:4:"],
         "data": Data(x=torch.ones(4, 3)),
     }
 
     attach_dehydron_barcode_features(prot, barcode_dir=tmp_path, use_binned=False)
 
     x = prot["data"].x
-    assert x.shape == (4, 15)
+    assert x.shape == (4, 7)
     assert torch.allclose(x[:, :3], torch.ones(4, 3))
-    assert torch.allclose(x[:, 3:14], torch.zeros(4, 11))
+    assert torch.allclose(x[:, 3:6], torch.zeros(4, 3))
     assert torch.allclose(x[:, 14:], torch.ones(4, 1))
 
 
@@ -295,14 +357,16 @@ def test_precompute_sidecar_round_trips_through_attach(tmp_path):
 
     from experiments.training.v6._data import attach_dehydron_barcode_features
     from experiments.training.v6.precompute_dehydron_barcodes import _save_payload
+    from science.dtie.common.dehydron_barcode_features import barcode_sidecar_filename
 
-    sidecar = tmp_path / "4OBE_A_dehydron_barcode_v1.pt"
+    sidecar = tmp_path / barcode_sidecar_filename("4OBE", "A")
     _save_payload(
         sidecar,
         {
-            "scalars": np.full((4, 11), 2.0, dtype=np.float32),
+            "scalars": np.full((4, 3), 2.0, dtype=np.float32),
             "binned": np.full((4, 40), 3.0, dtype=np.float32),
             "missing": np.zeros((4, 1), dtype=np.float32),
+            "residue_indices": np.asarray([10, 11, 12, 13], dtype=np.int32),
             "metadata": {"version": BARCODE_FEATURE_VERSION},
         },
     )
@@ -314,16 +378,40 @@ def test_precompute_sidecar_round_trips_through_attach(tmp_path):
     prot = {
         "pdb_id": "4OBE",
         "chain": "A",
+        "residue_ids": ["A:10:", "A:11:", "A:12:", "A:13:"],
         "data": Data(x=torch.ones(4, 3)),
     }
     attach_dehydron_barcode_features(prot, barcode_dir=tmp_path, use_binned=True)
 
     x = prot["data"].x
-    assert x.shape == (4, 55)
+    assert x.shape == (4, 47)
     assert torch.allclose(x[:, :3], torch.ones(4, 3))
-    assert torch.allclose(x[:, 3:14], torch.full((4, 11), 2.0))
-    assert torch.allclose(x[:, 14:54], torch.full((4, 40), 3.0))
-    assert torch.allclose(x[:, 54:], torch.zeros(4, 1))
+    assert torch.allclose(x[:, 3:6], torch.full((4, 3), 2.0))
+    assert torch.allclose(x[:, 6:46], torch.full((4, 40), 3.0))
+    assert torch.allclose(x[:, 46:], torch.zeros(4, 1))
+
+
+def test_align_barcode_to_longer_graph_marks_extra_missing():
+    from science.dtie.common.dehydron_barcode_features import align_barcode_to_graph_residues
+
+    barcode = {
+        "scalars": np.full((2, 3), 2.0, dtype=np.float32),
+        "missing": np.zeros((2, 1), dtype=np.float32),
+        "binned": np.full((2, 40), 3.0, dtype=np.float32),
+        "residue_indices": np.asarray([10, 12], dtype=np.int32),
+    }
+    aligned = align_barcode_to_graph_residues(
+        barcode,
+        [10, 11, 12],
+        use_binned=True,
+    )
+    assert aligned["scalars"].shape == (3, 3)
+    assert np.allclose(aligned["scalars"][0], 2.0)
+    assert np.allclose(aligned["scalars"][1], 0.0)
+    assert np.allclose(aligned["scalars"][2], 2.0)
+    assert aligned["missing"][0, 0] == 0.0
+    assert aligned["missing"][1, 0] == 1.0
+    assert aligned["missing"][2, 0] == 0.0
 
 
 def test_attach_sidecar_prefers_weights_only_load(tmp_path, monkeypatch):
@@ -331,8 +419,9 @@ def test_attach_sidecar_prefers_weights_only_load(tmp_path, monkeypatch):
     from torch_geometric.data import Data
 
     from experiments.training.v6 import _data
+    from science.dtie.common.dehydron_barcode_features import barcode_sidecar_filename
 
-    sidecar = tmp_path / "4OBE_A_dehydron_barcode_v1.pt"
+    sidecar = tmp_path / barcode_sidecar_filename("4OBE", "A")
     sidecar.write_bytes(b"placeholder")
     load_calls: list[bool | None] = []
 
@@ -341,9 +430,10 @@ def test_attach_sidecar_prefers_weights_only_load(tmp_path, monkeypatch):
         assert map_location == "cpu"
         load_calls.append(weights_only)
         return {
-            "scalars": torch.full((4, 11), 2.0),
+            "scalars": torch.full((4, 3), 2.0),
             "binned": None,
             "missing": torch.zeros((4, 1)),
+            "residue_indices": torch.tensor([1, 2, 3, 4], dtype=torch.int32),
         }
 
     monkeypatch.setattr(_data.torch, "load", fake_load)
@@ -351,12 +441,13 @@ def test_attach_sidecar_prefers_weights_only_load(tmp_path, monkeypatch):
     prot = {
         "pdb_id": "4OBE",
         "chain": "A",
+        "residue_ids": ["A:1:", "A:2:", "A:3:", "A:4:"],
         "data": Data(x=torch.ones(4, 3)),
     }
     _data.attach_dehydron_barcode_features(prot, barcode_dir=tmp_path, use_binned=False)
 
     assert load_calls == [True]
-    assert prot["data"].x.shape == (4, 15)
+    assert prot["data"].x.shape == (4, 7)
 
 
 FOUROBE_PDB = Path(
@@ -377,7 +468,9 @@ def test_featurize_4obe_chain_a_smoke():
     assert out["metadata"]["n_midpoints"] >= 1
     assert out["metadata"]["n_bars"] >= 0
     n = out["scalars"].shape[0]
-    assert out["scalars"].shape == (n, 11)
+    assert out["scalars"].shape == (n, 3)
     assert out["missing"].shape == (n, 1)
+    assert out["edge_pairs"].shape[0] == out["metadata"]["n_midpoints"]
+    assert out["edge_scalars"].shape[0] == out["metadata"]["n_midpoints"]
     assert np.all(np.isfinite(out["scalars"]))
     assert np.all(np.isfinite(out["missing"]))

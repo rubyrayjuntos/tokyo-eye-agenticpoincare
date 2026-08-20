@@ -62,16 +62,24 @@ Known limitation on this healthy run: dehydron partition purity was `DEHYDRON_PA
 
 ---
 
-## Next: corpus expansion + sparsity bet
+## Next: sparsity champion → KRAS G12D hub migration
 
-Staged ladder + MLflow lineage `tokyo-eyes-v66-fix1-expand`:  
-[`corpus-expansion.md`](corpus-expansion.md)
+Mean-residue routing entropy sparsity is **complete**. Phase champion:
 
-Mean-residue routing entropy sparsity (sealed continue only):
+| Item | Value |
+|------|--------|
+| Checkpoint | `checkpoints/v66/runs/fix1_s4_sparsity_confirm_continue_v2/v66_sparsity_champion.pt` |
+| Python | `FIX1_SPARSITY_CHAMPION_CKPT` |
+| Epoch | 48 (last eligible before mean_H floor breach) |
+| Gate | `data/gates/fix1_sparsity_champion.json` |
 
 ```bash
-make train-v66-fix1-sparsity-sealed-continue
-# default RUN_ID=fix1_s4_sparsity_sealed_continue_v1
+make grade-v66-fix1-sparsity-kras-topo-matrix
+# triad: 4OBE / 4DSO / 5VQ2 on FIX1_SPARSITY_CHAMPION_CKPT
 ```
 
-Design: [`../routing-entropy-sparsity/design.md`](../routing-entropy-sparsity/design.md)
+Spec: [`../kras-topo-structural-inference/design.md`](../kras-topo-structural-inference/design.md)  
+Hub migration (done): `make grade-v66-fix1-sparsity-g12d-hub-migration`  
+Section 13 observational: [`../kras-topo-structural-inference/section-13-amendment.md`](../kras-topo-structural-inference/section-13-amendment.md)
+
+Historical expand ladder (MLflow `tokyo-eyes-v66-fix1-expand`): [`corpus-expansion.md`](corpus-expansion.md)

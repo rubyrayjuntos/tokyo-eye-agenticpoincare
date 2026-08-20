@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_mlflow_lineage_root",
+  "recorded_at": "2026-07-21T12:36:31.557733+00:00",
+  "experiment": "tokyo-eyes-v7",
+  "run_id": "5bb2f306c3954efabed2279002a39eed",
+  "tracking_uri": "http://mlflow:5000",
+  "gnn_lineage": "v7",
+  "production_module": "science.tokyo_eye.TokyoEye",
+  "registered_model_name": "TokyoEye-v7",
+  "hyp_mp_primary": true,
+  "space_name": "tokyoeye_v7_hyp128",
+  "checkpoint_root": "checkpoints/v7/runs",
+  "spec": "docs/specs/tokyo-eye-v7/README.md"
+}

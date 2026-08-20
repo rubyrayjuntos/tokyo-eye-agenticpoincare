@@ -1,0 +1,30 @@
+{
+  "n_targets": 3710,
+  "n_mol2": 3691,
+  "n_sdf": 0,
+  "n_missing": 19,
+  "coverage": 0.994878706199461,
+  "dst": "data/pdbbind/ligands",
+  "zip": "/home/rswan/.cache/huggingface/hub/datasets--photonmz--pdbbindpp-2020/snapshots/234afa2262f4136a7f6ad783974509e9f569874f/pbpp-2020.zip",
+  "missing_examples": [
+    "1c5z",
+    "1o5b",
+    "3aru",
+    "3arv",
+    "3ary",
+    "3d6q",
+    "3dxg",
+    "3f3a",
+    "3g2n",
+    "3l7b",
+    "3nw9",
+    "3pxf",
+    "3syr",
+    "4de3",
+    "4dli",
+    "4eky",
+    "4m0z",
+    "4u4s",
+    "4x6p"
+  ]
+}

@@ -115,3 +115,10 @@ def test_write_split_screen_viewer_html(tmp_path: Path) -> None:
     assert "selectedKey" in text
     assert "viewScale" in text
     assert "structural SSOT" in text
+    assert 'value="physics_investigation" selected' in text
+    assert "Match NGL RdYlBu + colorReverse" in text
+    assert "var r = t < 0.5 ? Math.round(t * 2 * 255) : 255" in text
+    assert "evidential · experimental" in text
+    assert "removeRepresentation(surfaceRep)" in text
+    assert "writeAtomBfactor" in text
+    assert "atomStore.bfactor" in text

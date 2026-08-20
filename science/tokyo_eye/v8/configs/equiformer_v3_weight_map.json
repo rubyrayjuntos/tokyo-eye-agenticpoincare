@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "description": "TokyoEye EquiformerV3 weight-map contract — audited against mirror-physics/equiformer_v3 checkpoint/mptrj_gradient.pt (DDP module. prefix).",
+  "checkpoint_path_default": "checkpoints/tokyoeye/pretrained/equiformer_v3_baseline.pt",
+  "checkpoint_source": "https://huggingface.co/mirror-physics/equiformer_v3/resolve/main/checkpoint/mptrj_gradient.pt",
+  "mlflow_experiment": "tokyoeye/equiformer-v3-moe/geometric/full-stack",
+  "scalar_dim": 128,
+  "vector_dim": 3,
+  "hidden_dim": 128,
+  "num_backbone_blocks": 7,
+  "lr_backbone": 1e-5,
+  "lr_hyperbolic": 3e-4,
+  "freeze_backbone": false,
+  "curvature_c": 1.0,
+  "tau_start": 0.7,
+  "tau_end": 0.995,
+  "gumbel_tau_start": 1.0,
+  "gumbel_tau_end": 0.3,
+  "gumbel_schedule": "exponential",
+  "gumbel_exp_half_epochs": 12,
+  "gumbel_exp_alpha": 0.1002,
+  "cv_coeff": 10.0,
+  "moe_quota_floor": 0.05,
+  "moe_quota_coeff": 5.0,
+  "telemetry": {
+    "oversmooth_entropy_floor": 0.20,
+    "boundary_saturation_pct_ceiling": 40.0,
+    "margin_boost_on_oversmooth": 1.5
+  },
+  "key_map": {
+    "comment": "TokyoEye v8 Core Translation Layer: Official MPtrj-Gradient EquiformerV3 DDP Weights. Patterns are fullmatch regex; \\1 captures block index. Placeholder names (graph_attention/linear_q/swiglu_s2) do NOT exist in this checkpoint — production uses ga.* / grid_mlp / scalar_mlp / norm_1|2.",
+    "exact_name_intersection": false,
+    "strip_prefixes": ["module."],
+    "renames": {
+      "^module\\.sphere_embedding\\.weight$": "backbone.atom_embed.weight",
+      "^module\\.edge_degree_embedding\\.source_embedding\\.weight$": "backbone.edge_degree_embed.source.weight",
+      "^module\\.edge_degree_embedding\\.target_embedding\\.weight$": "backbone.edge_degree_embed.target.weight",
+      "^module\\.blocks\\.(\\d+)\\.ga\\.source_embedding\\.weight$": "backbone.blocks.\\1.attn.source.weight",
+      "^module\\.blocks\\.(\\d+)\\.ga\\.target_embedding\\.weight$": "backbone.blocks.\\1.attn.target.weight",
+      "^module\\.blocks\\.(\\d+)\\.ga\\.proj\\.weight$": "backbone.blocks.\\1.attn.proj",
+      "^module\\.blocks\\.(\\d+)\\.ga\\.alpha_norm\\.weight$": "backbone.blocks.\\1.attn.alpha_norm.weight",
+      "^module\\.blocks\\.(\\d+)\\.ga\\.alpha_norm\\.bias$": "backbone.blocks.\\1.attn.alpha_norm.bias",
+      "^module\\.blocks\\.(\\d+)\\.ffn\\.scalar_mlp\\.0\\.linear\\.weight$": "backbone.blocks.\\1.ffn.scalar_in.weight",
+      "^module\\.blocks\\.(\\d+)\\.ffn\\.scalar_mlp\\.0\\.linear\\.bias$": "backbone.blocks.\\1.ffn.scalar_in.bias",
+      "^module\\.blocks\\.(\\d+)\\.ffn\\.grid_mlp\\.gating_linear\\.weight$": "backbone.blocks.\\1.ffn.gate.weight",
+      "^module\\.blocks\\.(\\d+)\\.ffn\\.grid_mlp\\.gating_linear\\.bias$": "backbone.blocks.\\1.ffn.gate.bias",
+      "^module\\.blocks\\.(\\d+)\\.norm_1\\.affine_weight$": "backbone.blocks.\\1.norm_1.affine_weight",
+      "^module\\.blocks\\.(\\d+)\\.norm_1\\.affine_bias$": "backbone.blocks.\\1.norm_1.affine_bias",
+      "^module\\.blocks\\.(\\d+)\\.norm_2\\.affine_weight$": "backbone.blocks.\\1.norm_2.affine_weight",
+      "^module\\.blocks\\.(\\d+)\\.norm_2\\.affine_bias$": "backbone.blocks.\\1.norm_2.affine_bias"
+    }
+  },
+  "notes": [
+    "Place mptrj_gradient.pt (or sibling OMat24 ckpts) at checkpoint_path_default.",
+    "Sprint 7: live SE(3)-lite forward binds bank tensors into (s,v); --freeze-backbone restores stub trunks.",
+    "No radial_fourier in MPtrj state dict — lite path uses a small trainable RBF on edge distance.",
+    "Do not load old package-line checkpoint constants or v66 weights into this lineage.",
+    "Telemetry: if diag_manifold_entropy <= 0.20 and radius collapse, boost mechanism margin; if diag_boundary_saturation_pct > 40 keep grad clip at 1.0 and slow tau open."
+  ]
+}

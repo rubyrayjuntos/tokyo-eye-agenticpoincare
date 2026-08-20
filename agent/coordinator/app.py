@@ -204,7 +204,7 @@ async def health_tools():
 
 @app.get("/")
 async def root():
-    return {"message": "Tokyo Eyes Agent Coordinator", "version": "1.0.0", "model": "GOSPConeMapper-v5"}
+    return {"message": "Tokyo Eyes Agent Coordinator", "version": "1.0.0", "model": "TokyoEye-v7"}
 
 
 # ---------------------------------------------------------------------------

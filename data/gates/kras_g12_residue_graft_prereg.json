@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "gate": "kras_g12_residue_graft_prereg",
+  "recorded_at": "2026-07-21T04:30:00+00:00",
+  "checkpoint_ssot": "experiments.training.v66.healthy_fix1.FIX1_SPARSITY_CHAMPION_CKPT",
+  "spec": "docs/specs/kras-topo-structural-inference/kras-g12-residue-graft-prereg.md",
+  "roster": {
+    "off": {"wt": "4LPK", "mut": "5US4"},
+    "on": {"wt": "6GOD", "mut": "6GOF"}
+  },
+  "graft": {
+    "target_resseq": 12,
+    "scramble_donor_resseq": 80,
+    "copy": ["node_features", "ca_coords"],
+    "rebuild_edges": "ca_contact_10A"
+  },
+  "pass_form": {
+    "metric": "spearman_out_effect_aligned",
+    "per_arm": [
+      "rho(graft, mut) > rho(wt, mut)",
+      "rho(graft, mut) > rho(scramble, mut)"
+    ],
+    "panel": "both_off_and_on"
+  },
+  "forbidden_until_grade": [
+    "Reading graft out_effect ranks to change Pass bars",
+    "Expanding to inhibitor-bound G12D deposits in this stamp"
+  ]
+}

@@ -31,12 +31,14 @@ class SourceLeakRequest(BaseModel):
     structure_id: str
     uncertainty_threshold: float = 0.3
     min_depth: float = 1.5
+    ranking: str = "physics_rim"
+    top_n: int = 50
 
 
 class UncertaintyRequest(BaseModel):
     structure_id: str
     top_n: int = 20
-    uncertainty_type: str = "epistemic"
+    uncertainty_type: str = "cone_depth"
 
 
 class ResidueStateRequest(BaseModel):
@@ -52,7 +54,7 @@ class CompareRequest(BaseModel):
 
 @router.post("/source-leaks")
 async def api_source_leaks(req: SourceLeakRequest, user: dict = Depends(get_current_user)):
-    """Identify source-leak candidates."""
+    """Identify source-leak candidates (physics-rim default)."""
     from data.db import DBAdapter, get_connection
 
     async with get_connection() as conn:
@@ -61,6 +63,8 @@ async def api_source_leaks(req: SourceLeakRequest, user: dict = Depends(get_curr
             structure_id=req.structure_id,
             uncertainty_threshold=req.uncertainty_threshold,
             min_depth=req.min_depth,
+            ranking=req.ranking,
+            top_n=req.top_n,
             db=db,
         )
     return _result_to_dict(result)

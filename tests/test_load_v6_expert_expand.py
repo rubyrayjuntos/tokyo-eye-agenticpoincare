@@ -81,3 +81,38 @@ def test_load_v6_expands_node_embedding_width_for_barcode() -> None:
         barcode.node_emb.weight[:, 3:].detach(),
         torch.zeros_like(barcode.node_emb.weight[:, 3:]),
     )
+
+
+def test_load_v65_expands_node_embedding_width_for_barcode() -> None:
+    from science.dtie.v65.gnn.model import GOSPConeMapperV65, load_v65_state_dict
+
+    small = GOSPConeMapperV65(
+        node_dim=4,
+        hidden=32,
+        num_layers=2,
+        num_experts=4,
+        hyperbolic_gate=True,
+        topology_only_gate=True,
+    )
+    barcode = GOSPConeMapperV65(
+        node_dim=55,
+        hidden=32,
+        num_layers=2,
+        num_experts=4,
+        hyperbolic_gate=True,
+        topology_only_gate=True,
+    )
+    ckpt = small.state_dict()
+
+    missing, unexpected = load_v65_state_dict(barcode, ckpt)
+
+    assert not missing
+    assert not unexpected
+    assert torch.allclose(
+        barcode.node_emb.weight[:, :4].detach(),
+        small.node_emb.weight.detach(),
+    )
+    assert torch.allclose(
+        barcode.node_emb.weight[:, 4:].detach(),
+        torch.zeros_like(barcode.node_emb.weight[:, 4:]),
+    )

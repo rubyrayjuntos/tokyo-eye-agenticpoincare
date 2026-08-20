@@ -90,6 +90,7 @@ from science.training.config import (
     p4_gate_promotion_phase_config,
     p4_gate_uncertainty_touchup_phase_config,
     p4_uncertainty_calibration_phase_config,
+    v7_bprime_uncertainty_heads_phase_config,
     residue_stage1_phase_config,
     residue_stage2_phase_config,
     routing_save_max_for_epoch,
@@ -200,6 +201,7 @@ class StageRunner:
         self._saved_eligible = resume_state is not None and resume_state.score > -math.inf
         self._resume_checkpoint_phase = resume_state.phase if resume_state else None
         self._shell_low_streak = 0
+        self._disc_r_hold_streak = 0
         self._probe_regression_streak = 0
         self._resume_probe_r_proj_baseline: float | None = None
         if config.v66_feeler_lineage and resume_state is not None and self.metrics_log:
@@ -474,6 +476,43 @@ class StageRunner:
             staged_decoupling=bool(self.config.p4_epistemic_staged),
         )
 
+    def _apply_phase_coeff_overrides(
+        self, phases: list[PhaseConfig]
+    ) -> list[PhaseConfig]:
+        """Apply optional disc_* coeff overrides from TrainingConfig (B′ disc push)."""
+        occ = getattr(self.config, "disc_occupancy_coeff_override", None)
+        dsc = getattr(self.config, "disc_depth_scale_coeff_override", None)
+        dst = getattr(self.config, "disc_depth_scale_target_override", None)
+        crf = getattr(self.config, "core_radial_floor_coeff_override", None)
+        crm = getattr(self.config, "core_radial_floor_min_r_override", None)
+        if (
+            occ is None
+            and dsc is None
+            and dst is None
+            and crf is None
+            and crm is None
+        ):
+            return phases
+        out: list[PhaseConfig] = []
+        for phase in phases:
+            upd: dict[str, float] = {}
+            if occ is not None:
+                upd["disc_occupancy_coeff"] = float(occ)
+            if dsc is not None:
+                upd["disc_depth_scale_coeff"] = float(dsc)
+            if dst is not None:
+                upd["disc_depth_scale_target"] = float(dst)
+            if crf is not None:
+                upd["core_radial_floor_coeff"] = float(crf)
+            if crm is not None:
+                upd["core_radial_floor_min_r"] = float(crm)
+            out.append(
+                phase.model_copy(
+                    update={"coeffs": phase.coeffs.model_copy(update=upd)}
+                )
+            )
+        return out
+
     def _phases(self) -> list[PhaseConfig]:
         if self.config.residue_stage2:
             epochs = self.config.epochs_override or self.config.residue_stage2_epochs or 30
@@ -489,6 +528,15 @@ class StageRunner:
                 residue_stage1_phase_config(
                     lr=self.config.residue_stage1_lr,
                     epochs=epochs,
+                )
+            ]
+        if self.config.v7_bprime_uncertainty_heads or self.config.v7_bprime_uncertainty_heads_rematch:
+            epochs = self.config.epochs_override or 24
+            return [
+                v7_bprime_uncertainty_heads_phase_config(
+                    lr=self.config.p4_epistemic_lr,
+                    epochs=epochs,
+                    rematch=bool(self.config.v7_bprime_uncertainty_heads_rematch),
                 )
             ]
         if self.config.p4_uncertainty_calibration:
@@ -1362,7 +1410,7 @@ class StageRunner:
                     phase=0,
                     training_config=self.config.model_dump(mode="json"),
                 )
-        phases = self._phases()
+        phases = self._apply_phase_coeff_overrides(self._phases())
         if float(getattr(self.config, "prototype_repulsion_coeff", 0.0) or 0.0) > 0:
             phases = apply_prototype_nearest_pair_repulsion(
                 phases,
@@ -1834,6 +1882,7 @@ class StageRunner:
                 optimizer = build_optimizer(self.model, lr=phase_cfg.lr)
             phase_monitor = ConvergenceMonitor()
             self._shell_low_streak = 0
+            self._disc_r_hold_streak = 0
             stop_phase = False
 
             for epoch in range(phase_cfg.epochs):
@@ -2086,8 +2135,25 @@ class StageRunner:
                             f"{phase_cfg.min_probe_r_depth_sasa} for 2 consecutive epochs"
                         )
 
+                hold_floor = self.config.min_disc_r_mean_hold
+                if hold_floor is not None:
+                    disc_r = health.get("disc_r_mean")
+                    if disc_r is not None and float(disc_r) < float(hold_floor):
+                        self._disc_r_hold_streak += 1
+                    else:
+                        self._disc_r_hold_streak = 0
+                    if self._disc_r_hold_streak >= 2:
+                        raise RuntimeError(
+                            f"Training aborted: disc_r_mean below {hold_floor} "
+                            f"for 2 consecutive epochs (uncertainty heads disc hold)"
+                        )
+
                 if (
                     self.config.v66_feeler_lineage
+                    and not (
+                        self.config.v7_bprime_uncertainty_heads
+                        or self.config.v7_bprime_uncertainty_heads_rematch
+                    )
                     and self._resume_probe_r_proj_baseline is not None
                     and phase_cfg.phase in (4, 10, 11, 12)
                 ):
@@ -2167,6 +2233,7 @@ class StageRunner:
                         or 0.0
                     )
                     > 0
+                    or bool(getattr(self.config, "sparsity_style_save", False))
                 )
                 mean_h_now = losses.get("routing_entropy_mean_residue")
                 if sparsity_save_mode and mean_h_now is not None:
@@ -2178,6 +2245,18 @@ class StageRunner:
                 if sparsity_save_mode and len(self._sparse_mean_h_history) >= 3:
                     tail = self._sparse_mean_h_history[-3:]
                     mean_h_final3 = sum(tail) / 3.0
+                mean_h_min_save = (
+                    float(self.config.routing_entropy_mean_residue_min_save)
+                    if getattr(self.config, "routing_entropy_mean_residue_min_save", None)
+                    is not None
+                    else MEAN_RESIDUE_H_SAVE_MIN
+                )
+                mean_h_max_save = (
+                    float(self.config.routing_entropy_mean_residue_max_save)
+                    if getattr(self.config, "routing_entropy_mean_residue_max_save", None)
+                    is not None
+                    else MEAN_RESIDUE_H_SAVE_MAX
+                )
                 scored = score_checkpoint(
                     health,
                     losses,
@@ -2220,10 +2299,10 @@ class StageRunner:
                     ),
                     routing_entropy_min_save=phase_cfg.routing_entropy_min_save,
                     routing_entropy_mean_residue_min_save=(
-                        MEAN_RESIDUE_H_SAVE_MIN if sparsity_save_mode else None
+                        mean_h_min_save if sparsity_save_mode else None
                     ),
                     routing_entropy_mean_residue_max_save=(
-                        MEAN_RESIDUE_H_SAVE_MAX if sparsity_save_mode else None
+                        mean_h_max_save if sparsity_save_mode else None
                     ),
                     routing_entropy_mean_residue_final3=mean_h_final3,
                 )

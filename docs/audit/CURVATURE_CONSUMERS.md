@@ -102,7 +102,11 @@ placement**, not encoder-learned layout.
 
 Split viewer disc coloring (`interactive_viewer.py`):
 
-- Metric `expert`: `t = expert_index / 3` on a red→blue continuous scale (E0 red-orange, E3 blue)
+- Continuous metrics (Investigation, ρ, τ, cone_depth, ale/epi, disc r): canvas
+  `_DISC_COLOR_SCALE_JS` matches NGL `RdYlBu` + `colorReverse: true` — **low=blue, high=red**.
+  (Pre-2026-07-16 bug: disc was inverted; see `VIEWER_INVESTIGATION_CORRECTNESS.md`.)
+- Default Investigation = **ρ/τ physics underwrap**, not evidential heads.
+- Metric `expert`: `t = expert_index / 3` on the same red↔blue continuous scale (E0 red-orange, E3 blue)
 - **No discrete legend** on canvas; confirm expert index from tooltip (`E0`–`E3`) or audit JSON
 - Dominant expert (e.g. route 1MBN: E2 = 109/153 ≈ 71%) **covers most of the disc by construction** — spatial spread is collapse rendered, not specialization
 - Minority experts (E1 = 8, E3 = 8 on route 1MBN) can look “localized”; that is the only pattern worth treating as a specialization signal without corroboration

@@ -124,11 +124,16 @@ class TestDTIETools:
         validating_mock_db.register_response("fact_gnn_node_embedding", [
             {
                 "residue_id": "4obe:A:12",
+                "residue_index": 12,
+                "residue_name": "G",
+                "chain_label": "A",
                 "embedding": [0.1] * 32,
                 "cone_depth": 2.1,
+                "input_rho": 8.0,
+                "input_tau_flag": 1.0,
                 "epistemic_uncertainty": 0.45,
-                "residue_index": 12,
-                "chain_label": "A",
+                "aleatoric_uncertainty": 0.12,
+                "model_version": "GOSPConeMapper-v6",
                 "cnt": 165,
             }
         ])
@@ -149,17 +154,49 @@ class TestDTIETools:
     async def test_get_source_leaks(self, mock_db):
         result = await get_source_leaks(
             structure_id="4obe",
+            min_depth=1.5,
+            db=mock_db,
+        )
+        assert result.success is True
+        assert result.data["ranking"] == "physics_rim"
+        assert "physics_rim" in result.data["ranking_note"]
+        assert len(result.viewport_directives) == 1
+        directive = result.viewport_directives[0]
+        assert directive.action == DirectiveAction.HIGHLIGHT
+        # Default path must not rank by epistemic view
+        queries = " ".join(q for q, _ in mock_db.executed_queries)
+        assert "fact_gnn_node_embedding" in queries
+        assert "ORDER BY COALESCE(e.input_tau_flag" in queries or "input_tau_flag" in queries
+
+    @pytest.mark.asyncio
+    async def test_get_source_leaks_evidential_warns(self, mock_db):
+        result = await get_source_leaks(
+            structure_id="4obe",
+            ranking="evidential_experimental",
             uncertainty_threshold=0.3,
             min_depth=1.5,
             db=mock_db,
         )
         assert result.success is True
-        assert len(result.viewport_directives) == 1
-        directive = result.viewport_directives[0]
-        assert directive.action == DirectiveAction.HIGHLIGHT
+        assert result.data["ranking"] == "evidential_experimental"
+        assert any("G5b" in w or "experimental" in w for w in result.warnings)
 
     @pytest.mark.asyncio
     async def test_get_high_uncertainty(self, mock_db):
+        result = await get_high_uncertainty_residues(
+            structure_id="4obe",
+            top_n=10,
+            uncertainty_type="cone_depth",
+            db=mock_db,
+        )
+        assert result.success is True
+        assert result.data["count"] == 1
+        assert result.data["experimental"] is False
+        assert len(result.viewport_directives) == 1
+        assert result.viewport_directives[0].action == DirectiveAction.SHOW_UNCERTAINTY
+
+    @pytest.mark.asyncio
+    async def test_get_high_uncertainty_epistemic_warns(self, mock_db):
         result = await get_high_uncertainty_residues(
             structure_id="4obe",
             top_n=10,
@@ -167,9 +204,8 @@ class TestDTIETools:
             db=mock_db,
         )
         assert result.success is True
-        assert result.data["count"] == 1
-        assert len(result.viewport_directives) == 1
-        assert result.viewport_directives[0].action == DirectiveAction.SHOW_UNCERTAINTY
+        assert result.data["experimental"] is True
+        assert any("experimental" in w.lower() or "G5b" in w for w in result.warnings)
 
     @pytest.mark.asyncio
     async def test_get_residue_state(self, mock_db):

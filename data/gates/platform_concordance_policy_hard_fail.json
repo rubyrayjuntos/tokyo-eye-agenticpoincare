@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "gate": "platform_concordance_policy_hard_fail",
+  "recorded_at": "2026-07-21T03:10:00+00:00",
+  "decision": "hard_fail_retain_retire_as_primary_pass",
+  "checkpoint_ssot": "experiments.training.v66.healthy_fix1.FIX1_SPARSITY_CHAMPION_CKPT",
+  "policy": {
+    "retain_fail": true,
+    "lower_spearman_bar": false,
+    "locked_bar": 0.5,
+    "retire_as_primary_pass": true,
+    "smoke_status": "report_only_after_closeout",
+    "gradient_interpretation_settled": false
+  },
+  "artifacts": {
+    "protocol": "docs/specs/kras-topo-structural-inference/platform-concordance.md",
+    "grade_fail": "checkpoints/v66/diagnostics/routing_sparsity/general_hub_alignment_smoke.json",
+    "narrative": "docs/specs/kras-topo-structural-inference/platform-concordance-policy-closeout.md",
+    "related_open": [
+      "docs/specs/learned-flow-influence/ablation.md",
+      "docs/audit/DISC_PROJECTION_NOT_TRUNK_PROXY.md"
+    ]
+  },
+  "summary": "Smoke FAIL (1/3; median Spearman≈0.42 vs bar 0.50). Hard Fail closed. Bar not lowered. Gradient/Jacobian interpretation remains unanswerable and is out of scope for this gate.",
+  "claim_allowed": [
+    "Honest Fail on locked platform CB concordance smoke",
+    "Reference related open questions (Jacobian/z-norm; disc≠trunk) without claiming answers"
+  ],
+  "claim_forbidden": [
+    "Generic CB hub-alignment Pass across TRAINING_TARGETS",
+    "Lowering Spearman bar to 0.40 to explain modular rho",
+    "Settling gradient-channel interpretation via this smoke"
+  ]
+}

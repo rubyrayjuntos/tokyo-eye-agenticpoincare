@@ -1,0 +1,132 @@
+# Tokyo Eye — MLflow-native governance entry points
+# Spec: docs/superpowers/specs/2026-07-23-tokyoeye-mlflow-governance-design.md
+#
+# Ops: run from tokyoeye_science with tracking_uri http://mlflow:5000
+# (python -m science.tokyo_eye.governance.entrypoints … or mlflow run).
+# http://localhost:5000 is the browser UI only — not the client write path.
+# Do not use Makefile targets for MLflow governance.
+
+name: tokyoeye
+
+entry_points:
+  ensure_experiment:
+    parameters:
+      domain: {type: string}
+      subsystem: {type: string}
+      tracking_uri: {type: string, default: "http://mlflow:5000"}
+    command: >
+      python -m science.tokyo_eye.governance.entrypoints
+      --tracking-uri {tracking_uri}
+      ensure-experiment --domain {domain} --subsystem {subsystem}
+
+  train:
+    parameters:
+      domain: {type: string}
+      subsystem: {type: string}
+      capability_goal: {type: string}
+      tracking_uri: {type: string, default: "http://mlflow:5000"}
+      exec: {type: string, default: "none"}
+    command: >
+      python -m science.tokyo_eye.governance.entrypoints
+      --tracking-uri {tracking_uri}
+      train --domain {domain} --subsystem {subsystem}
+      --capability-goal {capability_goal} --exec {exec}
+
+  seed_thresholds:
+    parameters:
+      domain: {type: string}
+      subsystem: {type: string}
+      pack_json: {type: string, default: "{\"smoke_metric\": 0.5}"}
+      tracking_uri: {type: string, default: "http://mlflow:5000"}
+    command: >
+      python -m science.tokyo_eye.governance.entrypoints
+      --tracking-uri {tracking_uri}
+      seed-thresholds --domain {domain} --subsystem {subsystem}
+      --pack-json {pack_json}
+
+  evaluate:
+    parameters:
+      run_id: {type: string}
+      domain: {type: string, default: "geometric"}
+      subsystem: {type: string, default: "full-stack"}
+      thresholds_run_id: {type: string, default: "none"}
+      thresholds: {type: string, default: "none"}
+      tracking_uri: {type: string, default: "http://mlflow:5000"}
+    command: >
+      python -m science.tokyo_eye.governance.entrypoints
+      --tracking-uri {tracking_uri}
+      evaluate --run-id {run_id}
+      --domain {domain} --subsystem {subsystem}
+      --thresholds-run-id {thresholds_run_id}
+      --thresholds {thresholds}
+
+  import_weights:
+    parameters:
+      checkpoint: {type: string}
+      domain: {type: string}
+      subsystem: {type: string}
+      capability_goal: {type: string}
+      alias: {type: string, default: "none"}
+      tracking_uri: {type: string, default: "http://mlflow:5000"}
+    command: >
+      python -m science.tokyo_eye.governance.entrypoints
+      --tracking-uri {tracking_uri}
+      import-weights --checkpoint {checkpoint}
+      --domain {domain} --subsystem {subsystem}
+      --capability-goal {capability_goal} --alias {alias}
+
+  resolve:
+    parameters:
+      alias: {type: string, default: "champion"}
+      tracking_uri: {type: string, default: "http://mlflow:5000"}
+    command: >
+      python -m science.tokyo_eye.governance.entrypoints
+      --tracking-uri {tracking_uri}
+      resolve --alias {alias}
+
+  register:
+    parameters:
+      run_id: {type: string, default: "none"}
+      model_uri: {type: string}
+      domain: {type: string, default: "none"}
+      subsystem: {type: string, default: "none"}
+      capability_goal: {type: string, default: "none"}
+      tracking_uri: {type: string, default: "http://mlflow:5000"}
+    command: >
+      python -m science.tokyo_eye.governance.entrypoints
+      --tracking-uri {tracking_uri}
+      register --run-id {run_id} --model-uri {model_uri}
+      --domain {domain} --subsystem {subsystem}
+      --capability-goal {capability_goal}
+
+  set_alias:
+    parameters:
+      version: {type: string}
+      alias: {type: string}
+      tracking_uri: {type: string, default: "http://mlflow:5000"}
+    command: >
+      python -m science.tokyo_eye.governance.entrypoints
+      --tracking-uri {tracking_uri}
+      set-alias --version {version} --alias {alias}
+
+  promote:
+    parameters:
+      run_id: {type: string}
+      domain: {type: string}
+      subsystem: {type: string}
+      capability_goal: {type: string}
+      alias: {type: string}
+      thresholds_run_id: {type: string, default: "none"}
+      thresholds: {type: string, default: "none"}
+      model_uri: {type: string, default: "none"}
+      checkpoint: {type: string, default: "none"}
+      tracking_uri: {type: string, default: "http://mlflow:5000"}
+    command: >
+      python -m science.tokyo_eye.governance.entrypoints
+      --tracking-uri {tracking_uri}
+      promote --run-id {run_id}
+      --domain {domain} --subsystem {subsystem}
+      --capability-goal {capability_goal} --alias {alias}
+      --thresholds-run-id {thresholds_run_id}
+      --thresholds {thresholds}
+      --model-uri {model_uri} --checkpoint {checkpoint}

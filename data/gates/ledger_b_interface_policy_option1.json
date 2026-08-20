@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "gate": "ledger_b_interface_policy_option1",
+  "recorded_at": "2026-07-21T03:00:00+00:00",
+  "decision": "option_1_retain_fail_retire_I_as_primary_pass",
+  "checkpoint_ssot": "experiments.training.v66.healthy_fix1.FIX1_SPARSITY_CHAMPION_CKPT",
+  "policy": {
+    "retain_fail": true,
+    "retire_locked_I_as_primary_pass": true,
+    "expand_I_post_hoc": false,
+    "promote_phase4b_hubs_to_pass": false,
+    "re_prereg_discovery_requires_fresh_stamp": true
+  },
+  "artifacts": {
+    "prereg": "data/gates/ledger_b_interface_prereg_src_shp2.json",
+    "grade_fail": "checkpoints/v66/diagnostics/routing_sparsity/ledger_b_interface_alignment.json",
+    "phase4b_explanation": "checkpoints/v66/diagnostics/routing_sparsity/ledger_b_phase4b_hub_map.json",
+    "narrative": "docs/specs/kras-topo-structural-inference/ledger-b-interface-policy-closeout.md",
+    "phase4b_narrative": "docs/specs/kras-topo-structural-inference/ledger-b-phase4b-hub-literature-map.md"
+  },
+  "summary": "Pre-reg latch/tunnel (SHP2) and ATP-spine (SRC) recall@0.25 FAIL (~0.07). FAIL retained. I retired as primary Pass claim. Phase 4b hub map appended as discovery explanation only.",
+  "claim_allowed": [
+    "Honest Fail on locked Ledger B interface recall",
+    "Interpretative citation of Phase 4b discovery skew (PTP/N-SH2; C-lobe/αC)"
+  ],
+  "claim_forbidden": [
+    "Ledger B interface latch/tunnel concordance Pass",
+    "Silent adoption of Phase 4b hubs as the original I"
+  ]
+}

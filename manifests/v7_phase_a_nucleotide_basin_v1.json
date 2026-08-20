@@ -1,0 +1,47 @@
+{
+  "version": "1.0",
+  "description": "v7 Phase A nucleotide OFF/ON basin continue — four-quadrant KRAS roster (allele ignored by loss).",
+  "spec": "docs/specs/tokyo-eye-v7/phase-a-nucleotide-basin-train-prereg.md",
+  "proteins": [
+    {
+      "pdb_id": "4LPK",
+      "chain": "A",
+      "gene": "KRAS",
+      "role": "train",
+      "enabled": true,
+      "nucleotide_basin": "OFF",
+      "nucleotide": "GDP",
+      "allele": "WT"
+    },
+    {
+      "pdb_id": "5US4",
+      "chain": "A",
+      "gene": "KRAS",
+      "role": "train",
+      "enabled": true,
+      "nucleotide_basin": "OFF",
+      "nucleotide": "GDP",
+      "allele": "G12D"
+    },
+    {
+      "pdb_id": "6GOD",
+      "chain": "A",
+      "gene": "KRAS",
+      "role": "train",
+      "enabled": true,
+      "nucleotide_basin": "ON",
+      "nucleotide": "GppNHp",
+      "allele": "WT"
+    },
+    {
+      "pdb_id": "6GOF",
+      "chain": "A",
+      "gene": "KRAS",
+      "role": "train",
+      "enabled": true,
+      "nucleotide_basin": "ON",
+      "nucleotide": "GppNHp",
+      "allele": "G12D"
+    }
+  ]
+}

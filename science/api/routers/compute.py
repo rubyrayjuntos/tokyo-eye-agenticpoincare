@@ -17,10 +17,12 @@ from pydantic import BaseModel, Field
 from data.db import DBAdapter, get_connection
 from science.contracts.model_registry import (
     build_models_api_payload,
-    compute_checkpoint_sha256,
     get_production_api_alias,
-    get_production_checkpoint_path,
-    resolve_checkpoint_file,
+)
+from science.compute.motifs.discovery import (
+    classify_angular_sector as _classify_angular_sector,
+    compute_poincare_distance_matrix as _compute_poincare_distance_matrix,
+    persist_motifs as _persist_motifs,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,7 +39,7 @@ class GNNRequest(BaseModel):
     structure_id: str
     model_version: str = Field(default_factory=get_production_api_alias)
     device: str = "cpu"
-    checkpoint_path: str = Field(default_factory=get_production_checkpoint_path)
+    checkpoint_path: str | None = None
 
 
 class GNNResponse(BaseModel):
@@ -63,7 +65,7 @@ class PipelineRequest(BaseModel):
     run_phase6: bool | None = None
     run_gnn: bool | None = None
     device: str = "cpu"
-    checkpoint_path: str = Field(default_factory=get_production_checkpoint_path)
+    checkpoint_path: str | None = None
 
 
 class ComputeJobRequest(BaseModel):
@@ -73,7 +75,7 @@ class ComputeJobRequest(BaseModel):
     parent_run_id: str | None = None
     pipeline_job_id: str | None = None
     device: str = "cpu"
-    checkpoint_path: str = Field(default_factory=get_production_checkpoint_path)
+    checkpoint_path: str | None = None
     job_params: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -171,20 +173,6 @@ def _compute_job_response(result: Any, *, duration_ms: float) -> ComputeJobRespo
     )
 
 
-def _compute_checkpoint_hash(checkpoint_path: str) -> str:
-    """Compute a SHA-256 hash of the checkpoint file for provenance tagging."""
-    digest = compute_checkpoint_sha256(checkpoint_path)
-    if digest is None:
-        resolved = resolve_checkpoint_file(checkpoint_path)
-        detail = (
-            f"Checkpoint not found: {checkpoint_path}"
-            if resolved is None
-            else f"Checkpoint unreadable: {checkpoint_path}"
-        )
-        raise FileNotFoundError(detail)
-    return digest
-
-
 # ---------------------------------------------------------------------------
 # GNN Inference Endpoint
 # ---------------------------------------------------------------------------
@@ -194,10 +182,6 @@ def _compute_checkpoint_hash(checkpoint_path: str) -> str:
 async def run_gnn_inference(request: GNNRequest) -> GNNResponse:
     """Run GNN inference — alias for ``POST /compute/jobs/gnn_inference``."""
     start = time.monotonic()
-    try:
-        checkpoint_hash = _compute_checkpoint_hash(request.checkpoint_path)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
 
     async with get_connection() as conn:
         db = DBAdapter(conn)
@@ -222,7 +206,11 @@ async def run_gnn_inference(request: GNNRequest) -> GNNResponse:
         run_id=result.run_id,
         structure_id=request.structure_id,
         node_count=result.outputs.get("node_count", 0),
-        checkpoint_version_hash=checkpoint_hash,
+        checkpoint_version_hash=(
+            result.outputs.get("checkpoint_sha256")
+            or result.outputs.get("checkpoint_sha256_16")
+            or ""
+        ),
         duration_ms=round(duration_ms, 1),
     )
 

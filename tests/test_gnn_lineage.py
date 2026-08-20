@@ -52,12 +52,12 @@ def test_lineage_registry_has_v7_archaeology() -> None:
 def test_lineage_registry_has_v8() -> None:
     v8 = get_lineage("v8")
     assert v8.frozen_baseline is False
-    assert v8.checkpoint_prefix == "v8"
+    assert v8.checkpoint_prefix == "tokyoeye"
     assert v8.package == "science.tokyo_eye.v8.model"
     assert v8.model_class_name == "TokyoEyesHyperbolicV8"
-    assert v8.model_version == "TokyoEye-v8"
-    assert v8.mlflow_experiment == "tokyo-eyes-v8"
-    assert v8.checkpoint_root == Path("checkpoints/v8/runs")
+    assert v8.model_version == "TokyoEye"
+    assert v8.mlflow_experiment == "tokyoeye/equiformer-v3-moe/geometric/full-stack"
+    assert v8.checkpoint_root == Path("checkpoints/tokyoeye/runs")
 
 
 def test_checkpoint_filename_prefix() -> None:
@@ -93,9 +93,9 @@ def test_apply_lineage_defaults_v7() -> None:
 def test_apply_lineage_defaults_v8() -> None:
     config = TrainingConfig(gnn_lineage="v8")
     updated = apply_lineage_defaults(config)
-    assert updated.model_version == "TokyoEye-v8"
-    assert updated.mlflow_experiment == "tokyo-eyes-v8"
-    assert updated.output_dir == Path("checkpoints/v8/runs")
+    assert updated.model_version == "TokyoEye"
+    assert updated.mlflow_experiment == "tokyoeye/equiformer-v3-moe/geometric/full-stack"
+    assert updated.output_dir == Path("checkpoints/tokyoeye/runs")
 
 
 def test_default_output_dir() -> None:

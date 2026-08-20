@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "gate": "kras_g12_neighborhood_graft_closeout",
+  "recorded_at": "2026-07-21T05:20:00+00:00",
+  "decision": "off_arm_pass_conduit_delta_exceeds_single_site",
+  "checkpoint_ssot": "experiments.training.v66.healthy_fix1.FIX1_SPARSITY_CHAMPION_CKPT",
+  "workstream": "gnn_perturbation_boundary",
+  "arm": {"wt": "4LPK", "mut": "5US4", "chain": "A"},
+  "n12_size": 17,
+  "n12_resseqs": [9, 10, 11, 12, 13, 14, 15, 16, 17, 32, 34, 35, 58, 59, 81, 82, 89],
+  "headline": {
+    "rho_wt_mut": 0.792,
+    "rho_single_mut": 0.793,
+    "rho_neighborhood_mut": 0.799,
+    "rho_scramble_mut": 0.753,
+    "delta_rho_single": 0.0015,
+    "delta_rho_neighborhood": 0.0075
+  },
+  "artifacts": {
+    "prereg": "data/gates/kras_g12_neighborhood_graft_prereg.json",
+    "grade": "checkpoints/v66/diagnostics/routing_sparsity/kras_g12_neighborhood_graft.json",
+    "narrative": "docs/specs/kras-topo-structural-inference/kras-g12-neighborhood-graft-closeout.md"
+  },
+  "claim_allowed": [
+    "Neighborhood/conduit graft increases Δρ toward mut vs single-site on OFF arm",
+    "Matched neighborhood beats same-cardinality distal scramble"
+  ],
+  "claim_forbidden": [
+    "Full WT→mut state rewrite",
+    "AA identity recognition",
+    "CB concordance or Ledger B interface Pass"
+  ]
+}

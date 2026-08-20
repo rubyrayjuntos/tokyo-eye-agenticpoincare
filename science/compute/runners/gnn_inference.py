@@ -11,10 +11,11 @@ from science.compute.provenance import pathway_pipeline_name
 from science.compute.runners.base import JobRunContext, JobRunResult
 from science.compute.runners.common import finalize_job_provenance, insert_job_provenance
 from science.contracts.model_registry import (
-    get_production_checkpoint_path,
     get_production_model_version,
+    resolve_production_checkpoint,
     resolve_model_version_for_checkpoint,
 )
+from science.tokyo_eye.governance.resolve import ResolveError
 from science.dtie.common.provenance_runtime import resolve_code_version
 from science.dtie.v5.orchestrator.pipeline import PipelineConfig
 
@@ -28,10 +29,21 @@ async def run_gnn_inference_job(db: Any, ctx: JobRunContext) -> JobRunResult:
     job_run_id = f"job_{JOB_ID}_{uuid.uuid4().hex[:12]}"
     gnn_run_id = f"run_{uuid.uuid4().hex[:12]}"
     code_version = resolve_code_version(ctx.code_version)
-    checkpoint = ctx.checkpoint_path or get_production_checkpoint_path()
-    model_version = (
-        resolve_model_version_for_checkpoint(checkpoint) or get_production_model_version()
-    )
+    try:
+        checkpoint, model_version, restore_metadata = _resolve_checkpoint_for_job(ctx)
+    except (ResolveError, ValueError) as exc:
+        return JobRunResult(
+            job_id=JOB_ID,
+            run_id=job_run_id,
+            structure_id=structure_id,
+            success=False,
+            artifacts_produced=[],
+            outputs={
+                "error": str(exc),
+                "restore_source": "mlflow_alias",
+            },
+            warnings=[],
+        )
 
     await insert_job_provenance(
         db,
@@ -59,6 +71,7 @@ async def run_gnn_inference_job(db: Any, ctx: JobRunContext) -> JobRunResult:
         run_id=gnn_run_id,
         pipeline_name=pathway_pipeline_name(ctx.pathway),
         device=ctx.device,
+        job_params=ctx.job_params,
     )
     warnings = list(phase_result.warnings or [])
 
@@ -90,6 +103,46 @@ async def run_gnn_inference_job(db: Any, ctx: JobRunContext) -> JobRunResult:
             **phase_result.outputs,
             "job_run_id": job_run_id,
             "embedding_run_id": phase_result.outputs.get("gnn_run_id"),
+            "restore_metadata": restore_metadata,
+            "checkpoint_sha256": restore_metadata.get("sha256"),
+            "checkpoint_sha256_16": restore_metadata.get("sha256_16"),
         },
         warnings=warnings,
+    )
+
+
+def _resolve_checkpoint_for_job(ctx: JobRunContext) -> tuple[str, str, dict[str, Any]]:
+    requested = (ctx.checkpoint_path or "").strip()
+    params = ctx.job_params or {}
+    allow_legacy = bool(params.get("allow_legacy_checkpoint")) or (
+        str(params.get("restore_source") or "").strip().lower() == "legacy_checkpoint"
+    )
+
+    if requested:
+        if requested.startswith("models:/TokyoEye@"):
+            alias = requested.rsplit("@", 1)[-1]
+            resolved = resolve_production_checkpoint(alias=alias)
+            return resolved["cache_path"], resolved["model_version"], resolved
+        if not allow_legacy:
+            raise ValueError(
+                "Direct checkpoint_path is legacy/compare-only for TokyoEye. "
+                "Omit checkpoint_path to resolve models:/TokyoEye@champion, or pass "
+                "job_params.allow_legacy_checkpoint=true for archaeology."
+            )
+        return (
+            requested,
+            resolve_model_version_for_checkpoint(requested) or "legacy-checkpoint",
+            {
+                "restore_source": "legacy_checkpoint",
+                "path": requested,
+                "model_version": resolve_model_version_for_checkpoint(requested)
+                or "legacy-checkpoint",
+            },
+        )
+
+    resolved = resolve_production_checkpoint()
+    return (
+        resolved["cache_path"],
+        resolved["model_version"] or get_production_model_version(),
+        resolved,
     )

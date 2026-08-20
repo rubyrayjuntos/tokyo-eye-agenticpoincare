@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_phase_a_basin_train_closeout",
+  "recorded_at": "2026-07-21T23:11:22.491085+00:00",
+  "prereg": "data/gates/tokyo_eye_v7_phase_a_basin_train_prereg.json",
+  "checkpoint": "/app/checkpoints/v7/runs/tokyo_eye_v7_phase_a_nucleotide_basin_v1/v7_phase_a_best.pt",
+  "grade_artifact": "/app/checkpoints/v7/diagnostics/phase_a_basin/phase_a_basin_grade.json",
+  "verdict": {
+    "pass": false,
+    "outcome": "Fail",
+    "basin_sep_gap": 0.04738089442253113,
+    "basin_sep_gap_min": 0.1,
+    "mean_cross_off_on": 0.12391874566674232,
+    "mean_same_basin": 0.0765378512442112,
+    "disc_r_mean": 0.2611805722117424,
+    "disc_r_mean_min": 0.25,
+    "hyp_mp_primary_all": true,
+    "migration_spotcheck": "report_only"
+  },
+  "spec": "docs/specs/tokyo-eye-v7/phase-a-nucleotide-basin-train-prereg.md"
+}

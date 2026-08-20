@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_bprime_uncertainty_heads_closeout",
+  "recorded_at": "2026-07-21T16:50:24.733353+00:00",
+  "status": "FAIL",
+  "prereg": "data/gates/tokyo_eye_v7_bprime_uncertainty_heads_prereg.json",
+  "run_id": "tokyo_eye_v7_bprime_uncertainty_heads_v1",
+  "metrics": "checkpoints/v7/runs/tokyo_eye_v7_bprime_uncertainty_heads_v1/metrics.json",
+  "final_global_epoch": 65,
+  "phase_name": "v7 B\u2032 uncertainty heads (sealed health; trunk frozen)",
+  "n_scored_epochs": 24,
+  "bars": {
+    "aleatoric_std_mean": {
+      "threshold": 0.02,
+      "observed": 0.004489934132442833,
+      "pass": false
+    },
+    "epistemic_std_mean": {
+      "threshold": 0.01,
+      "observed": 0.004012516573708129,
+      "pass": false
+    },
+    "evidence_nu_cv_mean": {
+      "threshold": 0.02,
+      "observed": 0.0023964382833501835,
+      "pass": false
+    },
+    "probe_r_epi_ale_abs": {
+      "threshold": 0.7,
+      "observed": 0.003808524530179471,
+      "pass": true
+    },
+    "tau_ale": {
+      "elevated": 0.0,
+      "relative_lift": 0.33711633459855916,
+      "pass": true
+    },
+    "disc_r_mean_hold": {
+      "threshold": 0.25,
+      "observed_final": 0.26897745455304783,
+      "observed_min": 0.26897744958599407,
+      "pass": true
+    },
+    "no_nan_loss": {
+      "pass": true
+    }
+  },
+  "rematch_authorized": true,
+  "artifacts": {
+    "phase_ckpt": "checkpoints/v7/runs/tokyo_eye_v7_bprime_uncertainty_heads_v1/v7_phase4_12prot.pt",
+    "v7_best": "checkpoints/v7/runs/tokyo_eye_v7_bprime_uncertainty_heads_v1/v7_best.pt",
+    "metrics": "checkpoints/v7/runs/tokyo_eye_v7_bprime_uncertainty_heads_v1/metrics.json"
+  },
+  "note": "Fail rematch-0: ale/epi flat, disc held \u2014 pre-authorized rematch-1 (raise anticollapse/decorrelation; trunk stays frozen)."
+}

@@ -11,9 +11,8 @@ from typing import Any
 import torch
 
 from experiments.training.v6._data import _download_pdb
-from experiments.training.v6.assess_checkpoint import load_v6_model
 from experiments.training.v6.corpus import load_training_proteins
-from experiments.training.v6.train_loop import attach_v6_features, prepare_training_batch
+from experiments.training.v6.train_loop import prepare_training_batch
 from science.dtie.v5.gnn.model import precompute_clustering
 from science.dtie.v6.visualization.interactive_viewer import (
     build_residue_channel_lookup,
@@ -25,6 +24,7 @@ from science.dtie.v6.visualization.shell_signal_gate import (
     evaluate_shell_signal_ssot,
     write_shell_gate_report,
 )
+from science.training.gnn_lineage import load_model_from_checkpoint
 from shared.gnn_viewer_paths import interactive_viewer_enabled, viewer_output_dir
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
@@ -53,7 +53,7 @@ def export_corpus_viewers(
     if model is None:
         if checkpoint is None:
             raise ValueError("Provide checkpoint or model")
-        model = load_v6_model(checkpoint, device)
+        model = load_model_from_checkpoint(checkpoint, device)
     if proteins is None:
         if corpus is None or pdb_dir is None:
             raise ValueError("Provide proteins or corpus+pdb_dir")
@@ -86,12 +86,17 @@ def export_corpus_viewers(
             chain = str(prot.get("chain", "A"))
             sid = pdb_id.lower()
 
-            if structural_disc_frozen:
-                data = prepare_training_batch(
-                    model, prot, device, structural_disc_frozen=True
-                )
-            else:
-                data = attach_v6_features(prot["data"].clone().to(device))
+            # Always use prepare_training_batch so role-edges / rim fanout /
+            # geometric angular prior match the training forward (not bare features).
+            data = prepare_training_batch(
+                model,
+                prot,
+                device,
+                structural_disc_frozen=structural_disc_frozen,
+            )
+            in_f = int(getattr(model.node_emb, "in_features", data.x.size(-1)))
+            if data.x.size(-1) > in_f:
+                data.x = data.x[:, :in_f].contiguous()
             data = data.to(device)
             data = precompute_clustering(data)
             output = model(data)

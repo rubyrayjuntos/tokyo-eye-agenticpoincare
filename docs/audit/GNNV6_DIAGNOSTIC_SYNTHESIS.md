@@ -3,7 +3,14 @@
 This document keeps **disc geometry**, **MoE routing**, and **evidential uncertainty**
 separate so partial passes are not read as platform health.
 
-## Thread status (2026-07-07)
+> **Standing SSOT (2026-07-16):** Routing track closed under **decision (a)** —
+> sensitivity + commitment banked; purity/Gram named limitation (not open);
+> uncertainty parked (product symptoms patched). See
+> `docs/audit/GNNV7_SUCCESS_CRITERIA.md` § WHERE WE ARE. The 2026-07-07 table
+> below is the historical three-thread snapshot that started this separation —
+> do not treat its “MoE routing unresolved” row as current status.
+
+## Thread status (2026-07-07) — historical snapshot
 
 | Thread | Instrument | Current read | Fixes routing? |
 | ------ | ---------- | ------------ | -------------- |
@@ -11,7 +18,7 @@ separate so partial passes are not read as platform health.
 | **MoE routing** | H, min_routing_fraction, expert collapse | **Unresolved** — H≈1.28–1.33, dominant expert | Needs training with hyperbolic MP graph |
 | **Uncertainty (DER)** | P7–P11, edge telemetry, MLflow `track/*` | Epistemic spread alive; **aleatoric not informative**; r(epi,ale)≈0.977 | No |
 
-**Net:** GNNv6 is **not healthier** because epistemic passes P7. You have better
+**Net (as of 2026-07-07):** GNNv6 is **not healthier** because epistemic passes P7. You have better
 instruments to tell when it becomes healthy.
 
 ## What each thread authorizes

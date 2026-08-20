@@ -5,9 +5,25 @@
 **Purpose:** Prevent spec drift by making the enacted platform contracts explicit and actionable
 
 > **Living document:** Updated whenever new platform contracts or enforcement mechanisms are introduced.  
-> **Last significant update:** June 26, 2026 — Master Onboard Contract v1.2, geometric enforcement, pipeline audit persistence (migrations 049–050), learned-curvature passthrough.
+> **Last significant update:** July 24, 2026 — TokyoEye MLflow SSOT cutover; Master Onboard Contract geometry + pipeline audit remain in force.
 
 **If your change is not reflected in the onboard contract (or a linked spec you update in the same PR), it will drift and fail validation eventually.** Treat the contract as a living spec: re-read the relevant sections whenever you touch artifacts, jobs, readiness, geometry, or API shapes — not only on day one.
+
+---
+
+## Production GNN (read this)
+
+| Item | Value |
+|------|--------|
+| Registered model | `TokyoEye` |
+| Production restore | `models:/TokyoEye@champion` |
+| Staging restore | `models:/TokyoEye@experimental` |
+| Experiment hierarchy | `tokyoeye/equiformer-v3-moe/{domain}/{subsystem}` |
+| Implementation package | `science.tokyo_eye/` |
+| Local checkpoints | Cache/evidence only; never production SSOT |
+| Spec | [`docs/superpowers/specs/2026-07-23-tokyoeye-mlflow-governance-design.md`](superpowers/specs/2026-07-23-tokyoeye-mlflow-governance-design.md) |
+
+Legacy `GOSPConeMapper-v*` / `science/dtie/v6` is compare-only. Do not version new GNN work under `science/dtie/`.
 
 ---
 

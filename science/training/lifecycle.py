@@ -184,7 +184,12 @@ def register_and_alias(
         from science.training.promote import promote_checkpoint
 
         spec = get_lineage(lineage_id)
-        model_id = "gospc_v65" if lineage_id == "v6.5" else "gospc_v6"
+        if lineage_id == "v7":
+            model_id = "tokyo_eye_v7"
+        elif lineage_id == "v6.5":
+            model_id = "gospc_v65"
+        else:
+            model_id = "gospc_v6"
         ckpt_id = f"{spec.checkpoint_prefix}_champion"
         status = "production"
         promo = promote_checkpoint(
@@ -196,7 +201,7 @@ def register_and_alias(
                 run_id=run_id,
             )
         )
-        # Ensure model entry exists for v6.5
+        # Ensure model entry exists for new lineages
         _ensure_contract_model(lineage_id=lineage_id, model_id=model_id)
         # Re-promote so production_model_id points correctly after model ensure
         promo = promote_checkpoint(
@@ -216,7 +221,12 @@ def register_and_alias(
             pass
     elif sync_contract and alias == ALIAS_CHALLENGER:
         spec = get_lineage(lineage_id)
-        model_id = "gospc_v65" if lineage_id == "v6.5" else "gospc_v6"
+        if lineage_id == "v7":
+            model_id = "tokyo_eye_v7"
+        elif lineage_id == "v6.5":
+            model_id = "gospc_v65"
+        else:
+            model_id = "gospc_v6"
         ckpt_id = f"{spec.checkpoint_prefix}_challenger"
         promo = promote_checkpoint(
             PromotionConfig(
@@ -245,7 +255,16 @@ def _ensure_contract_model(*, lineage_id: str, model_id: str) -> None:
     if model_id in models:
         return
     spec = get_lineage(lineage_id)
-    if lineage_id == "v6.5":
+    if lineage_id == "v7":
+        models[model_id] = {
+            "model_version": spec.model_version,
+            "api_alias": "v7",
+            "status": "candidate",
+            "runner_module": "science.tokyo_eye.runner",
+            "runner_class": "TokyoEyeRunner",
+            "production_checkpoint_id": f"{spec.checkpoint_prefix}_champion",
+        }
+    elif lineage_id == "v6.5":
         models[model_id] = {
             "model_version": spec.model_version,
             "api_alias": "v65",
@@ -258,7 +277,7 @@ def _ensure_contract_model(*, lineage_id: str, model_id: str) -> None:
         models[model_id] = {
             "model_version": spec.model_version,
             "api_alias": "v6",
-            "status": "production",
+            "status": "legacy",
             "runner_module": "science.dtie.v6.gnn.runner",
             "runner_class": "V6GNNRunner",
             "production_checkpoint_id": f"{spec.checkpoint_prefix}_champion",

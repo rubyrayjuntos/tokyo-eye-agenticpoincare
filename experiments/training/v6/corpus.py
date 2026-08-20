@@ -9,6 +9,7 @@ from typing import Any
 
 import torch
 
+from science.dtie.common import residue_features as rf
 from science.training.corpus_governance import (
     STAGE_A_MAX_RESIDUES,
     is_locked_stage_a_manifest_path,
@@ -59,6 +60,7 @@ def iter_corpus_entries(
 def _dehydron_sidecar_digest(dehydron_barcode_dir: Path | None) -> str:
     """Digest sidecar file state for corpus cache invalidation."""
     import hashlib
+    from science.dtie.common.dehydron_barcode_features import BARCODE_SIDECAR_GLOB
 
     if dehydron_barcode_dir is None:
         return "none"
@@ -67,7 +69,7 @@ def _dehydron_sidecar_digest(dehydron_barcode_dir: Path | None) -> str:
     if not barcode_dir.is_dir():
         return "none"
 
-    sidecars = sorted(barcode_dir.glob("*_dehydron_barcode_v1.pt"))
+    sidecars = sorted(barcode_dir.glob(BARCODE_SIDECAR_GLOB))
     if not sidecars:
         return "none"
 
@@ -87,6 +89,7 @@ def _barcode_cache_suffix(
 ) -> str:
     """Cache-key tag when barcode sidecars widen ``data.x`` (Task 5 / Task 6)."""
     import os
+    from science.dtie.common.dehydron_barcode_features import BARCODE_FEATURE_VERSION
 
     if use_dehydron_barcode is None:
         use_dehydron_barcode = os.environ.get("USE_DEHYDRON_BARCODE", "").lower() in (
@@ -102,11 +105,38 @@ def _barcode_cache_suffix(
         )
     if not use_dehydron_barcode:
         return ""
-    suffix = "|dbh_v1_binned" if use_binned_dehydron else "|dbh_v1"
+    suffix = f"|dbh_{BARCODE_FEATURE_VERSION}"
+    if use_binned_dehydron:
+        suffix = f"{suffix}_binned"
     if dehydron_barcode_dir is not None:
         suffix = f"{suffix}:{Path(dehydron_barcode_dir).resolve()}"
     suffix = f"{suffix}|dbh_sidecars_{_dehydron_sidecar_digest(dehydron_barcode_dir)}"
     return suffix
+
+
+def stamp_prot_pdb_paths(
+    proteins: list[dict[str, Any]],
+    pdb_dir: Path,
+) -> None:
+    """Attach deposited PDB paths for Path B HELIX/SHEET parse (in-place).
+
+    Corpus ``.pt`` caches often omit ``pdb_path`` (pre–Path B). Docker maps
+    host ``./pdb_cache`` → ``/tmp/dtie_pdb_cache`` via ``--pdb-dir``.
+    """
+    root = Path(pdb_dir)
+    for prot in proteins:
+        pdb_id = str(prot.get("pdb_id") or "").strip()
+        if not pdb_id:
+            continue
+        prot["pdb_dir"] = str(root)
+        existing = prot.get("pdb_path")
+        if existing is not None and Path(str(existing)).is_file():
+            continue
+        for name in (f"{pdb_id.upper()}.pdb", f"{pdb_id.lower()}.pdb"):
+            cand = root / name
+            if cand.is_file():
+                prot["pdb_path"] = str(cand)
+                break
 
 
 def load_training_proteins(
@@ -119,6 +149,7 @@ def load_training_proteins(
     use_dehydron_barcode: bool | None = None,
     use_binned_dehydron: bool | None = None,
     dehydron_barcode_dir: Path | None = None,
+    dehydron_edge_barcode: bool | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """
     Load protein graphs from corpus manifest.
@@ -133,6 +164,9 @@ def load_training_proteins(
     import hashlib
 
     from experiments.training.v6._data import load_protein_graph
+
+    if dehydron_edge_barcode is None:
+        dehydron_edge_barcode = False
 
     manifest = Path(manifest_path) if manifest_path else _DEFAULT_MANIFEST
     locked_manifest = is_locked_stage_a_manifest_path(manifest)
@@ -153,8 +187,23 @@ def load_training_proteins(
         use_binned_dehydron=use_binned_dehydron,
         dehydron_barcode_dir=dehydron_barcode_dir,
     )
+    if dehydron_edge_barcode:
+        edge_tag = "|dbh_edge_v1"
+        if dehydron_barcode_dir is not None:
+            edge_tag = f"{edge_tag}:{Path(dehydron_barcode_dir).resolve()}"
+        edge_tag = f"{edge_tag}|dbh_sidecars_{_dehydron_sidecar_digest(dehydron_barcode_dir)}"
+    else:
+        edge_tag = ""
+    # GNN_INPUT_MODE changes data.x width (3 vs 4). Omitting it reused legacy
+    # four-vector caches under topology_three_vector and silently sized node_emb
+    # from the cache (Phase 2 false starts 2026-07-16).
+    input_mode_tag = rf.gnn_feature_set_id()
+    # Always pin covalent-bond payload version so Chem-MVP / future chem arms
+    # do not reuse pre-bridge caches missing prot["covalent_bonds"].
+    chem_tag = "|covbond_v1"
     cache_key = hashlib.sha256(
-        f"{manifest.resolve()}|{max_proteins}|{max_residues}|bf_v1|rs{residue_stage}{barcode_tag}".encode()
+        f"{manifest.resolve()}|{max_proteins}|{max_residues}|bf_v1|rs{residue_stage}"
+        f"|{input_mode_tag}{barcode_tag}{edge_tag}{chem_tag}".encode()
     ).hexdigest()[:16]
     cache_path = cache_dir / f"graphs_{cache_key}.pt"
 
@@ -162,6 +211,9 @@ def load_training_proteins(
         payload = torch.load(cache_path, map_location="cpu", weights_only=False)
         proteins = payload.get("proteins", [])
         failed = int(payload.get("failed", 0))
+        # Cache entries often predate Path B and lack pdb_path; docker mounts
+        # host ./pdb_cache at /tmp/dtie_pdb_cache — restamp from live pdb_dir.
+        stamp_prot_pdb_paths(proteins, Path(pdb_dir))
         logger.info(
             "Loaded %d proteins from cache %s (%d prior failures, max_residues=%d)",
             len(proteins),
@@ -213,6 +265,18 @@ def load_training_proteins(
                 barcode_dir=dehydron_barcode_dir,
                 use_binned=bool(use_binned_dehydron),
             )
+        if dehydron_edge_barcode:
+            if dehydron_barcode_dir is None:
+                raise ValueError(
+                    "--dehydron-barcode-dir is required with --dehydron-edge-barcode"
+                )
+            from experiments.training.v6._data import attach_dehydron_edge_barcode_lookup
+
+            prot = attach_dehydron_edge_barcode_lookup(
+                prot,
+                barcode_dir=dehydron_barcode_dir,
+                pdb_dir=pdb_dir,
+            )
         prot["fold_class"] = entry.get("fold_class", "unknown")
         prot["gene"] = entry.get("gene", "")
         from science.training.mlflow_governance import resolve_protein_fold_id
@@ -234,6 +298,8 @@ def load_training_proteins(
             prot["n_residues"],
             entry.get("fold_class", ""),
         )
+
+    stamp_prot_pdb_paths(proteins, Path(pdb_dir))
 
     if use_cache and proteins:
         torch.save({"proteins": proteins, "failed": failed, "max_residues": max_residues}, cache_path)

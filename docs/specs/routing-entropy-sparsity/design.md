@@ -1,13 +1,17 @@
 # Routing entropy sparsity — design
 
 **Date locked:** 2026-07-20  
-**Status:** Implemented — sparsity save gates registered; confirm-continue pending  
+**Status:** **PHASE COMPLETE** — champion banked (epoch 48); next = KRAS G12D hub migration  
 **Parent:** Fix-1 SSOT restore + expand ladder (`docs/specs/fix1-s4-restore/`)  
 **Evidence:** hub knockout sealed ρ(4OBE)=0.596 vs P2/P3 champions ≤0.29; Phase 12 routing H≈1.33–1.38 (near-uniform)  
 **Make (init):** `make train-v66-fix1-sparsity-sealed-continue` (default `RUN_ID=fix1_s4_sparsity_sealed_continue_v1`)  
-**Make (confirm):** `make train-v66-fix1-sparsity-confirm-continue` (resume `epoch_045.pt`, default 5 ep)  
+**Make (confirm):** `make train-v66-fix1-sparsity-confirm-continue` (resume `epoch_045.pt`; use `RUN_ID=…_v2` for locked λ)  
+**Champion:** `checkpoints/v66/runs/fix1_s4_sparsity_confirm_continue_v2/v66_sparsity_champion.pt` (`FIX1_SPARSITY_CHAMPION_CKPT`)  
+**Gate stamp:** `data/gates/fix1_sparsity_champion.json`  
 **Resume (init):** `v66_healthy_sealed.pt` only  
-**λ peak / warmup:** `0.0075` / `8` (confirm continue: warmup=0, λ stays at peak)
+**λ peak / warmup:** `0.0075` / `8` (confirm continue: warmup=0, λ stays at peak)  
+**Governor:** save band `[0.50, 0.90]` — **no** dynamic λ release (static λ overshoots; bank last eligible)  
+**Next:** [`next-phase.md`](next-phase.md) · `make grade-v66-fix1-sparsity-g12d-hub-migration`
 
 ### Save / monitor gates (registered 2026-07-20 post Task 6)
 
@@ -179,10 +183,25 @@ Run: Fix-1 stack continue from sealed, Stage A-12 or feeler-expand corpus, 15–
 | Train loop / stage | `experiments/training/v66/stage_runner.py` — schedule λ(t); collision jsonl | Done |
 | Make | `train-v66-fix1-sparsity-sealed-continue` | Done |
 | Tests | mean-H, warmup, governor, collision detector | Done |
-| GPU verify | Task 6 — hub knockout + \(t^\*\) | Pending |
+| GPU verify | Task 6 — hub knockout + \(t^\*\) | Done (PARTIAL; no \(t^\*\)) |
+| Confirm | `_v2` locked λ; overshoot ep49–50 | Done |
+| Bank | epoch 48 → `v66_sparsity_champion.pt` | Done |
+
+### Champion metrics (epoch 48)
+
+| Metric | Value |
+|--------|-------|
+| mean residue-H | **0.522** ∈ [0.50, 0.90] |
+| max_share | **0.280** &lt; 0.45 |
+| H(f̄) | **1.343** (diversity OK) |
+| 4OBE hub ρ | **0.528** ≥ 0.45 |
+
+Confirm continue with static λ=0.0075 drifts mean-H below 0.50 by ge 49 — expected continuous-clamp behavior. Do not extend peak λ; do not engineer dynamic release for this phase.
 
 ---
 
 ## 9. Biological imperative (non-negotiable framing)
 
 Uniform routing → flat static analysis. Partitioned MoE → distinct analytical lenses over residue sub-graphs. Mapping how KRAS G12D rewires inactive→active-like conductance requires that partitioning as a **prerequisite**, not a post-hoc visualization choice.
+
+**Next step:** [`next-phase.md`](next-phase.md).

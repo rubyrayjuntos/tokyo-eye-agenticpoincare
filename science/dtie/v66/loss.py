@@ -552,6 +552,8 @@ def gosp_loss_v6(
     disc_occupancy_min_sigma_ratio: float = 0.35,
     disc_min_r_mean: float = 0.05,
     disc_r_collapse_scale: float = 10.0,
+    core_radial_floor_coeff: float = 0.0,
+    core_radial_floor_min_r: float = 0.15,
     disc_pc_repulsion_coeff: float = 0.0,
     disc_pc2_min_std: float = 0.08,
     disc_eff_rank_coeff: float = 0.0,
@@ -872,6 +874,19 @@ def gosp_loss_v6(
         )
         disc_occ_total = disc_occ_losses["disc_occupancy"]
 
+    core_radial_total = torch.tensor(0.0, device=device)
+    core_radial_aux: Dict[str, torch.Tensor] = {}
+    if core_radial_floor_coeff > 0 and "hyp_projections_2d" in output:
+        from science.training.disc_occupancy import core_radial_floor_loss
+
+        core_radial_aux = core_radial_floor_loss(
+            output["hyp_projections_2d"],
+            target_rho,
+            target_tau=target_dehydron,
+            min_r=core_radial_floor_min_r,
+        )
+        core_radial_total = core_radial_aux["core_radial_floor"]
+
     disc_pc_losses: Dict[str, torch.Tensor] = {}
     disc_pc_total = torch.tensor(0.0, device=device)
     if disc_pc_repulsion_coeff > 0 and "hyp_projections_2d" in output:
@@ -1180,6 +1195,7 @@ def gosp_loss_v6(
         + cone_depth_anticollapse_coeff * anticollapse_loss
         + disc_depth_scale_coeff * disc_scale_loss
         + disc_occupancy_coeff * disc_occ_total
+        + core_radial_floor_coeff * core_radial_total
         + disc_pc_repulsion_coeff * disc_pc_total
         + disc_eff_rank_coeff * disc_eff_rank_total
         + disc_batch_diversity_coeff * disc_batch_total
@@ -1274,6 +1290,7 @@ def gosp_loss_v6(
         "cone_depth_anticollapse": anticollapse_loss,
         "disc_depth_scale": disc_scale_loss,
         "disc_occupancy": disc_occ_total,
+        "core_radial_floor": core_radial_total,
         "disc_pc_repulsion": disc_pc_total,
         "disc_eff_rank": disc_eff_rank_total,
         "disc_batch_diversity": disc_batch_total,
@@ -1305,6 +1322,13 @@ def gosp_loss_v6(
         "leak_bce": leak_bce,
         "v3_aleatoric_shaping": v3_shaping_total,
     }
+    if core_radial_aux:
+        result["core_radial_floor_weight_mean"] = core_radial_aux[
+            "core_radial_floor_weight_mean"
+        ]
+        result["core_radial_floor_r_weighted"] = core_radial_aux[
+            "core_radial_floor_r_weighted"
+        ]
     if v3_shaping_losses:
         result["var_penalty"] = v3_shaping_losses["var_penalty"]
         result["aleatoric_hinge"] = v3_shaping_losses["aleatoric_hinge"]

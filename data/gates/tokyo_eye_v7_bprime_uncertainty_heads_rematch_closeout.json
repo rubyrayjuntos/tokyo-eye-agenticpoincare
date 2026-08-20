@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_bprime_uncertainty_heads_closeout",
+  "recorded_at": "2026-07-21T17:13:04.551405+00:00",
+  "status": "FAIL",
+  "prereg": "data/gates/tokyo_eye_v7_bprime_uncertainty_heads_prereg.json",
+  "run_id": "tokyo_eye_v7_bprime_uncertainty_heads_rematch_v1",
+  "metrics": "checkpoints/v7/runs/tokyo_eye_v7_bprime_uncertainty_heads_rematch_v1/metrics.json",
+  "final_global_epoch": 89,
+  "phase_name": "v7 B\u2032 uncertainty heads rematch-1 (sealed health; trunk frozen)",
+  "n_scored_epochs": 24,
+  "bars": {
+    "aleatoric_std_mean": {
+      "threshold": 0.02,
+      "observed": 0.013263633490586431,
+      "pass": false
+    },
+    "epistemic_std_mean": {
+      "threshold": 0.01,
+      "observed": 0.013069665528515252,
+      "pass": true
+    },
+    "evidence_nu_cv_mean": {
+      "threshold": 0.02,
+      "observed": 0.007430192168358356,
+      "pass": false
+    },
+    "probe_r_epi_ale_abs": {
+      "threshold": 0.7,
+      "observed": 0.021385504534606577,
+      "pass": true
+    },
+    "tau_ale": {
+      "elevated": 0.0,
+      "relative_lift": 0.1728979118716814,
+      "pass": false
+    },
+    "disc_r_mean_hold": {
+      "threshold": 0.25,
+      "observed_final": 0.26897746076186496,
+      "observed_min": 0.26897744958599407,
+      "pass": true
+    },
+    "no_nan_loss": {
+      "pass": true
+    }
+  },
+  "rematch_authorized": false,
+  "artifacts": {
+    "phase_ckpt": "checkpoints/v7/runs/tokyo_eye_v7_bprime_uncertainty_heads_rematch_v1/v7_phase4_12prot.pt",
+    "v7_best": "checkpoints/v7/runs/tokyo_eye_v7_bprime_uncertainty_heads_rematch_v1/v7_best.pt",
+    "metrics": "checkpoints/v7/runs/tokyo_eye_v7_bprime_uncertainty_heads_rematch_v1/metrics.json",
+    "healthy_sealed": "checkpoints/v7/runs/tokyo_eye_v7_bprime_core_floor_continue_v1/v7_healthy_sealed.pt"
+  },
+  "note": "Fail after rematch-1 (pre-auth exhausted under old prereg). Disc held; epi std Pass, ale/ν short. Method was wrong-order (inherited P4 coeffs without hyp-MP formula benchmark). PARKED — unpark SSOT: docs/specs/tokyo-eye-v7/bprime-uncertainty-unpark.md; stamp data/gates/tokyo_eye_v7_bprime_uncertainty_parked.json. Restore sealed health for biology."
+}

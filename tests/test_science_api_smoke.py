@@ -29,12 +29,21 @@ async def test_health_endpoint_responds():
         patch("science.api.routers.health._check_db", new_callable=AsyncMock) as mock_db,
         patch("science.api.routers.health._detect_gpu") as mock_gpu,
         patch("science.api.routers.health._list_checkpoints") as mock_ckpts,
+        patch("science.api.routers.health._gnn_production_summary") as mock_gnn,
     ):
         mock_open.return_value = None
         mock_close.return_value = None
         mock_db.return_value = {"connected": True}
         mock_gpu.return_value = {"available": False, "device_count": 0, "device_name": None}
         mock_ckpts.return_value = ["v5_stage4_11prot.pt"]
+        mock_gnn.return_value = {
+            "model_id": "TokyoEye",
+            "model_version": "TokyoEye@champion",
+            "api_alias": "champion",
+            "runner_module": "science.tokyo_eye.v8.runner",
+            "runner_class": "TokyoEyeV8Runner",
+            "restore": {"ok": True, "uri": "models:/TokyoEye@champion"},
+        }
 
         from httpx import ASGITransport, AsyncClient
         from science.api.app import app
@@ -54,7 +63,7 @@ async def test_health_endpoint_responds():
         assert "job_registry" in body
         assert body["status"] == "healthy"
         assert body["contract_version"] == "1.6"
-        assert body["gnn_production"]["model_id"] == "tokyo_eye_v8"
+        assert body["gnn_production"]["model_id"] == "TokyoEye"
         assert body["gpu"]["available"] is False
         assert body["checkpoints"] == ["v5_stage4_11prot.pt"]
 
@@ -81,10 +90,6 @@ async def test_gnn_endpoint_fails_when_structure_missing():
     with (
         patch("data.db.open_pool", new_callable=AsyncMock),
         patch("data.db.close_pool", new_callable=AsyncMock),
-        patch(
-            "science.api.routers.compute._compute_checkpoint_hash",
-            return_value="abc123hash",
-        ),
         patch("science.api.routers.compute.get_connection") as mock_conn_ctx,
         patch(
             "science.compute.dispatch_helpers.dispatch_job_in_process",
@@ -164,8 +169,8 @@ def test_compute_models_importable():
     # Test with default values where available
     gnn_req = GNNRequest(structure_id="test_4obe")
     assert gnn_req.structure_id == "test_4obe"
-    assert gnn_req.model_version == "v8"
-    assert gnn_req.checkpoint_path == "checkpoints/v8/runs/tokyo_eye_v8_mode_c_moe_rebalance_s9/v8_best.pt"
+    assert gnn_req.model_version == "champion"
+    assert gnn_req.checkpoint_path is None
     assert gnn_req.device == "cpu"
 
     gnn_resp = GNNResponse(

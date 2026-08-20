@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_hyp_biology_mp_prereg",
+  "recorded_at": "2026-07-22T00:48:00+00:00",
+  "status": "LOCKED",
+  "lineage_id": "tokyo_eye_v7_hyp_biology_mp_v1",
+  "parent_checkpoint": "experiments.training.v7.healthy_bprime.HEALTHY_V7_CKPT",
+  "spec": "docs/specs/tokyo-eye-v7/hyp-biology-mp-prereg.md",
+  "run_id_default": "tokyo_eye_v7_hyp_biology_mp_v1",
+  "run_dir": "checkpoints/v7/runs/tokyo_eye_v7_hyp_biology_mp_v1/",
+  "train": {
+    "make": "train-v7-hyp-biology-mp",
+    "module": "experiments.training.v7.hyp_biology_mp_train",
+    "resume": "experiments.training.v7.healthy_bprime.HEALTHY_V7_CKPT",
+    "manifest_default": "manifests/v6_corpus_stage_a_small_v1.json",
+    "epochs_default": 8,
+    "lr_default": 5e-5,
+    "disc_r_mean_hold": 0.25,
+    "best_ckpt": "v7_hyp_biology_mp_best.pt",
+    "overwrite_sealed": false
+  },
+  "gated_paths": {
+    "hyp_biology_mp": true,
+    "hyp_mp_primary": true,
+    "se3_aux": false,
+    "allow_ca_fallback": false,
+    "degree_zero_nodes_allowed": true
+  },
+  "edge_ontology": {
+    "allowed": ["hbond", "dehydron", "pi_stack", "salt_bridge"],
+    "forbidden_in_mp": ["ca_contact", "packing_euc", "se3_rel_xyz"],
+    "residual_isolate_policy": "A_self_only",
+    "deferred": ["virtual_anchor", "hyp_proximity", "solvation_shell"]
+  },
+  "extraction": {
+    "salt_bridge": {
+      "pos_atoms": {
+        "ARG": ["NH1", "NH2"],
+        "LYS": ["NZ"],
+        "HIS": ["ND1", "NE2"]
+      },
+      "neg_atoms": {
+        "ASP": ["OD1", "OD2"],
+        "GLU": ["OE1", "OE2"]
+      },
+      "max_heavy_atom_dist_angstrom": 4.0,
+      "edge_attr": ["charge_product", "min_dist"]
+    },
+    "pi_stack": {
+      "residues": ["PHE", "TYR", "TRP", "HIS"],
+      "max_centroid_dist_angstrom": 5.5,
+      "face_to_face_dihedral_deg_max": 30.0,
+      "edge_to_face_dihedral_deg_min": 60.0,
+      "edge_attr": ["centroid_dist", "dihedral_angle", "alignment_type_idx"]
+    }
+  },
+  "audit_trail_requirements": {
+    "expected_edge_ontology": ["hbond", "dehydron", "pi_stack", "salt_bridge"],
+    "forbidden_edge_ontology": ["ca_contact", "packing_euc", "se3_rel_xyz"],
+    "assertions": [
+      "ca_in_mp == false",
+      "degree_zero_nodes_allowed == true",
+      "allow_ca_fallback == false"
+    ]
+  },
+  "pass_form": {
+    "forward_ok": true,
+    "ca_in_mp": false,
+    "forbidden_mp_edge_count": 0,
+    "degree_zero_count": "report",
+    "biology_grades": "report_only"
+  },
+  "forbidden": [
+    "overwrite_v7_healthy_sealed",
+    "allow_ca_fallback_true",
+    "residual_policy_B_or_C_in_v1",
+    "promote_over_sealed_without_seal_prereg",
+    "jacobian_hub_pass_criteria"
+  ]
+}

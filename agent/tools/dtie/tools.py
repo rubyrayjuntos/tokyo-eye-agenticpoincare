@@ -90,34 +90,82 @@ async def get_source_leaks(
     structure_id: str,
     uncertainty_threshold: float = 0.3,
     min_depth: float = 1.5,
+    ranking: str = "physics_rim",
+    top_n: int = 50,
     db: Any = None,
 ) -> ToolResult:
     """Identify source-leak candidates from governed data.
 
-    Queries v_agent_high_uncertainty_residues filtered by depth.
-    Source leaks = high epistemic uncertainty + significant depth.
+    Default ranking is **physics-rim** (high ``cone_depth``, prefer τ=1 / dehydron)
+    — checkpoint-stable and aligned with the viewer Investigation default.
+
+    ``ranking="evidential_experimental"`` restores the legacy high-epistemic +
+    depth filter. Evidential heads are G5b-collapsed (ale≈epi≈ρ proxy); do not
+    treat that mode as a trusted look-here signal.
     """
     if db is None:
         return ToolResult(success=False, message="No database connection provided")
 
+    VALID_RANKINGS = {"physics_rim", "evidential_experimental"}
+    if ranking not in VALID_RANKINGS:
+        return ToolResult(
+            success=False,
+            message=(
+                f"Invalid ranking '{ranking}'. Must be one of: "
+                f"{', '.join(sorted(VALID_RANKINGS))}"
+            ),
+        )
+
     tool_db = ToolDB(db)
-    rows = await tool_db.fetch_all(
-        """
-        SELECT residue_id, residue_index, residue_name, chain_label,
-               epistemic_uncertainty, cone_depth, model_version
-        FROM v_agent_high_uncertainty_residues
-        WHERE structure_id = :structure_id
-          AND epistemic_uncertainty >= :threshold
-          AND cone_depth >= :min_depth
-        ORDER BY epistemic_uncertainty DESC
-        LIMIT 50
-        """,
-        {
-            "structure_id": structure_id,
-            "threshold": uncertainty_threshold,
-            "min_depth": min_depth,
-        },
-    )
+    warnings: list[str] = []
+
+    if ranking == "physics_rim":
+        rows = await tool_db.fetch_all(
+            """
+            SELECT r.residue_id, r.residue_index, r.residue_name, c.chain_label,
+                   e.cone_depth, e.input_rho, e.input_tau_flag,
+                   e.epistemic_uncertainty, e.aleatoric_uncertainty, e.model_version
+            FROM fact_gnn_node_embedding e
+            JOIN dim_residue r ON r.residue_id = e.residue_id
+            JOIN dim_chain c ON c.chain_id = r.chain_id
+            JOIN provenance_run prov ON prov.run_id = e.run_id
+            WHERE e.structure_id = :structure_id
+              AND prov.run_type = 'inference'
+              AND e.cone_depth >= :min_depth
+            ORDER BY COALESCE(e.input_tau_flag, 0) DESC, e.cone_depth DESC
+            LIMIT :top_n
+            """,
+            {
+                "structure_id": structure_id,
+                "min_depth": min_depth,
+                "top_n": top_n,
+            },
+        )
+        rank_note = "physics_rim (τ preferred, then cone_depth)"
+    else:
+        warnings.append(
+            "ranking=evidential_experimental: epistemic heads are G5b-unstable "
+            "(near-duplicate of ρ / ale); treat results as experimental only."
+        )
+        rows = await tool_db.fetch_all(
+            """
+            SELECT residue_id, residue_index, residue_name, chain_label,
+                   epistemic_uncertainty, cone_depth, model_version
+            FROM v_agent_high_uncertainty_residues
+            WHERE structure_id = :structure_id
+              AND epistemic_uncertainty >= :threshold
+              AND cone_depth >= :min_depth
+            ORDER BY epistemic_uncertainty DESC
+            LIMIT :top_n
+            """,
+            {
+                "structure_id": structure_id,
+                "threshold": uncertainty_threshold,
+                "min_depth": min_depth,
+                "top_n": top_n,
+            },
+        )
+        rank_note = "evidential_experimental (epistemic × depth)"
 
     residue_ids = [r["residue_id"] for r in rows]
 
@@ -132,7 +180,7 @@ async def get_source_leaks(
                 label="Source Leaks",
             )
         ] if residue_ids else [],
-        message=f"Found {len(residue_ids)} source-leak candidates",
+        message=f"Found {len(residue_ids)} source-leak candidates ({rank_note})",
     )
 
     return ToolResult(
@@ -141,11 +189,17 @@ async def get_source_leaks(
             "structure_id": structure_id,
             "source_leaks": rows,
             "count": len(rows),
-            "threshold": uncertainty_threshold,
+            "ranking": ranking,
+            "ranking_note": rank_note,
             "min_depth": min_depth,
+            "threshold": uncertainty_threshold if ranking == "evidential_experimental" else None,
         },
-        message=f"Found {len(rows)} source-leak candidates in {structure_id}",
+        message=(
+            f"Found {len(rows)} source-leak candidates in {structure_id} "
+            f"via {rank_note}"
+        ),
         viewport_directives=[directive],
+        warnings=warnings,
     )
 
 
@@ -155,36 +209,66 @@ async def get_high_uncertainty_residues(
     uncertainty_type: str = "epistemic",
     db: Any = None,
 ) -> ToolResult:
-    """Get the highest-uncertainty residues for a structure.
+    """Get residues ranked by an uncertainty / physics channel.
 
-    Queries v_agent_high_uncertainty_residues.
+    Default remains epistemic for API compatibility, but results always carry an
+    experimental warning: evidential heads are G5b-collapsed. Prefer
+    ``uncertainty_type="cone_depth"`` (or use ``get_source_leaks``) for
+    look-here triage.
     """
     if db is None:
         return ToolResult(success=False, message="No database connection provided")
 
-    # Validate uncertainty_type against allowlist to prevent SQL injection
-    VALID_UNCERTAINTY_TYPES = {"epistemic", "aleatoric", "total"}
-    if uncertainty_type not in VALID_UNCERTAINTY_TYPES:
+    # Validate against allowlist to prevent SQL injection
+    VALID_TYPES = {"epistemic", "aleatoric", "total", "cone_depth"}
+    if uncertainty_type not in VALID_TYPES:
         return ToolResult(
             success=False,
-            message=f"Invalid uncertainty_type '{uncertainty_type}'. Must be one of: {', '.join(sorted(VALID_UNCERTAINTY_TYPES))}",
+            message=(
+                f"Invalid uncertainty_type '{uncertainty_type}'. "
+                f"Must be one of: {', '.join(sorted(VALID_TYPES))}"
+            ),
         )
 
-    col = f"{uncertainty_type}_uncertainty"
+    warnings: list[str] = []
+    if uncertainty_type in {"epistemic", "aleatoric", "total"}:
+        warnings.append(
+            f"{uncertainty_type} ranking is evidential-experimental (G5b: heads "
+            "near-duplicate ρ / each other). Prefer cone_depth or get_source_leaks "
+            "(physics_rim) for triage."
+        )
+
     tool_db = ToolDB(db)
-    rows = await tool_db.fetch_all(
-        f"""
-        SELECT residue_id, residue_index, residue_name, chain_label,
-               epistemic_uncertainty, aleatoric_uncertainty, total_uncertainty,
-               cone_depth, model_version
-        FROM v_agent_high_uncertainty_residues
-        WHERE structure_id = :structure_id
-          AND {col} IS NOT NULL
-        ORDER BY {col} DESC
-        LIMIT :top_n
-        """,
-        {"structure_id": structure_id, "top_n": top_n},
-    )
+    if uncertainty_type == "cone_depth":
+        col = "cone_depth"
+        rows = await tool_db.fetch_all(
+            """
+            SELECT residue_id, residue_index, residue_name, chain_label,
+                   epistemic_uncertainty, aleatoric_uncertainty, total_uncertainty,
+                   cone_depth, model_version
+            FROM v_agent_high_uncertainty_residues
+            WHERE structure_id = :structure_id
+              AND cone_depth IS NOT NULL
+            ORDER BY cone_depth DESC
+            LIMIT :top_n
+            """,
+            {"structure_id": structure_id, "top_n": top_n},
+        )
+    else:
+        col = f"{uncertainty_type}_uncertainty"
+        rows = await tool_db.fetch_all(
+            f"""
+            SELECT residue_id, residue_index, residue_name, chain_label,
+                   epistemic_uncertainty, aleatoric_uncertainty, total_uncertainty,
+                   cone_depth, model_version
+            FROM v_agent_high_uncertainty_residues
+            WHERE structure_id = :structure_id
+              AND {col} IS NOT NULL
+            ORDER BY {col} DESC
+            LIMIT :top_n
+            """,
+            {"structure_id": structure_id, "top_n": top_n},
+        )
 
     residue_ids = [r["residue_id"] for r in rows]
 
@@ -200,7 +284,7 @@ async def get_high_uncertainty_residues(
                 label=f"Top {uncertainty_type}",
             )
         ] if residue_ids else [],
-        message=f"Top {len(rows)} residues by {uncertainty_type} uncertainty",
+        message=f"Top {len(rows)} residues by {uncertainty_type}",
     )
 
     return ToolResult(
@@ -210,9 +294,11 @@ async def get_high_uncertainty_residues(
             "residues": rows,
             "count": len(rows),
             "uncertainty_type": uncertainty_type,
+            "experimental": uncertainty_type in {"epistemic", "aleatoric", "total"},
         },
-        message=f"Top {len(rows)} {uncertainty_type} uncertainty residues in {structure_id}",
+        message=f"Top {len(rows)} {uncertainty_type} residues in {structure_id}",
         viewport_directives=[directive],
+        warnings=warnings,
     )
 
 

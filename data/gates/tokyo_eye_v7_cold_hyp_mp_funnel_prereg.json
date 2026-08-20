@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_cold_hyp_mp_funnel_prereg",
+  "recorded_at": "2026-07-22T03:20:00+00:00",
+  "status": "LOCKED",
+  "lineage_id": "tokyo_eye_v7_cold_hyp_mp_funnel_v1",
+  "spec": "docs/specs/tokyo-eye-v7/cold-hyp-mp-funnel-prereg.md",
+  "run_id_default": "tokyo_eye_v7_cold_hyp_mp_funnel_v1",
+  "run_dir": "checkpoints/v7/runs/tokyo_eye_v7_cold_hyp_mp_funnel_v1/",
+  "init": {
+    "cold": true,
+    "default": "random",
+    "forbid_resume_from": [
+      "HEALTHY_V7_CKPT",
+      "FIX1_SPARSITY_CHAMPION_CKPT",
+      "v66"
+    ],
+    "allow_resume_from": ["cutover_scaffold", "same_run_epoch", "none_random"],
+    "disc_hold_warmup_epochs_default": 6
+  },
+  "gated_paths": {
+    "hyp_mp_primary": true,
+    "se3_aux": false,
+    "hyp_biology_mp": false,
+    "simple_graph": "ca_contact",
+    "curriculum": "funnel_disc"
+  },
+  "train": {
+    "make": "train-v7-cold-hyp-mp-funnel",
+    "module": "experiments.training.v7.cold_hyp_mp_funnel_train",
+    "manifest_default": "manifests/v6_corpus_stage_a_small_v1.json",
+    "epochs_default": 24,
+    "lr_default": 1e-4,
+    "disc_r_mean_hold": 0.25,
+    "disc_hold_warmup_epochs_default": 6,
+    "best_ckpt": "v7_cold_hyp_mp_funnel_best.pt"
+  },
+  "pass_form": {
+    "cold_init": true,
+    "hyp_mp_primary": true,
+    "se3_aux": false,
+    "disc_r_mean_min": 0.25,
+    "biology_grades": "report_only_after_disc_pass"
+  },
+  "forbidden": [
+    "fix1_warmstart",
+    "healthy_v7_weight_load",
+    "hyp_biology_mp_true",
+    "overwrite_v7_healthy_sealed",
+    "jacobian_hub_pass_criteria"
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_bprime_disc_health_continue_prereg",
+  "recorded_at": "2026-07-21T14:45:00+00:00",
+  "status": "PREREG",
+  "option": "B",
+  "resume": "checkpoints/v7/runs/tokyo_eye_v7_bprime_health_continue_v1/v7_best_disc.pt",
+  "run_id_default": "tokyo_eye_v7_bprime_disc_continue_v1",
+  "locks": {
+    "hyp_mp_primary": true,
+    "se3_aux": false,
+    "hyperbolic_mp_graph": false
+  },
+  "stack_delta": {
+    "disc_occupancy_coeff": 0.7,
+    "disc_depth_scale_coeff": 1.6,
+    "disc_depth_scale_target": 0.6,
+    "routing_entropy_sparsity_coeff": 0.0,
+    "sparsity_style_save": true,
+    "routing_entropy_mean_residue_min_save": 0.25,
+    "routing_entropy_mean_residue_max_save": 0.9,
+    "note": "No legacy H(f̄)≤1.21 save ceiling; H(f̄) diversity monitor/abort only"
+  },
+  "health_bars": {
+    "disc_r_mean_min": 0.25,
+    "hyp_mp_primary_audit": true,
+    "curvature_finite_positive": true,
+    "no_nan_loss": true
+  },
+  "forbidden_claims": [
+    "biology_pass_vs_fix1",
+    "kras_hub_migration",
+    "promote",
+    "sparsity_champion_status"
+  ],
+  "spec": "docs/specs/tokyo-eye-v7/bprime-disc-health-continue-prereg.md"
+}

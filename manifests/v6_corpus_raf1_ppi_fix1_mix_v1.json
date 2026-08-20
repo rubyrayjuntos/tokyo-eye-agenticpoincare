@@ -1,0 +1,152 @@
+{
+  "version": "1.0-fix1-raf1-mix",
+  "description": "Fix-1 P3 mix: RAF1 MASTER-safe hold + Stage A angular anchors ['1F88', '1MBN', '1PGB', '1R69', '2ITV']. enabled_train=13. Stabilizes \u03c3/probe under pathway transfer.",
+  "pathway_override": "pathway_raf1_ppi",
+  "proteins": [
+    {
+      "pdb_id": "3OMV",
+      "chain": "A",
+      "gene": "RAF1",
+      "role": "train",
+      "disposition_rule": "pathway_raf1_ppi",
+      "enabled": true,
+      "stage0": true,
+      "note": "RAF1 kinase domain (hub)"
+    },
+    {
+      "pdb_id": "4OBE",
+      "chain": "A",
+      "gene": "KRAS",
+      "role": "train",
+      "disposition_rule": "pathway_raf1_ppi",
+      "enabled": true,
+      "stage0": true,
+      "note": "KRAS WT GDP; shared anchor with feeler_expand"
+    },
+    {
+      "pdb_id": "4MNE",
+      "chain": "B",
+      "gene": "BRAF",
+      "role": "train",
+      "disposition_rule": "pathway_raf1_ppi",
+      "enabled": true,
+      "stage0": false,
+      "note": "BRAF kinase domain in BRAF:MEK1 crystal (auth chain B)"
+    },
+    {
+      "pdb_id": "9AXM",
+      "chain": "B",
+      "gene": "ARAF",
+      "role": "train",
+      "disposition_rule": "pathway_raf1_ppi",
+      "enabled": true,
+      "stage0": false,
+      "note": "ARAF kinase from ARAF/MEK1 complex; local PDB sanitized from mmCIF"
+    },
+    {
+      "pdb_id": "7JV0",
+      "chain": "A",
+      "gene": "KSR1",
+      "role": "train",
+      "disposition_rule": "pathway_raf1_ppi",
+      "enabled": true,
+      "stage0": false,
+      "note": "KSR1 kinase/pseudokinase from KSR1:MEK1 complex"
+    },
+    {
+      "pdb_id": "3NMQ",
+      "chain": "A",
+      "gene": "HSP90AB1",
+      "role": "train",
+      "disposition_rule": "pathway_raf1_ppi",
+      "enabled": true,
+      "stage0": false,
+      "note": "HSP90\u03b2 N-terminal domain (not holo complex)"
+    },
+    {
+      "pdb_id": "2O02",
+      "chain": "A",
+      "gene": "YWHAZ",
+      "role": "train",
+      "disposition_rule": "pathway_raf1_ppi",
+      "enabled": true,
+      "stage0": false,
+      "note": "14-3-3\u03b6 monomer chain"
+    },
+    {
+      "pdb_id": "5IQP",
+      "chain": "A",
+      "gene": "YWHAQ",
+      "role": "train",
+      "disposition_rule": "pathway_raf1_ppi",
+      "enabled": true,
+      "stage0": false,
+      "note": "14-3-3\u03c4 / YWHAQ; YWHAH dropped to limit fold flooding"
+    },
+    {
+      "pdb_id": "1R69",
+      "chain": "A",
+      "gene": "R69",
+      "fold_id": "1.10.260.40",
+      "fold_id_tier": "topology",
+      "fold_id_source": "pdbe_cache",
+      "role": "train",
+      "disposition_rule": "fix1_raf1_mix_stage_a_anchor",
+      "enabled": true,
+      "stage0": false,
+      "note": "Stage A angular anchor for RAF1 transfer resilience"
+    },
+    {
+      "pdb_id": "1MBN",
+      "chain": "A",
+      "gene": "MBN",
+      "fold_id": "1.10.490.10",
+      "fold_id_tier": "topology",
+      "fold_id_source": "pdbe_cache",
+      "role": "train",
+      "disposition_rule": "fix1_raf1_mix_stage_a_anchor",
+      "enabled": true,
+      "stage0": false,
+      "note": "Stage A angular anchor for RAF1 transfer resilience"
+    },
+    {
+      "pdb_id": "2ITV",
+      "chain": "A",
+      "gene": "EGFR",
+      "fold_id": "1.10.510.10",
+      "fold_id_tier": "topology",
+      "fold_id_source": "pdbe_cache",
+      "role": "train",
+      "disposition_rule": "fix1_raf1_mix_stage_a_anchor",
+      "enabled": true,
+      "stage0": false,
+      "note": "Stage A angular anchor for RAF1 transfer resilience"
+    },
+    {
+      "pdb_id": "1F88",
+      "chain": "A",
+      "gene": "F88",
+      "fold_id": "1.20.1070.10",
+      "fold_id_tier": "topology",
+      "fold_id_source": "pdbe_cache",
+      "role": "train",
+      "disposition_rule": "fix1_raf1_mix_stage_a_anchor",
+      "enabled": true,
+      "stage0": false,
+      "note": "Stage A angular anchor for RAF1 transfer resilience"
+    },
+    {
+      "pdb_id": "1PGB",
+      "chain": "A",
+      "gene": "GB1",
+      "fold_id": "3.10.20.10",
+      "fold_id_tier": "topology",
+      "fold_id_source": "pdbe_cache",
+      "role": "train",
+      "disposition_rule": "fix1_raf1_mix_stage_a_anchor",
+      "enabled": true,
+      "stage0": false,
+      "note": "Stage A angular anchor for RAF1 transfer resilience"
+    }
+  ]
+}

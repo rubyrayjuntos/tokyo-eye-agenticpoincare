@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_forward_smoke_closeout",
+  "recorded_at": "2026-07-21T12:10:00+00:00",
+  "decision": "pass_hyp_mp_primary_forward_smoke",
+  "artifact": "checkpoints/v7/diagnostics/tokyo_eye_v7_forward_smoke.json",
+  "prereg": "data/gates/tokyo_eye_v7_forward_smoke_prereg.json",
+  "headline": {
+    "hyp_mp_primary": true,
+    "curvature_learned": 0.693,
+    "cone_depth_mean": 1.267,
+    "pass": true
+  },
+  "claim_allowed": [
+    "TokyoEye hyp_mp_primary constructs and forwards",
+    "cone_depth from learned curvature path"
+  ],
+  "claim_forbidden": [
+    "Biology Pass vs v66 champion",
+    "Editing science/dtie for v7"
+  ]
+}

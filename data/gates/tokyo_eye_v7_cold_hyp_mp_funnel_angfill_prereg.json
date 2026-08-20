@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_cold_hyp_mp_funnel_angfill_prereg",
+  "recorded_at": "2026-07-22T06:00:00+00:00",
+  "status": "LOCKED",
+  "lineage_id": "tokyo_eye_v7_cold_hyp_mp_funnel_angfill_v1",
+  "parent_lineage_id": "tokyo_eye_v7_cold_hyp_mp_funnel_v1",
+  "spec": "docs/specs/tokyo-eye-v7/cold-hyp-mp-funnel-angfill-prereg.md",
+  "resume_default": "checkpoints/v7/runs/tokyo_eye_v7_cold_hyp_mp_funnel_v1/v7_cold_hyp_mp_funnel_best.pt",
+  "run_dir": "checkpoints/v7/runs/tokyo_eye_v7_cold_hyp_mp_funnel_angfill_v1/",
+  "arch_parity": {
+    "rim_fanout_forward": true,
+    "rim_fanout_strength": 0.14,
+    "rim_fanout_min_r": 0.20,
+    "geometric_angular_prior": true
+  },
+  "specialization": {
+    "majority_committed_share_coeff": 0.08,
+    "routing_load_floor_coeff": 3.0,
+    "routing_load_floor_min": 0.05,
+    "balance_coeff": 0.01
+  },
+  "fill": {
+    "disc_eff_rank_coeff": 1.0,
+    "disc_effective_rank_mean_min": 1.5
+  },
+  "mlflow": {
+    "enabled": true,
+    "experiment": "tokyo-eyes-v7"
+  },
+  "forbidden": [
+    "fix1_warmstart",
+    "healthy_v7_weight_load",
+    "hyp_biology_mp_true",
+    "overwrite_v7_healthy_sealed",
+    "overwrite_cold_v1_best"
+  ]
+}

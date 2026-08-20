@@ -1,0 +1,130 @@
+{
+  "version": "1.0",
+  "description": "RAF1-centered PPI pathway corpus inspired by the RAF1 Poincaré STRING network dashboard. Biology-coherent transfer set (not Stage A fold diversity). Stage A per-fold GTPase train cap is waived so KRAS/NRAS/HRAS co-train by design. ARAF uses a sanitized chain-B-only PDB written from 9AXM mmCIF (no legacy .pdb deposit). CDC37 uses NMR ensemble 2NCA rewritten to model-1-only.",
+  "source": "raf1_ppi_dashboard_inspiration",
+  "max_sequence_identity_pct": null,
+  "max_train_per_fold_id": null,
+  "pathway_override": "pathway_raf1_ppi",
+  "proteins": [
+    {
+      "pdb_id": "3OMV",
+      "chain": "A",
+      "gene": "RAF1",
+      "role": "train",
+      "disposition_rule": "pathway_raf1_ppi",
+      "enabled": true,
+      "stage0": true,
+      "note": "RAF1 kinase domain (hub)"
+    },
+    {
+      "pdb_id": "4OBE",
+      "chain": "A",
+      "gene": "KRAS",
+      "role": "train",
+      "disposition_rule": "pathway_raf1_ppi",
+      "enabled": true,
+      "stage0": true,
+      "note": "KRAS WT GDP; shared anchor with feeler_expand"
+    },
+    {
+      "pdb_id": "3CON",
+      "chain": "A",
+      "gene": "NRAS",
+      "role": "train",
+      "disposition_rule": "pathway_raf1_ppi",
+      "enabled": true,
+      "stage0": false,
+      "note": "NRAS GTPase"
+    },
+    {
+      "pdb_id": "4G0N",
+      "chain": "A",
+      "gene": "HRAS",
+      "role": "train",
+      "disposition_rule": "pathway_raf1_ppi",
+      "enabled": true,
+      "stage0": false,
+      "note": "HRAS G-domain (chain A); ignore RAF1 RBD chain B"
+    },
+    {
+      "pdb_id": "4MNE",
+      "chain": "B",
+      "gene": "BRAF",
+      "role": "train",
+      "disposition_rule": "pathway_raf1_ppi",
+      "enabled": true,
+      "stage0": false,
+      "note": "BRAF kinase domain in BRAF:MEK1 crystal (auth chain B)"
+    },
+    {
+      "pdb_id": "9AXM",
+      "chain": "B",
+      "gene": "ARAF",
+      "role": "train",
+      "disposition_rule": "pathway_raf1_ppi",
+      "enabled": true,
+      "stage0": false,
+      "note": "ARAF kinase from ARAF/MEK1 complex; local PDB sanitized from mmCIF"
+    },
+    {
+      "pdb_id": "3EQI",
+      "chain": "A",
+      "gene": "MAP2K1",
+      "role": "train",
+      "disposition_rule": "pathway_raf1_ppi",
+      "enabled": true,
+      "stage0": false,
+      "note": "MEK1 kinase domain"
+    },
+    {
+      "pdb_id": "7JV0",
+      "chain": "A",
+      "gene": "KSR1",
+      "role": "train",
+      "disposition_rule": "pathway_raf1_ppi",
+      "enabled": true,
+      "stage0": false,
+      "note": "KSR1 kinase/pseudokinase from KSR1:MEK1 complex"
+    },
+    {
+      "pdb_id": "3NMQ",
+      "chain": "A",
+      "gene": "HSP90AB1",
+      "role": "train",
+      "disposition_rule": "pathway_raf1_ppi",
+      "enabled": true,
+      "stage0": false,
+      "note": "HSP90β N-terminal domain (not holo complex)"
+    },
+    {
+      "pdb_id": "2NCA",
+      "chain": "A",
+      "gene": "CDC37",
+      "role": "train",
+      "disposition_rule": "pathway_raf1_ppi",
+      "enabled": true,
+      "stage0": false,
+      "note": "CDC37 N-terminal domain; model-1-only rewrite of NMR ensemble"
+    },
+    {
+      "pdb_id": "2O02",
+      "chain": "A",
+      "gene": "YWHAZ",
+      "role": "train",
+      "disposition_rule": "pathway_raf1_ppi",
+      "enabled": true,
+      "stage0": false,
+      "note": "14-3-3ζ monomer chain"
+    },
+    {
+      "pdb_id": "5IQP",
+      "chain": "A",
+      "gene": "YWHAQ",
+      "role": "train",
+      "disposition_rule": "pathway_raf1_ppi",
+      "enabled": true,
+      "stage0": false,
+      "note": "14-3-3τ / YWHAQ; YWHAH dropped to limit fold flooding"
+    }
+  ]
+}

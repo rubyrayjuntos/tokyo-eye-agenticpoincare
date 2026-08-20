@@ -18,16 +18,20 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 class ExperimentRequest(BaseModel):
-    lineage_id: Literal["v6", "v6.5"] = "v6.5"
+    lineage_id: Literal["v6", "v6.5", "v6.6", "v7"] = "v7"
     experiment_name: str | None = None
 
 
 class TrainRequest(BaseModel):
-    lineage_id: Literal["v6", "v6.5"] = "v6.5"
-    run_id: str = "cold_start_v6"
-    preset: Literal["slim_moe_structural_ssot", "master_cold", "custom"] = (
-        "slim_moe_structural_ssot"
-    )
+    lineage_id: Literal["v6", "v6.5", "v6.6", "v7"] = "v7"
+    run_id: str = "tokyo_eye_v7_cold_v1"
+    preset: Literal[
+        "master_cold",
+        "slim_moe_structural_ssot",
+        "v66_feeler",
+        "tokyo_eye_v7",
+        "custom",
+    ] = "tokyo_eye_v7"
     corpus: str = "manifests/v6_corpus_stage_a_small_v1.json"
     device: str = "cuda"
     max_proteins: int | None = 12
@@ -43,7 +47,7 @@ class AssessRequest(BaseModel):
 
 
 class RegisterRequest(BaseModel):
-    lineage_id: Literal["v6", "v6.5"] = "v6.5"
+    lineage_id: Literal["v6", "v6.5", "v6.6", "v7"] = "v7"
     checkpoint_path: str
     run_id: str | None = None
     alias: Literal["champion", "challenger"] = "challenger"
@@ -51,7 +55,7 @@ class RegisterRequest(BaseModel):
 
 
 class PromoteRequest(BaseModel):
-    lineage_id: Literal["v6", "v6.5"] = "v6.5"
+    lineage_id: Literal["v6", "v6.5", "v6.6", "v7"] = "v7"
     checkpoint_path: str | None = None
     version: str | None = None
     alias: Literal["champion", "challenger"] = "champion"
@@ -104,7 +108,7 @@ async def get_lifecycle_runs(
         if not exp_name and lineage_id:
             exp_name = get_lineage(lineage_id).mlflow_experiment
         if not exp_name:
-            exp_name = "tokyo-eyes-v65"
+            exp_name = "tokyo-eyes-v7"
         runs = mlf.search_runs(
             experiment_names=[exp_name],
             order_by=["start_time DESC"],
@@ -169,7 +173,21 @@ async def enqueue_train(body: TrainRequest) -> dict[str, Any]:
         import shlex
 
         run_id = body.run_id
-        lineage_flag = "train-v65-cold-start" if body.lineage_id == "v6.5" else "train-v6-slim-moe-structural-ssot"
+        if body.lineage_id == "v7" or body.preset == "tokyo_eye_v7":
+            lineage_flag = "train-v7"
+        elif body.lineage_id == "v6.6" or body.preset == "v66_feeler":
+            # Default enqueue is P1; P2 continue is host make train-v66-feeler-p2.
+            lineage_flag = "train-v66-feeler"
+        elif body.lineage_id == "v6.5":
+            if body.preset == "slim_moe_structural_ssot":
+                lineage_flag = "train-v65-slim-cold-start"
+            else:
+                lineage_flag = "train-v65-master-cold"
+        else:
+            if body.preset == "slim_moe_structural_ssot":
+                lineage_flag = "train-v6-slim-moe-structural-ssot"
+            else:
+                lineage_flag = "train-v6-stage-a-small-master-cold"
         cmd = (
             f"make {lineage_flag} RUN_ID={shlex.quote(run_id)} "
             f"DEVICE={shlex.quote(body.device)}"

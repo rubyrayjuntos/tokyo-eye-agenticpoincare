@@ -6,8 +6,12 @@ reshaping disc geometry. Pre-registered in
 ``docs/specs/learned-flow-influence/ablation.md``.
 
 For each target residue B:
-  s_B = ||layer[B]||²
-  influence(A → B) = ||∂s_B / ∂x_A||
+  s_B = score(layer[B])   # default ``||layer[B]||²``; use ``pc1_sq`` = ``(h·û)²``
+                          # when input z-norm makes magnitude an unreliable proxy
+  influence(A → B) = ||∂s_B / ∂feat_A||
+where ``feat`` is ``raw_x`` (default), ``post_zscore`` (``node_emb`` input), or
+``post_node_emb`` — see ``--grad-site`` / JACOBIAN_ZNORM_DEFECT.md.
+
 One backward pass per B; layers reported separately (trunk ``encoder_h`` vs disc
 ``hyp_projections_2d``) — never pooled (see DISC_PROJECTION_NOT_TRUNK_PROXY).
 """
@@ -40,11 +44,85 @@ ORIGIN_FLAG_EPS = EPS  # flag nodes within this of the origin in the scored laye
 
 
 LayerName = Literal["encoder_h", "hyp_projections_2d"]
+ScoreMode = Literal["norm_sq", "pc1_sq"]
+GradSite = Literal["raw_x", "post_zscore", "post_node_emb"]
+
+
+def _attach_grad_site_hooks(
+    model: nn.Module, grad_site: GradSite
+) -> tuple[dict[str, torch.Tensor], list[Any]]:
+    """Capture the tensor that influence norms will differentiate w.r.t.
+
+    ``post_zscore`` / ``post_node_emb`` use ``node_emb`` pre/post hooks so the
+    site is exactly the model's feature path (not a re-applied transform).
+    """
+    holders: dict[str, torch.Tensor] = {}
+    handles: list[Any] = []
+    if grad_site == "raw_x":
+        return holders, handles
+    if not hasattr(model, "node_emb"):
+        raise RuntimeError(
+            f"grad_site={grad_site!r} requires model.node_emb "
+            "(raw_x works on hook-only stubs)"
+        )
+    if grad_site == "post_zscore":
+
+        def _pre(_mod: nn.Module, inputs: tuple[torch.Tensor, ...]) -> None:
+            holders["tensor"] = inputs[0]
+
+        handles.append(model.node_emb.register_forward_pre_hook(_pre))
+    elif grad_site == "post_node_emb":
+
+        def _post(
+            _mod: nn.Module, _inputs: tuple[torch.Tensor, ...], out: torch.Tensor
+        ) -> None:
+            holders["tensor"] = out
+
+        handles.append(model.node_emb.register_forward_hook(_post))
+    else:
+        raise ValueError(f"unknown grad_site: {grad_site}")
+    return holders, handles
 
 
 def safe_norm_sq(x: torch.Tensor, dim: int = -1) -> torch.Tensor:
     """Squared L2 with epsilon floor on the sum-of-squares (sqrt-safe upstream)."""
     return torch.clamp((x * x).sum(dim=dim), min=EPS)
+
+
+def pc1_unit_direction(layer: torch.Tensor) -> torch.Tensor:
+    """Unit PC1 of centered rows (detached SVD — direction is a fixed probe axis)."""
+    H = layer.detach()
+    if H.ndim != 2 or H.shape[0] < 2:
+        raise ValueError(f"pc1_unit_direction expects (N,D) with N≥2, got {tuple(H.shape)}")
+    Hc = H - H.mean(dim=0, keepdim=True)
+    # torch.linalg.svd on float64; take Vh[0]
+    _u, _s, vh = torch.linalg.svd(Hc, full_matrices=False)
+    v = vh[0]
+    nrm = torch.linalg.vector_norm(v)
+    if float(nrm) < EPS:
+        raise RuntimeError("degenerate PC1 direction (near-zero singular vector)")
+    return v / nrm
+
+
+def score_scalar(
+    row: torch.Tensor,
+    *,
+    score_mode: ScoreMode,
+    pc1_dir: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Scalar energy for one residue used as autograd target.
+
+    ``norm_sq``: ``||h||²`` (legacy; magnitude-sensitive under input z-norm).
+    ``pc1_sq``: ``(h·û)²`` with fixed corpus-batch PC1 ``û`` (norm-invariant axis).
+    """
+    if score_mode == "norm_sq":
+        return safe_norm_sq(row)
+    if score_mode == "pc1_sq":
+        if pc1_dir is None:
+            raise ValueError("pc1_sq requires pc1_dir")
+        proj = (row * pc1_dir).sum()
+        return torch.clamp(proj * proj, min=EPS)
+    raise ValueError(f"unknown score_mode: {score_mode}")
 
 
 def coefficient_of_variation(values: np.ndarray) -> float:
@@ -151,6 +229,25 @@ def _cast_module_double(model: nn.Module) -> nn.Module:
     return model.double()
 
 
+def _cast_batch_float64(data: Any, device: str) -> Any:
+    """Promote all floating batch tensors to float64 (hyp-MP / side-channels too).
+
+    ``compute_influence_matrix`` doubles the module for Jacobian stability; leaving
+    ``hyperbolic_edge_attr`` (or ``ca_coords`` / priors) in float32 causes
+    ``mat1 Float / mat2 Double`` failures inside EquivariantConv.
+    """
+    keys = list(data.keys()) if hasattr(data, "keys") else []
+    for key in keys:
+        val = data[key]
+        if not torch.is_tensor(val):
+            continue
+        if val.is_floating_point():
+            data[key] = val.detach().to(device=device, dtype=torch.float64)
+        else:
+            data[key] = val.to(device=device)
+    return data
+
+
 def _capture_layers(
     model: nn.Module,
 ) -> tuple[list[Any], dict[str, torch.Tensor]]:
@@ -187,6 +284,8 @@ def compute_influence_matrix(
     layer: LayerName,
     device: str,
     prot: dict[str, Any] | None = None,
+    score_mode: ScoreMode = "norm_sq",
+    grad_site: GradSite = "raw_x",
 ) -> dict[str, Any]:
     """Full N×N influence matrix for one layer via N backward passes.
 
@@ -194,23 +293,37 @@ def compute_influence_matrix(
     pool and matrix are restricted to leaf residues ``0:n_residue_nodes`` so
     Path B parent rows never enter asymmetry or classical GT correlation.
 
-    Excludes NaN/Inf entries rather than zero-filling. Flags near-origin nodes.
+    ``score_mode``:
+      - ``norm_sq``: ``s_B = ||layer[B]||²`` (legacy; magnitude-sensitive under z-norm)
+      - ``pc1_sq``: ``s_B = (layer[B]·û)²`` with fixed PC1 ``û`` of the residue pool
+        (norm-invariant; preferred when ``input_feature_zscore`` is on)
+
+    ``grad_site``:
+      - ``raw_x``: ``||∂s_B/∂data.x_A||`` (legacy default)
+      - ``post_zscore``: ``||∂s_B/∂z_A||`` where ``z`` is ``node_emb`` input
+        (after ``transform_node_features`` when z-norm is on)
+      - ``post_node_emb``: ``||∂s_B/∂h0_A||`` where ``h0 = node_emb(z)``
+
+    Excludes NaN/Inf entries rather than zero-filling. Flags near-origin nodes
+    (``norm_sq``: small ``||h||``; ``pc1_sq``: small ``|h·û|``).
     """
+    if score_mode not in ("norm_sq", "pc1_sq"):
+        raise ValueError(f"unknown score_mode: {score_mode}")
+    if grad_site not in ("raw_x", "post_zscore", "post_node_emb"):
+        raise ValueError(f"unknown grad_site: {grad_site}")
     model.eval()
     model = _cast_module_double(model)
-    # Clone features into float64 with grad; keep other batch fields as-is.
+    data = _cast_batch_float64(data, device)
+    # Re-bind x with grad after full-batch cast (detach cleared requires_grad).
     x = data.x.detach().to(device=device, dtype=torch.float64).requires_grad_(True)
     data.x = x
-    if hasattr(data, "edge_attr") and data.edge_attr is not None:
-        data.edge_attr = data.edge_attr.detach().to(device=device, dtype=torch.float64)
-    if hasattr(data, "edge_index") and data.edge_index is not None:
-        data.edge_index = data.edge_index.to(device=device)
 
     handles, captured = _capture_layers(model)
+    site_holders, site_handles = _attach_grad_site_hooks(model, grad_site)
     try:
         out = model(data)
     finally:
-        for h in handles:
+        for h in handles + site_handles:
             h.remove()
 
     if layer == "encoder_h":
@@ -227,6 +340,15 @@ def compute_influence_matrix(
         # Should already be float64 if model is double; keep reference for grad.
         pass
 
+    if grad_site == "raw_x":
+        grad_input = x
+    else:
+        if "tensor" not in site_holders:
+            raise RuntimeError(
+                f"grad_site={grad_site!r}: failed to capture intermediate via node_emb hook"
+            )
+        grad_input = site_holders["tensor"]
+
     n_total = int(layer_t.shape[0])
     n = jacobian_probe_node_count(data, prot)
     if n > n_total:
@@ -234,18 +356,33 @@ def compute_influence_matrix(
             f"n_residue_nodes={n} exceeds layer rows {n_total} for {layer}"
         )
     layer_t = layer_t[:n]
+    # Influence rows must match residue pool; intermediates may include parents.
+    if int(grad_input.shape[0]) < n:
+        raise ValueError(
+            f"grad_site tensor rows {int(grad_input.shape[0])} < n_residues={n}"
+        )
+    pc1_dir: torch.Tensor | None = None
+    if score_mode == "pc1_sq":
+        pc1_dir = pc1_unit_direction(layer_t)
+
     influence = np.full((n, n), np.nan, dtype=np.float64)
     excluded: list[dict[str, Any]] = []
     norms = layer_t.detach().norm(dim=-1).cpu().numpy()
-    near_origin = [int(i) for i, r in enumerate(norms) if float(r) < ORIGIN_FLAG_EPS]
+    if score_mode == "pc1_sq" and pc1_dir is not None:
+        proj = (layer_t.detach() * pc1_dir.unsqueeze(0)).sum(dim=-1).abs().cpu().numpy()
+        near_origin = [int(i) for i, r in enumerate(proj) if float(r) < ORIGIN_FLAG_EPS]
+        score_magnitudes = proj
+    else:
+        near_origin = [int(i) for i, r in enumerate(norms) if float(r) < ORIGIN_FLAG_EPS]
+        score_magnitudes = norms
 
     for b in range(n):
-        s_b = safe_norm_sq(layer_t[b])
+        s_b = score_scalar(layer_t[b], score_mode=score_mode, pc1_dir=pc1_dir)
         retain = b < n - 1
         try:
-            (grad_x,) = torch.autograd.grad(
+            (grad_feat,) = torch.autograd.grad(
                 s_b,
-                x,
+                grad_input,
                 retain_graph=retain,
                 create_graph=False,
                 allow_unused=False,
@@ -260,13 +397,13 @@ def compute_influence_matrix(
             )
             continue
 
-        if grad_x is None:
+        if grad_feat is None:
             excluded.append(
                 {"target_b": b, "reason": "grad_none", "scope": "column"}
             )
             continue
 
-        g = grad_x.detach()
+        g = grad_feat.detach()[:n]
         col_norm = torch.sqrt(torch.clamp((g * g).sum(dim=-1), min=EPS))
         col = col_norm.cpu().numpy()
         for a in range(n):
@@ -284,10 +421,10 @@ def compute_influence_matrix(
                 continue
             influence[a, b] = val
 
-        del grad_x, s_b
+        del grad_feat, s_b
 
     # Free retained graph.
-    del out, layer_t, captured, x
+    del out, layer_t, captured, x, grad_input, site_holders
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     gc.collect()
@@ -315,6 +452,8 @@ def compute_influence_matrix(
         "near_origin_nodes": near_origin,
         "cv_floor": FLOW_CV_FLOOR,
         "asymmetry_floor": ASYMMETRY_FLOOR,
+        "score_mode": score_mode,
+        "grad_site": grad_site,
     }
     liveness["alive"] = bool(
         liveness["flow_centrality_nondegenerate"]
@@ -330,6 +469,8 @@ def compute_influence_matrix(
 
     return {
         "layer": layer,
+        "score_mode": score_mode,
+        "grad_site": grad_site,
         "n_residues": n,
         "n_total_nodes": n_total,
         "influence": influence,
@@ -340,6 +481,7 @@ def compute_influence_matrix(
         },
         "asymmetry": asym,
         "layer_norms": norms.astype(np.float64),
+        "score_magnitudes": np.asarray(score_magnitudes, dtype=np.float64),
         "min_layer_norm": float(np.min(norms)) if norms.size else float("nan"),
         "liveness": liveness,
         "excluded": excluded[:200],  # cap report size
@@ -373,6 +515,8 @@ def evaluate_structure(
     checkpoint: Path,
     device: str,
     layers: Sequence[LayerName] = ("encoder_h", "hyp_projections_2d"),
+    score_mode: ScoreMode = "norm_sq",
+    grad_site: GradSite = "raw_x",
 ) -> dict[str, Any]:
     pdb_id = str(prot.get("pdb_id") or prot.get("structure_id") or "").upper()
     ca = prot.get("ca_coords")
@@ -399,7 +543,13 @@ def evaluate_structure(
         model.eval()
         data = prepare_training_batch(model, prot, device)
         report = compute_influence_matrix(
-            model, data, layer=layer, device=device, prot=prot
+            model,
+            data,
+            layer=layer,
+            device=device,
+            prot=prot,
+            score_mode=score_mode,
+            grad_site=grad_site,
         )
         corr = None
         if report["liveness"]["flow_centrality_nondegenerate"]:
@@ -413,6 +563,8 @@ def evaluate_structure(
         finite = influence[np.isfinite(influence)]
         layer_reports[layer] = {
             "n_residues": report["n_residues"],
+            "score_mode": report.get("score_mode", score_mode),
+            "grad_site": report.get("grad_site", grad_site),
             "min_layer_norm": report["min_layer_norm"],
             "liveness": report["liveness"],
             "asymmetry": report["asymmetry"],
@@ -439,6 +591,8 @@ def evaluate_structure(
         "pdb_id": pdb_id,
         "chain": prot.get("chain"),
         "checkpoint": str(checkpoint),
+        "score_mode": score_mode,
+        "grad_site": grad_site,
         "classical": {
             k: classical_json[k]
             for k in (
@@ -549,11 +703,13 @@ def aggregate_stage_a12_verdict(
 
 
 def main() -> None:
+    from experiments.training.v66.healthy_fix1 import HEALTHY_FIX1_CKPT
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--checkpoint",
         type=Path,
-        default=Path("checkpoints/v66/runs/chem_mvp_stage_a12_cold_v1/v66_best.pt"),
+        default=HEALTHY_FIX1_CKPT,
     )
     parser.add_argument(
         "--corpus-cache",
@@ -586,9 +742,40 @@ def main() -> None:
         default=None,
         help="Optional near-epoch-0 checkpoint for known-degenerate control.",
     )
+    parser.add_argument(
+        "--score-mode",
+        choices=("norm_sq", "pc1_sq"),
+        default="norm_sq",
+        help=(
+            "Autograd target: norm_sq=||h||² (legacy); "
+            "pc1_sq=(h·û)² with fixed batch PC1 (norm-invariant under z-norm)."
+        ),
+    )
+    parser.add_argument(
+        "--grad-site",
+        choices=("raw_x", "post_zscore", "post_node_emb"),
+        default="raw_x",
+        help=(
+            "Differentiate influence w.r.t. raw input, post-zscore "
+            "(node_emb input), or post-node_emb activations. "
+            "Workaround for z-norm wash-out at raw_x — see JACOBIAN_ZNORM_DEFECT.md."
+        ),
+    )
+    parser.add_argument(
+        "--layers",
+        choices=("encoder_h", "hyp_projections_2d", "both"),
+        default="both",
+        help="Which probe layers to score (default both; encoder_h for cheap sweeps).",
+    )
     args = parser.parse_args()
 
     os.environ.setdefault("GNN_INPUT_MODE", "topology_three_vector")
+    score_mode: ScoreMode = args.score_mode  # type: ignore[assignment]
+    grad_site: GradSite = args.grad_site  # type: ignore[assignment]
+    if args.layers == "both":
+        layers: tuple[LayerName, ...] = ("encoder_h", "hyp_projections_2d")
+    else:
+        layers = (args.layers,)  # type: ignore[assignment]
     stage_a12 = (
         "1MBN",
         "1LYZ",
@@ -618,12 +805,19 @@ def main() -> None:
 
     structures: list[dict[str, Any]] = []
     for pid in pdb_ids:
-        print(f"evaluating {pid} on {args.checkpoint} ...", flush=True)
+        print(
+            f"evaluating {pid} on {args.checkpoint} "
+            f"(score_mode={score_mode}, grad_site={grad_site}, layers={layers}) ...",
+            flush=True,
+        )
         structures.append(
             evaluate_structure(
                 prot=proteins[pid],
                 checkpoint=args.checkpoint,
                 device=args.device,
+                score_mode=score_mode,
+                grad_site=grad_site,
+                layers=layers,
             )
         )
         if args.ep0_control is not None:
@@ -632,6 +826,9 @@ def main() -> None:
                 prot=proteins[pid],
                 checkpoint=args.ep0_control,
                 device=args.device,
+                score_mode=score_mode,
+                grad_site=grad_site,
+                layers=layers,
             )
             ctrl["role"] = "ep0_degenerate_control"
             structures.append(ctrl)
@@ -639,14 +836,31 @@ def main() -> None:
     primary = [s for s in structures if s.get("role", "primary") == "primary"]
     verdict = aggregate_stage_a12_verdict(primary) if args.stage_a12 else None
 
+    feat_label = {
+        "raw_x": "x_A",
+        "post_zscore": "z_A (node_emb input)",
+        "post_node_emb": "h0_A (node_emb output)",
+    }[grad_site]
+    score_note = (
+        f"influence(A→B)=||∂ s_B / ∂{feat_label}|| with s_B=||layer[B]||² (norm_sq)."
+        if score_mode == "norm_sq"
+        else (
+            f"influence(A→B)=||∂ s_B / ∂{feat_label}|| with s_B=(layer[B]·û)² "
+            "(pc1_sq); û = fixed PC1 of the residue pool "
+            "(norm-invariant under input z-norm)."
+        )
+    )
     report = {
         "schema_version": 1,
         "probe": "jacobian_flow_influence",
+        "score_mode": score_mode,
+        "grad_site": grad_site,
+        "layers": list(layers),
         "interpretation": (
-            "influence(A→B)=||∂||layer[B]||² / ∂x_A||. Negative findings on "
-            "asymmetry (near-zero) mean symmetric smoothing, not a probe failure. "
-            "Trunk and disc are never pooled. Stage A-12 win uses per-structure "
-            "holds only (ablation.md floors locked before scale-up)."
+            f"{score_note} Negative findings on asymmetry (near-zero) mean "
+            "symmetric smoothing, not a probe failure. Trunk and disc are never "
+            "pooled. Stage A-12 win uses per-structure holds only (ablation.md "
+            "floors locked before scale-up)."
         ),
         "numerical_safety": {
             "EPS": EPS,

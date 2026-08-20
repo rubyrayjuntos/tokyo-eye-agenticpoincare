@@ -10,7 +10,14 @@ import torch
 import torch.nn as nn
 
 from science.dtie.common.residue_features import residue_sasa_from_data
+from science.dtie.common.directionality_objective import pdb_in_diam_le9_pass_group
 from science.dtie.v6.loss import gosp_loss_v6
+
+
+def _directionality_eligible(pdb_id: Any) -> bool:
+    """Path 2 diam≤9 mask — large graphs must not drive the directionality loss."""
+    return pdb_in_diam_le9_pass_group(str(pdb_id) if pdb_id is not None else "")
+
 
 # Per-node model outputs that must stay residue-aligned for physics losses / metrics.
 _RESIDUE_OUTPUT_KEYS = (
@@ -20,6 +27,7 @@ _RESIDUE_OUTPUT_KEYS = (
     "cone_depth_routed",
     "cone_width",
     "expert_weights",
+    "encoder_h",
     "x_hyp",
     "x_routed_hyp",
     "hyp_projections",
@@ -42,7 +50,11 @@ _RESIDUE_DICT_OUTPUT_KEYS = ("uncertainty", "evidence")
 
 
 def resolve_prot_pdb_path(prot: dict[str, Any]) -> str | None:
-    """Resolve deposited PDB text for Path B HELIX/SHEET parse."""
+    """Resolve deposited PDB text for Path B HELIX/SHEET parse.
+
+    Search order: ``prot['pdb_path']``, ``prot['pdb_dir']``, docker mount
+    ``/tmp/dtie_pdb_cache`` (host ``./pdb_cache``), then repo ``pdb_cache/``.
+    """
     raw = prot.get("pdb_path")
     if raw is not None:
         path = Path(str(raw))
@@ -52,12 +64,19 @@ def resolve_prot_pdb_path(prot: dict[str, Any]) -> str | None:
     if not pdb_id:
         return None
     repo_root = Path(__file__).resolve().parents[3]
-    cache_dirs = []
+    cache_dirs: list[Path] = []
     pdb_dir = prot.get("pdb_dir")
     if pdb_dir is not None:
         cache_dirs.append(Path(str(pdb_dir)))
+    # docker-compose mounts ./pdb_cache → /tmp/dtie_pdb_cache (Makefile --pdb-dir).
+    cache_dirs.append(Path("/tmp/dtie_pdb_cache"))
     cache_dirs.append(repo_root / "pdb_cache")
+    seen: set[str] = set()
     for cache in cache_dirs:
+        key = str(cache.resolve()) if cache.exists() else str(cache)
+        if key in seen:
+            continue
+        seen.add(key)
         for name in (f"{pdb_id.upper()}.pdb", f"{pdb_id.lower()}.pdb"):
             cand = cache / name
             if cand.is_file():
@@ -244,6 +263,7 @@ def prepare_training_batch(
             dehydron_exclusivity=bool(getattr(model, "dehydron_exclusivity", True)),
             spoke_edge_scale=float(getattr(model, "spoke_edge_scale", 1.0)),
             ribbon_edge_scale=float(getattr(model, "ribbon_edge_scale", 1.0)),
+            ha_edges=bool(getattr(model, "ha_edge_mp", False)),
         )
         if bool(getattr(model, "chem_edge_mp", False)):
             from science.dtie.v66.chem_edge_graph import attach_chem_edge_graph
@@ -720,6 +740,9 @@ def train_epoch(
             "majority_committed_share_raw",
             "core_majority_committed_share",
             "core_majority_committed_share_raw",
+            "directionality_asym",
+            "directionality_asym_raw",
+            "directionality_asym_index",
             "prototype_pair_min_dist",
             "cone_consistency",
             "cone_depth_anticollapse",
@@ -904,6 +927,7 @@ def train_epoch(
                     leak_label_mask=leak_label_mask,
                     topology_depth=topology_depth,
                     aleatoric_shaping_train_mask=shaping_train_mask,
+                    directionality_eligible=_directionality_eligible(pdb_id),
                     **{
                         k: v
                         for k, v in loss_coeffs.items()
@@ -999,7 +1023,15 @@ def train_epoch(
 
     from science.training.grad_probe import finalize_subsystem_grad_norms
 
-    result = {k: float(np.mean(v)) if v else 0.0 for k, v in epoch_losses.items()}
+    result = {}
+    for k, v in epoch_losses.items():
+        if not v:
+            result[k] = 0.0
+        elif k == "directionality_asym_index":
+            # Ineligible (diam>9) graphs log NaN — average only pass-group values.
+            result[k] = float(np.nanmean(np.asarray(v, dtype=np.float64)))
+        else:
+            result[k] = float(np.mean(v))
     for fold_id, vals in fold_totals.items():
         key = f"per_fold_loss.{fold_id_to_mlflow_key(fold_id)}"
         result[key] = float(np.mean(vals)) if vals else 0.0

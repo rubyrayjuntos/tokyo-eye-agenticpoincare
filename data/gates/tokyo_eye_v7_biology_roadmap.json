@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_biology_roadmap",
+  "recorded_at": "2026-07-21T18:05:00+00:00",
+  "status": "OPEN",
+  "spec": "docs/specs/tokyo-eye-v7/biology-roadmap.md",
+  "theta_ssot": "checkpoints/v7/runs/tokyo_eye_v7_bprime_core_floor_continue_v1/v7_healthy_sealed.pt",
+  "priority": ["B0", "B1", "B2", "B3_prime"],
+  "deferred": ["B4_phylo", "B5_ligand"],
+  "active": "B1",
+  "b0_progress": {
+    "theta_lock": true,
+    "naming_lock": true,
+    "metric_helpers": true,
+    "metric_tests": "tests/test_investigation_metrics.py",
+    "probe_inventory": true,
+    "forward_smoke": "checkpoints/v7/diagnostics/tokyo_eye_v7_b0_sealed_forward_smoke.json",
+    "b1_prereg_draft": "docs/specs/tokyo-eye-v7/b1-teleconnections-prereg-draft.md"
+  },
+  "b1_prereg": "data/gates/tokyo_eye_v7_b1_teleconnections_prereg.json",
+  "next_human_gate": "Review B1 FAIL closeout (scramble>conduit both arms); waiver vs redesign before B2",
+  "items": {
+    "B0": {
+      "name": "prep",
+      "status": "PASS",
+      "tasks": ["theta_lock", "naming_lock", "metric_helpers", "probe_inventory", "forward_smoke", "b1_prereg_draft"]
+    },
+    "B1": {
+      "name": "teleconnections_allostery",
+      "status": "FAIL",
+      "prereg": "data/gates/tokyo_eye_v7_b1_teleconnections_prereg.json",
+      "closeout": "data/gates/tokyo_eye_v7_b1_teleconnections_closeout.json",
+      "make": "grade-v7-b1-teleconnections",
+      "metrics": ["AlleleSens", "conduit_vs_scramble", "investigation_hub_and_pocket"]
+    },
+    "B2": {
+      "name": "epistasis_cascades",
+      "status": "BLOCKED_ON_B1",
+      "metrics": ["Epistasis"]
+    },
+    "B3_prime": {
+      "name": "directional_topography",
+      "status": "DEFERRED_AFTER_B2",
+      "forbidden_claims": ["free_energy", "thermodynamic_saddle", "folding_pathway"]
+    },
+    "B4_phylo": {
+      "name": "evolutionary_trajectories",
+      "status": "DEFERRED",
+      "reason": "ball_origin_is_not_phylogeny"
+    },
+    "B5_ligand": {
+      "name": "zero_shot_ligand",
+      "status": "DEFERRED",
+      "reason": "chem_mvp_parked"
+    }
+  },
+  "uncertainty": "PARKED — docs/specs/tokyo-eye-v7/bprime-uncertainty-unpark.md",
+  "forbidden_claims": [
+    "sealed_equals_biology_champion",
+    "disc_rim_equals_pathway",
+    "nig_ale_epi_equals_allele_epistasis",
+    "embedding_density_equals_free_energy",
+    "zero_shot_ligand_affinity"
+  ]
+}

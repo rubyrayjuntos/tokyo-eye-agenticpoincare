@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_b1_teleconnections_closeout",
+  "recorded_at": "2026-07-21T18:25:18.572566+00:00",
+  "status": "FAIL",
+  "prereg": "data/gates/tokyo_eye_v7_b1_teleconnections_prereg.json",
+  "spec": "docs/specs/tokyo-eye-v7/b1-teleconnections-prereg.md",
+  "checkpoint": "/app/checkpoints/v7/runs/tokyo_eye_v7_bprime_core_floor_continue_v1/v7_healthy_sealed.pt",
+  "artifact": "/app/checkpoints/v7/diagnostics/b1_teleconnections/b1_teleconnections.json",
+  "verdict": {
+    "pass": false,
+    "bars": {
+      "on_conduit_gt_off_conduit": {
+        "pass": true,
+        "allele_sens_on": 0.19405530393123627,
+        "allele_sens_off": 0.12442295998334885
+      },
+      "on_conduit_gt_on_scramble": {
+        "pass": false,
+        "allele_sens_n12": 0.19405530393123627,
+        "allele_sens_scramble": 0.22197842597961426
+      },
+      "off_conduit_gt_off_scramble_or_near_zero_waiver": {
+        "pass": false,
+        "allele_sens_n12": 0.12442295998334885,
+        "allele_sens_scramble": 0.14235809445381165,
+        "near_zero_waiver": false,
+        "noise_floor": 0.0001
+      },
+      "hygiene_finite": {
+        "pass": true
+      }
+    }
+  },
+  "allele_sens": {
+    "off_n12": 0.12442295998334885,
+    "on_n12": 0.19405530393123627,
+    "off_scramble": 0.14235809445381165,
+    "on_scramble": 0.22197842597961426
+  },
+  "investigation_note": "investigation destination winner: ON=pocket, OFF=pocket (prior hub_hub; not Pass/Fail)",
+  "note": "B1 teleconnections closeout. Destination hub/pocket is investigation-only."
+}

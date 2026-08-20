@@ -1,8 +1,8 @@
-"""Contract-driven GNN model and checkpoint registry.
+"""GNN model registry helpers.
 
-Single source of truth for production inference defaults lives in
-``onboard_contract.yaml`` → ``gnn_models:``. Science API, runners, and health
-checks resolve paths and model_version strings through this module.
+Active TokyoEye production restore is MLflow-native: ``models:/TokyoEye@champion``.
+The contract catalog remains for API shape, legacy comparisons, and runner
+metadata, but local checkpoint paths are not the production SSOT.
 """
 
 from __future__ import annotations
@@ -14,10 +14,19 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
+from science.tokyo_eye.governance.registry import ALIAS_CHAMPION, resolve_alias_uri
+from science.tokyo_eye.governance.taxonomy import REGISTERED_MODEL_NAME
+
 ModelStatus = Literal["production", "legacy", "candidate", "deprecated"]
 CheckpointStatus = Literal["production", "legacy", "candidate", "deprecated"]
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+MLFLOW_MODEL_URI_PREFIX = "models:/"
+PRODUCTION_ALIAS_ENV = "TOKYOEYE_PRODUCTION_ALIAS"
+
+
+def _production_alias() -> str:
+    return os.environ.get(PRODUCTION_ALIAS_ENV, ALIAS_CHAMPION).strip() or ALIAS_CHAMPION
 
 def _load_contract() -> dict[str, Any]:
     """Lazy contract load — avoids import cycle with onboard_contract ↔ runners."""
@@ -110,7 +119,7 @@ def get_production_model_version() -> str:
 
 
 def get_production_api_alias() -> str:
-    return get_production_model().api_alias
+    return _production_alias()
 
 
 def get_checkpoint_spec(checkpoint_id: str) -> CheckpointSpec:
@@ -133,9 +142,13 @@ def get_production_checkpoint_id() -> str:
 
 
 def get_production_checkpoint_path() -> str:
-    """Contract canonical logical path for the production checkpoint."""
-    checkpoint_id = get_production_checkpoint_id()
-    return get_checkpoint_spec(checkpoint_id).path
+    """Logical MLflow restore URI for active production."""
+    return resolve_alias_uri(_production_alias())
+
+
+def get_production_restore_uri(alias: str | None = None) -> str:
+    """Return the MLflow model URI for an active restore alias."""
+    return resolve_alias_uri(alias or _production_alias())
 
 
 def resolve_model_for_api_alias(api_alias: str) -> GnnModelSpec | None:
@@ -147,6 +160,9 @@ def resolve_model_for_api_alias(api_alias: str) -> GnnModelSpec | None:
 
 def resolve_model_version_for_checkpoint(path: str) -> str | None:
     normalized = path.strip()
+    if normalized.startswith(f"{MLFLOW_MODEL_URI_PREFIX}{REGISTERED_MODEL_NAME}@"):
+        alias = normalized.rsplit("@", 1)[-1]
+        return f"{REGISTERED_MODEL_NAME}@{alias}"
     for checkpoint in get_checkpoint_catalog().values():
         if checkpoint.path == normalized:
             return get_model_spec(checkpoint.model_id).model_version
@@ -166,6 +182,8 @@ def checkpoint_search_roots() -> list[Path]:
 
 def resolve_checkpoint_file(path: str) -> Path | None:
     """Return the first existing filesystem path for a contract logical path."""
+    if path.strip().startswith(MLFLOW_MODEL_URI_PREFIX):
+        return None
     logical = Path(path)
     if logical.is_file():
         return logical
@@ -187,6 +205,8 @@ def checkpoint_exists(path: str) -> bool:
 
 def compute_checkpoint_sha256(path: str) -> str | None:
     """SHA-256 of checkpoint bytes; None if file not found."""
+    if path.strip().startswith(MLFLOW_MODEL_URI_PREFIX):
+        return None
     resolved = resolve_checkpoint_file(path)
     if resolved is None:
         return None
@@ -198,6 +218,15 @@ def compute_checkpoint_sha256(path: str) -> str | None:
 
 
 def checkpoint_status(path: str) -> dict[str, Any]:
+    if path.strip().startswith(MLFLOW_MODEL_URI_PREFIX):
+        return {
+            "path": path,
+            "resolved_path": None,
+            "exists": False,
+            "sha256": None,
+            "sha256_prefix": None,
+            "uri": path,
+        }
     resolved = resolve_checkpoint_file(path)
     sha256 = compute_checkpoint_sha256(path) if resolved is not None else None
     return {
@@ -209,8 +238,93 @@ def checkpoint_status(path: str) -> dict[str, Any]:
     }
 
 
+def get_production_mlflow_metadata(
+    *,
+    alias: str | None = None,
+    tracking_uri: str | None = None,
+) -> dict[str, Any]:
+    """Return MLflow alias metadata without downloading artifacts."""
+    active_alias = alias or _production_alias()
+    uri = resolve_alias_uri(active_alias)
+    try:
+        from science.tokyo_eye.governance.registry import get_model_by_alias
+
+        meta = get_model_by_alias(alias=active_alias, tracking_uri=tracking_uri)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "registered_model": REGISTERED_MODEL_NAME,
+            "alias": active_alias,
+            "uri": uri,
+            "error": str(exc),
+        }
+    if meta is None:
+        return {
+            "ok": False,
+            "registered_model": REGISTERED_MODEL_NAME,
+            "alias": active_alias,
+            "uri": uri,
+            "error": f"No model version for {uri}",
+        }
+    tags = dict(meta.get("tags") or {})
+    return {
+        "ok": True,
+        "registered_model": REGISTERED_MODEL_NAME,
+        "alias": active_alias,
+        "uri": uri,
+        "mlflow_model_version": meta.get("version"),
+        "run_id": meta.get("run_id"),
+        "source": meta.get("source"),
+        "tags": tags,
+        "model_version": f"{REGISTERED_MODEL_NAME}@{active_alias}",
+    }
+
+
+def resolve_production_checkpoint(
+    *,
+    alias: str | None = None,
+    tracking_uri: str | None = None,
+) -> dict[str, Any]:
+    """Resolve the active MLflow alias into a local cache path, failing closed."""
+    active_alias = alias or _production_alias()
+    from science.tokyo_eye.governance.resolve import resolve_alias_checkpoint
+
+    resolved = resolve_alias_checkpoint(alias=active_alias, tracking_uri=tracking_uri)
+    return {
+        **resolved,
+        "cache_path": resolved["path"],
+        "registered_model": REGISTERED_MODEL_NAME,
+        "model_id": REGISTERED_MODEL_NAME,
+        "model_version": f"{REGISTERED_MODEL_NAME}@{active_alias}",
+        "restore_source": "mlflow_alias",
+    }
+
+
+def get_production_restore_summary(
+    *,
+    alias: str | None = None,
+    tracking_uri: str | None = None,
+    resolve_cache: bool = False,
+) -> dict[str, Any]:
+    """MLflow production restore payload for API/health responses."""
+    summary = get_production_mlflow_metadata(alias=alias, tracking_uri=tracking_uri)
+    if not resolve_cache or not summary.get("ok"):
+        return summary
+    try:
+        resolved = resolve_production_checkpoint(alias=summary["alias"], tracking_uri=tracking_uri)
+    except Exception as exc:
+        return {**summary, "ok": False, "cache_error": str(exc)}
+    return {
+        **summary,
+        "cache_path": resolved.get("cache_path"),
+        "checkpoint_sha256": resolved.get("sha256"),
+        "checkpoint_sha256_16": resolved.get("sha256_16"),
+    }
+
+
 def build_models_api_payload() -> dict[str, Any]:
     contract = _load_contract()
+    production_restore = get_production_restore_summary()
     models_out: list[dict[str, Any]] = []
     for model in get_gnn_model_catalog().values():
         checkpoint = get_checkpoint_spec(model.production_checkpoint_id)
@@ -245,6 +359,7 @@ def build_models_api_payload() -> dict[str, Any]:
         "contract_version": str(contract.get("version", "")),
         "production_model_id": get_production_model_id(),
         "production_checkpoint_path": get_production_checkpoint_path(),
+        "production_restore": production_restore,
         "models": models_out,
         "checkpoints": checkpoints_out,
     }

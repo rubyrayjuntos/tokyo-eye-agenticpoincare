@@ -550,15 +550,15 @@ readiness:
       - allosteric_sites
       - allele_selectivity
 gnn_models:
-  production_model_id: tokyo_eye_v8
+  production_model_id: TokyoEye
   models:
-    tokyo_eye_v8:
-      model_version: TokyoEye-v8
-      api_alias: v8
+    TokyoEye:
+      model_version: TokyoEye@champion
+      api_alias: champion
       status: production
       runner_module: science.tokyo_eye.v8.runner
       runner_class: TokyoEyeV8Runner
-      production_checkpoint_id: tokyo_eye_v8_mode_c_moe_rebalance_s9
+      production_checkpoint_id: tokyoeye_champion_mlflow
     tokyo_eye_v7:
       model_version: TokyoEye-v7
       api_alias: v7
@@ -588,9 +588,9 @@ gnn_models:
       runner_class: V65GNNRunner
       production_checkpoint_id: v65_champion
   checkpoints:
-    tokyo_eye_v8_mode_c_moe_rebalance_s9:
-      model_id: tokyo_eye_v8
-      path: checkpoints/v8/runs/tokyo_eye_v8_mode_c_moe_rebalance_s9/v8_best.pt
+    tokyoeye_champion_mlflow:
+      model_id: TokyoEye
+      path: models:/TokyoEye@champion
       status: production
     tokyo_eye_v7_cutover_scaffold:
       model_id: tokyo_eye_v7

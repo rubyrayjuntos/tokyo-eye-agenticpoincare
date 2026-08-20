@@ -523,6 +523,7 @@ class GOSPConeMapperV6(nn.Module):
         disc_radial_source: str = "mobius",
         decoupled_uncertainty_heads: bool = False,
         uncertainty_from_backbone: bool = False,
+        init_seed: int | None = None,
     ):
         super().__init__()
         self.hidden = hidden
@@ -536,6 +537,7 @@ class GOSPConeMapperV6(nn.Module):
         self.deep_hyperbolic_gate = deep_hyperbolic_gate
         self.expert_depth_decouple = expert_depth_decouple
         self.structure_gate = structure_gate
+        self.init_seed = init_seed
         # Softer than 0.99 — aggressive clamping collapses angular spread on the disc.
         self.disc_proj_softness = 0.95
         self.disc_projection_path = resolve_disc_projection_path(
@@ -592,6 +594,7 @@ class GOSPConeMapperV6(nn.Module):
                 use_gumbel=gate_gumbel,
                 deep_gate=deep_hyperbolic_gate,
                 structure_gate=structure_gate,
+                init_seed=init_seed,
             )
         else:
             self.gate = TopologicalMoEGateV6(
@@ -1009,9 +1012,12 @@ class GOSPConeMapperV6(nn.Module):
             "hyp_projections_3d": hyp_proj_3d,
             "radial_features": radial_depth,
             "angular_features": angular_direction,
+            "encoder_h": x,
             # V6 NEW outputs
             "capacity_loss": capacity_loss,
             "routing_load_floor": routing_load_floor,
+            "prototype_pair_min_dist": gate_audit.get("prototype_pair_min_dist"),
+            "prototype_gram_logdet": gate_audit.get("prototype_gram_logdet"),
             "expert_load": expert_load,
             "routing_entropy": routing_entropy,
             "gate_features_used": gate_features,

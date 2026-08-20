@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "gate": "kras_g12_neighborhood_graft_on_closeout",
+  "recorded_at": "2026-07-21T05:35:00+00:00",
+  "decision": "on_arm_pass_conduit_flex_replicates",
+  "checkpoint_ssot": "experiments.training.v66.healthy_fix1.FIX1_SPARSITY_CHAMPION_CKPT",
+  "workstream": "gnn_perturbation_boundary",
+  "child_order": 3,
+  "arm": {"wt": "6GOD", "mut": "6GOF", "chain": "A"},
+  "n12_size": 20,
+  "n12_resseqs": [9, 10, 11, 12, 13, 14, 15, 16, 32, 34, 35, 58, 59, 60, 61, 62, 82, 83, 86, 89],
+  "headline": {
+    "rho_wt_mut": 0.902,
+    "rho_single_mut": 0.902,
+    "rho_neighborhood_mut": 0.905,
+    "rho_scramble_mut": 0.836,
+    "delta_rho_single": 0.00043,
+    "delta_rho_neighborhood": 0.00308,
+    "multiplier_approx": 7.1
+  },
+  "cross_arm": {
+    "off_delta_rho_neighborhood": 0.0075,
+    "off_multiplier_approx": 5.0,
+    "note": "ON absolute Δρ smaller (higher baseline ρ); conduit multiplier holds"
+  },
+  "artifacts": {
+    "prereg": "data/gates/kras_g12_neighborhood_graft_on_prereg.json",
+    "grade": "checkpoints/v66/diagnostics/routing_sparsity/kras_g12_neighborhood_graft_on.json",
+    "narrative": "docs/specs/kras-topo-structural-inference/kras-g12-neighborhood-graft-on-closeout.md"
+  },
+  "claim_allowed": [
+    "ON-arm neighborhood conduit flex increases Δρ vs single-site",
+    "Four-quadrant bidirectional neighborhood baseline closed (OFF+ON Pass)"
+  ],
+  "claim_forbidden": [
+    "Full WT→mut rewrite",
+    "AA identity recognition",
+    "Hop-2 or G12V/C without new pre-reg"
+  ]
+}

@@ -2521,6 +2521,816 @@ train-v66-fix1-sparsity-confirm-continue: ## Confirm mean-H band + hub hold from
 	@echo "Run: checkpoints/v66/runs/$(or $(RUN_ID),$(FIX1_SPARSITY_CONFIRM_RUN))"
 	@echo "Grade: hub knockout 4OBE on final epoch; expect mean_H band + ρ≥0.45"
 
+# Banked sparsity phase champion (confirm_v2 epoch 48). Next biology probe: G12D hub migration.
+FIX1_SPARSITY_CHAMPION_RUN ?= fix1_s4_sparsity_confirm_continue_v2
+FIX1_SPARSITY_CHAMPION_CKPT ?= checkpoints/v66/runs/$(FIX1_SPARSITY_CHAMPION_RUN)/v66_sparsity_champion.pt
+LEDGER_B_SENSITIVITY_EPOCHS ?= 46,48,50
+FIX1_SPARSITY_CHAMPION_GATE ?= data/gates/fix1_sparsity_champion.json
+HEALTHY_FIX1_CKPT ?= checkpoints/v66/runs/fix1_s4_stack_initseed_controlled_3d_seed2_v1/v66_healthy_sealed.pt
+
+# Structural monopoly closeout: full-chain Gini(out_effect) baseline vs sparsity champion.
+# Panel: 2SHP / 3PP0 / 4OBE / 4DSO / 5VQ2. Never hub-slice H. ΔG = G_base − G_champion.
+grade-v66-fix1-gini-reduction-analysis: ## Full-chain Gini ΔG sealed baseline vs sparsity champion
+	@test -f $(HEALTHY_FIX1_CKPT) || \
+		(echo "Missing baseline $(HEALTHY_FIX1_CKPT)" && exit 1)
+	@test -f $(FIX1_SPARSITY_CHAMPION_CKPT) || \
+		(echo "Missing champion $(FIX1_SPARSITY_CHAMPION_CKPT)" && exit 1)
+	@mkdir -p checkpoints/v66/diagnostics/routing_sparsity logs/training
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.gini_reduction_analysis \
+		--baseline /app/$(HEALTHY_FIX1_CKPT) \
+		--champion /app/$(FIX1_SPARSITY_CHAMPION_CKPT) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output /app/checkpoints/v66/diagnostics/routing_sparsity/gini_reduction_analysis.json
+	@echo "Gini reduction → checkpoints/v66/diagnostics/routing_sparsity/gini_reduction_analysis.json"
+	@echo "ΔG = G(HEALTHY_FIX1_CKPT) − G(FIX1_SPARSITY_CHAMPION_CKPT); positive ⇒ monopoly reduced"
+
+# SHP2 inactive→active OOD: 2SHP → 6CRF on sparsity champion (three locked arms).
+# Prereg: data/gates/shp2_2shp_6mcf_ood_prereg.json (active PDB corrected 6MCF→6CRF)
+# Spec: docs/specs/shp2-2shp-6mcf-ood/design.md
+grade-v66-fix1-shp2-2shp-6crf-ood: ## SHP2 2SHP→6CRF OOD migration on sparsity champion
+	@test -f $(FIX1_SPARSITY_CHAMPION_CKPT) || \
+		(echo "Missing champion $(FIX1_SPARSITY_CHAMPION_CKPT)" && exit 1)
+	@test -f data/gates/shp2_2shp_6mcf_ood_prereg.json || \
+		(echo "Missing prereg data/gates/shp2_2shp_6mcf_ood_prereg.json" && exit 1)
+	@mkdir -p checkpoints/v66/diagnostics/routing_sparsity logs/training
+	@echo "NOTE: active open SHP2 is 6CRF (E76K). 6MCF is NOT SHP2 (7SK/Tat) — historical label corrected."
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.shp2_2shp_6mcf_ood \
+		--checkpoint /app/$(FIX1_SPARSITY_CHAMPION_CKPT) \
+		--prereg /app/data/gates/shp2_2shp_6mcf_ood_prereg.json \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output /app/checkpoints/v66/diagnostics/routing_sparsity/shp2_2shp_6crf_ood.json
+	@echo "SHP2 OOD → checkpoints/v66/diagnostics/routing_sparsity/shp2_2shp_6crf_ood.json"
+	@echo "Pass: Spearman≥0.50 (shared resseq); Jaccard(H10%)≥0.50 on all 6CRF perturbations; G(6CRF)∈[0.12,0.25]"
+	@echo "Docs: docs/specs/shp2-2shp-6mcf-ood/design.md"
+
+# Alias kept for the original make name after 6MCF→6CRF identity correction.
+grade-v66-fix1-shp2-2shp-6mcf-ood: grade-v66-fix1-shp2-2shp-6crf-ood ## Alias → 6CRF gate (6MCF was wrong PDB)
+
+grade-v66-fix1-sparsity-g12d-hub-migration: ## Next: KRAS G12D hub migration on sparsity champion
+	@test -f $(FIX1_SPARSITY_CHAMPION_CKPT) || \
+		(echo "Missing champion $(FIX1_SPARSITY_CHAMPION_CKPT)" && exit 1)
+	@test -f $(FIX1_SPARSITY_CHAMPION_GATE) || \
+		(echo "Missing gate stamp $(FIX1_SPARSITY_CHAMPION_GATE)" && exit 1)
+	@mkdir -p checkpoints/v66/diagnostics/routing_sparsity logs/training
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.kras_hub_migration_ood \
+		--checkpoint /app/$(FIX1_SPARSITY_CHAMPION_CKPT) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output /app/checkpoints/v66/diagnostics/routing_sparsity/kras_hub_migration_4obe_4dso.json
+	@echo "G12D hub migration → checkpoints/v66/diagnostics/routing_sparsity/kras_hub_migration_4obe_4dso.json"
+	@echo "Pass: R_4DSO > R_4OBE (trunk in-flow into 163). Docs: docs/specs/routing-entropy-sparsity/next-phase.md"
+
+# Phase A triangulation: 4OBE / 4DSO / 5VQ2 on sparsity champion (forward knockout + classical ΔE).
+# Spec: docs/specs/kras-topo-structural-inference/design.md
+# Note: historical triad edge ΔE is report-only; rewiring closeout → grade-v66-kras-topo-edge-four-quadrant
+grade-v66-fix1-sparsity-kras-topo-matrix: ## Primary topo matrix 4OBE/4DSO/5VQ2 on sparsity champion
+	@test -f $(FIX1_SPARSITY_CHAMPION_CKPT) || \
+		(echo "Missing champion $(FIX1_SPARSITY_CHAMPION_CKPT)" && exit 1)
+	@test -f $(FIX1_SPARSITY_CHAMPION_GATE) || \
+		(echo "Missing gate stamp $(FIX1_SPARSITY_CHAMPION_GATE)" && exit 1)
+	@mkdir -p checkpoints/v66/diagnostics/routing_sparsity logs/training
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.kras_topo_structural_matrix \
+		--checkpoint /app/$(FIX1_SPARSITY_CHAMPION_CKPT) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output /app/checkpoints/v66/diagnostics/routing_sparsity/kras_topo_matrix_4obe_4dso_5vq2.json
+	@echo "Topo matrix → checkpoints/v66/diagnostics/routing_sparsity/kras_topo_matrix_4obe_4dso_5vq2.json"
+	@echo "Blocking: ρ(4DSO,5VQ2)>ρ(4OBE,5VQ2); switch-lock 12-32@11Å / 12-61@10Å. Edge ΔE on triad = report-only."
+	@echo "Docs: docs/specs/kras-topo-structural-inference/design.md"
+
+# Four-quadrant classical edge ΔE rematch (structure-only; no checkpoint).
+# Roster: 4LPK / 6GOD / 5US4 / 6GOF. Spec: edge-delta-four-quadrant.md
+grade-v66-kras-topo-edge-four-quadrant: ## KRAS G12D four-quadrant Cα edge-ΔE rematch
+	@mkdir -p checkpoints/v66/diagnostics/routing_sparsity logs/training
+	$(SCIENCE_RUN) science python -m experiments.diagnostics.kras_topo_edge_delta_four_quadrant \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--output /app/checkpoints/v66/diagnostics/routing_sparsity/kras_topo_edge_delta_four_quadrant.json
+	@echo "Four-quadrant → checkpoints/v66/diagnostics/routing_sparsity/kras_topo_edge_delta_four_quadrant.json"
+	@echo "Pass: |ΔE_CA(5US4,6GOD)|<|ΔE_CA(4LPK,6GOD)| AND |ΔE_CA(5US4,6GOF)|<|ΔE_CA(4LPK,6GOD)|"
+	@echo "Docs: docs/specs/kras-topo-structural-inference/edge-delta-four-quadrant.md"
+
+# Matched-state residue-12 graft: WT scaffold ← mut site 12 (features+Cα); scramble control.
+# Spec: docs/specs/kras-topo-structural-inference/kras-g12-residue-graft-prereg.md
+grade-v66-kras-g12-residue-graft: ## KRAS G12 residue-12 graft validation (4LPK/5US4 + 6GOD/6GOF)
+	@test -f $(FIX1_SPARSITY_CHAMPION_CKPT) || \
+		(echo "Missing champion $(FIX1_SPARSITY_CHAMPION_CKPT)" && exit 1)
+	@test -f data/gates/kras_g12_residue_graft_prereg.json || \
+		(echo "Missing pre-reg stamp data/gates/kras_g12_residue_graft_prereg.json" && exit 1)
+	@mkdir -p checkpoints/v66/diagnostics/routing_sparsity logs/training
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.kras_g12_residue_graft_validation \
+		--checkpoint /app/$(FIX1_SPARSITY_CHAMPION_CKPT) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output /app/checkpoints/v66/diagnostics/routing_sparsity/kras_g12_residue_graft.json
+	@echo "Graft validation → checkpoints/v66/diagnostics/routing_sparsity/kras_g12_residue_graft.json"
+	@echo "Pass: ρ(graft,mut)>ρ(WT,mut) AND ρ(graft,mut)>ρ(scramble,mut) on both OFF and ON arms"
+	@echo "Docs: docs/specs/kras-topo-structural-inference/kras-g12-residue-graft-prereg.md"
+
+# Neighborhood / conduit graft (OFF arm only): 4LPK ← N12 from 5US4.
+# Spec: docs/specs/kras-topo-structural-inference/kras-g12-neighborhood-graft-prereg.md
+grade-v66-kras-g12-neighborhood-graft: ## KRAS G12 neighborhood conduit graft (4LPK←5US4)
+	@test -f $(FIX1_SPARSITY_CHAMPION_CKPT) || \
+		(echo "Missing champion $(FIX1_SPARSITY_CHAMPION_CKPT)" && exit 1)
+	@test -f data/gates/kras_g12_neighborhood_graft_prereg.json || \
+		(echo "Missing pre-reg stamp data/gates/kras_g12_neighborhood_graft_prereg.json" && exit 1)
+	@test -f data/gates/kras_g12_residue_graft_closeout.json || \
+		(echo "Missing single-site closeout data/gates/kras_g12_residue_graft_closeout.json" && exit 1)
+	@mkdir -p checkpoints/v66/diagnostics/routing_sparsity logs/training
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.kras_g12_neighborhood_graft_validation \
+		--checkpoint /app/$(FIX1_SPARSITY_CHAMPION_CKPT) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output /app/checkpoints/v66/diagnostics/routing_sparsity/kras_g12_neighborhood_graft.json
+	@echo "Neighborhood graft → checkpoints/v66/diagnostics/routing_sparsity/kras_g12_neighborhood_graft.json"
+	@echo "Pass: Δρ_neigh > Δρ_single AND ρ(neigh,mut) > ρ(scramble,mut)"
+	@echo "Docs: docs/specs/kras-topo-structural-inference/kras-g12-neighborhood-graft-prereg.md"
+
+# Child 4: post-lift hyperbolic latent graft (OFF 4LPK←5US4 x_hyp at N12).
+# Spec: docs/specs/kras-topo-structural-inference/kras-g12-hyperbolic-latent-graft-prereg.md
+grade-v66-kras-g12-hyperbolic-latent-graft: ## KRAS G12 hyp latent graft (post-lift x_hyp)
+	@test -f $(FIX1_SPARSITY_CHAMPION_CKPT) || \
+		(echo "Missing champion $(FIX1_SPARSITY_CHAMPION_CKPT)" && exit 1)
+	@test -f data/gates/kras_g12_hyperbolic_latent_graft_prereg.json || \
+		(echo "Missing pre-reg stamp data/gates/kras_g12_hyperbolic_latent_graft_prereg.json" && exit 1)
+	@test -f data/gates/kras_g12_neighborhood_graft_closeout.json || \
+		(echo "Missing OFF neighborhood closeout" && exit 1)
+	@mkdir -p checkpoints/v66/diagnostics/routing_sparsity logs/training
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.kras_g12_hyperbolic_latent_graft_validation \
+		--checkpoint /app/$(FIX1_SPARSITY_CHAMPION_CKPT) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output /app/checkpoints/v66/diagnostics/routing_sparsity/kras_g12_hyperbolic_latent_graft.json
+	@echo "Hyp latent graft → checkpoints/v66/diagnostics/routing_sparsity/kras_g12_hyperbolic_latent_graft.json"
+	@echo "Pass: Δρ_hyp_depth > Δρ_euc_neigh_on_hyp_depth AND ρ(hyp_graft,mut) > ρ(hyp_scramble,mut)"
+	@echo "Docs: docs/specs/kras-topo-structural-inference/kras-g12-hyperbolic-latent-graft-prereg.md"
+
+# Basin routing automaton Child 1: four-quadrant observation classify smoke.
+# Spec: docs/specs/kras-topo-structural-inference/kras-basin-observation-classify-prereg.md
+grade-v66-kras-basin-observation-classify: ## KRAS basin observation classify (4LPK/5US4/6GOD/6GOF)
+	@test -f $(FIX1_SPARSITY_CHAMPION_CKPT) || \
+		(echo "Missing champion $(FIX1_SPARSITY_CHAMPION_CKPT)" && exit 1)
+	@test -f data/gates/kras_basin_observation_classify_prereg.json || \
+		(echo "Missing pre-reg stamp data/gates/kras_basin_observation_classify_prereg.json" && exit 1)
+	@test -f data/gates/kras_g12_hyperbolic_latent_graft_closeout.json || \
+		(echo "Missing Child 4 closeout data/gates/kras_g12_hyperbolic_latent_graft_closeout.json" && exit 1)
+	@mkdir -p checkpoints/v66/diagnostics/routing_sparsity logs/training
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.kras_basin_observation_classify_validation \
+		--checkpoint /app/$(FIX1_SPARSITY_CHAMPION_CKPT) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output /app/checkpoints/v66/diagnostics/routing_sparsity/kras_basin_observation_classify.json
+	@echo "Basin classify → checkpoints/v66/diagnostics/routing_sparsity/kras_basin_observation_classify.json"
+	@echo "Pass: guards + same_nuc > cross_nuc + N12 |Δ| > scramble on OFF and ON"
+	@echo "Docs: docs/specs/kras-topo-structural-inference/kras-basin-observation-classify-prereg.md"
+
+# Tokyo Eye v7 — Hyp MP forward smoke (isolated from v66).
+# Spec: docs/specs/tokyo-eye-v7/forward-smoke-prereg.md
+grade-v7-forward-smoke: ## Tokyo Eye v7 Hyp MP forward smoke
+	@test -f data/gates/tokyo_eye_v7_lineage_opened.json || \
+		(echo "Missing v7 lineage stamp data/gates/tokyo_eye_v7_lineage_opened.json" && exit 1)
+	@test -f data/gates/tokyo_eye_v7_forward_smoke_prereg.json || \
+		(echo "Missing forward smoke pre-reg" && exit 1)
+	@mkdir -p checkpoints/v7/diagnostics
+	$(SCIENCE_RUN) science python -m experiments.training.v7.forward_smoke
+	@echo "v7 smoke → checkpoints/v7/diagnostics/tokyo_eye_v7_forward_smoke.json"
+	@echo "Docs: docs/specs/tokyo-eye-v7/README.md"
+
+# Register MLflow experiment tokyo-eyes-v7 + lineage-root run (isolated from v66).
+mlflow-register-v7-lineage: ## Create tokyo-eyes-v7 MLflow experiment + lineage root
+	@mkdir -p data/gates checkpoints/v7/diagnostics
+	$(SCIENCE_RUN) -e MLFLOW_TRACKING_URI=http://mlflow:5000 science python -m experiments.training.v7.register_mlflow_lineage \
+		--tracking-uri http://mlflow:5000 \
+		--experiment tokyo-eyes-v7 \
+		--stamp /app/data/gates/tokyo_eye_v7_mlflow_lineage_root.json
+	@echo "MLflow → experiment tokyo-eyes-v7; stamp data/gates/tokyo_eye_v7_mlflow_lineage_root.json"
+	@echo "Registered model name (on promote): TokyoEye-v7"
+
+# Seal cutover-scaffold checkpoint (init weights; not biology champion).
+seal-v7-cutover-scaffold: ## Seal TokyoEye cutover scaffold .pt for contract production
+	@mkdir -p checkpoints/v7 data/gates
+	$(SCIENCE_RUN) science python -m experiments.training.v7.seal_cutover_scaffold \
+		--out /app/checkpoints/v7/tokyo_eye_v7_cutover_scaffold.pt
+	@echo "Scaffold → checkpoints/v7/tokyo_eye_v7_cutover_scaffold.pt"
+
+# B′ surgical warmstart from Fix-1 sparsity champion (deny convs/norms; cold hyp_mp).
+FIX1_SPARSITY_CHAMPION_CKPT ?= checkpoints/v66/runs/fix1_s4_sparsity_confirm_continue_v2/v66_sparsity_champion.pt
+V7_BPRIME_WARMSTART_CKPT ?= checkpoints/v7/tokyo_eye_v7_bprime_warmstart.pt
+V7_BPRIME_HEALTH_RUN ?= tokyo_eye_v7_bprime_health_v1
+# Fix-1 mitigations without S4 --hyperbolic-mp-graph (v7 Hyp MP is primary).
+V7_BPRIME_STACK := --v66-feeler-lineage --v66-feeler-rim-fanout-model --v66-feeler-geom-angular-prior --input-feature-zscore --gate-include-sasa --prototype-repulsion-coeff $(or $(PROTO_REPULSION_COEFF),1.0) --prototype-repulsion-margin $(or $(PROTO_REPULSION_MARGIN),0.25) --gate-logit-softplus-init $(or $(GATE_SOFTPLUS),6.612216472625732) --gate-logit-softplus-floor $(or $(GATE_SOFTPLUS_FLOOR),6.612216472625732) --geometric-angular-kappa $(or $(GEOM_KAPPA),1.0) --geometric-angular-alpha $(or $(GEOM_ALPHA),0.7853981633974483) --rim-fanout-strength $(or $(RIM_FANOUT_STRENGTH),0.14) --rim-fanout-min-r $(or $(RIM_FANOUT_MIN_R),0.20) --num-experts $(or $(NUM_EXPERTS),4) --feature-liveness-probe --save-epoch-snapshots
+
+seal-v7-bprime-warmstart: ## Surgical B′: Fix-1 champion → TokyoEye (deny Euc trunk)
+	@test -f $(FIX1_SPARSITY_CHAMPION_CKPT) || (echo "Missing donor $(FIX1_SPARSITY_CHAMPION_CKPT)" && exit 1)
+	@mkdir -p checkpoints/v7 data/gates
+	$(SCIENCE_RUN) science python -m experiments.training.v7.seal_bprime_warmstart \
+		--donor /app/$(FIX1_SPARSITY_CHAMPION_CKPT) \
+		--out /app/$(V7_BPRIME_WARMSTART_CKPT)
+	@echo "B′ warmstart → $(V7_BPRIME_WARMSTART_CKPT)"
+
+train-v7-bprime-health: ## Stage-A health micro-run from B′ warmstart (Hyp MP primary)
+	@test -f data/gates/tokyo_eye_v7_bprime_health_prereg.json || (echo "Missing prereg stamp" && exit 1)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_small_v1.json" && exit 1)
+	@$(MAKE) seal-v7-bprime-warmstart
+	@mkdir -p checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_HEALTH_RUN)) pdb_cache
+	@printf '%s\n' \
+		'# Tokyo Eye v7 B′ health — surgical warmstart from Fix-1 champion' \
+		'donor: $(FIX1_SPARSITY_CHAMPION_CKPT)' \
+		'warmstart: $(V7_BPRIME_WARMSTART_CKPT)' \
+		'spec: docs/specs/tokyo-eye-v7/bprime-health-warmstart-prereg.md' \
+		> checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_HEALTH_RUN))/README.md
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v7.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--output-dir /app/checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_HEALTH_RUN)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),2) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--epochs $(or $(EPOCHS),8) \
+		--gnn-lineage v7 \
+		--mlflow-experiment tokyo-eyes-v7 \
+		--resume /app/$(V7_BPRIME_WARMSTART_CKPT) \
+		$(V7_BPRIME_STACK) \
+		$(if $(NO_MLFLOW),--no-mlflow,)
+	@echo "Health run → checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_HEALTH_RUN))"
+
+V7_BPRIME_HEALTH_DISC ?= checkpoints/v7/runs/tokyo_eye_v7_bprime_health_v1/v7_best_disc.pt
+V7_BPRIME_HEALTH_CONTINUE_RUN ?= tokyo_eye_v7_bprime_health_continue_v1
+
+# Longer continue from health disc saver — aim for disc_r≥0.25 + eligible v7_best (not promote).
+train-v7-bprime-health-continue: ## Continue B′ health from v7_best_disc (longer; no promote)
+	@test -f $(or $(RESUME),$(V7_BPRIME_HEALTH_DISC)) || \
+		(echo "Missing resume ckpt $(or $(RESUME),$(V7_BPRIME_HEALTH_DISC))" && exit 1)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp" && exit 1)
+	@mkdir -p checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_HEALTH_CONTINUE_RUN)) pdb_cache
+	@printf '%s\n' \
+		'# Tokyo Eye v7 B′ health continue — from disc ckpt (not promote)' \
+		'resume: $(or $(RESUME),$(V7_BPRIME_HEALTH_DISC))' \
+		'prior: tokyo_eye_v7_bprime_health_v1 (health FAIL disc_r≈0.203)' \
+		'target: disc_r_mean≥0.25 + eligible v7_best if routing allows' \
+		'spec: docs/specs/tokyo-eye-v7/bprime-health-warmstart-prereg.md' \
+		> checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_HEALTH_CONTINUE_RUN))/README.md
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v7.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--output-dir /app/checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_HEALTH_CONTINUE_RUN)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),2) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--epochs $(or $(EPOCHS),24) \
+		--gnn-lineage v7 \
+		--mlflow-experiment tokyo-eyes-v7 \
+		--resume /app/$(or $(RESUME),$(V7_BPRIME_HEALTH_DISC)) \
+		$(V7_BPRIME_STACK) \
+		$(if $(NO_MLFLOW),--no-mlflow,)
+	@echo "Continue → checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_HEALTH_CONTINUE_RUN))"
+
+# Option B: disc occupancy / depth-scale bump + sparsity-style save (no legacy H≤1.21).
+V7_BPRIME_DISC_RESUME ?= checkpoints/v7/runs/tokyo_eye_v7_bprime_health_continue_v1/v7_best_disc.pt
+V7_BPRIME_DISC_CONTINUE_RUN ?= tokyo_eye_v7_bprime_disc_continue_v1
+V7_BPRIME_DISC_OCC ?= 0.70
+V7_BPRIME_DISC_DEPTH_SCALE ?= 1.60
+V7_BPRIME_DISC_DEPTH_TARGET ?= 0.60
+V7_BPRIME_MEAN_H_MIN ?= 0.25
+V7_BPRIME_MEAN_H_MAX ?= 0.90
+
+train-v7-bprime-disc-continue: ## B′ disc-health continue (prereg Option B; no promote)
+	@test -f data/gates/tokyo_eye_v7_bprime_disc_health_continue_prereg.json || \
+		(echo "Missing prereg stamp data/gates/tokyo_eye_v7_bprime_disc_health_continue_prereg.json" && exit 1)
+	@test -f $(or $(RESUME),$(V7_BPRIME_DISC_RESUME)) || \
+		(echo "Missing resume ckpt $(or $(RESUME),$(V7_BPRIME_DISC_RESUME))" && exit 1)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp" && exit 1)
+	@mkdir -p checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_DISC_CONTINUE_RUN)) pdb_cache
+	@printf '%s\n' \
+		'# Tokyo Eye v7 B′ disc-health continue — Option B (not promote)' \
+		'resume: $(or $(RESUME),$(V7_BPRIME_DISC_RESUME))' \
+		'disc_occupancy_coeff: $(or $(DISC_OCC),$(V7_BPRIME_DISC_OCC))' \
+		'disc_depth_scale_coeff: $(or $(DISC_DEPTH_SCALE),$(V7_BPRIME_DISC_DEPTH_SCALE))' \
+		'disc_depth_scale_target: $(or $(DISC_DEPTH_TARGET),$(V7_BPRIME_DISC_DEPTH_TARGET))' \
+		'sparsity_style_save: mean_residue ∈ [$(or $(MEAN_H_MIN),$(V7_BPRIME_MEAN_H_MIN)), $(or $(MEAN_H_MAX),$(V7_BPRIME_MEAN_H_MAX))]' \
+		'spec: docs/specs/tokyo-eye-v7/bprime-disc-health-continue-prereg.md' \
+		> checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_DISC_CONTINUE_RUN))/README.md
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v7.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--output-dir /app/checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_DISC_CONTINUE_RUN)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),2) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--epochs $(or $(EPOCHS),24) \
+		--gnn-lineage v7 \
+		--mlflow-experiment tokyo-eyes-v7 \
+		--resume /app/$(or $(RESUME),$(V7_BPRIME_DISC_RESUME)) \
+		$(V7_BPRIME_STACK) \
+		--sparsity-style-save \
+		--routing-entropy-mean-residue-min-save $(or $(MEAN_H_MIN),$(V7_BPRIME_MEAN_H_MIN)) \
+		--routing-entropy-mean-residue-max-save $(or $(MEAN_H_MAX),$(V7_BPRIME_MEAN_H_MAX)) \
+		--disc-occupancy-coeff $(or $(DISC_OCC),$(V7_BPRIME_DISC_OCC)) \
+		--disc-depth-scale-coeff $(or $(DISC_DEPTH_SCALE),$(V7_BPRIME_DISC_DEPTH_SCALE)) \
+		--disc-depth-scale-target $(or $(DISC_DEPTH_TARGET),$(V7_BPRIME_DISC_DEPTH_TARGET)) \
+		$(if $(NO_MLFLOW),--no-mlflow,)
+	@echo "Disc continue → checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_DISC_CONTINUE_RUN))"
+
+# Core radial floor: lift e1 (high-ρ low-τ) off origin without rim push.
+V7_BPRIME_CORE_RESUME ?= checkpoints/v7/runs/tokyo_eye_v7_bprime_disc_continue_v1/v7_best_disc.pt
+V7_BPRIME_CORE_FLOOR_RUN ?= tokyo_eye_v7_bprime_core_floor_continue_v1
+V7_BPRIME_CORE_FLOOR_COEFF ?= 1.0
+V7_BPRIME_CORE_FLOOR_MIN_R ?= 0.15
+
+train-v7-bprime-core-floor-continue: ## B′ e1 core radial floor continue (prereg; no promote)
+	@test -f data/gates/tokyo_eye_v7_bprime_core_radial_floor_prereg.json || \
+		(echo "Missing prereg stamp data/gates/tokyo_eye_v7_bprime_core_radial_floor_prereg.json" && exit 1)
+	@test -f $(or $(RESUME),$(V7_BPRIME_CORE_RESUME)) || \
+		(echo "Missing resume ckpt $(or $(RESUME),$(V7_BPRIME_CORE_RESUME))" && exit 1)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp" && exit 1)
+	@mkdir -p checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_CORE_FLOOR_RUN)) pdb_cache
+	@printf '%s\n' \
+		'# Tokyo Eye v7 B′ core radial floor continue — e1 origin lift (not promote)' \
+		'resume: $(or $(RESUME),$(V7_BPRIME_CORE_RESUME))' \
+		'core_radial_floor_coeff: $(or $(CORE_FLOOR_COEFF),$(V7_BPRIME_CORE_FLOOR_COEFF))' \
+		'core_radial_floor_min_r: $(or $(CORE_FLOOR_MIN_R),$(V7_BPRIME_CORE_FLOOR_MIN_R))' \
+		'spec: docs/specs/tokyo-eye-v7/bprime-core-radial-floor-prereg.md' \
+		> checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_CORE_FLOOR_RUN))/README.md
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v7.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--output-dir /app/checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_CORE_FLOOR_RUN)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),2) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--epochs $(or $(EPOCHS),24) \
+		--gnn-lineage v7 \
+		--mlflow-experiment tokyo-eyes-v7 \
+		--resume /app/$(or $(RESUME),$(V7_BPRIME_CORE_RESUME)) \
+		$(V7_BPRIME_STACK) \
+		--sparsity-style-save \
+		--routing-entropy-mean-residue-min-save $(or $(MEAN_H_MIN),$(V7_BPRIME_MEAN_H_MIN)) \
+		--routing-entropy-mean-residue-max-save $(or $(MEAN_H_MAX),$(V7_BPRIME_MEAN_H_MAX)) \
+		--disc-occupancy-coeff $(or $(DISC_OCC),$(V7_BPRIME_DISC_OCC)) \
+		--disc-depth-scale-coeff $(or $(DISC_DEPTH_SCALE),$(V7_BPRIME_DISC_DEPTH_SCALE)) \
+		--disc-depth-scale-target $(or $(DISC_DEPTH_TARGET),$(V7_BPRIME_DISC_DEPTH_TARGET)) \
+		--core-radial-floor-coeff $(or $(CORE_FLOOR_COEFF),$(V7_BPRIME_CORE_FLOOR_COEFF)) \
+		--core-radial-floor-min-r $(or $(CORE_FLOOR_MIN_R),$(V7_BPRIME_CORE_FLOOR_MIN_R)) \
+		$(if $(NO_MLFLOW),--no-mlflow,)
+	@echo "Core-floor continue → checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_CORE_FLOOR_RUN))"
+
+# Seal disc-health bank (epoch_041) as restore SSOT for v7 B′.
+ARCHAEOLOGY_HYPMP_CKPT ?= checkpoints/v7/runs/tokyo_eye_v7_bprime_core_floor_continue_v1/v7_healthy_sealed.pt
+V7_BPRIME_UNC_RESUME ?= $(ARCHAEOLOGY_HYPMP_CKPT)
+V7_BPRIME_UNC_RUN ?= tokyo_eye_v7_bprime_uncertainty_heads_v1
+
+seal-v7-bprime-healthy: ## Seal v7 B′ disc-health bank (epoch_041 → v7_healthy_sealed.pt)
+	@test -f checkpoints/v7/runs/tokyo_eye_v7_bprime_core_floor_continue_v1/epochs/epoch_041.pt || \
+		(echo "Missing epoch_041 health bank" && exit 1)
+	@mkdir -p checkpoints/v7/runs/tokyo_eye_v7_bprime_core_floor_continue_v1 data/gates
+	$(SCIENCE_RUN) science python -m experiments.training.v7.seal_healthy_bprime \
+		--run-dir /app/checkpoints/v7/runs/tokyo_eye_v7_bprime_core_floor_continue_v1 \
+		--epoch-ckpt /app/checkpoints/v7/runs/tokyo_eye_v7_bprime_core_floor_continue_v1/epochs/epoch_041.pt \
+		--epoch 41 \
+		--out /app/$(ARCHAEOLOGY_HYPMP_CKPT)
+	@echo "Healthy sealed → $(ARCHAEOLOGY_HYPMP_CKPT)"
+	@echo "Gate → data/gates/tokyo_eye_v7_bprime_healthy_sealed.json"
+
+# B1 teleconnections: AlleleSens conduit vs scramble on sealed v7 Θ (4LPK/5US4, 6GOD/6GOF).
+grade-v7-b1-teleconnections: ## B1 AlleleSens teleconnections grade (prereg frozen)
+	@test -f data/gates/tokyo_eye_v7_b1_teleconnections_prereg.json || \
+		(echo "Missing prereg data/gates/tokyo_eye_v7_b1_teleconnections_prereg.json" && exit 1)
+	@test -f $(or $(CHECKPOINT),$(ARCHAEOLOGY_HYPMP_CKPT)) || \
+		(echo "Missing sealed Θ $(or $(CHECKPOINT),$(ARCHAEOLOGY_HYPMP_CKPT)) — run make seal-v7-bprime-healthy" && exit 1)
+	@mkdir -p checkpoints/v7/diagnostics/b1_teleconnections data/gates pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.b1_teleconnections_grade \
+		--checkpoint /app/$(or $(CHECKPOINT),$(ARCHAEOLOGY_HYPMP_CKPT)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output /app/$(or $(OUT),checkpoints/v7/diagnostics/b1_teleconnections/b1_teleconnections.json) \
+		--closeout /app/$(or $(CLOSEOUT),data/gates/tokyo_eye_v7_b1_teleconnections_closeout.json); \
+	status=$$?; \
+	echo "B1 artifact → $(or $(OUT),checkpoints/v7/diagnostics/b1_teleconnections/b1_teleconnections.json)"; \
+	echo "Closeout → $(or $(CLOSEOUT),data/gates/tokyo_eye_v7_b1_teleconnections_closeout.json)"; \
+	echo "Docs: docs/specs/tokyo-eye-v7/b1-teleconnections-prereg.md"; \
+	exit $$status
+
+# Compare-only: G12D hub migration on sealed v7 (knockout on x_hyp; Jacobian forbidden)
+grade-v7-kras-g12d-hub-migration: ## v7 G12D hub migration (4OBE→4DSO knockout x_hyp)
+	@test -f $(or $(CHECKPOINT),$(ARCHAEOLOGY_HYPMP_CKPT)) || \
+		(echo "Missing sealed Θ $(or $(CHECKPOINT),$(ARCHAEOLOGY_HYPMP_CKPT))" && exit 1)
+	@mkdir -p checkpoints/v7/diagnostics/hub_migration logs/training
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.v7_kras_g12d_hub_migration \
+		--checkpoint /app/$(or $(CHECKPOINT),$(ARCHAEOLOGY_HYPMP_CKPT)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output /app/checkpoints/v7/diagnostics/hub_migration/kras_hub_migration_4obe_4dso.json
+	@echo "v7 hub migration → checkpoints/v7/diagnostics/hub_migration/kras_hub_migration_4obe_4dso.json"
+	@echo "Pass: R_out_163(4DSO) > R_out_163(4OBE) on x_hyp geodesics"
+	@echo "Docs: docs/specs/tokyo-eye-v7/kras-g12d-hub-migration-prereg.md"
+
+# Cheap Hyp-MP telemetry (one forward; no knockout)
+grade-v7-hyp-mp-telemetry: ## Cheap Hyp-MP hub proxy telemetry
+	@test -f $(or $(CHECKPOINT),$(ARCHAEOLOGY_HYPMP_CKPT)) || \
+		(echo "Missing ckpt $(or $(CHECKPOINT),$(ARCHAEOLOGY_HYPMP_CKPT))" && exit 1)
+	@mkdir -p checkpoints/v7/diagnostics/hyp_mp_telemetry
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.v7_hyp_mp_telemetry_grade \
+		--checkpoint /app/$(or $(CHECKPOINT),$(ARCHAEOLOGY_HYPMP_CKPT)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--targets "$(or $(TARGETS),4OBE:A 4LPK:A 6GOD:A)" \
+		--output /app/$(or $(OUT),checkpoints/v7/diagnostics/hyp_mp_telemetry/hyp_mp_telemetry_baseline.json)
+	@echo "Hyp-MP telemetry → $(or $(OUT),checkpoints/v7/diagnostics/hyp_mp_telemetry/hyp_mp_telemetry_baseline.json)"
+
+# Hyp biology MP child lineage — fail-closed Cα audit smoke (Option A degree-0).
+grade-v7-hyp-biology-mp-smoke: ## Biology-only Hyp MP ontology smoke (no Cα fallback)
+	@test -f data/gates/tokyo_eye_v7_hyp_biology_mp_prereg.json || \
+		(echo "Missing prereg data/gates/tokyo_eye_v7_hyp_biology_mp_prereg.json" && exit 1)
+	@test -f $(or $(CHECKPOINT),$(ARCHAEOLOGY_HYPMP_CKPT)) || \
+		(echo "Missing ckpt $(or $(CHECKPOINT),$(ARCHAEOLOGY_HYPMP_CKPT))" && exit 1)
+	@mkdir -p checkpoints/v7/runs/tokyo_eye_v7_hyp_biology_mp_v1
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.v7_hyp_biology_mp_smoke \
+		--checkpoint /app/$(or $(CHECKPOINT),$(ARCHAEOLOGY_HYPMP_CKPT)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--targets "$(or $(TARGETS),4OBE:A)" \
+		--out /app/$(or $(OUT),checkpoints/v7/runs/tokyo_eye_v7_hyp_biology_mp_v1/hyp_biology_mp_smoke.json)
+	@echo "Hyp biology MP smoke → $(or $(OUT),checkpoints/v7/runs/tokyo_eye_v7_hyp_biology_mp_v1/hyp_biology_mp_smoke.json)"
+	@echo "Docs: docs/specs/tokyo-eye-v7/hyp-biology-mp-prereg.md"
+
+# Hyp biology MP continue-train (child lineage; never overwrites sealed healthy).
+V7_HYP_BIOLOGY_MP_RUN ?= tokyo_eye_v7_hyp_biology_mp_v1
+train-v7-hyp-biology-mp: ## Continue from HEALTHY_V7 with biology-only Hyp MP
+	@test -f data/gates/tokyo_eye_v7_hyp_biology_mp_prereg.json || \
+		(echo "Missing prereg data/gates/tokyo_eye_v7_hyp_biology_mp_prereg.json" && exit 1)
+	@test -f $(or $(RESUME),$(ARCHAEOLOGY_HYPMP_CKPT)) || \
+		(echo "Missing resume $(or $(RESUME),$(ARCHAEOLOGY_HYPMP_CKPT))" && exit 1)
+	@mkdir -p checkpoints/v7/runs/$(or $(RUN_ID),$(V7_HYP_BIOLOGY_MP_RUN)) logs/training
+	GNN_INPUT_MODE=topology_three_vector TRAINING_LOAD_FROM_PDB=1 $(SCIENCE_RUN) science python -m experiments.training.v7.hyp_biology_mp_train \
+		--resume /app/$(or $(RESUME),$(ARCHAEOLOGY_HYPMP_CKPT)) \
+		--manifest /app/$(or $(CORPUS),manifests/v6_corpus_stage_a_small_v1.json) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--output-dir /app/checkpoints/v7/runs/$(or $(RUN_ID),$(V7_HYP_BIOLOGY_MP_RUN)) \
+		--device $(or $(DEVICE),cuda) \
+		--epochs $(or $(EPOCHS),8) \
+		--lr $(or $(LR),5e-5) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--min-disc-r-mean-hold $(or $(MIN_DISC_R),0.25)
+	@echo "Hyp biology MP run → checkpoints/v7/runs/$(or $(RUN_ID),$(V7_HYP_BIOLOGY_MP_RUN))"
+	@echo "Best: checkpoints/v7/runs/$(or $(RUN_ID),$(V7_HYP_BIOLOGY_MP_RUN))/v7_hyp_biology_mp_best.pt"
+
+# Cold Hyp MP + simple Cα graph + funnel/disc curriculum (no Fix-1 / HEALTHY_V7 warmstart).
+V7_COLD_HYP_MP_FUNNEL_RUN ?= tokyo_eye_v7_cold_hyp_mp_funnel_v1
+train-v7-cold-hyp-mp-funnel: ## Cold Hyp MP + Cα graph + funnel curriculum
+	@test -f data/gates/tokyo_eye_v7_cold_hyp_mp_funnel_prereg.json || \
+		(echo "Missing prereg data/gates/tokyo_eye_v7_cold_hyp_mp_funnel_prereg.json" && exit 1)
+	@mkdir -p checkpoints/v7/runs/$(or $(RUN_ID),$(V7_COLD_HYP_MP_FUNNEL_RUN)) logs/training
+	GNN_INPUT_MODE=topology_three_vector TRAINING_LOAD_FROM_PDB=1 $(SCIENCE_RUN) science python -m experiments.training.v7.cold_hyp_mp_funnel_train \
+		--manifest /app/$(or $(CORPUS),manifests/v6_corpus_stage_a_small_v1.json) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--output-dir /app/checkpoints/v7/runs/$(or $(RUN_ID),$(V7_COLD_HYP_MP_FUNNEL_RUN)) \
+		--device $(or $(DEVICE),cuda) \
+		--epochs $(or $(EPOCHS),24) \
+		--lr $(or $(LR),1e-4) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--min-disc-r-mean-hold $(or $(MIN_DISC_R),0.25) \
+		--disc-hold-warmup-epochs $(or $(DISC_WARMUP),6) \
+		$(if $(RESUME),--resume /app/$(RESUME),) \
+		$(if $(USE_CUTOVER_SCAFFOLD),--use-cutover-scaffold,)
+	@echo "Cold Hyp MP funnel → checkpoints/v7/runs/$(or $(RUN_ID),$(V7_COLD_HYP_MP_FUNNEL_RUN))"
+	@echo "Best: checkpoints/v7/runs/$(or $(RUN_ID),$(V7_COLD_HYP_MP_FUNNEL_RUN))/v7_cold_hyp_mp_funnel_best.pt"
+	@echo "Docs: docs/specs/tokyo-eye-v7/cold-hyp-mp-funnel-prereg.md"
+
+# Cold funnel continue: sealed feelers + light MoE anti-monopoly + ER > 1.5 (MLflow on).
+V7_COLD_HYP_MP_FUNNEL_ANGFILL_RUN ?= tokyo_eye_v7_cold_hyp_mp_funnel_angfill_v1
+V7_COLD_HYP_MP_FUNNEL_BEST ?= checkpoints/v7/runs/$(V7_COLD_HYP_MP_FUNNEL_RUN)/v7_cold_hyp_mp_funnel_best.pt
+train-v7-cold-hyp-mp-funnel-angfill: ## Continue cold best: rim/geom + specialization + ER
+	@test -f data/gates/tokyo_eye_v7_cold_hyp_mp_funnel_angfill_prereg.json || \
+		(echo "Missing prereg data/gates/tokyo_eye_v7_cold_hyp_mp_funnel_angfill_prereg.json" && exit 1)
+	@test -f $(or $(RESUME),$(V7_COLD_HYP_MP_FUNNEL_BEST)) || \
+		(echo "Missing cold best — run make train-v7-cold-hyp-mp-funnel" && exit 1)
+	@mkdir -p checkpoints/v7/runs/$(or $(RUN_ID),$(V7_COLD_HYP_MP_FUNNEL_ANGFILL_RUN)) logs/training
+	GNN_INPUT_MODE=topology_three_vector TRAINING_LOAD_FROM_PDB=1 \
+	MLFLOW_TRACKING_URI=http://mlflow:5000 $(SCIENCE_RUN) -e MLFLOW_TRACKING_URI science python -m experiments.training.v7.cold_hyp_mp_funnel_angfill_train \
+		--resume /app/$(or $(RESUME),$(V7_COLD_HYP_MP_FUNNEL_BEST)) \
+		--manifest /app/$(or $(CORPUS),manifests/v6_corpus_stage_a_small_v1.json) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--output-dir /app/checkpoints/v7/runs/$(or $(RUN_ID),$(V7_COLD_HYP_MP_FUNNEL_ANGFILL_RUN)) \
+		--device $(or $(DEVICE),cuda) \
+		--epochs $(or $(EPOCHS),16) \
+		--lr $(or $(LR),5e-5) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--min-disc-r-mean-hold $(or $(MIN_DISC_R),0.25) \
+		--min-disc-effective-rank $(or $(MIN_ER),1.5) \
+		$(if $(NO_MLFLOW),--no-mlflow,)
+	@echo "Angfill → checkpoints/v7/runs/$(or $(RUN_ID),$(V7_COLD_HYP_MP_FUNNEL_ANGFILL_RUN))"
+	@echo "Best: checkpoints/v7/runs/$(or $(RUN_ID),$(V7_COLD_HYP_MP_FUNNEL_ANGFILL_RUN))/v7_cold_hyp_mp_funnel_angfill_best.pt"
+	@echo "MLflow: http://localhost:5000  experiment tokyo-eyes-v7  run $(or $(RUN_ID),$(V7_COLD_HYP_MP_FUNNEL_ANGFILL_RUN))"
+	@echo "Docs: docs/specs/tokyo-eye-v7/cold-hyp-mp-funnel-angfill-prereg.md"
+
+grade-v7-cold-hyp-mp-funnel-vs-sealed: ## Sealed Θ vs cold-funnel best (report-only basin+migration)
+	@test -f $(or $(SEALED),$(ARCHAEOLOGY_HYPMP_CKPT)) || (echo "Missing sealed" && exit 1)
+	@test -f $(or $(COLD),checkpoints/v7/runs/$(V7_COLD_HYP_MP_FUNNEL_RUN)/v7_cold_hyp_mp_funnel_best.pt) || \
+		(echo "Missing cold best — run make train-v7-cold-hyp-mp-funnel" && exit 1)
+	@mkdir -p checkpoints/v7/runs/$(V7_COLD_HYP_MP_FUNNEL_RUN)
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.v7_cold_hyp_mp_funnel_vs_sealed \
+		--sealed /app/$(or $(SEALED),$(ARCHAEOLOGY_HYPMP_CKPT)) \
+		--cold /app/$(or $(COLD),checkpoints/v7/runs/$(V7_COLD_HYP_MP_FUNNEL_RUN)/v7_cold_hyp_mp_funnel_best.pt) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output /app/$(or $(OUT),checkpoints/v7/runs/$(V7_COLD_HYP_MP_FUNNEL_RUN)/sealed_vs_cold_scorecard.json) \
+		$(if $(SKIP_MIGRATION),--skip-migration,)
+	@echo "Scorecard → $(or $(OUT),checkpoints/v7/runs/$(V7_COLD_HYP_MP_FUNNEL_RUN)/sealed_vs_cold_scorecard.json)"
+
+grade-v7-hyp-biology-mp-vs-sealed: ## Sealed Θ vs biology-best scorecard (basin + migration)
+	@test -f $(or $(SEALED),$(ARCHAEOLOGY_HYPMP_CKPT)) || (echo "Missing sealed" && exit 1)
+	@test -f $(or $(BIOLOGY),checkpoints/v7/runs/$(V7_HYP_BIOLOGY_MP_RUN)/v7_hyp_biology_mp_best.pt) || \
+		(echo "Missing biology best — run make train-v7-hyp-biology-mp" && exit 1)
+	@mkdir -p checkpoints/v7/runs/$(V7_HYP_BIOLOGY_MP_RUN)
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.v7_hyp_biology_mp_sealed_vs_biology \
+		--sealed /app/$(or $(SEALED),$(ARCHAEOLOGY_HYPMP_CKPT)) \
+		--biology /app/$(or $(BIOLOGY),checkpoints/v7/runs/$(V7_HYP_BIOLOGY_MP_RUN)/v7_hyp_biology_mp_best.pt) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output /app/$(or $(OUT),checkpoints/v7/runs/$(V7_HYP_BIOLOGY_MP_RUN)/sealed_vs_biology_scorecard.json) \
+		$(if $(SKIP_MIGRATION),--skip-migration,)
+	@echo "Scorecard → $(or $(OUT),checkpoints/v7/runs/$(V7_HYP_BIOLOGY_MP_RUN)/sealed_vs_biology_scorecard.json)"
+
+grade-v7-hyp-biology-mp-three-arm: ## Classical vs sealed+biology vs trained Hyp-MP
+	@test -f data/gates/tokyo_eye_v7_hyp_biology_mp_three_arm_prereg.json || \
+		(echo "Missing three-arm prereg" && exit 1)
+	@test -f $(or $(SEALED),$(ARCHAEOLOGY_HYPMP_CKPT)) || (echo "Missing sealed" && exit 1)
+	@test -f $(or $(TRAINED),checkpoints/v7/runs/$(V7_HYP_BIOLOGY_MP_RUN)/v7_hyp_biology_mp_best.pt) || \
+		(echo "Missing trained best" && exit 1)
+	@mkdir -p checkpoints/v7/runs/$(V7_HYP_BIOLOGY_MP_RUN)
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.v7_hyp_biology_mp_three_arm \
+		--sealed /app/$(or $(SEALED),$(ARCHAEOLOGY_HYPMP_CKPT)) \
+		--trained /app/$(or $(TRAINED),checkpoints/v7/runs/$(V7_HYP_BIOLOGY_MP_RUN)/v7_hyp_biology_mp_best.pt) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output /app/$(or $(OUT),checkpoints/v7/runs/$(V7_HYP_BIOLOGY_MP_RUN)/three_arm_biology_graph_scorecard.json) \
+		$(if $(SKIP_MIGRATION),--skip-migration,)
+	@echo "Three-arm → $(or $(OUT),checkpoints/v7/runs/$(V7_HYP_BIOLOGY_MP_RUN)/three_arm_biology_graph_scorecard.json)"
+
+# Phase A nucleotide basin continue from sealed healthy
+V7_PHASE_A_RUN ?= tokyo_eye_v7_phase_a_nucleotide_basin_v1
+train-v7-phase-a-nucleotide-basin: ## Phase A OFF↔ON basin contrastive continue
+	@test -f data/gates/tokyo_eye_v7_phase_a_basin_train_prereg.json || \
+		(echo "Missing Phase A prereg stamp" && exit 1)
+	@test -f $(or $(RESUME),$(ARCHAEOLOGY_HYPMP_CKPT)) || \
+		(echo "Missing resume $(or $(RESUME),$(ARCHAEOLOGY_HYPMP_CKPT))" && exit 1)
+	@test -f manifests/v7_phase_a_nucleotide_basin_v1.json || (echo "Missing Phase A manifest" && exit 1)
+	@mkdir -p checkpoints/v7/runs/$(or $(RUN_ID),$(V7_PHASE_A_RUN)) logs/training
+	GNN_INPUT_MODE=topology_three_vector TRAINING_LOAD_FROM_PDB=1 $(SCIENCE_RUN) science python -m experiments.training.v7.phase_a_basin_train \
+		--resume /app/$(or $(RESUME),$(ARCHAEOLOGY_HYPMP_CKPT)) \
+		--manifest /app/manifests/v7_phase_a_nucleotide_basin_v1.json \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--output-dir /app/checkpoints/v7/runs/$(or $(RUN_ID),$(V7_PHASE_A_RUN)) \
+		--device $(or $(DEVICE),cuda) \
+		--epochs $(or $(EPOCHS),12) \
+		--basin-coeff $(or $(BASIN_COEFF),0.10) \
+		--basin-margin $(or $(BASIN_MARGIN),0.50) \
+		--min-disc-r-mean-hold $(or $(MIN_DISC_R),0.25)
+	@echo "Phase A run → checkpoints/v7/runs/$(or $(RUN_ID),$(V7_PHASE_A_RUN))"
+
+grade-v7-phase-a-nucleotide-basin: ## Grade Phase A basin continue (cheap + migration spot-check)
+	@test -f data/gates/tokyo_eye_v7_phase_a_basin_train_prereg.json || \
+		(echo "Missing Phase A prereg" && exit 1)
+	@test -f $(or $(CHECKPOINT),checkpoints/v7/runs/$(V7_PHASE_A_RUN)/v7_phase_a_best.pt) || \
+		(echo "Missing Phase A ckpt — run make train-v7-phase-a-nucleotide-basin" && exit 1)
+	@mkdir -p checkpoints/v7/diagnostics/phase_a_basin data/gates
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.v7_phase_a_basin_grade \
+		--checkpoint /app/$(or $(CHECKPOINT),checkpoints/v7/runs/$(V7_PHASE_A_RUN)/v7_phase_a_best.pt) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output /app/checkpoints/v7/diagnostics/phase_a_basin/phase_a_basin_grade.json \
+		--closeout /app/data/gates/tokyo_eye_v7_phase_a_basin_train_closeout.json
+	@echo "Phase A grade → checkpoints/v7/diagnostics/phase_a_basin/phase_a_basin_grade.json"
+
+train-v7-bprime-uncertainty-heads: ## Heads-only ale/epi recovery from sealed health (prereg)
+	@test -f data/gates/tokyo_eye_v7_bprime_uncertainty_heads_prereg.json || \
+		(echo "Missing prereg stamp data/gates/tokyo_eye_v7_bprime_uncertainty_heads_prereg.json" && exit 1)
+	@$(MAKE) seal-v7-bprime-healthy
+	@test -f $(or $(RESUME),$(V7_BPRIME_UNC_RESUME)) || \
+		(echo "Missing sealed resume $(or $(RESUME),$(V7_BPRIME_UNC_RESUME))" && exit 1)
+	@test -f data/gates/p_feature_01_passed.json || \
+		(echo "Missing P_FEATURE_01 gate stamp" && exit 1)
+	@mkdir -p checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_UNC_RUN)) pdb_cache
+	@printf '%s\n' \
+		'# Tokyo Eye v7 B′ uncertainty heads — sealed health, trunk frozen' \
+		'resume: $(or $(RESUME),$(V7_BPRIME_UNC_RESUME))' \
+		'phase: v7_bprime_uncertainty_heads (epistemic_uncertainty_only_train)' \
+		'disc_hold: min_disc_r_mean_hold=0.25' \
+		'spec: docs/specs/tokyo-eye-v7/bprime-uncertainty-heads-prereg.md' \
+		> checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_UNC_RUN))/README.md
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v7.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--output-dir /app/checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_UNC_RUN)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),2) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--epochs $(or $(EPOCHS),24) \
+		--gnn-lineage v7 \
+		--mlflow-experiment tokyo-eyes-v7 \
+		--resume /app/$(or $(RESUME),$(V7_BPRIME_UNC_RESUME)) \
+		$(V7_BPRIME_STACK) \
+		--v7-bprime-uncertainty-heads \
+		--p4-epistemic-lr $(or $(UNC_LR),5e-5) \
+		--min-disc-r-mean-hold $(or $(DISC_HOLD),0.25) \
+		--sparsity-style-save \
+		--routing-entropy-mean-residue-min-save $(or $(MEAN_H_MIN),$(V7_BPRIME_MEAN_H_MIN)) \
+		--routing-entropy-mean-residue-max-save $(or $(MEAN_H_MAX),$(V7_BPRIME_MEAN_H_MAX)) \
+		$(if $(NO_MLFLOW),--no-mlflow,)
+	@echo "Uncertainty heads → checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_UNC_RUN))"
+
+# Pre-authorized rematch-1 after rematch-0 flat ale/epi + disc hold.
+V7_BPRIME_UNC_REMATCH_RESUME ?= checkpoints/v7/runs/tokyo_eye_v7_bprime_uncertainty_heads_v1/v7_phase4_12prot.pt
+V7_BPRIME_UNC_REMATCH_RUN ?= tokyo_eye_v7_bprime_uncertainty_heads_rematch_v1
+
+train-v7-bprime-uncertainty-heads-rematch: ## Rematch-1: higher anticollapse/decorrelation (heads-only)
+	@test -f data/gates/tokyo_eye_v7_bprime_uncertainty_heads_prereg.json || \
+		(echo "Missing prereg stamp" && exit 1)
+	@test -f data/gates/tokyo_eye_v7_bprime_uncertainty_heads_closeout.json || \
+		(echo "Grade rematch-0 first: make grade-v7-bprime-uncertainty-heads" && exit 1)
+	@test -f $(or $(RESUME),$(V7_BPRIME_UNC_REMATCH_RESUME)) || \
+		(echo "Missing rematch resume $(or $(RESUME),$(V7_BPRIME_UNC_REMATCH_RESUME))" && exit 1)
+	@mkdir -p checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_UNC_REMATCH_RUN)) pdb_cache
+	@printf '%s\n' \
+		'# Tokyo Eye v7 B′ uncertainty heads rematch-1 — higher anticollapse/decorr' \
+		'resume: $(or $(RESUME),$(V7_BPRIME_UNC_REMATCH_RESUME))' \
+		'prior: tokyo_eye_v7_bprime_uncertainty_heads_v1 (rematch-0 FAIL flat ale/epi, disc held)' \
+		'spec: docs/specs/tokyo-eye-v7/bprime-uncertainty-heads-prereg.md' \
+		> checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_UNC_REMATCH_RUN))/README.md
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v7.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--output-dir /app/checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_UNC_REMATCH_RUN)) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),2) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--epochs $(or $(EPOCHS),24) \
+		--gnn-lineage v7 \
+		--mlflow-experiment tokyo-eyes-v7 \
+		--resume /app/$(or $(RESUME),$(V7_BPRIME_UNC_REMATCH_RESUME)) \
+		$(V7_BPRIME_STACK) \
+		--v7-bprime-uncertainty-heads-rematch \
+		--p4-epistemic-lr $(or $(UNC_LR),5e-5) \
+		--min-disc-r-mean-hold $(or $(DISC_HOLD),0.25) \
+		--sparsity-style-save \
+		--routing-entropy-mean-residue-min-save $(or $(MEAN_H_MIN),$(V7_BPRIME_MEAN_H_MIN)) \
+		--routing-entropy-mean-residue-max-save $(or $(MEAN_H_MAX),$(V7_BPRIME_MEAN_H_MAX)) \
+		$(if $(NO_MLFLOW),--no-mlflow,)
+	@echo "Uncertainty rematch → checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_UNC_REMATCH_RUN))"
+
+grade-v7-bprime-uncertainty-heads: ## Grade rematch-0/1 ale/epi + disc hold closeout
+	@test -f $(or $(METRICS),checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_UNC_RUN))/metrics.json) || \
+		(echo "Missing metrics.json" && exit 1)
+	$(SCIENCE_RUN) science python -m experiments.training.v7.grade_uncertainty_heads \
+		--metrics /app/$(or $(METRICS),checkpoints/v7/runs/$(or $(RUN_ID),$(V7_BPRIME_UNC_RUN))/metrics.json) \
+		--out /app/$(or $(OUT),data/gates/tokyo_eye_v7_bprime_uncertainty_heads_closeout.json)
+	@echo "Closeout → $(or $(OUT),data/gates/tokyo_eye_v7_bprime_uncertainty_heads_closeout.json)"
+
+# 4-expert overlay charts (MLflow UI cannot put expert_0..3 on one axes).
+plot-v7-expert-overlay: ## HTML overlay of expert_* metrics from a run metrics.json
+	@test -f $(or $(METRICS),checkpoints/v7/runs/tokyo_eye_v7_bprime_health_continue_v1/metrics.json) || \
+		(echo "Missing METRICS=…/metrics.json" && exit 1)
+	@mkdir -p checkpoints/v7/diagnostics
+	$(SCIENCE_RUN) science python -m experiments.diagnostics.plot_expert_metrics_overlay \
+		--metrics /app/$(or $(METRICS),checkpoints/v7/runs/tokyo_eye_v7_bprime_health_continue_v1/metrics.json) \
+		--out /app/$(or $(OUT),checkpoints/v7/diagnostics/expert_overlay.html) \
+		--title "$(or $(TITLE),Per-expert metric overlay)"
+	@echo "Open $(or $(OUT),checkpoints/v7/diagnostics/expert_overlay.html) in a browser"
+
+# Cold / continue train under checkpoints/v7 + tokyo-eyes-v7.
+train-v7: ## Tokyo Eye v7 train (gnn_lineage=v7; Hyp MP primary)
+	@mkdir -p checkpoints/v7/runs/$(or $(RUN_ID),tokyo_eye_v7_cold_v1) pdb_cache
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v7.launch_training \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--output-dir /app/checkpoints/v7/runs/$(or $(RUN_ID),tokyo_eye_v7_cold_v1) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--seed $(or $(SEED),2) \
+		--max-proteins $(or $(MAX_PROTEINS),12) \
+		--epochs $(or $(EPOCHS),5) \
+		--gnn-lineage v7 \
+		--mlflow-experiment tokyo-eyes-v7 \
+		$(if $(RESUME),--resume /app/$(RESUME),) \
+		$(if $(NO_MLFLOW),--no-mlflow,)
+	@echo "Train complete → checkpoints/v7/runs/$(or $(RUN_ID),tokyo_eye_v7_cold_v1)"
+
+export-corpus-viewers-v7: ## Export HTML viewers from a v7 checkpoint
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.training.v7.export_corpus_viewers \
+		--checkpoint /app/$(or $(CHECKPOINT),checkpoints/v7/tokyo_eye_v7_cutover_scaffold.pt) \
+		--corpus /app/manifests/$(or $(CORPUS),v6_corpus_stage_a_small_v1.json) \
+		--output-dir /app/checkpoints/v7/viewers/$(or $(RUN_ID),cutover_scaffold) \
+		--device $(or $(DEVICE),cpu)
+
+promote-production-v7: ## Promote a v7 .pt into contract as TokyoEye production
+	@test -n "$(CHECKPOINT)" || (echo "Set CHECKPOINT=checkpoints/v7/runs/.../v7_best.pt" && exit 1)
+	$(SCIENCE_RUN) science python -m science.training.promote \
+		--checkpoint-path /app/$(CHECKPOINT) \
+		--checkpoint-id $(or $(CHECKPOINT_ID),tokyo_eye_v7_champion) \
+		--model-id tokyo_eye_v7 \
+		--status production
+	@echo "Promoted → onboard_contract tokyo_eye_v7 production"
+
+verify-v7-production: ## Health-style verify of production TokyoEye checkpoint
+	$(SCIENCE_RUN) science python -c "from science.tokyo_eye.TokyoEye import verify_tokyo_eye_checkpoint; import json; print(json.dumps(verify_tokyo_eye_checkpoint(), indent=2))"
+
+# ON-arm neighborhood conduit graft (Child 3): 6GOD ← 6GOF (N12 recomputed).
+# Spec: docs/specs/kras-topo-structural-inference/kras-g12-neighborhood-graft-on-prereg.md
+grade-v66-kras-g12-neighborhood-graft-on: ## KRAS G12 neighborhood conduit graft ON (6GOD←6GOF)
+	@test -f $(FIX1_SPARSITY_CHAMPION_CKPT) || \
+		(echo "Missing champion $(FIX1_SPARSITY_CHAMPION_CKPT)" && exit 1)
+	@test -f data/gates/kras_g12_neighborhood_graft_on_prereg.json || \
+		(echo "Missing pre-reg stamp data/gates/kras_g12_neighborhood_graft_on_prereg.json" && exit 1)
+	@test -f data/gates/kras_g12_neighborhood_graft_closeout.json || \
+		(echo "Missing OFF neighborhood closeout" && exit 1)
+	@mkdir -p checkpoints/v66/diagnostics/routing_sparsity logs/training
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.kras_g12_neighborhood_graft_validation \
+		--arm on \
+		--checkpoint /app/$(FIX1_SPARSITY_CHAMPION_CKPT) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output /app/checkpoints/v66/diagnostics/routing_sparsity/kras_g12_neighborhood_graft_on.json
+	@echo "ON neighborhood graft → checkpoints/v66/diagnostics/routing_sparsity/kras_g12_neighborhood_graft_on.json"
+	@echo "Pass: Δρ_neigh > Δρ_single AND ρ(neigh,mut) > ρ(scramble,mut)"
+	@echo "Docs: docs/specs/kras-topo-structural-inference/kras-g12-neighborhood-graft-on-prereg.md"
+
+# Platform smoke: generic flow↔betweenness concordance on non-KRAS TRAINING_TARGETS.
+# No residue-ID gates. Default panel: 3PP0 (kinase) / 2SHP (phosphatase) / 2HHB (blind fold).
+grade-v66-fix1-general-hub-alignment: ## Generic hub concordance smoke (non-KRAS TRAINING_TARGETS)
+	@test -f $(FIX1_SPARSITY_CHAMPION_CKPT) || \
+		(echo "Missing champion $(FIX1_SPARSITY_CHAMPION_CKPT)" && exit 1)
+	@mkdir -p checkpoints/v66/diagnostics/routing_sparsity logs/training
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.topo_structural_engine \
+		--checkpoint /app/$(FIX1_SPARSITY_CHAMPION_CKPT) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--pass-rho $(or $(PASS_RHO),0.50) \
+		--k-frac $(or $(K_FRAC),0.10) \
+		--targets $(or $(TARGETS),3PP0:A 2SHP:A 2HHB:B) \
+		--output /app/checkpoints/v66/diagnostics/routing_sparsity/general_hub_alignment_smoke.json \
+		$(if $(WITH_KRAS_AUDIT),--with-kras-audit,)
+	@echo "General hub alignment → checkpoints/v66/diagnostics/routing_sparsity/general_hub_alignment_smoke.json"
+	@echo "Pass: ρ(out_effect, CB) > 0.50 + cutoff stability on each panel structure"
+	@echo "Docs: docs/specs/kras-topo-structural-inference/platform-concordance.md"
+
+# Ledger B: pre-registered SRC/SHP2 interface recall@top-10% knockout flow.
+# Residue sets: data/gates/ledger_b_interface_prereg_src_shp2.json ONLY.
+grade-v66-fix1-ledger-b-interface-alignment: ## Ledger B interface alignment (SRC/SHP2 pre-reg)
+	@test -f $(FIX1_SPARSITY_CHAMPION_CKPT) || \
+		(echo "Missing champion $(FIX1_SPARSITY_CHAMPION_CKPT)" && exit 1)
+	@test -f data/gates/ledger_b_interface_prereg_src_shp2.json || \
+		(echo "Missing Ledger B pre-reg stamp" && exit 1)
+	@mkdir -p checkpoints/v66/diagnostics/routing_sparsity logs/training
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.ledger_b_interface_alignment \
+		--checkpoint /app/$(FIX1_SPARSITY_CHAMPION_CKPT) \
+		--prereg /app/data/gates/ledger_b_interface_prereg_src_shp2.json \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output /app/checkpoints/v66/diagnostics/routing_sparsity/ledger_b_interface_alignment.json
+	@echo "Ledger B → checkpoints/v66/diagnostics/routing_sparsity/ledger_b_interface_alignment.json"
+	@echo "Pass: recall@top-10% flow on pre-reg I ≥ 0.25 for BOTH 3PP0 and 2SHP"
+	@echo "Docs: docs/specs/kras-topo-structural-inference/ledger-b-interface-prereg.md"
+
+# Phase 4b: full hub lists + literature map (interpretative; no threshold change)
+grade-v66-fix1-ledger-b-phase4b-hub-map: ## Phase 4b hub inventory + literature map
+	@test -f $(FIX1_SPARSITY_CHAMPION_CKPT) || \
+		(echo "Missing champion $(FIX1_SPARSITY_CHAMPION_CKPT)" && exit 1)
+	@test -f data/gates/ledger_b_interface_prereg_src_shp2.json || \
+		(echo "Missing Ledger B pre-reg stamp" && exit 1)
+	@mkdir -p checkpoints/v66/diagnostics/routing_sparsity logs/training
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.ledger_b_phase4b_hub_map \
+		--checkpoint /app/$(FIX1_SPARSITY_CHAMPION_CKPT) \
+		--prereg /app/data/gates/ledger_b_interface_prereg_src_shp2.json \
+		--grade-artifact /app/checkpoints/v66/diagnostics/routing_sparsity/ledger_b_interface_alignment.json \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--output /app/checkpoints/v66/diagnostics/routing_sparsity/ledger_b_phase4b_hub_map.json \
+		--markdown /app/checkpoints/v66/diagnostics/routing_sparsity/ledger_b_phase4b_hub_literature_map.md
+	@cp -f checkpoints/v66/diagnostics/routing_sparsity/ledger_b_phase4b_hub_literature_map.md \
+		docs/specs/kras-topo-structural-inference/ledger-b-phase4b-hub-literature-map.md
+	@echo "Phase 4b → checkpoints/v66/diagnostics/routing_sparsity/ledger_b_phase4b_hub_map.json"
+	@echo "Literature map → docs/specs/kras-topo-structural-inference/ledger-b-phase4b-hub-literature-map.md"
+
+# Phase 4b′: 2SHP focal-hub sensitivity (jitter ρ>0.85, sparsity trajectory, wrapping)
+grade-v66-fix1-ledger-b-sensitivity-check: ## 2SHP R32/I310/N308/V457 sensitivity
+	@test -f $(FIX1_SPARSITY_CHAMPION_CKPT) || \
+		(echo "Missing champion $(FIX1_SPARSITY_CHAMPION_CKPT)" && exit 1)
+	@mkdir -p checkpoints/v66/diagnostics/routing_sparsity logs/training
+	GNN_INPUT_MODE=topology_three_vector $(SCIENCE_RUN) science python -m experiments.diagnostics.ledger_b_sensitivity_check \
+		--checkpoint /app/$(FIX1_SPARSITY_CHAMPION_CKPT) \
+		--run-dir /app/checkpoints/v66/runs/$(FIX1_SPARSITY_CHAMPION_RUN) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--device $(or $(DEVICE),cuda) \
+		--jitter-seeds $(or $(JITTER_SEEDS),3) \
+		--epochs $(or $(EPOCHS),$(LEDGER_B_SENSITIVITY_EPOCHS)) \
+		--output /app/checkpoints/v66/diagnostics/routing_sparsity/ledger_b_sensitivity_check.json
+	@echo "Sensitivity → checkpoints/v66/diagnostics/routing_sparsity/ledger_b_sensitivity_check.json"
+	@echo "Bars: jitter Spearman > 0.85; focal hubs stay top-10% across sparsity epochs"
+
 train-v66-fix1-s4-proto-repulsion-scale-l2-gram-cond-stage-a12: ## Pre-reg: stack + saturating Gram logdet hinge λ=0.001 (Stage A-12 cold)
 	@test -f data/gates/p_feature_01_passed.json || \
 		(echo "Missing P_FEATURE_01 gate stamp — run: make gate-p-feature-01 CORPUS=v6_corpus_stage_a_small_v1.json" && exit 1)
@@ -4289,6 +5099,11 @@ pip-compile: ## Regenerate pinned requirements files from pyproject.toml
 # Info and help
 # ---------------------------------------------------------------------------
 
+project-hub: ## Print live Fix-1 biology roadmap from phase status JSON
+	@python scripts/project_hub.py
+	@echo ""
+	@echo "Full hub: docs/PROJECT_HUB.md"
+
 help: ## Show this help message
 	@echo "Tokyo Eye Agenticpoincare — Make Commands" && \
 	echo "" && \
@@ -4328,3 +5143,62 @@ audit-summary: ## Summarize pipeline audit events (optional SINCE=7d JOB_NAME=gn
 
 audit-retention: ## Prune audit events older than RETENTION_DAYS (default 90)
 	python scripts/audit_retention.py --days $(or $(RETENTION_DAYS),90) $(if $(DRY_RUN),--dry-run,)
+
+# ---------------------------------------------------------------------------
+# TokyoEye active trunk (implementation package: science/tokyo_eye/v8)
+# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# TokyoEye active trunk (implementation package: science/tokyo_eye/v8)
+# ---------------------------------------------------------------------------
+.PHONY: train-tokyoeye-smoke train-tokyoeye-experiment export-tokyoeye-viewers
+train-tokyoeye-smoke: ## Synthetic 1-epoch TokyoEye harness via science container (CUDA; no MLflow)
+	@mkdir -p checkpoints/tokyoeye/runs
+	MLFLOW_TRACKING_URI=http://mlflow:5000 $(SCIENCE_RUN) -e MLFLOW_TRACKING_URI science \
+		python -m experiments.training.v8.run_v8_experiment \
+		--smoke --no-mlflow \
+		--device $(or $(DEVICE),cuda) \
+		--run-name $(or $(RUN_NAME),tokyoeye_smoke) \
+		--out-dir /app/checkpoints/tokyoeye/runs
+
+train-tokyoeye-experiment: ## TokyoEye MLflow run (default Mode A: 4OBE:A; set MANIFEST= for Mode B)
+	@mkdir -p checkpoints/tokyoeye/runs checkpoints/tokyoeye/pretrained
+	@echo "Equiformer ckpt: $(or $(EQUIFORMER_CKPT),checkpoints/tokyoeye/pretrained/equiformer_v3_baseline.pt)"
+	@echo "Data: PDB=$(or $(PDB),4OBE) CHAIN=$(or $(CHAIN),A) MANIFEST=$(or $(MANIFEST),)"
+	MLFLOW_TRACKING_URI=$(or $(MLFLOW_URI),http://mlflow:5000) $(SCIENCE_RUN) -e MLFLOW_TRACKING_URI science \
+		python -m experiments.training.v8.run_v8_experiment \
+		--epochs $(or $(EPOCHS),10) \
+		--device $(or $(DEVICE),cuda) \
+		--run-name $(or $(RUN_NAME),tokyoeye_live) \
+		--out-dir /app/checkpoints/tokyoeye/runs \
+		--mlflow-uri $(or $(MLFLOW_URI),http://mlflow:5000) \
+		--mlflow-experiment tokyoeye/equiformer-v3-moe/geometric/full-stack \
+		--pdb $(or $(PDB),4OBE) \
+		--chain $(or $(CHAIN),A) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		$(if $(MANIFEST),--manifest /app/$(MANIFEST),) \
+		$(if $(EQUIFORMER_CKPT),--equiformer-ckpt /app/$(EQUIFORMER_CKPT),--equiformer-ckpt /app/checkpoints/tokyoeye/pretrained/equiformer_v3_baseline.pt) \
+		$(if $(NO_MLFLOW),--no-mlflow,) \
+		$(if $(EXPORT_VIEWERS),--export-viewers,) \
+		$(if $(FREEZE_BACKBONE),--freeze-backbone,) \
+		$(if $(NO_GRAPH_CACHE),--no-graph-cache,) \
+		$(if $(GUMBEL_SCHEDULE),--gumbel-schedule $(GUMBEL_SCHEDULE),) \
+		$(if $(CV_COEFF),--cv-coeff $(CV_COEFF),) \
+		$(if $(MOE_QUOTA_COEFF),--moe-quota-coeff $(MOE_QUOTA_COEFF),) \
+		$(if $(INIT_CKPT),--init-ckpt /app/$(INIT_CKPT),)
+	@echo "MLflow → experiment tokyoeye/equiformer-v3-moe/geometric/full-stack  run $(or $(RUN_NAME),tokyoeye_live)"
+	@echo "Ckpts → checkpoints/tokyoeye/runs/$(or $(RUN_NAME),tokyoeye_live)/"
+
+export-tokyoeye-viewers: ## Export Poincaré disc HTML (PDB= or MANIFEST=; default 4OBE)
+	@mkdir -p data/local_objects/gnn_viewer/tokyoeye
+	$(SCIENCE_RUN) science \
+		python -m experiments.training.v8.export_viewers \
+		--ckpt /app/$(or $(CKPT),checkpoints/tokyoeye/runs/tokyoeye_4obe_a/tokyoeye_best.pt) \
+		--pdb $(or $(PDB),4OBE) \
+		--chain $(or $(CHAIN),A) \
+		--pdb-dir /tmp/dtie_pdb_cache \
+		--out-root /app/data/local_objects/gnn_viewer/tokyoeye \
+		--device $(or $(DEVICE),cuda) \
+		$(if $(MANIFEST),--manifest /app/$(MANIFEST),) \
+		$(if $(DEHYDRON_WRAP_MAX),--dehydron-wrap-max $(DEHYDRON_WRAP_MAX),) \
+		$(if $(FREEZE_BACKBONE),--freeze-backbone,)
+	@echo "Viewers → data/local_objects/gnn_viewer/tokyoeye/"

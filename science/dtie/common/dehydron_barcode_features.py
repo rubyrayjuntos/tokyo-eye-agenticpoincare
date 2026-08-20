@@ -11,23 +11,16 @@ where ``residue_index`` is the PDB residue sequence number (``resseq``), matchin
 Insertion codes are not modeled in training graph assembly today; extend the key
 tuple to ``(chain_label, residue_index, icode)`` if icode-aware graphs are added.
 
-**Scalar order (``SCALAR_NAMES``, length 11):**
+**First-arm scalar order (``SCALAR_NAMES``, length 3 — locked 2026-07-16):**
 
-0. ``n_bars`` — log1p(structure-level bar count)
-1. ``n_h1_bars`` — log1p(structure-level H1 bar count)
-2. ``total_persistence`` — log1p(structure-level sum of bar persistence)
-3. ``max_persistence`` — structure-level max persistence
-4. ``mean_persistence`` — structure-level mean persistence
-5. ``std_persistence`` — structure-level std persistence
-6. ``frac_long_lived`` — structure-level fraction above threshold
-7. ``mean_birth_h1`` — structure-level H1 mean birth
-8. ``mean_death_h1`` — structure-level H1 mean death
-9. ``max_h1_persistence`` — structure-level max H1 persistence
-10. ``n_dehydrons_touching`` — log1p(count of midpoints touching residue)
+0. ``total_persistence_h1`` — log1p(structure-level sum of **H1** bar persistence)
+1. ``fraction_long_lived_h1`` — fraction of **H1** bars above long-lived threshold
+2. ``n_dehydrons_touching`` — log1p(count of midpoints touching residue)
 
-Scalars 0, 1, 2, and 10 receive ``log1p`` before return. Binned output (optional) is
-an H1 persistence histogram on ``[0, bin_max)`` with ``bin_width`` (default 40 bins),
-L1-normalized per residue when any mass is present.
+Corpus z-score (μ/σ) is applied at cache-build over valid (non-missing) rows.
+Binned output remains optional / deferred. Min-dehydron guard:
+``MIN_DEHYDRON_MIDPOINTS_FOR_WITNESS`` — below that, witness TDA is skipped and the
+structure routes to the missing-mask path.
 """
 
 from __future__ import annotations
@@ -50,21 +43,50 @@ from science.dtie.common.residue_features import (
     AtomRecord,
 )
 
-BARCODE_FEATURE_VERSION = "dehydron_barcode_v1"
-SCALAR_DIM = 11
+BARCODE_FEATURE_VERSION = "dehydron_barcode_v1_2"
+BARCODE_SIDECAR_GLOB = f"*_{BARCODE_FEATURE_VERSION}.pt"
+SCALAR_DIM = 3
 BINNED_DIM = 40
+# Local per-dehydron-pair edge channel (witness midpoints — not structure-global broadcast).
+EDGE_BARCODE_DIM = 5
+
+# Locked 2026-07-16 from Stage A-12 pure-TDA diagnostic
+# (checkpoints/v65/diagnostics/dehydron_bar_length_v1/): pooled H1 p75 above
+# noise floor 0.1 Å; dominance clear; no usable upper-half gap.
+# See threshold_lock.json alongside that diagnostic for full justification.
+LONG_LIVED_PERSISTENCE_ANGSTROM = 3.11
+LONG_LIVED_THRESHOLD_METHOD = "pooled_h1_percentile_75"
+LONG_LIVED_THRESHOLD_DIAGNOSTIC = (
+    "checkpoints/v65/diagnostics/dehydron_bar_length_v1"
+)
+
+# Below this midpoint count, skip landmark/witness TDA → missing-mask (§4.3).
+# Stage A-12 min midpoint count is 77; this only catches degenerate structures.
+MIN_DEHYDRON_MIDPOINTS_FOR_WITNESS = 5
+
+# Orthogonality lock SSOT (within-SS inspection held for n_dehydrons_touching).
+FIRST_ARM_SCALAR_LOCK = (
+    "checkpoints/v65/diagnostics/dehydron_scalar_orthogonality_v1/scalar_subset_lock.json"
+)
+CORPUS_ZSCORE_EPS = 1e-6
+
+
+def barcode_sidecar_filename(pdb_id: str, chain: str) -> str:
+    """Versioned sidecar filename shared by writer and loader."""
+    return f"{pdb_id.upper()}_{chain}_{BARCODE_FEATURE_VERSION}.pt"
+
+
+EDGE_BARCODE_NAMES: list[str] = [
+    "wrap_deficit",
+    "log1p_wrapping",
+    "witness_nn1_norm",
+    "local_h1_persistence",
+    "log1p_local_density",
+]
 
 SCALAR_NAMES: list[str] = [
-    "n_bars",
-    "n_h1_bars",
-    "total_persistence",
-    "max_persistence",
-    "mean_persistence",
-    "std_persistence",
-    "frac_long_lived",
-    "mean_birth_h1",
-    "mean_death_h1",
-    "max_h1_persistence",
+    "total_persistence_h1",
+    "fraction_long_lived_h1",
     "n_dehydrons_touching",
 ]
 
@@ -135,9 +157,14 @@ def compute_witness_persistence(
     min_persistence_angstrom: float = 0.1,
     n_landmarks: int = 30,
     random_state: int = 42,
+    min_dehydron_midpoints: int = MIN_DEHYDRON_MIDPOINTS_FOR_WITNESS,
 ) -> list[PersistenceBar]:
-    """Euclidean witness complex persistence on dehydron midpoints (H0 + H1)."""
-    if len(midpoints) < 2:
+    """Euclidean witness complex persistence on dehydron midpoints (H0 + H1).
+
+    Structures with fewer than ``min_dehydron_midpoints`` midpoints return ``[]``
+    so callers route to the missing-mask path rather than a degenerate barcode.
+    """
+    if len(midpoints) < int(min_dehydron_midpoints):
         return []
 
     witnesses = np.asarray([mp.coord for mp in midpoints], dtype=np.float64)
@@ -183,45 +210,138 @@ def compute_witness_persistence(
     return bars
 
 
-def _scalar_stats_from_bars(
+def compute_midpoint_witness_nn1(
+    midpoints: Sequence[DehydronMidpoint],
+    *,
+    n_landmarks: int = 30,
+    random_state: int = 42,
+) -> np.ndarray:
+    """Nearest-landmark distance per dehydron midpoint (witness filtration entry proxy)."""
+    if not midpoints:
+        return np.zeros(0, dtype=np.float32)
+    witnesses = np.asarray([mp.coord for mp in midpoints], dtype=np.float64)
+    n_witnesses = len(witnesses)
+    n_clusters = min(int(n_landmarks), n_witnesses)
+    landmarks = KMeans(
+        n_clusters=n_clusters,
+        random_state=random_state,
+        n_init="auto",
+    ).fit(witnesses).cluster_centers_
+    nn1 = cdist(witnesses, landmarks).min(axis=1)
+    return nn1.astype(np.float32)
+
+
+def local_h1_persistence_for_witness(
+    witness_nn1: float,
+    bars: Sequence[PersistenceBar],
+) -> float:
+    """Max H1 persistence among bars whose lifespan contains the witness scale."""
+    scale = float(witness_nn1)
+    best = 0.0
+    for bar in bars:
+        if bar.dim != 1:
+            continue
+        if bar.birth <= scale <= bar.death:
+            best = max(best, float(bar.persistence))
+    return best
+
+
+def midpoint_local_density(
+    midpoints: Sequence[DehydronMidpoint],
+    *,
+    radius: float = 4.0,
+) -> np.ndarray:
+    """Count of other dehydron midpoints within ``radius`` Å of each witness."""
+    n = len(midpoints)
+    if n <= 1:
+        return np.zeros(n, dtype=np.float32)
+    coords = np.asarray([mp.coord for mp in midpoints], dtype=np.float64)
+    dists = cdist(coords, coords)
+    counts = (dists < float(radius)).sum(axis=1).astype(np.float32) - 1.0
+    return np.clip(counts, 0.0, None)
+
+
+def _dehydron_pair_key(i: int, j: int) -> tuple[int, int]:
+    return (i, j) if i < j else (j, i)
+
+
+def aggregate_dehydron_edge_barcode_features(
+    midpoints: Sequence[DehydronMidpoint],
     bars: Sequence[PersistenceBar],
     *,
-    long_lived_persistence_angstrom: float,
-) -> tuple[float, float, float, float, float, float, float, float, float, float]:
-    """Raw (pre-log1p) per-dehydron scalar stats from one bar set."""
-    if not bars:
-        return (0.0,) * 10
+    tau: float = TAU,
+    max_alpha_angstrom: float = 20.0,
+    n_landmarks: int = 30,
+    random_state: int = 42,
+    local_density_radius: float = 4.0,
+) -> dict[str, np.ndarray]:
+    """Per-dehydron-pair local barcode features keyed by midpoint H-bond pairs."""
+    m = len(midpoints)
+    edge_pairs = np.zeros((m, 2), dtype=np.int32)
+    edge_scalars = np.zeros((m, EDGE_BARCODE_DIM), dtype=np.float32)
+    if m == 0:
+        return {"edge_pairs": edge_pairs, "edge_scalars": edge_scalars}
 
-    h1_bars = [bar for bar in bars if bar.dim == 1]
-    persistences = [bar.persistence for bar in bars]
-    h1_persistences = [bar.persistence for bar in h1_bars]
-
-    n_bars = float(len(bars))
-    n_h1_bars = float(len(h1_bars))
-    total_persistence = float(sum(persistences))
-    max_persistence = float(max(persistences))
-    mean_persistence = float(np.mean(persistences))
-    std_persistence = float(np.std(persistences)) if len(persistences) > 1 else 0.0
-    frac_long_lived = float(
-        sum(1 for persistence in persistences if persistence >= long_lived_persistence_angstrom)
-        / len(persistences)
+    nn1 = compute_midpoint_witness_nn1(
+        midpoints,
+        n_landmarks=n_landmarks,
+        random_state=random_state,
     )
-    mean_birth_h1 = float(np.mean([bar.birth for bar in h1_bars])) if h1_bars else 0.0
-    mean_death_h1 = float(np.mean([bar.death for bar in h1_bars])) if h1_bars else 0.0
-    max_h1_persistence = float(max(h1_persistences)) if h1_persistences else 0.0
+    density = midpoint_local_density(midpoints, radius=local_density_radius)
+    alpha_scale = max(float(max_alpha_angstrom), 1e-6)
+    tau_f = max(float(tau), 1e-6)
 
-    return (
-        n_bars,
-        n_h1_bars,
-        total_persistence,
-        max_persistence,
-        mean_persistence,
-        std_persistence,
-        frac_long_lived,
-        mean_birth_h1,
-        mean_death_h1,
-        max_h1_persistence,
-    )
+    for idx, mp in enumerate(midpoints):
+        wrap = float(mp.wrapping_count)
+        edge_pairs[idx, 0] = int(min(mp.donor_idx, mp.acceptor_idx))
+        edge_pairs[idx, 1] = int(max(mp.donor_idx, mp.acceptor_idx))
+        edge_scalars[idx, 0] = np.clip((tau_f - wrap) / tau_f, 0.0, 1.0)
+        edge_scalars[idx, 1] = np.log1p(wrap)
+        edge_scalars[idx, 2] = float(nn1[idx]) / alpha_scale
+        edge_scalars[idx, 3] = local_h1_persistence_for_witness(float(nn1[idx]), bars)
+        edge_scalars[idx, 4] = np.log1p(float(density[idx]))
+
+    return {"edge_pairs": edge_pairs, "edge_scalars": edge_scalars}
+
+
+def align_edge_barcode_to_graph(
+    edge_pairs: np.ndarray,
+    edge_scalars: np.ndarray,
+    barcode_residue_indices: Sequence[int],
+    graph_residue_indices: Sequence[int],
+) -> dict[tuple[int, int], np.ndarray]:
+    """Map PDB-order dehydron pairs onto training-graph residue indices."""
+    pairs = np.asarray(edge_pairs, dtype=np.int32)
+    scalars = np.asarray(edge_scalars, dtype=np.float32)
+    if pairs.size == 0:
+        return {}
+    if pairs.ndim != 2 or pairs.shape[1] != 2:
+        raise ValueError(f"edge_pairs must be [M, 2], got {pairs.shape}")
+    if scalars.shape != (pairs.shape[0], EDGE_BARCODE_DIM):
+        raise ValueError(
+            f"edge_scalars must be [{pairs.shape[0]}, {EDGE_BARCODE_DIM}], "
+            f"got {scalars.shape}"
+        )
+
+    src_resseqs = np.asarray(barcode_residue_indices, dtype=np.int32)
+    graph_resseq_to_idx = {int(resseq): i for i, resseq in enumerate(graph_residue_indices)}
+    lookup: dict[tuple[int, int], np.ndarray] = {}
+
+    for row in range(pairs.shape[0]):
+        i_pdb, j_pdb = int(pairs[row, 0]), int(pairs[row, 1])
+        if i_pdb < 0 or j_pdb < 0 or i_pdb >= src_resseqs.shape[0] or j_pdb >= src_resseqs.shape[0]:
+            continue
+        gi = graph_resseq_to_idx.get(int(src_resseqs[i_pdb]))
+        gj = graph_resseq_to_idx.get(int(src_resseqs[j_pdb]))
+        if gi is None or gj is None:
+            continue
+        key = _dehydron_pair_key(gi, gj)
+        vec = scalars[row]
+        if key in lookup:
+            lookup[key] = np.maximum(lookup[key], vec)
+        else:
+            lookup[key] = vec.copy()
+    return lookup
 
 
 def _h1_persistence_histogram(
@@ -241,17 +361,34 @@ def _h1_persistence_histogram(
     return hist
 
 
+def _first_arm_stats_from_h1_bars(
+    bars: Sequence[PersistenceBar],
+    *,
+    long_lived_persistence_angstrom: float,
+) -> tuple[float, float]:
+    """Return (total_persistence_h1, fraction_long_lived_h1) from H1 bars only."""
+    h1 = [bar for bar in bars if int(bar.dim) == 1]
+    if not h1:
+        return 0.0, 0.0
+    persistences = [float(bar.persistence) for bar in h1]
+    total = float(sum(persistences))
+    frac = float(
+        sum(p >= long_lived_persistence_angstrom for p in persistences) / len(persistences)
+    )
+    return total, frac
+
+
 def aggregate_residue_barcode_features(
     n_residues: int,
     midpoints: Sequence[DehydronMidpoint],
     bars: Sequence[PersistenceBar],
     *,
-    long_lived_persistence_angstrom: float = 2.0,
+    long_lived_persistence_angstrom: float = LONG_LIVED_PERSISTENCE_ANGSTROM,
     use_binned: bool = False,
     bin_width: float = 0.25,
     bin_max: float = 10.0,
 ) -> dict[str, np.ndarray | None]:
-    """Aggregate global barcode features to per-residue scalars, optional binned vector, and mask."""
+    """Aggregate locked first-arm H1 scalars (+ optional binned) to per-residue rows."""
     scalars = np.zeros((n_residues, SCALAR_DIM), dtype=np.float32)
     missing = np.ones((n_residues, 1), dtype=np.float32)
     binned: np.ndarray | None = (
@@ -269,39 +406,20 @@ def aggregate_residue_barcode_features(
         touching_by_residue[midpoint.donor_idx].append(midpoint)
         touching_by_residue[midpoint.acceptor_idx].append(midpoint)
 
+    total_h1, frac_long_lived_h1 = _first_arm_stats_from_h1_bars(
+        bars,
+        long_lived_persistence_angstrom=long_lived_persistence_angstrom,
+    )
+
     for residue_idx, touching_midpoints in touching_by_residue.items():
         if residue_idx < 0 or residue_idx >= n_residues:
             continue
 
-        structure_stats = _scalar_stats_from_bars(
-            bars,
-            long_lived_persistence_angstrom=long_lived_persistence_angstrom,
-        )
-
-        raw_n_bars = structure_stats[0]
-        raw_n_h1_bars = structure_stats[1]
-        raw_total_persistence = structure_stats[2]
-        max_persistence = structure_stats[3]
-        mean_persistence = structure_stats[4]
-        std_persistence = structure_stats[5]
-        frac_long_lived = structure_stats[6]
-        mean_birth_h1 = structure_stats[7]
-        mean_death_h1 = structure_stats[8]
-        max_h1_persistence = structure_stats[9]
         n_dehydrons_touching = float(len(touching_midpoints))
-
         scalars[residue_idx] = np.asarray(
             [
-                np.log1p(raw_n_bars),
-                np.log1p(raw_n_h1_bars),
-                np.log1p(raw_total_persistence),
-                max_persistence,
-                mean_persistence,
-                std_persistence,
-                frac_long_lived,
-                mean_birth_h1,
-                mean_death_h1,
-                max_h1_persistence,
+                np.log1p(total_h1),
+                frac_long_lived_h1,
                 np.log1p(n_dehydrons_touching),
             ],
             dtype=np.float32,
@@ -318,6 +436,63 @@ def aggregate_residue_barcode_features(
                 binned[residue_idx] = (hist / hist.sum()).astype(np.float32)
 
     return {"scalars": scalars, "binned": binned, "missing": missing}
+
+
+def compute_corpus_zscore_stats(
+    scalar_arrays: Sequence[np.ndarray],
+    missing_arrays: Sequence[np.ndarray],
+    *,
+    eps: float = CORPUS_ZSCORE_EPS,
+) -> dict[str, Any]:
+    """Corpus μ/σ over valid (missing==0) rows for each scalar channel."""
+    valid_rows: list[np.ndarray] = []
+    for scalars, missing in zip(scalar_arrays, missing_arrays, strict=True):
+        sc = np.asarray(scalars, dtype=np.float64)
+        miss = np.asarray(missing, dtype=np.float64).reshape(-1)
+        if sc.ndim != 2 or sc.shape[1] != SCALAR_DIM:
+            raise ValueError(f"scalars must be [N, {SCALAR_DIM}], got {sc.shape}")
+        if miss.shape[0] != sc.shape[0]:
+            raise ValueError("missing length must match scalar rows")
+        keep = miss < 0.5
+        if np.any(keep):
+            valid_rows.append(sc[keep])
+    if not valid_rows:
+        mean = np.zeros(SCALAR_DIM, dtype=np.float64)
+        std = np.ones(SCALAR_DIM, dtype=np.float64)
+        n_valid = 0
+    else:
+        stacked = np.concatenate(valid_rows, axis=0)
+        n_valid = int(stacked.shape[0])
+        mean = stacked.mean(axis=0)
+        std = stacked.std(axis=0, ddof=0)
+        std = np.maximum(std, float(eps))
+    return {
+        "version": BARCODE_FEATURE_VERSION,
+        "scalar_names": list(SCALAR_NAMES),
+        "n_valid_rows": n_valid,
+        "mean": mean.astype(np.float64).tolist(),
+        "std": std.astype(np.float64).tolist(),
+        "eps": float(eps),
+    }
+
+
+def apply_corpus_zscore(
+    scalars: np.ndarray,
+    missing: np.ndarray,
+    stats: Mapping[str, Any],
+) -> np.ndarray:
+    """Z-score valid rows in-place-copy; leave missing rows as zeros."""
+    sc = np.asarray(scalars, dtype=np.float32).copy()
+    miss = np.asarray(missing, dtype=np.float32).reshape(-1)
+    mean = np.asarray(stats["mean"], dtype=np.float32)
+    std = np.asarray(stats["std"], dtype=np.float32)
+    if sc.shape[1] != SCALAR_DIM or mean.shape[0] != SCALAR_DIM:
+        raise ValueError("z-score stats width must match SCALAR_DIM")
+    valid = miss < 0.5
+    if np.any(valid):
+        sc[valid] = (sc[valid] - mean) / std
+    sc[~valid] = 0.0
+    return sc
 
 
 def _residue_key(atom: StructureAtom | AtomRecord) -> ResidueMapKey | None:
@@ -491,6 +666,7 @@ def featurize_chain_dehydron_barcode(
             "min_persistence_angstrom",
             "n_landmarks",
             "random_state",
+            "min_dehydron_midpoints",
         )
         if key in kwargs
     }
@@ -501,7 +677,17 @@ def featurize_chain_dehydron_barcode(
     }
 
     structure_atoms, residue_index_map = _load_chain_structure_atoms(pdb_path, chain)
-    n_residues = len(residue_index_map)
+    # Preserve PDB iteration order for row i ↔ residue_indices[i] (resseq).
+    residue_indices = np.asarray(
+        [
+            resseq
+            for (_chain, resseq), _idx in sorted(
+                residue_index_map.items(), key=lambda item: item[1]
+            )
+        ],
+        dtype=np.int32,
+    )
+    n_residues = int(residue_indices.shape[0])
 
     midpoints = extract_dehydron_midpoints(
         structure_atoms,
@@ -516,6 +702,14 @@ def featurize_chain_dehydron_barcode(
         use_binned=use_binned,
         **aggregate_kwargs,
     )
+    edge_features = aggregate_dehydron_edge_barcode_features(
+        midpoints,
+        bars,
+        tau=extract_kwargs.get("tau", TAU),
+        max_alpha_angstrom=persistence_kwargs.get("max_alpha_angstrom", 20.0),
+        n_landmarks=persistence_kwargs.get("n_landmarks", 30),
+        random_state=persistence_kwargs.get("random_state", 42),
+    )
 
     params = {
         "chain": chain,
@@ -529,9 +723,16 @@ def featurize_chain_dehydron_barcode(
         ),
         "n_landmarks": persistence_kwargs.get("n_landmarks", 30),
         "random_state": persistence_kwargs.get("random_state", 42),
-        "long_lived_persistence_angstrom": aggregate_kwargs.get(
-            "long_lived_persistence_angstrom", 2.0
+        "min_dehydron_midpoints": persistence_kwargs.get(
+            "min_dehydron_midpoints", MIN_DEHYDRON_MIDPOINTS_FOR_WITNESS
         ),
+        "long_lived_persistence_angstrom": aggregate_kwargs.get(
+            "long_lived_persistence_angstrom", LONG_LIVED_PERSISTENCE_ANGSTROM
+        ),
+        "long_lived_threshold_method": LONG_LIVED_THRESHOLD_METHOD,
+        "long_lived_threshold_diagnostic": LONG_LIVED_THRESHOLD_DIAGNOSTIC,
+        "first_arm_scalar_lock": FIRST_ARM_SCALAR_LOCK,
+        "scalar_names": list(SCALAR_NAMES),
         "bin_width": aggregate_kwargs.get("bin_width", 0.25),
         "bin_max": aggregate_kwargs.get("bin_max", 10.0),
     }
@@ -540,13 +741,74 @@ def featurize_chain_dehydron_barcode(
         "scalars": features["scalars"],
         "binned": features["binned"],
         "missing": features["missing"],
+        "edge_pairs": edge_features["edge_pairs"],
+        "edge_scalars": edge_features["edge_scalars"],
+        "residue_indices": residue_indices,
         "metadata": {
             "version": BARCODE_FEATURE_VERSION,
             "params": params,
             "n_midpoints": len(midpoints),
             "n_bars": len(bars),
+            "n_residues": n_residues,
         },
     }
+
+
+def align_barcode_to_graph_residues(
+    barcode: Mapping[str, np.ndarray | None],
+    graph_residue_indices: Sequence[int],
+    *,
+    use_binned: bool = False,
+) -> dict[str, np.ndarray | None]:
+    """Reindex sidecar rows onto training-graph residue order by PDB resseq.
+
+    Training graphs are often loaded from the governed DB and can differ in
+    length from the PDB used at precompute. Rows without a sidecar match get
+    zeros + ``missing=1``.
+    """
+    scalars_src = np.asarray(barcode["scalars"], dtype=np.float32)
+    missing_src = np.asarray(barcode["missing"], dtype=np.float32)
+    binned_src = barcode.get("binned")
+    if binned_src is not None:
+        binned_src = np.asarray(binned_src, dtype=np.float32)
+
+    residue_indices = barcode.get("residue_indices")
+    if residue_indices is None:
+        if scalars_src.shape[0] != len(graph_residue_indices):
+            raise ValueError(
+                "barcode sidecar missing residue_indices and row count "
+                f"{scalars_src.shape[0]} != graph N {len(graph_residue_indices)}; "
+                "re-run make precompute-dehydron-barcodes"
+            )
+        return {
+            "scalars": scalars_src,
+            "missing": missing_src,
+            "binned": binned_src,
+        }
+
+    src_resseqs = np.asarray(residue_indices, dtype=np.int32).reshape(-1)
+    if src_resseqs.shape[0] != scalars_src.shape[0]:
+        raise ValueError(
+            "barcode residue_indices length "
+            f"{src_resseqs.shape[0]} != scalars rows {scalars_src.shape[0]}"
+        )
+    src_by_resseq = {int(resseq): i for i, resseq in enumerate(src_resseqs)}
+
+    n = len(graph_residue_indices)
+    scalars = np.zeros((n, SCALAR_DIM), dtype=np.float32)
+    missing = np.ones((n, 1), dtype=np.float32)
+    binned = np.zeros((n, BINNED_DIM), dtype=np.float32) if use_binned else None
+
+    for dst_i, resseq in enumerate(graph_residue_indices):
+        src_i = src_by_resseq.get(int(resseq))
+        if src_i is None:
+            continue
+        scalars[dst_i] = scalars_src[src_i]
+        missing[dst_i] = missing_src[src_i]
+        if use_binned and binned is not None and binned_src is not None:
+            binned[dst_i] = binned_src[src_i]
+
+    return {"scalars": scalars, "missing": missing, "binned": binned}
 
 
 def stack_node_features_with_barcode(

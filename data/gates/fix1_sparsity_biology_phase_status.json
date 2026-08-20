@@ -1,0 +1,662 @@
+{
+  "schema_version": 3,
+  "gate": "fix1_sparsity_biology_phase_status",
+  "recorded_at": "2026-07-21T06:25:00+00:00",
+  "checkpoint_ssot": "experiments.training.v66.healthy_fix1.FIX1_SPARSITY_CHAMPION_CKPT",
+  "champion": {
+    "run_id": "fix1_s4_sparsity_confirm_continue_v2",
+    "checkpoint": "checkpoints/v66/runs/fix1_s4_sparsity_confirm_continue_v2/v66_sparsity_champion.pt",
+    "epoch": 48,
+    "gate_stamp": "data/gates/fix1_sparsity_champion.json",
+    "verdict": "BANKED_CHAMPION"
+  },
+  "sealed_baseline": {
+    "python_constant": "experiments.training.v66.healthy_fix1.HEALTHY_FIX1_CKPT",
+    "checkpoint": "checkpoints/v66/runs/fix1_s4_stack_initseed_controlled_3d_seed2_v1/v66_healthy_sealed.pt"
+  },
+  "workstreams": {
+    "gnn_perturbation_boundary": {
+      "title": "GNN Model Perturbation Boundary Tests",
+      "status": "SEALED_MAP",
+      "thesis": "Seeds nudge locally; conduits must flex for propagation. Euclidean OFF+ON neighborhood grafts Pass (~5\u20137\u00d7 single-site). Child 4 post-lift hyp latent graft Pass (thin margin vs euc on depth; large vs scramble). Absolute \u0394\u03c1 still modest vs backbone inertia. Boundary map sealed; hop-2/G12V/C deferred. Not AA identity.",
+      "roster": [
+        "4LPK",
+        "6GOD",
+        "5US4",
+        "6GOF"
+      ],
+      "checkpoint_ssot": "FIX1_SPARSITY_CHAMPION_CKPT",
+      "children": [
+        {
+          "id": "kras_g12_residue_graft",
+          "order": 1,
+          "title": "Single-site residue-12 graft (matched-state)",
+          "status": "PASS",
+          "ledger_key": "kras_g12_residue_graft",
+          "arms": [
+            "4LPK\u21905US4",
+            "6GOD\u21906GOF"
+          ],
+          "note": "Local site physics/geometry sensitivity; beats scramble; tiny \u0394\u03c1 = backbone inertia. Sealed closeout.",
+          "meta": {
+            "dates": {
+              "prereg_at": "2026-07-21T04:30:00+00:00",
+              "graded_at": "2026-07-21T04:32:24+00:00",
+              "closed_at": "2026-07-21T04:50:00+00:00"
+            },
+            "model": "inherit_workstream",
+            "inputs": {
+              "roster": {
+                "off": {
+                  "wt": "4LPK",
+                  "mut": "5US4",
+                  "chain": "A"
+                },
+                "on": {
+                  "wt": "6GOD",
+                  "mut": "6GOF",
+                  "chain": "A"
+                }
+              },
+              "graft": {
+                "target_resseq": 12,
+                "copy": [
+                  "node_features_rho_tau_ss",
+                  "ca_coords"
+                ],
+                "rebuild_edges": "ca_contact_10A",
+                "honesty": "not_AA_onehot_Asp_vs_Gly"
+              },
+              "controls": {
+                "scramble_donor_resseq": 80,
+                "scramble_target_resseq": 12
+              },
+              "metric": "spearman_out_effect_aligned_shared_resseqs",
+              "pass_form": [
+                "rho(graft,mut) > rho(wt,mut)",
+                "rho(graft,mut) > rho(scramble,mut)",
+                "panel = both OFF and ON"
+              ]
+            },
+            "outputs": {
+              "verdict": "Pass",
+              "artifact": "checkpoints/v66/diagnostics/routing_sparsity/kras_g12_residue_graft.json",
+              "prereg": "data/gates/kras_g12_residue_graft_prereg.json",
+              "closeout": "data/gates/kras_g12_residue_graft_closeout.json",
+              "make": "grade-v66-kras-g12-residue-graft",
+              "headline": {
+                "off": {
+                  "rho_wt_mut": 0.792,
+                  "rho_graft_mut": 0.793,
+                  "delta_rho": 0.0015,
+                  "rho_scramble_mut": 0.772
+                },
+                "on": {
+                  "rho_wt_mut": 0.902,
+                  "rho_graft_mut": 0.902,
+                  "delta_rho": 0.0004,
+                  "rho_scramble_mut": 0.893
+                }
+              },
+              "docs": {
+                "prereg": "docs/specs/kras-topo-structural-inference/kras-g12-residue-graft-prereg.md",
+                "closeout": "docs/specs/kras-topo-structural-inference/kras-g12-residue-graft-closeout.md"
+              }
+            }
+          }
+        },
+        {
+          "id": "kras_g12_neighborhood_graft",
+          "order": 2,
+          "title": "Neighborhood / conduit graft (OFF arm)",
+          "status": "PASS",
+          "ledger_key": "kras_g12_neighborhood_graft",
+          "arms": [
+            "4LPK\u21905US4"
+          ],
+          "depends_on": [
+            "kras_g12_residue_graft"
+          ],
+          "note": "OFF conduit Pass: \u0394\u03c1_neigh\u22485\u00d7 single-site; beats scramble; absolute \u0394\u03c1 still small vs backbone inertia.",
+          "meta": {
+            "dates": {
+              "prereg_at": "2026-07-21T04:50:00+00:00",
+              "graded_at": "2026-07-21T05:15:00+00:00",
+              "closed_at": "2026-07-21T05:20:00+00:00"
+            },
+            "model": "inherit_workstream",
+            "inputs": {
+              "roster": {
+                "off": {
+                  "wt": "4LPK",
+                  "mut": "5US4",
+                  "chain": "A"
+                }
+              },
+              "graft": {
+                "seed_resseq": 12,
+                "include_mut_ca_neighbors_of_12": true,
+                "include_switch_lock_partners": [
+                  32,
+                  60,
+                  61
+                ],
+                "ca_cutoff_a": 10.0,
+                "copy": [
+                  "node_features_rho_tau_ss",
+                  "ca_coords"
+                ],
+                "rebuild_edges": "ca_contact_10A"
+              },
+              "controls": {
+                "single_site_baseline": "kras_g12_residue_graft",
+                "scramble": "same_cardinality_distal_mut_resseqs_onto_N12"
+              },
+              "metric": "spearman_out_effect_aligned_shared_resseqs",
+              "pass_form": [
+                "delta_rho_neighborhood > delta_rho_single_site",
+                "rho(neighborhood,mut) > rho(scramble_neighborhood,mut)"
+              ]
+            },
+            "outputs": {
+              "verdict": "Pass",
+              "artifact": "checkpoints/v66/diagnostics/routing_sparsity/kras_g12_neighborhood_graft.json",
+              "prereg": "data/gates/kras_g12_neighborhood_graft_prereg.json",
+              "closeout": "data/gates/kras_g12_neighborhood_graft_closeout.json",
+              "make": "grade-v66-kras-g12-neighborhood-graft",
+              "headline": {
+                "n12_size": 17,
+                "rho_wt_mut": 0.792,
+                "rho_single_mut": 0.793,
+                "rho_neighborhood_mut": 0.799,
+                "rho_scramble_mut": 0.753,
+                "delta_rho_single": 0.0015,
+                "delta_rho_neighborhood": 0.0075
+              },
+              "docs": {
+                "prereg": "docs/specs/kras-topo-structural-inference/kras-g12-neighborhood-graft-prereg.md",
+                "closeout": "docs/specs/kras-topo-structural-inference/kras-g12-neighborhood-graft-closeout.md"
+              }
+            }
+          }
+        },
+        {
+          "id": "kras_g12_neighborhood_graft_on",
+          "order": 3,
+          "title": "Neighborhood / conduit graft (ON arm)",
+          "status": "PASS",
+          "ledger_key": "kras_g12_neighborhood_graft_on",
+          "arms": [
+            "6GOD\u21906GOF"
+          ],
+          "depends_on": [
+            "kras_g12_residue_graft",
+            "kras_g12_neighborhood_graft"
+          ],
+          "note": "ON conduit Pass: ~7\u00d7 single-site; beats scramble; |N12|=20 (incl 60/61). State-symmetric with OFF. Absolute \u0394\u03c1 smaller (baseline \u03c1\u22480.90).",
+          "meta": {
+            "dates": {
+              "prereg_at": "2026-07-21T05:25:00+00:00",
+              "graded_at": "2026-07-21T05:30:00+00:00",
+              "closed_at": "2026-07-21T05:35:00+00:00"
+            },
+            "model": "inherit_workstream",
+            "inputs": {
+              "roster": {
+                "on": {
+                  "wt": "6GOD",
+                  "mut": "6GOF",
+                  "chain": "A"
+                }
+              },
+              "graft": {
+                "seed_resseq": 12,
+                "include_mut_ca_neighbors_of_12": true,
+                "include_switch_lock_partners": [
+                  32,
+                  60,
+                  61
+                ],
+                "ca_cutoff_a": 10.0,
+                "n12_policy": "recomputed_on_mut_not_copied_from_off"
+              },
+              "controls": {
+                "single_site_baseline": true,
+                "scramble": "same_cardinality_distal_mut_resseqs_onto_N12"
+              },
+              "pass_form": [
+                "delta_rho_neighborhood > delta_rho_single_site",
+                "rho(neighborhood, mut) > rho(scramble_neighborhood, mut)"
+              ]
+            },
+            "outputs": {
+              "verdict": "Pass",
+              "artifact": "checkpoints/v66/diagnostics/routing_sparsity/kras_g12_neighborhood_graft_on.json",
+              "prereg": "data/gates/kras_g12_neighborhood_graft_on_prereg.json",
+              "closeout": "data/gates/kras_g12_neighborhood_graft_on_closeout.json",
+              "make": "grade-v66-kras-g12-neighborhood-graft-on",
+              "headline": {
+                "n12_size": 20,
+                "rho_wt_mut": 0.902,
+                "rho_single_mut": 0.902,
+                "rho_neighborhood_mut": 0.905,
+                "rho_scramble_mut": 0.836,
+                "delta_rho_single": 0.00043,
+                "delta_rho_neighborhood": 0.00308,
+                "multiplier_approx": 7.1
+              },
+              "docs": {
+                "prereg": "docs/specs/kras-topo-structural-inference/kras-g12-neighborhood-graft-on-prereg.md",
+                "closeout": "docs/specs/kras-topo-structural-inference/kras-g12-neighborhood-graft-on-closeout.md"
+              }
+            }
+          }
+        },
+        {
+          "id": "kras_g12_hyperbolic_latent_graft",
+          "order": 4,
+          "title": "Hyperbolic latent graft (post-lift x_hyp, OFF arm)",
+          "status": "PASS",
+          "ledger_key": "kras_g12_hyperbolic_latent_graft",
+          "arms": [
+            "4LPK\u21905US4"
+          ],
+          "depends_on": [
+            "kras_g12_neighborhood_graft"
+          ],
+          "note": "Pass: \u0394\u03c1_hyp=+0.00199 > \u0394\u03c1_euc_neigh=+0.00182 on hyp-depth; beats scramble (0.977>0.899). Thin vs euc; large vs scramble. Not hyp MP.",
+          "meta": {
+            "dates": {
+              "prereg_at": "2026-07-21T05:45:00+00:00",
+              "graded_at": "2026-07-21T05:55:00+00:00",
+              "closed_at": "2026-07-21T05:55:00+00:00"
+            },
+            "model": "inherit_workstream",
+            "inputs": {
+              "roster": {
+                "off": {
+                  "wt": "4LPK",
+                  "mut": "5US4",
+                  "chain": "A"
+                }
+              },
+              "graft": {
+                "layer": "post_lift_x_hyp",
+                "seed_resseq": 12,
+                "n12_policy": "same_as_child_2",
+                "copy": [
+                  "x_hyp_or_logmap0"
+                ],
+                "keep_euclidean": [
+                  "data.x",
+                  "edges"
+                ],
+                "re_execute": "downstream_of_lift_only"
+              },
+              "controls": {
+                "euclidean_neighborhood_baseline": "kras_g12_neighborhood_graft",
+                "scramble": "same_cardinality_distal_mut_x_hyp_onto_N12"
+              },
+              "metric": "spearman_hyperbolic_depth_dist0_aligned_shared_resseqs",
+              "pass_form": [
+                "delta_rho_hyp_depth > delta_rho_euc_neigh_on_hyp_depth",
+                "rho(depth_hyp_graft, depth_mut) > rho(depth_hyp_scramble, depth_mut)"
+              ]
+            },
+            "outputs": {
+              "verdict": "Pass",
+              "artifact": "checkpoints/v66/diagnostics/routing_sparsity/kras_g12_hyperbolic_latent_graft.json",
+              "prereg": "data/gates/kras_g12_hyperbolic_latent_graft_prereg.json",
+              "closeout": "data/gates/kras_g12_hyperbolic_latent_graft_closeout.json",
+              "make": "grade-v66-kras-g12-hyperbolic-latent-graft",
+              "headline": {
+                "n12_size": 17,
+                "rho_wt_mut": 0.975,
+                "rho_hyp_graft_mut": 0.977,
+                "rho_euc_neigh_mut": 0.977,
+                "rho_hyp_scramble_mut": 0.899,
+                "delta_rho_hyp": 0.00199,
+                "delta_rho_euc_neigh": 0.00182
+              },
+              "docs": {
+                "prereg": "docs/specs/kras-topo-structural-inference/kras-g12-hyperbolic-latent-graft-prereg.md",
+                "closeout": "docs/specs/kras-topo-structural-inference/kras-g12-hyperbolic-latent-graft-closeout.md"
+              }
+            }
+          }
+        }
+      ],
+      "deferred": [
+        "Multi-hop / hop-2 depth scaling (new pre-reg)",
+        "G12V/C allele fan-out (new pre-reg)",
+        "Hyperbolic message-passing trunk rewrite (architecture lock; not Child 4)"
+      ],
+      "meta": {
+        "opened_at": "2026-07-21",
+        "updated_at": "2026-07-21",
+        "model": {
+          "python_constant": "experiments.training.v66.healthy_fix1.FIX1_SPARSITY_CHAMPION_CKPT",
+          "checkpoint": "checkpoints/v66/runs/fix1_s4_sparsity_confirm_continue_v2/v66_sparsity_champion.pt",
+          "run_id": "fix1_s4_sparsity_confirm_continue_v2",
+          "epoch": 48,
+          "gate_stamp": "data/gates/fix1_sparsity_champion.json",
+          "architecture_family": "v66"
+        },
+        "lineage": {
+          "sealed_baseline_constant": "experiments.training.v66.healthy_fix1.HEALTHY_FIX1_CKPT",
+          "sealed_baseline_checkpoint": "checkpoints/v66/runs/fix1_s4_stack_initseed_controlled_3d_seed2_v1/v66_healthy_sealed.pt",
+          "role": "specialized_routing_trunk_for_biology_probes",
+          "does_not_replace_sealed_baseline": true
+        },
+        "gnn_input_mode": "topology_three_vector",
+        "metric_family": "forward_knockout_out_effect",
+        "forbidden_metrics": [
+          "jacobian_hub_rankings"
+        ],
+        "docs": {
+          "metadata_schema": "docs/specs/routing-entropy-sparsity/workstream-metadata.md",
+          "four_quadrant": "docs/specs/kras-topo-structural-inference/edge-delta-four-quadrant.md"
+        }
+      }
+    },
+    "kras_basin_routing_automaton": {
+      "title": "KRAS Basin Routing Automaton",
+      "status": "IN_PROGRESS",
+      "thesis": "Channel split sealed: nucleotide macro-basin readable (Child 1 same_nuc>cross_nuc); allele OFF absorbed (BLOCKED_ON_ALLELE_SENSOR). Child 2 promotes nucleotide-only OFF\u2194ON transition smoke; allele stays parked.",
+      "roster": [
+        "4LPK",
+        "6GOD",
+        "5US4",
+        "6GOF"
+      ],
+      "checkpoint_ssot": "FIX1_SPARSITY_CHAMPION_CKPT",
+      "allele_sensor": "PARKED_BLOCKED_ON_ALLELE_SENSOR",
+      "children": [
+        {
+          "id": "kras_basin_observation_classify",
+          "order": 1,
+          "title": "Basin observation classify (four-quadrant static smoke)",
+          "status": "FAIL",
+          "ledger_key": "kras_basin_observation_classify",
+          "arms": [
+            "4LPK",
+            "5US4",
+            "6GOD",
+            "6GOF"
+          ],
+          "depends_on": [
+            "kras_g12_hyperbolic_latent_graft"
+          ],
+          "note": "Fail (bars held). Guards OK; same_nuc 0.941 > cross_nuc 0.911; allele OFF N12|Δ| 0.032 < scr 0.036; ON Pass. Nucleotide basin readable; allele not OFF-site-true on R★ depth.",
+          "meta": {
+            "dates": {
+              "prereg_at": "2026-07-21T06:00:00+00:00",
+              "graded_at": "2026-07-21T06:15:00+00:00",
+              "closed_at": "2026-07-21T06:15:00+00:00"
+            },
+            "model": "inherit_workstream",
+            "inputs": {
+              "roster": {
+                "OFF_WT": {"pdb": "4LPK", "nucleotide": "GDP", "allele": "G12"},
+                "OFF_MUT": {"pdb": "5US4", "nucleotide": "GDP", "allele": "G12D"},
+                "ON_WT": {"pdb": "6GOD", "nucleotide": "GppNHp", "allele": "G12"},
+                "ON_MUT": {"pdb": "6GOF", "nucleotide": "GppNHp", "allele": "G12D"}
+              },
+              "observation": {
+                "field": "cone_depth_dist0_x_hyp",
+                "residue_set": "switch_I_II_union_N12"
+              },
+              "guards": [
+                "deposit_nucleotide_class",
+                "g12_allele_from_sequence"
+              ],
+              "pass_form": [
+                "guards_parse_all_four",
+                "same_nuc_mean_spearman > cross_nuc_mean_spearman",
+                "mean_abs_delta_N12 > mean_abs_delta_scramble on OFF and ON"
+              ]
+            },
+            "outputs": {
+              "verdict": "Fail",
+              "artifact": "checkpoints/v66/diagnostics/routing_sparsity/kras_basin_observation_classify.json",
+              "prereg": "data/gates/kras_basin_observation_classify_prereg.json",
+              "closeout": "data/gates/kras_basin_observation_classify_closeout.json",
+              "make": "grade-v66-kras-basin-observation-classify",
+              "headline": {
+                "same_nuc": 0.941,
+                "cross_nuc": 0.911,
+                "allele_off_pass": false,
+                "allele_on_pass": true
+              },
+              "docs": {
+                "prereg": "docs/specs/kras-topo-structural-inference/kras-basin-observation-classify-prereg.md",
+                "closeout": "docs/specs/kras-topo-structural-inference/kras-basin-observation-classify-closeout.md"
+              }
+            }
+          }
+        },
+        {
+          "id": "kras_nucleotide_basin_transition",
+          "order": 2,
+          "title": "Nucleotide-only basin transition (OFF\u2194ON macro-state)",
+          "status": "PREREG",
+          "ledger_key": "kras_nucleotide_basin_transition",
+          "arms": [
+            "4LPK",
+            "5US4",
+            "6GOD",
+            "6GOF"
+          ],
+          "depends_on": [
+            "kras_basin_observation_classify"
+          ],
+          "note": "Pre-reg locked. Promote Child 1 nucleotide axis: guards + same_nuc>cross_nuc + LOO classify == deposit basin for all four. Allele report-only / parked.",
+          "meta": {
+            "dates": {
+              "prereg_at": "2026-07-21T06:25:00+00:00"
+            },
+            "model": "inherit_workstream",
+            "inputs": {
+              "basins": ["OFF", "ON"],
+              "referee": "deposit_nucleotide_only",
+              "allele": "report_only_parked",
+              "observation": "R_star_hyp_depth_same_as_child1",
+              "pass_form": [
+                "nucleotide_guards_match_roster",
+                "same_nuc > cross_nuc",
+                "loo_predicted_basin_equals_deposit_all_four"
+              ]
+            },
+            "outputs": {
+              "verdict": null,
+              "artifact": "checkpoints/v66/diagnostics/routing_sparsity/kras_nucleotide_basin_transition.json",
+              "prereg": "data/gates/kras_nucleotide_basin_transition_prereg.json",
+              "closeout": null,
+              "make": "grade-v66-kras-nucleotide-basin-transition",
+              "docs": {
+                "prereg": "docs/specs/kras-topo-structural-inference/kras-nucleotide-basin-transition-prereg.md"
+              }
+            }
+          }
+        }
+      ],
+      "deferred": [
+        "Allele sensor pierce (multi-hop / current-flow) — PARKED",
+        "Dynamic multi-step transition engine beyond LOO + legal table"
+      ],
+      "meta": {
+        "opened_at": "2026-07-21",
+        "updated_at": "2026-07-21",
+        "model": {
+          "python_constant": "experiments.training.v66.healthy_fix1.FIX1_SPARSITY_CHAMPION_CKPT",
+          "checkpoint": "checkpoints/v66/runs/fix1_s4_sparsity_confirm_continue_v2/v66_sparsity_champion.pt",
+          "run_id": "fix1_s4_sparsity_confirm_continue_v2",
+          "epoch": 48,
+          "gate_stamp": "data/gates/fix1_sparsity_champion.json",
+          "architecture_family": "v66"
+        },
+        "lineage": {
+          "sealed_baseline_constant": "experiments.training.v66.healthy_fix1.HEALTHY_FIX1_CKPT",
+          "role": "specialized_routing_trunk_for_biology_probes",
+          "depends_on_workstream": "gnn_perturbation_boundary",
+          "does_not_replace_sealed_baseline": true
+        },
+        "gnn_input_mode": "topology_three_vector",
+        "metric_family": "hyp_depth_basin_spearman_plus_allele_delta",
+        "forbidden_metrics": [
+          "jacobian_hub_rankings",
+          "disc_alone_pass",
+          "md_rmsd"
+        ],
+        "docs": {
+          "metadata_schema": "docs/specs/routing-entropy-sparsity/workstream-metadata.md",
+          "prereg": "docs/specs/kras-topo-structural-inference/kras-basin-observation-classify-prereg.md",
+          "architecture_ssot": "docs/audit/EUCLIDEAN_CONSTRUCTION_HYPERBOLIC_INFERENCE.md"
+        }
+      }
+    }
+  },
+  "ledger": {
+    "sparsity_champion_banked": {
+      "status": "PASS",
+      "artifact": "data/gates/fix1_sparsity_champion.json",
+      "note": "mean_H in [0.50,0.90]; max_share<0.45; hub \u03c1(4OBE)\u22650.45"
+    },
+    "kras_g12d_hub_migration": {
+      "status": "PASS",
+      "artifact": "checkpoints/v66/diagnostics/routing_sparsity/kras_hub_migration_4obe_4dso.json",
+      "note": "R_4DSO > R_4OBE (\u0394R\u2248+0.098)"
+    },
+    "structural_monopoly_gini": {
+      "status": "PASS",
+      "artifact": "checkpoints/v66/diagnostics/routing_sparsity/gini_reduction_analysis.json",
+      "note": "mean \u0394G=+0.021; 5/5 monopoly_reduced vs HEALTHY_FIX1_CKPT; full-chain only"
+    },
+    "ledger_b_focal_sensitivity": {
+      "status": "PASS",
+      "artifact": "checkpoints/v66/diagnostics/routing_sparsity/ledger_b_sensitivity_check.json",
+      "note": "2SHP coordinate jitter + sparsity trajectory"
+    },
+    "shp2_state_migration_ood": {
+      "status": "PASS",
+      "artifact": "checkpoints/v66/diagnostics/routing_sparsity/shp2_2shp_6crf_ood.json",
+      "note": "2SHP\u21926CRF (NOT 6MCF). Spearman=0.763; perturb Jaccard=1.0; G(6CRF)=0.188"
+    },
+    "kras_topo_primary_matrix": {
+      "status": "PASS",
+      "artifact": "checkpoints/v66/diagnostics/routing_sparsity/kras_topo_matrix_4obe_4dso_5vq2.json",
+      "note": "Blocking = betweenness \u2227 switch_lock. Historical triad edge \u0394E demoted to report-only (superseded by four-quadrant)."
+    },
+    "kras_topo_edge_delta_four_quadrant": {
+      "status": "PASS",
+      "artifact": "checkpoints/v66/diagnostics/routing_sparsity/kras_topo_edge_delta_four_quadrant.json",
+      "note": "C\u03b1@8\u00c5: mimetic \u0394E(5US4,6GOD)=45 < \u0394E(4LPK,6GOD)=54; mut span 46 < wt span 54. Roster 4LPK/6GOD/5US4/6GOF."
+    },
+    "ledger_b_interface_recall": {
+      "status": "FAIL",
+      "artifact": "checkpoints/v66/diagnostics/routing_sparsity/ledger_b_interface_alignment.json",
+      "note": "FAIL retained (Option 1). recall@top-10%\u22480.07 vs 0.25 on locked latch/tunnel+spine I. I retired as primary Pass; Phase 4b map is discovery explanation only.",
+      "policy": "data/gates/ledger_b_interface_policy_option1.json",
+      "explanation": "docs/specs/kras-topo-structural-inference/ledger-b-interface-policy-closeout.md",
+      "phase4b_map": "checkpoints/v66/diagnostics/routing_sparsity/ledger_b_phase4b_hub_map.json"
+    },
+    "ledger_b_interface_policy": {
+      "status": "CLOSED",
+      "artifact": "data/gates/ledger_b_interface_policy_option1.json",
+      "note": "Option 1: retain Fail; retire locked I as primary Pass claim; append Phase 4b discovery explanation; no post-hoc I expansion"
+    },
+    "platform_hub_alignment_smoke": {
+      "status": "FAIL",
+      "artifact": "checkpoints/v66/diagnostics/routing_sparsity/general_hub_alignment_smoke.json",
+      "note": "Hard Fail closed. 1/3 Pass; median Spearman\u22480.42 vs bar 0.50. Bar not lowered. Gradient-interpretation question unanswerable \u2014 out of scope.",
+      "policy": "data/gates/platform_concordance_policy_hard_fail.json",
+      "explanation": "docs/specs/kras-topo-structural-inference/platform-concordance-policy-closeout.md"
+    },
+    "platform_concordance_policy": {
+      "status": "CLOSED",
+      "artifact": "data/gates/platform_concordance_policy_hard_fail.json",
+      "note": "Hard Fail retained; CB concordance retired as primary Pass; related Jacobian/gradient questions referenced but not answered"
+    },
+    "runtime_policy": {
+      "status": "CLOSED",
+      "note": "Governed routing OK on champion for sealed biology probes. Unconstrained OOD runtime still not opened (no CB/interface concordance Pass to lean on)."
+    },
+    "kras_g12_residue_graft": {
+      "status": "PASS",
+      "workstream": "gnn_perturbation_boundary",
+      "workstream_order": 1,
+      "artifact": "checkpoints/v66/diagnostics/routing_sparsity/kras_g12_residue_graft.json",
+      "prereg": "data/gates/kras_g12_residue_graft_prereg.json",
+      "closeout": "data/gates/kras_g12_residue_graft_closeout.json",
+      "note": "Sealed: local site physics/geometry sensitivity; beats scramble; tiny \u0394\u03c1 (backbone inertia). Not AA identity; not full state rewrite."
+    },
+    "kras_g12_neighborhood_graft": {
+      "status": "PASS",
+      "workstream": "gnn_perturbation_boundary",
+      "workstream_order": 2,
+      "artifact": "checkpoints/v66/diagnostics/routing_sparsity/kras_g12_neighborhood_graft.json",
+      "prereg": "data/gates/kras_g12_neighborhood_graft_prereg.json",
+      "closeout": "data/gates/kras_g12_neighborhood_graft_closeout.json",
+      "note": "OFF 4LPK\u21905US4: |N12|=17; \u0394\u03c1_neigh=+0.0075 > \u0394\u03c1_single=+0.0015; beats scramble (0.799>0.753). Conduit flex helps; absolute effect still small."
+    },
+    "kras_g12_neighborhood_graft_on": {
+      "status": "PASS",
+      "workstream": "gnn_perturbation_boundary",
+      "workstream_order": 3,
+      "artifact": "checkpoints/v66/diagnostics/routing_sparsity/kras_g12_neighborhood_graft_on.json",
+      "prereg": "data/gates/kras_g12_neighborhood_graft_on_prereg.json",
+      "closeout": "data/gates/kras_g12_neighborhood_graft_on_closeout.json",
+      "note": "ON 6GOD\u21906GOF: |N12|=20; \u0394\u03c1_neigh=+0.00308 > \u0394\u03c1_single=+0.00043 (~7\u00d7); beats scramble. Conduit flex state-symmetric; absolute \u0394\u03c1 smaller than OFF (higher baseline \u03c1)."
+    },
+    "kras_g12_hyperbolic_latent_graft": {
+      "status": "PASS",
+      "workstream": "gnn_perturbation_boundary",
+      "workstream_order": 4,
+      "artifact": "checkpoints/v66/diagnostics/routing_sparsity/kras_g12_hyperbolic_latent_graft.json",
+      "prereg": "data/gates/kras_g12_hyperbolic_latent_graft_prereg.json",
+      "closeout": "data/gates/kras_g12_hyperbolic_latent_graft_closeout.json",
+      "note": "OFF 4LPK\u21905US4: |N12|=17; \u0394\u03c1_hyp=+0.00199 > \u0394\u03c1_euc=+0.00182 on hyp-depth; beats scramble (0.977>0.899). Thin vs euc; post-lift only."
+    },
+    "kras_basin_observation_classify": {
+      "status": "FAIL",
+      "workstream": "kras_basin_routing_automaton",
+      "workstream_order": 1,
+      "artifact": "checkpoints/v66/diagnostics/routing_sparsity/kras_basin_observation_classify.json",
+      "prereg": "data/gates/kras_basin_observation_classify_prereg.json",
+      "closeout": "data/gates/kras_basin_observation_classify_closeout.json",
+      "note": "Fail (bars held). Guards OK; same_nuc 0.941 > cross_nuc 0.911; allele OFF Fail (N12|Δ|<scr); ON Pass. Nucleotide basin readable; allele not OFF-site-true on R★ depth."
+    },
+    "kras_nucleotide_basin_transition": {
+      "status": "PREREG",
+      "workstream": "kras_basin_routing_automaton",
+      "workstream_order": 2,
+      "artifact": "checkpoints/v66/diagnostics/routing_sparsity/kras_nucleotide_basin_transition.json",
+      "prereg": "data/gates/kras_nucleotide_basin_transition_prereg.json",
+      "closeout": null,
+      "note": "Pre-reg locked. Nucleotide-only OFF↔ON: guards + same_nuc>cross_nuc + LOO classify. Allele parked."
+    }
+  },
+  "phase_4c_closeout": {
+    "status": "CLOSED",
+    "claim_allowed": "Governed, state-aware transport on sparsity champion for pre-registered SHP2 inactive\u2192open and monopoly reduction vs sealed baseline; classical KRAS G12D four-quadrant C\u03b1 edge-\u0394E rewiring (4LPK/6GOD/5US4/6GOF); honest Ledger B interface Fail + Phase 4b explanation; honest platform CB concordance Fail (bar 0.50 retained); single-site G12 graft Pass (local physics sensitivity, tiny \u0394\u03c1)",
+    "claim_forbidden": [
+      "Ledger B interface latch/tunnel concordance Pass",
+      "Silent adoption of Phase 4b hubs as the original pre-reg I",
+      "Generic CB hub-alignment Pass across TRAINING_TARGETS",
+      "Lowering Ledger A Spearman bar to explain modular rho\u22480.42",
+      "Settling gradient/Jacobian interpretation via concordance smoke",
+      "Historical 4OBE/4DSO/5VQ2 complementarity edge Pass as rewiring proof (superseded; wrong allele active)",
+      "6MCF as open SHP2 (identity error; use 6CRF)",
+      "Unconstrained OOD runtime as if concordance/interface Passes existed",
+      "AA identity recognition or full WT\u2192mut rewrite from single-site graft alone"
+    ]
+  },
+  "next": [
+    {
+      "id": "kras_nucleotide_basin_transition",
+      "workstream": "kras_basin_routing_automaton",
+      "priority": 1,
+      "action": "Child 2 pre-reg locked. On go: grade-v66-kras-nucleotide-basin-transition (nucleotide guards + same_nuc>cross_nuc + LOO basin==deposit). Allele stays PARKED."
+    }
+  ]
+}

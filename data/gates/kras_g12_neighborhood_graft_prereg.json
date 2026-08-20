@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "gate": "kras_g12_neighborhood_graft_prereg",
+  "recorded_at": "2026-07-21T04:50:00+00:00",
+  "checkpoint_ssot": "experiments.training.v66.healthy_fix1.FIX1_SPARSITY_CHAMPION_CKPT",
+  "spec": "docs/specs/kras-topo-structural-inference/kras-g12-neighborhood-graft-prereg.md",
+  "prerequisite": "data/gates/kras_g12_residue_graft_closeout.json",
+  "arm": {"name": "off", "wt": "4LPK", "mut": "5US4", "chain": "A"},
+  "neighborhood": {
+    "seed_resseq": 12,
+    "include_mut_ca_neighbors_of_12": true,
+    "include_switch_lock_partners": [32, 60, 61],
+    "ca_cutoff_a": 10.0
+  },
+  "pass_form": {
+    "primary": [
+      "delta_rho_neighborhood > delta_rho_single_site (both vs WT→mut)",
+      "rho(neighborhood, mut) > rho(scramble_neighborhood, mut)"
+    ],
+    "panel": "off_arm_only"
+  },
+  "forbidden_until_grade": [
+    "Changing Pass bars after inspecting neighborhood out_effect",
+    "Adding G12V/C or ON arm into this stamp"
+  ]
+}

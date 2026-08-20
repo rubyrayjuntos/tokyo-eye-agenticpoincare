@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_bprime_core_radial_floor_closeout",
+  "recorded_at": "2026-07-21T15:50:00+00:00",
+  "status": "PASS",
+  "run_id": "tokyo_eye_v7_bprime_core_floor_continue_v1",
+  "resume": "checkpoints/v7/runs/tokyo_eye_v7_bprime_disc_continue_v1/v7_best_disc.pt",
+  "bars": {
+    "disc_r_mean_min": {
+      "threshold": 0.25,
+      "observed_final": 0.31729528804620105,
+      "observed_max": 0.31729528804620105,
+      "held_from_ge": 36,
+      "pass": true
+    },
+    "eligible_v7_best": {
+      "pass": false,
+      "note": "Eligible through ge41 (mean_H≥0.25); drifted mean_H≈0.24 by ge52+ so final epoch ineligible. No v7_best.pt written (score never beat prior bank). Prefer epoch_041.pt as health bank candidate."
+    },
+    "no_nan_loss": {"pass": true},
+    "train_completed": {"pass": true}
+  },
+  "final_experts_disc_r": {
+    "e0": 0.321,
+    "e1": 0.210,
+    "e2": 0.321,
+    "e3": 0.361
+  },
+  "note": "Core radial floor lifted e1 ~0.07→0.21 and cleared disc_r≥0.25. Not promote / no biology grade yet. Recommended bank: epochs/epoch_041.pt (last eligible + disc Pass).",
+  "artifacts": {
+    "v7_best_disc": "checkpoints/v7/runs/tokyo_eye_v7_bprime_core_floor_continue_v1/v7_best_disc.pt",
+    "phase_12": "checkpoints/v7/runs/tokyo_eye_v7_bprime_core_floor_continue_v1/phase_12.pt",
+    "health_bank_candidate": "checkpoints/v7/runs/tokyo_eye_v7_bprime_core_floor_continue_v1/epochs/epoch_041.pt"
+  }
+}

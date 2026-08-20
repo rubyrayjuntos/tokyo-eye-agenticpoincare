@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "gate": "kras_nucleotide_basin_transition_prereg",
+  "recorded_at": "2026-07-21T06:25:00+00:00",
+  "checkpoint_ssot": "experiments.training.v66.healthy_fix1.FIX1_SPARSITY_CHAMPION_CKPT",
+  "spec": "docs/specs/kras-topo-structural-inference/kras-nucleotide-basin-transition-prereg.md",
+  "prerequisite": "data/gates/kras_basin_observation_classify_closeout.json",
+  "architecture": {
+    "sensor": "gnn_post_lift_hyp_depth_on_R_star",
+    "referee": "deposit_nucleotide_class_only",
+    "memory": "discrete_basins_OFF_ON",
+    "allele_channel": "PARKED_BLOCKED_ON_ALLELE_SENSOR",
+    "not": [
+      "allele_pass_gates",
+      "md_integration",
+      "hyperbolic_message_passing",
+      "soften_child1_allele_bars"
+    ]
+  },
+  "roster": {
+    "4LPK": {"basin": "OFF", "nucleotide": "GDP"},
+    "5US4": {"basin": "OFF", "nucleotide": "GDP"},
+    "6GOD": {"basin": "ON", "nucleotide": "GppNHp"},
+    "6GOF": {"basin": "ON", "nucleotide": "GppNHp"}
+  },
+  "pass_form": {
+    "primary": [
+      "nucleotide_guards_match_roster_all_four",
+      "same_nuc > cross_nuc on R_star hyp_depth",
+      "leave_one_out_predicted_basin_equals_deposit_basin_all_four"
+    ]
+  },
+  "forbidden_until_grade": [
+    "Changing Pass bars after inspecting LOO assigns",
+    "Reintroducing allele as Pass under this stamp",
+    "Softening Child 1 allele Fail"
+  ]
+}

@@ -165,3 +165,102 @@ def test_compute_influence_matrix_excludes_parent_nodes() -> None:
     assert report["n_total_nodes"] == n_res + 1
     assert report["influence"].shape == (n_res, n_res)
     assert len(report["centralities"]["out"]) == n_res
+
+
+def test_pc1_sq_score_mode_runs_and_tags_report() -> None:
+    from experiments.diagnostics.jacobian_flow_influence import (
+        compute_influence_matrix,
+        pc1_unit_direction,
+        score_scalar,
+    )
+
+    n_res = 5
+    hidden = 4
+    rng = torch.Generator().manual_seed(0)
+    x = torch.randn(n_res, hidden, dtype=torch.float64, generator=rng) + 0.5
+    data = Data(x=x.clone(), edge_index=torch.zeros(2, 0, dtype=torch.long))
+    data.n_residue_nodes = n_res
+    model = _MockFlowGNN(hidden=hidden).double()
+    report = compute_influence_matrix(
+        model,
+        data,
+        layer="encoder_h",
+        device="cpu",
+        prot={"n_residues": n_res},
+        score_mode="pc1_sq",
+    )
+    assert report["score_mode"] == "pc1_sq"
+    assert report["grad_site"] == "raw_x"
+    assert report["influence"].shape == (n_res, n_res)
+    assert np.isfinite(report["centralities"]["total"]).all()
+    û = pc1_unit_direction(x)
+    s = score_scalar(x[0], score_mode="pc1_sq", pc1_dir=û)
+    assert float(s) >= 1e-6
+
+
+class _MockEmbFlowGNN(torch.nn.Module):
+    """Stub with node_emb so post_zscore / post_node_emb grad sites work."""
+
+    def __init__(self, in_dim: int = 3, hidden: int = 4) -> None:
+        super().__init__()
+        self.node_emb = torch.nn.Linear(in_dim, hidden, bias=False)
+        self.radial_head = torch.nn.Linear(hidden, 1, bias=False)
+        torch.nn.init.eye_(self.node_emb.weight[:, : min(in_dim, hidden)])
+        torch.nn.init.ones_(self.radial_head.weight)
+
+    def forward(self, data: Data) -> dict[str, torch.Tensor]:
+        enc = self.node_emb(data.x)
+        _ = self.radial_head(enc)
+        return {"hyp_projections_2d": enc[:, :2]}
+
+
+def test_grad_site_post_node_emb_runs() -> None:
+    from experiments.diagnostics.jacobian_flow_influence import compute_influence_matrix
+
+    n_res = 4
+    rng = torch.Generator().manual_seed(1)
+    data = Data(
+        x=torch.randn(n_res, 3, dtype=torch.float64, generator=rng) + 0.5,
+        edge_index=torch.zeros(2, 0, dtype=torch.long),
+    )
+    data.n_residue_nodes = n_res
+    model = _MockEmbFlowGNN(in_dim=3, hidden=4).double()
+    report = compute_influence_matrix(
+        model,
+        data,
+        layer="encoder_h",
+        device="cpu",
+        prot={"n_residues": n_res},
+        score_mode="pc1_sq",
+        grad_site="post_node_emb",
+    )
+    assert report["grad_site"] == "post_node_emb"
+    assert report["influence"].shape == (n_res, n_res)
+    assert np.isfinite(report["centralities"]["total"]).all()
+
+
+def test_grad_site_post_zscore_matches_raw_when_no_transform() -> None:
+    """Without z-score, node_emb input is data.x → sites must agree."""
+    from experiments.diagnostics.jacobian_flow_influence import compute_influence_matrix
+
+    n_res = 4
+    rng = torch.Generator().manual_seed(2)
+    x = torch.randn(n_res, 3, dtype=torch.float64, generator=rng) + 0.5
+    model = _MockEmbFlowGNN(in_dim=3, hidden=4).double()
+
+    def _run(site: str) -> np.ndarray:
+        data = Data(x=x.clone(), edge_index=torch.zeros(2, 0, dtype=torch.long))
+        data.n_residue_nodes = n_res
+        return compute_influence_matrix(
+            model,
+            data,
+            layer="encoder_h",
+            device="cpu",
+            prot={"n_residues": n_res},
+            score_mode="pc1_sq",
+            grad_site=site,  # type: ignore[arg-type]
+        )["influence"]
+
+    raw = _run("raw_x")
+    z = _run("post_zscore")
+    assert np.allclose(raw, z, rtol=1e-8, atol=1e-10)

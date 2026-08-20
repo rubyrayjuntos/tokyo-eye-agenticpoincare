@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_bprime_uncertainty_parked",
+  "recorded_at": "2026-07-21T17:50:00+00:00",
+  "status": "PARKED",
+  "unpark_brief": "docs/specs/tokyo-eye-v7/bprime-uncertainty-unpark.md",
+  "investigation_metric_defs": "docs/specs/tokyo-eye-v7/investigation-allele-epistasis-metrics.md",
+  "health_ssot": "checkpoints/v7/runs/tokyo_eye_v7_bprime_core_floor_continue_v1/v7_healthy_sealed.pt",
+  "failed_recovery_closeout": "data/gates/tokyo_eye_v7_bprime_uncertainty_heads_closeout.json",
+  "failed_approach": "Inherited P4 feeler coeffs without hyp-MP formula benchmark / blocker diagnostics",
+  "accepted_starting_defs": {
+    "AlleleSens": "mean Poincare geodesic displacement WT vs mut over neighborhood N on x_hyp",
+    "Epistasis": "tangent logmap0 residual ||dx_AB - (dx_A + dx_B)|| vs WT",
+    "naming": "Never overload training ale/epi (aleatoric/epistemic) with these metrics",
+    "nig_bridge": "NIG = statistical filter; AlleleSens/Epistasis = biological translation; cross-layer links are hypotheses until measured"
+  },
+  "unpark_requires": [
+    "formula_benchmark_vs_known_evidential_gates",
+    "diagnostics_named_blocker",
+    "new_prereg_with_expected_values",
+    "single_intervention_plan",
+    "no_blind_rematch2_under_old_prereg"
+  ],
+  "recommended_first_claim": "epi_ood_and_nu_structure_before_full_S6_ale",
+  "forbidden_while_parked": [
+    "biology_on_rematch_weights",
+    "promote",
+    "silent_bar_soften",
+    "rematch2_old_prereg",
+    "reuse_ale_epi_abbreviations_for_allele_epistasis_metrics"
+  ]
+}

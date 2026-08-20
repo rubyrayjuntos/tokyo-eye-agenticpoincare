@@ -90,10 +90,12 @@ def gnn_input_dim_for_barcode(
     mode: GnnInputMode | str | None = None,
 ) -> int:
     """Input width for training with optional dehydron barcode side-channel."""
+    from science.dtie.common.dehydron_barcode_features import BINNED_DIM, SCALAR_DIM
+
     base_dim = gnn_input_dim(mode)
     if not use_barcode:
         return base_dim
-    return base_dim + 11 + 1 + (40 if use_binned else 0)
+    return base_dim + SCALAR_DIM + 1 + (BINNED_DIM if use_binned else 0)
 
 
 def gnn_feature_set_id(mode: GnnInputMode | None = None) -> str:
@@ -117,11 +119,11 @@ def gnn_feature_set_id_for_barcode(
         return base
     if resolve_gnn_input_mode(mode) == GnnInputMode.TOPOLOGY_THREE_VECTOR:
         return (
-            "master_topology_three_vector_dbh_full_v1"
+            "master_topology_three_vector_dbh_full_v1_2"
             if use_binned
-            else "master_topology_three_vector_dbh_scalars_v1"
+            else "master_topology_three_vector_dbh_scalars_v1_2"
         )
-    return f"{base}_dbh_full_v1" if use_binned else f"{base}_dbh_scalars_v1"
+    return f"{base}_dbh_full_v1_2" if use_binned else f"{base}_dbh_scalars_v1_2"
 
 
 def stack_gnn_node_features(
@@ -218,32 +220,93 @@ def residue_key(chain: str, index: int) -> str:
     return f"{chain}:{index}"
 
 
+def counts_as_wrapping_carbon(atom: AtomRecord) -> bool:
+    """Non-polar carbon that contributes to dehydron wrapping (node + bond SSOT)."""
+    if atom.element != "C":
+        return False
+    parent = atom.parent_residue_name.strip().upper()
+    if parent in POLAR_SIDECHAINS:
+        return False
+    if atom.atom_name == "C":
+        return False
+    return True
+
+
+def wrapping_carbon_coords(all_atoms: Sequence[AtomRecord]) -> np.ndarray:
+    """Stack wrapping-carbon coordinates ``[M, 3]`` (may be empty)."""
+    coords = [atom.coord for atom in all_atoms if counts_as_wrapping_carbon(atom)]
+    if not coords:
+        return np.zeros((0, 3), dtype=np.float64)
+    return np.asarray(coords, dtype=np.float64)
+
+
 def compute_dehydron_wrapping_count(
     residue: ResidueRecord,
     all_atoms: Sequence[AtomRecord],
     *,
     wrapping_radius: float = WRAPPING_RADIUS,
 ) -> float:
-    """Dehydron wrapping count — integer semantics, returned as float."""
+    """Dehydron wrapping count — integer semantics, returned as float.
+
+    Midpoint is this residue's backbone N–O (node-level ρ).
+    """
     n_atom = residue.get_atom("N")
     o_atom = residue.get_atom("O")
     if n_atom is None or o_atom is None:
         return -1.0
     mid = (n_atom.coord + o_atom.coord) / 2.0
-    count = 0
-    for atom in all_atoms:
-        if atom.element != "C":
-            continue
-        parent = atom.parent_residue_name.strip().upper()
-        if parent in POLAR_SIDECHAINS:
-            continue
-        if atom.atom_name == "C":
-            continue
-        dist = float(np.linalg.norm(atom.coord - mid))
-        if dist >= wrapping_radius:
-            continue
-        count += 1
-    return float(count)
+    return _count_wrapping_carbons_about(mid, all_atoms, wrapping_radius=wrapping_radius)
+
+
+def compute_bond_wrapping_count(
+    donor: ResidueRecord,
+    acceptor: ResidueRecord,
+    all_atoms: Sequence[AtomRecord],
+    *,
+    wrapping_radius: float = WRAPPING_RADIUS,
+    carbon_coords: np.ndarray | None = None,
+) -> float:
+    """Wrapping count for a backbone H-bond donor(N) → acceptor(O).
+
+    Same carbon filter and radius as ``compute_dehydron_wrapping_count``, but the
+    midpoint is the **inter-residue** N–O pair (true bond dehydron geometry).
+    Returns ``-1.0`` if donor N or acceptor O is missing.
+    """
+    n_atom = donor.get_atom("N")
+    o_atom = acceptor.get_atom("O")
+    if n_atom is None or o_atom is None:
+        return -1.0
+    mid = (n_atom.coord + o_atom.coord) / 2.0
+    if carbon_coords is not None:
+        return _count_wrapping_from_coords(mid, carbon_coords, wrapping_radius=wrapping_radius)
+    return _count_wrapping_carbons_about(mid, all_atoms, wrapping_radius=wrapping_radius)
+
+
+def _count_wrapping_carbons_about(
+    midpoint: np.ndarray,
+    all_atoms: Sequence[AtomRecord],
+    *,
+    wrapping_radius: float,
+) -> float:
+    coords = wrapping_carbon_coords(all_atoms)
+    return _count_wrapping_from_coords(midpoint, coords, wrapping_radius=wrapping_radius)
+
+
+def _count_wrapping_from_coords(
+    midpoint: np.ndarray,
+    carbon_coords: np.ndarray,
+    *,
+    wrapping_radius: float,
+) -> float:
+    if carbon_coords.size == 0:
+        return 0.0
+    mid = np.asarray(midpoint, dtype=np.float64).reshape(3)
+    if carbon_coords.shape[0] >= 64:
+        from scipy.spatial import cKDTree
+
+        return float(len(cKDTree(carbon_coords).query_ball_point(mid, r=wrapping_radius)))
+    d2 = np.sum((carbon_coords - mid) ** 2, axis=1)
+    return float(np.count_nonzero(d2 < wrapping_radius * wrapping_radius))
 
 
 def compute_tau_flag(rho: float, *, tau: float = TAU) -> float:
@@ -500,6 +563,15 @@ def build_from_pdb_chain(
     mode: FeatureMode = FeatureMode.TRAINING_CURRENT,
 ) -> list[ResidueNodeFeatures]:
     """Parse a PDB chain and compute node features (inference/training SSOT path)."""
+    records = parse_residue_records_from_pdb_chain(pdb_path, chain_id)
+    return build_node_features(records, mode=mode)
+
+
+def parse_residue_records_from_pdb_chain(
+    pdb_path: str | Any,
+    chain_id: str,
+) -> list[ResidueRecord]:
+    """Parse standard residues for one chain into ``ResidueRecord`` atoms (N/O/Cα/…)."""
     from Bio.PDB import PDBParser
 
     parser = PDBParser(QUIET=True)
@@ -527,9 +599,10 @@ def build_from_pdb_chain(
                 residue_index=int(res.get_id()[1]),
                 residue_name=res_name,
                 atoms=atoms,
+                residue_id=f"{chain_id}:{int(res.get_id()[1])}:",
             )
         )
-    return build_node_features(records, mode=mode)
+    return records
 
 
 @dataclass(frozen=True)

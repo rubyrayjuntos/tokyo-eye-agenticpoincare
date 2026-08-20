@@ -22,7 +22,7 @@ def test_training_config_serializes_paths() -> None:
     cfg = TrainingConfig(output_dir="checkpoints/v6/test", corpus_manifest="manifests/v6_corpus_120.json")
     params = cfg.to_mlflow_params()
     assert "checkpoints/v6/test" in params["output_dir"]
-    assert params["model_version"] == "TokyoEye-v8"
+    assert params["model_version"] == "TokyoEye"
     assert params["num_experts"] == 4
 
 
@@ -911,4 +911,3 @@ def test_stage_runner_resets_best_score_on_cross_phase_resume(tmp_path: Path) ->
     runner2._begin_phase_best_tracking(2)
     assert runner2.best_score == pytest.approx(3.32)
     assert runner2._saved_eligible is True
-

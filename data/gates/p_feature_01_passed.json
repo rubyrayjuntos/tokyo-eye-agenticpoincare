@@ -1,6 +1,6 @@
 {
-  "checked_at": "2026-07-07T00:14:51.287838+00:00",
-  "feature_module_sha256": "b18cece16d0fcbcb2ee70e824ef75b62ce8b638c10ebba4f7e951fbe9b999e68",
+  "checked_at": "2026-07-20T16:32:47.532488+00:00",
+  "feature_module_sha256": "222df87fd7dd8a97a1a20a256d77f4dd005a6a927e3980f9d6536bcdb700b896",
   "gate": "P_FEATURE_01",
   "manifest_path": "/app/manifests/v6_corpus_stage_a_small_v1.json",
   "manifest_sha256": "ac954a4fd28124e695df448590547820fad666bc08f6df11b35d902a9feddedc",

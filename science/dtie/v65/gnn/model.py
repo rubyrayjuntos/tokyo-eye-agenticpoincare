@@ -519,6 +519,7 @@ class GOSPConeMapperV65(nn.Module):
         disc_radial_source: str = "mobius",
         decoupled_uncertainty_heads: bool = False,
         uncertainty_from_backbone: bool = False,
+        init_seed: int | None = None,
     ):
         super().__init__()
         self.hidden = hidden
@@ -532,6 +533,7 @@ class GOSPConeMapperV65(nn.Module):
         self.deep_hyperbolic_gate = deep_hyperbolic_gate
         self.expert_depth_decouple = expert_depth_decouple
         self.structure_gate = structure_gate
+        self.init_seed = init_seed
         # Softer than 0.99 — aggressive clamping collapses angular spread on the disc.
         self.disc_proj_softness = 0.95
         self.disc_projection_path = resolve_disc_projection_path(
@@ -588,6 +590,7 @@ class GOSPConeMapperV65(nn.Module):
                 use_gumbel=gate_gumbel,
                 deep_gate=deep_hyperbolic_gate,
                 structure_gate=structure_gate,
+                init_seed=init_seed,
             )
         else:
             self.gate = TopologicalMoEGateV6(
@@ -1073,7 +1076,9 @@ def load_v65_state_dict(
     model: GOSPConeMapperV65,
     state_dict: dict[str, torch.Tensor],
 ) -> tuple[list[str], list[str]]:
-    """Load weights tolerating gate topo expansion (7 → 10 with disc inputs)."""
+    """Load weights tolerating gate topo expansion and barcode node_emb widen."""
+    from science.dtie.v6.gnn.model import adapt_checkpoint_node_emb_width
+
     adapted = dict(state_dict)
     if getattr(model, "decoupled_uncertainty_heads", False):
         adapted = expand_coupled_uncertainty_state_dict(adapted)
@@ -1086,6 +1091,7 @@ def load_v65_state_dict(
             expanded = new_w.clone()
             expanded[:, : old_w.shape[1]] = old_w
             adapted[topo_key] = expanded
+    adapted = adapt_checkpoint_node_emb_width(adapted, model_state)
     adapted = adapt_checkpoint_expert_count(adapted, model_state)
     incompatible = model.load_state_dict(adapted, strict=False)
     missing = list(getattr(incompatible, "missing_keys", incompatible[0] if isinstance(incompatible, tuple) else []))

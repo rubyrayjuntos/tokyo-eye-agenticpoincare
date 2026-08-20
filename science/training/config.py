@@ -258,7 +258,7 @@ class TrainingConfig(BaseModel):
 
     model_config = ConfigDict(protected_namespaces=())
 
-    model_version: str = "TokyoEye-v8"
+    model_version: str = "TokyoEye"
     gnn_lineage: Literal["v6", "v6.5", "v6.6", "v7", "v8"] = "v8"
     device: str = "cpu"
     lr: float = 5e-4
@@ -268,13 +268,13 @@ class TrainingConfig(BaseModel):
     # When set (from --seed), gate/prototype bank init uses an isolated RNG keyed
     # only by this value — stable across node_emb width (3 vs 4). See isolated_init.py.
     init_seed: int | None = None
-    output_dir: Path = Path("checkpoints/v8/runs")
+    output_dir: Path = Path("checkpoints/tokyoeye/runs")
     pdb_dir: Path = Path("/tmp/dtie_pdb_cache")
     corpus_manifest: Path = Path("manifests/v6_corpus_120.json")
     phase: int | None = None  # None = full 3-phase curriculum
     resume: Path | None = None
     warm_start_v5: Path | None = None
-    mlflow_experiment: str = "tokyo-eyes-v8"
+    mlflow_experiment: str = "tokyoeye/equiformer-v3-moe/geometric/full-stack"
     mlflow_tracking_uri: str = "http://mlflow:5000"
     max_proteins: int | None = None
     max_residues: int = STAGE_A_MAX_RESIDUES

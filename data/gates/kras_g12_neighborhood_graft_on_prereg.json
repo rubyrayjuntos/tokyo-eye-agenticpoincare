@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "gate": "kras_g12_neighborhood_graft_on_prereg",
+  "recorded_at": "2026-07-21T05:25:00+00:00",
+  "checkpoint_ssot": "experiments.training.v66.healthy_fix1.FIX1_SPARSITY_CHAMPION_CKPT",
+  "workstream": "gnn_perturbation_boundary",
+  "child_order": 3,
+  "spec": "docs/specs/kras-topo-structural-inference/kras-g12-neighborhood-graft-on-prereg.md",
+  "depends_on": ["kras_g12_residue_graft", "kras_g12_neighborhood_graft"],
+  "arm": {"name": "on", "wt": "6GOD", "mut": "6GOF", "chain": "A"},
+  "neighborhood": {
+    "seed_resseq": 12,
+    "include_mut_ca_neighbors_of_12": true,
+    "include_switch_lock_partners": [32, 60, 61],
+    "ca_cutoff_a": 10.0,
+    "note": "N12 recomputed on 6GOF — not a hard-coded copy of OFF |N12|=17"
+  },
+  "pass_form": {
+    "primary": [
+      "delta_rho_neighborhood > delta_rho_single_site",
+      "rho(neighborhood, mut) > rho(scramble_neighborhood, mut)"
+    ],
+    "panel": "on_arm_only"
+  },
+  "forbidden_until_grade": [
+    "Changing Pass bars after inspecting ON neighborhood out_effect",
+    "Hard-coding OFF N12 member list onto ON arm",
+    "Adding hop-2 or G12V/C into this stamp"
+  ]
+}

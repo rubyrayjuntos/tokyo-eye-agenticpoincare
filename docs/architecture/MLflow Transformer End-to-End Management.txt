@@ -1,0 +1,209 @@
+# **Architecting an End-to-End MLOps Pipeline for Tokyo Eye (Custom PyFunc) via the MLflow Python API**
+
+> **Product note (2026-07-23):** Institutional SSOT is MLflow-native governance — registered model `TokyoEye`, aliases `@champion` / `@experimental`, experiment path `tokyoeye/equiformer-v3-moe/{domain}/{subsystem}`. Spec: [`docs/superpowers/specs/2026-07-23-tokyoeye-mlflow-governance-design.md`](../superpowers/specs/2026-07-23-tokyoeye-mlflow-governance-design.md). Package with **`mlflow.pyfunc`**, not Hugging Face `mlflow.transformers`.
+
+## **The Paradigm Shift to Python-Native MLOps Orchestration**
+
+The maturation of machine learning operations (MLOps) has exposed the fragility of disjointed, imperative orchestration tools. Historically, engineering teams have relied on shell scripts, Makefiles, and continuous integration (CI) YAML files to bridge the gap between model training, evaluation, and production deployment. While functional for simple architectures, this paradigm introduces severe operational friction when scaling to large, custom transformer models. Makefiles operate outside the machine learning control plane, creating a fractured lineage where the code that triggers a training run is disconnected from the metadata of the run itself. Transitioning away from external command-line orchestration toward a unified, Python-native MLOps architecture establishes a singular, irrefutable source of truth for the entire machine learning lifecycle.  
+MLflow serves as this definitive control plane. By leveraging the MLflow Python API exclusively, organizations can eliminate reliance on Makefiles for triggering runs, evaluating models, building containers, or promoting candidate models to production1. When dealing with custom transformer models—which often feature complex tokenization logic, custom inference heads, dynamic prompt templates, or integration with external knowledge bases for Retrieval-Augmented Generation (RAG)—the standard out-of-the-box framework flavors may prove insufficient2. In such cases, the mlflow.pyfunc module provides a universal translation layer, allowing engineers to encapsulate arbitrary preprocessing, model inference, and post-processing logic into a single, deployable artifact2.  
+This report provides an exhaustive, end-to-end architectural blueprint for managing custom transformer models entirely through the MLflow Python API. The analysis covers comprehensive data lineage tracking, robust PyFunc model packaging, programmatic execution, advanced evaluation methodologies, alias-based model registry management, and seamless Docker containerization. By centralizing these operations natively within Python and MLflow, enterprise machine learning platforms can achieve total reproducibility, stringent governance, and highly automated, zero-touch deployment pipelines.
+
+## **Establishing MLflow as the Ultimate Source of Truth**
+
+To render MLflow the absolute source of truth for a machine learning ecosystem, every artifact, parameter, metric, and data asset associated with a model must be irrevocably bound to a central tracking server. A transformer model is only as reliable as the lineage that produced it; isolating the model weights from the training data, the hyperparameter configuration, or the system hardware metrics introduces catastrophic reproducibility risks4.
+
+### **Cryptographic Data Lineage and Dataset Tracking**
+
+Transformer models are highly sensitive to their training and evaluation datasets. Historically, data scientists logged dataset paths as simple string parameters, a practice that fails to capture cryptographic hashes, schema changes, or data profiles5. This creates a vulnerability where the underlying data could mutate, rendering the original model irreproducible. The mlflow.data module rectifies this by providing robust dataset tracking APIs that map directly to the model run6.  
+When tracking datasets, MLflow creates a DatasetSource component that links the lineage directly to the original data origin—whether that is an Amazon S3 bucket, a local file, or a managed Delta Table5. By utilizing functions like mlflow.data.from\_pandas() or mlflow.data.from\_spark(), the API translates the external dataset into an MLflow-native dataset object, calculating a unique digest (hash) to ensure cryptographic verification of the data state at the exact time of training7.  
+The integration of dataset tracking occurs within the active run context using the mlflow.log\_input() API6.
+
+| Data Source Type | Python API Implementation | Lineage and Governance Benefits |
+| :---- | :---- | :---- |
+| **Pandas DataFrame** | mlflow.data.from\_pandas() | Captures column schemas, row profiles, and direct file paths (e.g., CSV, Parquet) for tabular or text-based classification datasets7. |
+| **Spark/Delta Lake** | mlflow.data.from\_spark() | Links directly to distributed data stores, ensuring high-scale data lineage for multi-node transformer training and maintaining Unity Catalog compliance6. |
+
+This structural integration ensures that any user querying the model later can extract the exact dataset digest and schema used to produce it. If a champion transformer in production begins to exhibit data drift or hallucination, engineers can trace the model back to its exact training data profile to conduct a rigorous root-cause analysis, establishing MLflow as the unimpeachable source of truth for data provenance3.
+
+### **Comprehensive System Metrics and Telemetry Logging**
+
+Training and fine-tuning custom transformer models requires substantial computational resources, often involving fleets of distributed GPUs. Monitoring the utilization of these resources is critical for optimizing pipeline costs, identifying memory leaks, and profiling hardware bottlenecks. MLflow provides native system metric logging, which captures detailed hardware telemetry natively without requiring external monitoring agents like Prometheus or Datadog10.  
+By invoking the mlflow.enable\_system\_metrics\_logging() API at the beginning of a training script, the tracking server automatically polls and logs infrastructure metrics alongside model parameters and evaluation metrics11.
+
+| Hardware Component | Captured Telemetry Metrics | Required Python Dependencies |
+| :---- | :---- | :---- |
+| **GPU (NVIDIA)** | Utilization percentages, VRAM allocation, temperature fluctuations, and real-time power consumption1. | pynvml \[cite: 11\] |
+| **CPU** | Overall compute utilization percentages and system memory usage12. | psutil \[cite: 1, 13\] |
+| **Storage & Network** | Disk read/write throughput, disk utilization, and network traffic statistics (I/O)10. | psutil \[cite: 8, 14\] |
+
+Capturing system metrics intrinsically links the computational cost of a model to its final predictive performance. Second-order insights derived from this data allow engineering teams to identify if a minor accuracy gain in a custom transformer is justified by a disproportionate spike in GPU power consumption. Furthermore, system metrics are logged locally if a remote server is unavailable, ensuring no loss of telemetry during isolated development phases10.
+
+### **Automated Tracing and Fluent Run Management**
+
+To solidify the source of truth, the MLflow Python API utilizes a fluent interface to manage the execution context. The mlflow.start\_run() context manager binds all subsequent API calls—such as mlflow.log\_param(), mlflow.log\_metric(), and mlflow.log\_artifact()—to a specific experiment8.  
+When developing highly customized transformers, manual logging via the fluent API provides granular control over what artifacts, model weights, and parameters are committed to the tracking server15.
+
+## **Architecting Custom Transformers with the MLflow API**
+
+Custom architectures frequently exceed the boundaries of built-in framework integrations. This is especially true for advanced geometrical or atomistic architectures like a hyperbolic EquiformerV3 equipped with a Mixture of Experts (MoE) backbone.  
+EquiformerV3 utilizes SE(3)-equivariant operations, smooth radius cutoff attention, and SwiGLU-S² activations on spherical grid features to model complex 3D or atomistic interactions16. When combined with an MoE strategy—where a geometric routing network makes gating decisions and dispatches inputs to a team of specialized equivariant implicit neural networks17—the resulting object graph becomes far too intricate for standard framework serialization tools.
+
+### **Universal Encapsulation via the PyFunc API**
+
+For these advanced topological and routing requirements, the mlflow.pyfunc (Python Function) module serves as a universal interface. It enables the encapsulation of the complex hyperbolic coordinate mappings and MoE gating logic into a standardized MLflow Model that can be deployed to Docker containers or Kubernetes2.  
+Creating a custom PyFunc model requires defining a Python class that inherits from mlflow.pyfunc.PythonModel3. This base class mandates the implementation of a predict method and highly encourages the use of a load\_context method for initializing complex assets3.  
+The distinction between standard object initialization (\_\_init\_\_) and context loading (load\_context) is a critical architectural pattern, particularly when dealing with an MoE configuration2. An MoE backbone requires loading multiple isolated sets of expert weights (often spanning many gigabytes) alongside the router matrices17. Defining these dense tensors as attributes in the \_\_init\_\_ method causes MLflow to attempt serialization of the entire massive object graph via standard Python pickling, inevitably leading to unrecoverable serialization errors18.
+
+| Method | Execution Phase | Primary Responsibility | Serialization Impact |
+| :---- | :---- | :---- | :---- |
+| \_\_init\_\_ | Instantiation / Logging | Setting lightweight configuration variables (e.g., number of experts, harmonic degrees) and simple state flags18. | Object attributes are serialized via pickle. Heavy equivariant tensors will cause fatal errors18. |
+| load\_context | Environment Startup (Serving) | Deserializing external artifacts, loading the MoE router and expert weights into VRAM, and initializing the EquiformerV3 SwiGLU-S² activations15. | Safe. Assets are loaded dynamically from the artifact repository at runtime18. |
+| predict | Inference / Request Handling | Executing the forward pass through the router, applying the appropriate SE(3) experts, and aggregating the outputs15. | N/A. Executes on a per-request basis in real-time15. |
+
+The load\_context method executes exactly once when the model is initialized in the deployment environment via mlflow.pyfunc.load\_model()15. This ensures that resource-intensive operations—such as allocating GPU VRAM for the separate expert modules—do not recur on every inference request.
+
+### **Dynamic Configuration and Artifact Mapping**
+
+When logging the custom PyFunc model, the mlflow.pyfunc.log\_model() API requires the explicit mapping of required files. If the EquiformerV3 relies on disparate weight files for the router and the individual experts, these must all be bundled and passed to the artifacts parameter4.  
+To handle dynamic configurations without hardcoding parameters into the Python class, MLflow provides the ModelConfig API. This allows engineers to pass a YAML file or a Python dictionary to the model\_config parameter during logging20. Within the predict method, the model can query config.get("key") to dynamically adjust inference behaviors—such as overriding the active expert routing during specific tasks—without requiring the model to be retrained or repackaged5.  
+To guarantee that the deployment environment precisely mirrors the training environment, dependencies must be locked. MLflow resolves this via the conda\_env, pip\_requirements, or code\_paths parameters14.  
+A rigorous MLOps pipeline will also implement Model Signatures. A signature defines the explicit schema for inputs and outputs, ensuring strict contract validation at the inference endpoint21. By using the infer\_signature API on sample input point cloud data, MLflow guarantees that the downstream REST endpoint will reject malformed requests before they reach the custom 3D logic21.
+
+## **Programmatic Orchestration: Eliminating Makefiles**
+
+The reliance on Makefiles (make train, make deploy) introduces an external orchestration layer that exists outside the MLflow control plane. Makefiles are inherently tied to the host machine's shell environment, suffer from cross-platform incompatibilities, and lack native mechanisms for tracking execution lineage. The MLflow Python API offers an elegant alternative through the mlflow.projects module, which orchestrates executions programmatically23.  
+The mlflow.projects.run() API allows a master Python script to trigger project executions across various backend targets, such as local environments, Kubernetes, or remote Databricks clusters25. By defining the MLflow Project through an MLproject file, the entry points, expected parameters, and environments are highly formalized and universally reproducible19.  
+When a continuous integration system initiates a workflow, a master Python script utilizes mlflow.projects.run() to trigger the transformer training module.
+
+| Python API Parameter | Orchestration Functionality |
+| :---- | :---- |
+| uri | Specifies the path to the MLflow project, which can be a local directory or a remote Git repository URI24. |
+| entry\_point | Defines the specific command to execute (e.g., "train\_transformer", "evaluate\_model") as defined in the MLproject file8. |
+| parameters | A dictionary of runtime hyperparameters passed directly to the entry point, enabling programmatic hyperparameter tuning loops26. |
+| backend | The execution context. Utilizing "local" or integrating with a Databricks/Kubernetes backend orchestrates the infrastructure dynamically8. |
+| env\_manager | Dictates the environment management strategy. Supported options include local, virtualenv, conda, and uv (for ultra-fast Rust-based dependency resolution)8. |
+
+For teams requiring strict system isolation during training, MLflow Projects can execute entirely within a Docker container. By providing a Dockerfile alongside the MLproject file, the mlflow.projects.run command builds the image, injects the necessary tracking URIs via environment variables, and executes the training loop in an isolated, containerized runtime19. This programmatic approach binds the execution logic directly into the Python ecosystem.
+
+## **Advanced Programmatic Evaluation**
+
+The MLflow Python API facilitates deep evaluation through the mlflow.evaluate() and mlflow.genai.evaluate() functions, completely replacing the need for bespoke evaluation shell scripts29.
+
+### **The Generative AI Evaluation Workflow**
+
+The mlflow.genai.evaluate() API ingests the model URI, the evaluation dataset, and the designated targets22. Engineers can pass a list of scorer objects to comprehensively audit the output30.  
+The input data for evaluation is highly flexible. The API accepts Pandas DataFrames for quick prototyping, Spark DataFrames for large-scale distributed evaluations, or formal MLflow Evaluation Datasets retrieved via mlflow.genai.datasets.get\_dataset()1.  
+The second-order impact of utilizing these Python evaluation APIs lies in their direct integration with the MLflow tracking server. When the API executes, it does not merely print metrics to a console output. It automatically logs all calculated metrics, generates visualization artifacts (such as precision-recall curves or confusion matrices), and produces an eval\_results\_table that can be queried programmatically or viewed in the MLflow UI22.
+
+### **Metric Thresholds and Automated Validation**
+
+To fully replace a Makefile-driven CI/CD pipeline, the model promotion process must be automated based on objective, quantifiable criteria. MLflow supports automated model validation through the mlflow.validate\_evaluation\_results() API32.  
+Engineers construct a dictionary of MetricThreshold objects specifying the absolute minimum acceptable metrics. If the custom model fails to meet these thresholds during the mlflow.evaluate() phase, the validation API throws a Python exception. This exception halts the execution script, ensuring that substandard models are never promoted to the registry.
+
+## **The Model Registry: Alias-Driven Deployment Pipelines**
+
+The MLflow Model Registry is a centralized repository for managing the lifecycle, versioning, and lineage of registered models5. In legacy MLOps configurations, external tools or Makefiles handled deployment triggers by migrating artifacts between servers. By establishing MLflow as the sole source of truth, model promotion and deployment triggers are handled natively through Model Aliases.  
+Historically, MLflow utilized rigid stage transitions (e.g., Staging, Production, Archived). However, MLflow 3 and enterprise architectures like Databricks Unity Catalog have deprecated these static stages in favor of a flexible, tag-based alias system20.
+
+### **Programmatic Registration via the MlflowClient**
+
+Once a custom transformer successfully passes the programmatic evaluation thresholds, it is registered via the MlflowClient. The MlflowClient is a lower-level Python API that communicates directly with the MLflow Tracking and Registry backend to execute CRUD (Create, Read, Update, Delete) operations32.  
+Through the Python API, the client registers the model using client.create\_model\_version() or mlflow.register\_model()25.  
+The true power of the registry in a CI/CD pipeline lies in the set\_registered\_model\_alias method20. Instead of hardcoding static version numbers into production services, organizations assign a mutable alias—such as champion or candidate—to the approved model version11.
+
+| API Method | Functionality | MLOps Implication |
+| :---- | :---- | :---- |
+| register\_model(model\_uri, name) | Adds the trained artifact to the central registry as a new, immutable version20. | Centralizes all model assets, preventing the loss of critical weights and ensuring lineage traceability. |
+| set\_registered\_model\_alias(name, alias, version) | Assigns a mutable tag (e.g., @champion) to a specific version number13. | Decouples deployment logic from static versioning. Downstream consumers simply query the alias20. |
+| mlflow.pyfunc.load\_model("models:/Model@alias") | Resolves the alias and loads the associated weights and PyFunc context33. | Enables zero-downtime updates. Reassigning the alias instantly redirects downstream scripts to the new model13. |
+
+### **Eliminating the "Make Deploy" Command**
+
+By leveraging the alias paradigm, the concept of a make deploy script is rendered obsolete. The deployment architecture relies on a continuous polling mechanism or a webhook that monitors the @champion alias.  
+A native Python CI pipeline executes the following sequence autonomously:
+
+> 1. Orchestrates training via mlflow.projects.run.  
+> 2. Evaluates the output via mlflow.evaluate.  
+> 3. Validates against strict MetricThreshold objects.  
+> 4. Registers the new model via MlflowClient.  
+> 5. Reassigns the champion alias to the new version using client.set\_registered\_model\_alias().
+
+Once the alias is updated, containerized REST endpoints or batch inference scripts pulling from models:/CustomTransformer@champion will automatically initialize the newly promoted model during their next startup phase13.
+
+## **Containerization: Programmatic Docker Deployments**
+
+The requirement to run the custom transformer model from a Docker container, independent of Makefile commands, highlights the need for robust, programmatic artifact containerization. MLflow bridges the gap between Python model artifacts and containerized microservices through the mlflow.models.build\_docker API35.  
+Traditionally, engineers use the mlflow models build-docker command-line interface8. However, accessing this functionality purely via the Python API allows for dynamic image tagging, programmatic environment variable injection, and conditional builds based on the deployment target36.
+
+### **The build\_docker API Mechanics**
+
+The mlflow.models.build\_docker function constructs a highly optimized Docker image whose default entrypoint is an Nginx-backed FastAPI inference server9. This server exposes a /invocations REST endpoint that listens on port 8080 and routes incoming JSON or CSV requests directly to the PyFunc model's predict method36.  
+The API exposes several critical parameters for fine-tuning the container build:
+
+| Parameter | Purpose in Custom Deployments |
+| :---- | :---- |
+| model\_uri | The target model. To guarantee that the container always builds the latest production model, the URI should leverage the registry alias, formatted as models:/CustomTransformer@champion20. |
+| name | The output Docker image name and tag (e.g., transformer-inference:latest)36. |
+| env\_manager | Defines how the Python environment is constructed inside the container. Using uv is highly recommended as it drastically accelerates dependency resolution compared to standard virtualenv or conda36. |
+| base\_image | Allows overriding the default Ubuntu or Python-slim base images7. For custom transformers requiring CUDA acceleration, passing a PyTorch-enabled NVIDIA base image ensures immediate GPU driver access. |
+| install\_java | Enables Java installation within the container, which is strictly necessary if the model relies on PySpark or MLlib components9. |
+
+When executed, the MLflow Python backend automatically extracts the conda.yaml or requirements.txt generated during the log\_model phase7. It dynamically generates a Dockerfile in memory, mounts the required dependencies, copies the heavy artifact weights, and executes the Docker daemon build process seamlessly5.
+
+### **Environment Variables and Deployment Configuration**
+
+To ensure the containerized transformer operates effectively in a production environment, configuring deployment environment variables is crucial. The MLflow Python API ecosystem relies heavily on prefixed environment variables to modify runtime behaviors without altering the underlying code35.  
+When the Docker container executes in the target environment (e.g., Kubernetes, Amazon ECS, or a local Docker daemon), injecting specific MLflow variables guarantees stability for long-running generative tasks:
+
+| Environment Variable | Operational Purpose |
+| :---- | :---- |
+| MLFLOW\_DEPLOYMENT\_CLIENT\_HTTP\_REQUEST\_TIMEOUT | Transformers often suffer from high latency during initial generation. Increasing this timeout (e.g., to 300 seconds) prevents the client from dropping the connection prematurely37. |
+| MLFLOW\_DEPLOYMENT\_PREDICT\_TOTAL\_TIMEOUT | Governs the absolute maximum time allowed for retry attempts across an entire inference request, preventing zombie processes. |
+| MLFLOW\_ENABLE\_SYSTEM\_METRICS\_LOGGING | If enabled within the container, allows the inference server to report real-time hardware telemetry back to the tracking server8. |
+
+The programmatic execution of mlflow.models.build\_docker completely eliminates the need for shell scripts to construct deployment assets. A centralized Python CI module can query the registry, determine if a new model has achieved the @champion alias, build the Docker image via the Python API, and push that image to an Elastic Container Registry (ECR) or Docker Hub, completing the CI/CD loop natively.
+
+## **Conclusion**
+
+Migrating an MLOps pipeline to rely exclusively on the MLflow Python API yields a highly cohesive, robust, and reproducible machine learning lifecycle. By retiring Makefiles and disjointed shell scripts, platform engineering teams can eliminate configuration drift and centralize their operations around a singular source of truth.  
+For advanced custom architectures like EquiformerV3 equipped with Mixture of Experts routing, the MLflow API ecosystem is exceptionally adaptable. The mlflow.data module securely binds training lineages to cryptographic digests, while system metrics track hardware telemetry automatically. The mlflow.pyfunc integration allows the encapsulation of infinitely complex geometric gating logic and SwiGLU-S² activations, ensuring that massive expert weights are optimally loaded via the load\_context method. Advanced programmatic evaluation logic via mlflow.evaluate() guarantees that only models meeting rigorous metric thresholds are registered, while the MlflowClient enables seamless, Python-native tagging of deployment aliases like @champion. Finally, the native mlflow.models.build\_docker API automatically translates the certified artifact into a production-ready REST container without ever leaving the Python runtime.
+
+#### **Works cited**
+
+> 1. ML Model Serving | MLflow AI Platform, [https://mlflow.org/docs/latest/ml/deployment/](https://mlflow.org/docs/latest/ml/deployment/)  
+> 2. Understanding PyFunc in MLflow, [https://mlflow.org/docs/latest/ml/traditional-ml/tutorials/creating-custom-pyfunc/part2-pyfunc-components/](https://mlflow.org/docs/latest/ml/traditional-ml/tutorials/creating-custom-pyfunc/part2-pyfunc-components/)  
+> 3. Custom MLflow Models with mlflow.pyfunc, [https://mlflow.org/blog/custom-pyfunc/](https://mlflow.org/blog/custom-pyfunc/)  
+> 4. 7.3. Lineage \- MLOps Coding Course, [https://mlops-coding-course.fmind.dev/7.%20Observability/7.3.%20Lineage.html](https://mlops-coding-course.fmind.dev/7.%20Observability/7.3.%20Lineage.html)  
+> 5. MLflow Dataset Tracking, [https://mlflow.org/docs/latest/ml/dataset/](https://mlflow.org/docs/latest/ml/dataset/)  
+> 6. mlflow.data, [https://mlflow.org/docs/latest/api\_reference/python\_api/mlflow.data.html](https://mlflow.org/docs/latest/api_reference/python_api/mlflow.data.html)  
+> 7. mlflow.models, [https://mlflow.org/docs/latest/api\_reference/python\_api/mlflow.models.html](https://mlflow.org/docs/latest/api_reference/python_api/mlflow.models.html)  
+> 8. module provides a high-level “fluent” API for starting and managing MLflow runs. For example, [https://mlflow.org/docs/latest/api\_reference/python\_api/mlflow.html](https://mlflow.org/docs/latest/api_reference/python_api/mlflow.html)  
+> 9. Analyzing Your MLflow Data with DataFrames \- Databricks, [https://www.databricks.com/blog/2019/10/03/analyzing-your-mlflow-data-with-dataframes.html](https://www.databricks.com/blog/2019/10/03/analyzing-your-mlflow-data-with-dataframes.html)  
+> 10. System Metrics | MLflow AI Platform, [https://mlflow.org/docs/latest/ml/tracking/system-metrics/](https://mlflow.org/docs/latest/ml/tracking/system-metrics/)  
+> 11. Experiment Tracking \- DagsHub Docs, [https://dagshub.com/docs/feature\_guide/experiment\_tracking/](https://dagshub.com/docs/feature_guide/experiment_tracking/)  
+> 12. MLflow PyTorch Integration, [https://mlflow.org/docs/latest/ml/deep-learning/pytorch/](https://mlflow.org/docs/latest/ml/deep-learning/pytorch/)  
+> 13. Command-Line Interface \- MLflow, [https://mlflow.org/docs/latest/api\_reference/cli.html](https://mlflow.org/docs/latest/api_reference/cli.html)  
+> 14. mlflow.transformers, [https://mlflow.org/docs/latest/api\_reference/python\_api/mlflow.transformers.html](https://mlflow.org/docs/latest/api_reference/python_api/mlflow.transformers.html)  
+> 15. MLflow Tracking APIs, [https://mlflow.org/docs/latest/ml/tracking/tracking-api/](https://mlflow.org/docs/latest/ml/tracking/tracking-api/)  
+> 16. EquiformerV3: Scaling Efficient, Expressive and General SE(3)-Equivariant Graph Attention Transformers | OpenReview, [https://openreview.net/forum?id=eg1Gy9mgRM\&referrer=%5Bthe%20profile%20of%20Tess%20Smidt%5D(%2Fprofile%3Fid%3D\~Tess\_Smidt1)](https://openreview.net/forum?id=eg1Gy9mgRM&referrer=%5Bthe+profile+of+Tess+Smidt%5D\(/profile?id%3D~Tess_Smidt1\))  
+> 17. Generalized Implicit Neural Representations for Dynamic Molecular Surface Modeling, [https://ojs.aaai.org/index.php/AAAI/article/view/32072/34227](https://ojs.aaai.org/index.php/AAAI/article/view/32072/34227)  
+> 18. mlflow.pyfunc, [https://mlflow.org/docs/latest/api\_reference/python\_api/mlflow.pyfunc.html](https://mlflow.org/docs/latest/api_reference/python_api/mlflow.pyfunc.html)  
+> 19. MLflow v0.9.0 Features SQL Backend, Projects in Docker, and Customization in Python Models | Databricks Blog, [https://www.databricks.com/blog/2019/03/28/mlflow-v0-9-0-features-sql-backend-projects-in-docker-and-customization-in-python-models.html](https://www.databricks.com/blog/2019/03/28/mlflow-v0-9-0-features-sql-backend-projects-in-docker-and-customization-in-python-models.html)  
+> 20. ML Model Registry | MLflow AI Platform, [https://mlflow.org/docs/latest/ml/model-registry/](https://mlflow.org/docs/latest/ml/model-registry/)  
+> 21. How to Deploy Models with MLflow \- OneUptime, [https://oneuptime.com/blog/post/2026-01-27-mlflow-model-deployment/view](https://oneuptime.com/blog/post/2026-01-27-mlflow-model-deployment/view)  
+> 22. ML Model Evaluation | MLflow AI Platform, [https://mlflow.org/docs/latest/ml/evaluation/](https://mlflow.org/docs/latest/ml/evaluation/)  
+> 23. mlflow.projects, [https://www.mlflow.org/docs/latest/api\_reference/\_modules/mlflow/projects.html](https://www.mlflow.org/docs/latest/api_reference/_modules/mlflow/projects.html)  
+> 24. mlflow.projects, [https://mlflow.org/docs/latest/api\_reference/python\_api/mlflow.projects.html](https://mlflow.org/docs/latest/api_reference/python_api/mlflow.projects.html)  
+> 25. Model Registry Workflows | MLflow AI Platform, [https://mlflow.org/docs/latest/ml/model-registry/workflow/](https://mlflow.org/docs/latest/ml/model-registry/workflow/)  
+> 26. Model Registry Tutorials | MLflow AI Platform, [https://mlflow.org/docs/latest/ml/model-registry/tutorial/](https://mlflow.org/docs/latest/ml/model-registry/tutorial/)  
+> 27. ML Projects | MLflow AI Platform, [https://mlflow.org/docs/latest/ml/projects/](https://mlflow.org/docs/latest/ml/projects/)  
+> 28. Manage model lifecycle in Unity Catalog \- Azure Databricks | Microsoft Learn, [https://learn.microsoft.com/en-us/azure/databricks/machine-learning/manage-model-lifecycle/](https://learn.microsoft.com/en-us/azure/databricks/machine-learning/manage-model-lifecycle/)  
+> 29. mlflow.metrics, [https://mlflow.org/docs/latest/api\_reference/python\_api/mlflow.metrics.html](https://mlflow.org/docs/latest/api_reference/python_api/mlflow.metrics.html)  
+> 30. MLflow evaluation examples, [https://mlflow.org/docs/latest/genai/eval-monitor/running-evaluation/eval-examples/](https://mlflow.org/docs/latest/genai/eval-monitor/running-evaluation/eval-examples/)  
+> 31. MLflow evaluation examples for GenAI \- Azure Databricks \- Microsoft Learn, [https://learn.microsoft.com/en-us/azure/databricks/mlflow3/genai/eval-monitor/eval-examples](https://learn.microsoft.com/en-us/azure/databricks/mlflow3/genai/eval-monitor/eval-examples)  
+> 32. Manage model lifecycle in Unity Catalog | Databricks on AWS, [https://docs.databricks.com/aws/en/machine-learning/manage-model-lifecycle/](https://docs.databricks.com/aws/en/machine-learning/manage-model-lifecycle/)  
+> 33. mlflow.client, [https://mlflow.org/docs/latest/api\_reference/python\_api/mlflow.client.html](https://mlflow.org/docs/latest/api_reference/python_api/mlflow.client.html)  
+> 34. Self Hosting Overview | MLflow AI Platform, [https://mlflow.org/docs/latest/self-hosting/](https://mlflow.org/docs/latest/self-hosting/)  
+> 35. mlflow.environment\_variables, [https://mlflow.org/docs/latest/api\_reference/python\_api/mlflow.environment\_variables.html](https://mlflow.org/docs/latest/api_reference/python_api/mlflow.environment_variables.html)  
+> 36. Source code for mlflow.models.python\_api, [https://mlflow.org/docs/latest/api\_reference/\_modules/mlflow/models/python\_api.html](https://mlflow.org/docs/latest/api_reference/_modules/mlflow/models/python_api.html)  
+> 37. Tracking Image Datasets with MLflow, [https://mlflow.org/blog/tracking-image-datasets/](https://mlflow.org/blog/tracking-image-datasets/)

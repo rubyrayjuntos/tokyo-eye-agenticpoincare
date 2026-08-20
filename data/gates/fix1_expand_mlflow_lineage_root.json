@@ -1,0 +1,21 @@
+{
+  "experiment": "tokyo-eyes-v66-fix1-expand",
+  "run_id": "b40f92f4a0fe483a955357b7b8e6865a",
+  "lineage_root": true,
+  "parent_run_id": null,
+  "checkpoint_path": "/app/checkpoints/v66/runs/fix1_s4_stack_initseed_controlled_3d_seed2_v1/v66_healthy_sealed.pt",
+  "checkpoint_path_rel": "checkpoints/v66/runs/fix1_s4_stack_initseed_controlled_3d_seed2_v1/v66_healthy_sealed.pt",
+  "sealed_host_path": "/app/checkpoints/v66/runs/fix1_s4_stack_initseed_controlled_3d_seed2_v1/v66_healthy_sealed.pt",
+  "ssot_run_id": "fix1_s4_stack_initseed_controlled_3d_seed2_v1",
+  "rematch_run_id": "fix1_s4_stack_initseed_controlled_3d_seed2_restore_v1",
+  "ge30_summary": {
+    "source": "/app/checkpoints/v66/runs/fix1_s4_stack_initseed_controlled_3d_seed2_v1/metrics.json",
+    "global_epoch": 30,
+    "disc_r_mean": 0.3135714717209339,
+    "disc_sigma2_sigma1_mean": 0.8634677815677071,
+    "probe_r_proj_depth": 0.9937617909801112,
+    "probe_r_depth_tau": 0.8378850094268029
+  },
+  "registered_at": "2026-07-20T05:44:05.291563+00:00",
+  "tracking_uri": "http://mlflow:5000"
+}

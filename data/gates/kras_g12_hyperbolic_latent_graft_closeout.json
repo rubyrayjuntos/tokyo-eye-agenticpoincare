@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "gate": "kras_g12_hyperbolic_latent_graft_closeout",
+  "recorded_at": "2026-07-21T05:55:00+00:00",
+  "decision": "off_arm_pass_hyp_latent_beats_euc_neigh_and_scramble",
+  "checkpoint_ssot": "experiments.training.v66.healthy_fix1.FIX1_SPARSITY_CHAMPION_CKPT",
+  "workstream": "gnn_perturbation_boundary",
+  "workstream_order": 4,
+  "arm": {"wt": "4LPK", "mut": "5US4", "chain": "A"},
+  "architecture": {
+    "intervention_layer": "post_lift_x_hyp",
+    "not": "hyperbolic_message_passing"
+  },
+  "n12_size": 17,
+  "n12_resseqs": [9, 10, 11, 12, 13, 14, 15, 16, 17, 32, 34, 35, 58, 59, 81, 82, 89],
+  "headline": {
+    "rho_wt_mut": 0.975,
+    "rho_hyp_graft_mut": 0.977,
+    "rho_euc_neigh_mut": 0.977,
+    "rho_hyp_scramble_mut": 0.899,
+    "delta_rho_hyp": 0.00199,
+    "delta_rho_euc_neigh": 0.00182,
+    "note": "Thin margin vs euc neigh on depth; large margin vs hyp scramble"
+  },
+  "artifacts": {
+    "prereg": "data/gates/kras_g12_hyperbolic_latent_graft_prereg.json",
+    "grade": "checkpoints/v66/diagnostics/routing_sparsity/kras_g12_hyperbolic_latent_graft.json",
+    "narrative": "docs/specs/kras-topo-structural-inference/kras-g12-hyperbolic-latent-graft-closeout.md"
+  },
+  "claim_allowed": [
+    "Post-lift x_hyp neighborhood graft improves hyp-depth concordance toward mut more than Euclidean neighborhood graft (OFF arm)",
+    "Matched hyp latent graft beats same-cardinality distal hyp scramble"
+  ],
+  "claim_forbidden": [
+    "Hyperbolic message-passing trunk rewrite",
+    "Disc/Klein alone as Pass",
+    "Full WT→mut state rewrite",
+    "Physical spacetime curvature of the protein"
+  ]
+}

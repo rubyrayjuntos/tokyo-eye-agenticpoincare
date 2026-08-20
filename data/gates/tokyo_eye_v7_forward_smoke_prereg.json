@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_forward_smoke_prereg",
+  "recorded_at": "2026-07-21T12:30:00+00:00",
+  "spec": "docs/specs/tokyo-eye-v7/forward-smoke-prereg.md",
+  "pass_form": [
+    "TokyoEye hyp_mp_primary forward succeeds",
+    "audit_trail.hyp_mp_primary true",
+    "cone_depth finite; curvature from learned log_c"
+  ],
+  "artifact": "checkpoints/v7/diagnostics/tokyo_eye_v7_forward_smoke.json"
+}

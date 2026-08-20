@@ -21,6 +21,7 @@ def test_list_lineages_includes_v6_and_v65() -> None:
     ids = {x["lineage_id"] for x in lineages}
     assert "v6" in ids
     assert "v6.5" in ids
+    assert "v6.6" in ids
 
 
 def test_enqueue_train_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

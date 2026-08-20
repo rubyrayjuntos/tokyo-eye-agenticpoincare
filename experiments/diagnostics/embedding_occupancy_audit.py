@@ -116,6 +116,34 @@ def _forward_audit(
 ) -> dict[str, Any]:
     data = prot["data"].clone().to(device)
     if version == "v6":
+        needs_training_batch = bool(
+            getattr(model, "role_edge_mp", False)
+            or getattr(model, "rim_fanout_forward", False)
+            or getattr(model, "geometric_angular_prior", False)
+            or getattr(model, "hyperbolic_mp_graph", False)
+            or getattr(model, "multi_rel_edge_mp", False)
+            or getattr(model, "thermo_edge_message_gate", False)
+        )
+        if needs_training_batch:
+            from experiments.training.v6.train_loop import prepare_training_batch
+
+            # Learned feeler / role / geom-prior models share training attach path.
+            # Only freeze structural SSOT when the model itself is a frozen-SSOT lineage.
+            structural_frozen = bool(use_structural_disc_ssot) and bool(
+                getattr(model, "structural_disc_frozen", False)
+            )
+            data = prepare_training_batch(
+                model,
+                prot,
+                device,
+                structural_disc_frozen=structural_frozen,
+            )
+            in_f = int(getattr(model.node_emb, "in_features", data.x.size(-1)))
+            if data.x.size(-1) > in_f:
+                data.x = data.x[:, :in_f].contiguous()
+            with torch.no_grad():
+                return model(data)
+
         data = attach_v6_features(data)
         if use_structural_disc_ssot:
             from science.dtie.common.structural_disc_compose import (

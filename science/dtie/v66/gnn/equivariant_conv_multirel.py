@@ -52,6 +52,9 @@ class EquivariantConvMultiRel(MessagePassing):
         dehydron_barcode_col: int | None = None,
         dehydron_relation_id: int = 1,
         dehydron_angular_scale: float = 1.0,
+        ha_strength_col: int | None = None,
+        ha_packing_relation_id: int = 0,
+        ha_dehydron_relation_id: int = 1,
     ):
         super().__init__(aggr="add", node_dim=0)
         self.irreps_hidden = Irreps(irreps_hidden)
@@ -74,6 +77,9 @@ class EquivariantConvMultiRel(MessagePassing):
         self.dehydron_barcode_col = dehydron_barcode_col
         self.dehydron_relation_id = int(dehydron_relation_id)
         self.dehydron_angular_scale = float(dehydron_angular_scale)
+        self.ha_strength_col = ha_strength_col
+        self.ha_packing_relation_id = int(ha_packing_relation_id)
+        self.ha_dehydron_relation_id = int(ha_dehydron_relation_id)
         self.radial_mlps = nn.ModuleList(
             [_make_radial_mlp(self.tp.weight_numel) for _ in range(self.num_relations)]
         )
@@ -172,6 +178,16 @@ class EquivariantConvMultiRel(MessagePassing):
                 # wrap_deficit + normalized local H1 persistence → local leak strength
                 strength = (bc[:, 0:1] + bc[:, 3:4].clamp(0.0, 1.0)).clamp(0.0, 2.0)
                 edge_weights = edge_weights * (1.0 + strength)
+            if (
+                self.ha_strength_col is not None
+                and r
+                in (self.ha_packing_relation_id, self.ha_dehydron_relation_id)
+                and edge_attr.size(-1) > self.ha_strength_col
+            ):
+                ha_w = edge_attr[
+                    mask, self.ha_strength_col : self.ha_strength_col + 1
+                ].clamp(0.0, 1.0)
+                edge_weights = edge_weights * (1.0 + ha_w)
             sh_r = sh[mask]
             if (
                 r == self.dehydron_relation_id

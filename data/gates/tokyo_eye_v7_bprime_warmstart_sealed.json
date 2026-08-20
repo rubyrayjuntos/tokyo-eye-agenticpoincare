@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_bprime_warmstart_sealed",
+  "recorded_at": "2026-07-21T12:50:16.409952+00:00",
+  "donor": "/app/checkpoints/v66/runs/fix1_s4_sparsity_confirm_continue_v2/v66_sparsity_champion.pt",
+  "out": "/app/checkpoints/v7/tokyo_eye_v7_bprime_warmstart.pt",
+  "transferred_keys": 75,
+  "denied_keys": 78,
+  "missing_after_load": 87,
+  "unexpected_after_load": 0,
+  "hyp_mp_primary": true,
+  "se3_aux": false,
+  "denied_prefixes": [
+    "convs.",
+    "norms."
+  ],
+  "spec": "docs/specs/tokyo-eye-v7/bprime-health-warmstart-prereg.md",
+  "checkpoint_root": "checkpoints/v7/runs"
+}

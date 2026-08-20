@@ -210,6 +210,127 @@ def disc_origin_span_floor_loss(
     }
 
 
+def core_radial_floor_loss(
+    hyp_proj_2d: torch.Tensor,
+    target_rho: torch.Tensor,
+    target_tau: torch.Tensor | None = None,
+    *,
+    min_r: float = 0.15,
+    rho_scale: float = 30.0,
+) -> dict[str, torch.Tensor]:
+    """Soft min-radius for core / high-ρ low-τ residues (e1-style niche).
+
+    Weight ``w ∝ (ρ/ρ_scale) · (1 − τ)`` so surface (τ≈1) and low-ρ residues
+    are barely touched. ``min_r`` is a *near-origin* floor (~0.15), not a rim push —
+    preserves core-at-center identity while lifting global ``disc_r_mean``.
+    """
+    device = hyp_proj_2d.device
+    dtype = hyp_proj_2d.dtype
+    z = torch.zeros((), device=device, dtype=dtype)
+    if hyp_proj_2d.ndim != 2 or hyp_proj_2d.shape[0] < 1:
+        return {
+            "core_radial_floor": z,
+            "core_radial_floor_weight_mean": z,
+            "core_radial_floor_r_weighted": z,
+        }
+    r = hyp_proj_2d.norm(dim=-1)
+    rho = target_rho.reshape(-1).to(device=device, dtype=dtype)
+    if rho.numel() != r.numel():
+        n = min(int(rho.numel()), int(r.numel()))
+        rho = rho[:n]
+        r = r[:n]
+    rho_n = (rho / float(rho_scale)).clamp(0.0, 1.0)
+    if target_tau is None:
+        tau_n = torch.zeros_like(rho_n)
+    else:
+        tau = target_tau.reshape(-1).to(device=device, dtype=dtype)
+        if tau.numel() != rho_n.numel():
+            tau = tau[: rho_n.numel()]
+        tau_n = tau.clamp(0.0, 1.0)
+    w = rho_n * (1.0 - tau_n)
+    w_sum = w.sum().clamp_min(1e-8)
+    hinge = torch.relu(float(min_r) - r).pow(2)
+    loss = (w * hinge).sum() / w_sum
+    r_w = (w * r).sum() / w_sum
+    return {
+        "core_radial_floor": loss,
+        "core_radial_floor_weight_mean": w.mean().detach(),
+        "core_radial_floor_r_weighted": r_w.detach(),
+    }
+
+
+def disc_angular_coverage_loss(
+    hyp_proj_2d: torch.Tensor,
+    *,
+    min_r: float = 0.12,
+    n_bins: int = 12,
+    min_bin_frac: float = 0.40,
+    temperature: float = 0.20,
+    scale: float = 4.0,
+    r_softness: float = 0.05,
+) -> dict[str, torch.Tensor]:
+    """Penalize under-filled angular sectors on the Poincaré disc (empty-wedge pressure).
+
+    Soft-assigns mid/rim residues (r ≳ ``min_r``) to equally spaced θ bins and
+    floors each bin's mass at ``min_bin_frac / n_bins`` of the soft-weighted mass.
+    Unlike rim repulsion (which only separates existing rays), this term creates
+    gradient into *empty* sectors.
+    """
+    xy = hyp_proj_2d
+    z = torch.zeros((), device=xy.device, dtype=xy.dtype)
+    n = xy.shape[0]
+    n_bins = int(n_bins)
+    if n < 4 or n_bins < 4:
+        return {
+            "disc_angular_coverage": z,
+            "disc_angular_coverage_empty_bins": z,
+            "disc_angular_coverage_min_mass": z,
+        }
+
+    r = xy.norm(dim=-1).clamp(min=1e-8)
+    dirs = xy / r.unsqueeze(-1)
+    # Soft rim weight — avoid hard cutoff so near-gap mid-disc points can migrate.
+    w = torch.sigmoid((r - float(min_r)) / max(float(r_softness), 1e-4))
+    if float(w.detach().sum()) < 1e-4:
+        return {
+            "disc_angular_coverage": z,
+            "disc_angular_coverage_empty_bins": z,
+            "disc_angular_coverage_min_mass": z,
+        }
+
+    angles = torch.linspace(
+        0.0, 2.0 * math.pi, n_bins + 1, device=xy.device, dtype=xy.dtype
+    )[:-1]
+    centers = torch.stack([torch.cos(angles), torch.sin(angles)], dim=-1)  # [B, 2]
+    # Soft assignments via circular cosine similarity / temperature.
+    logits = (dirs @ centers.T) / max(float(temperature), 1e-4)
+    soft = torch.softmax(logits, dim=-1)  # [N, B]
+    mass = (soft * w.unsqueeze(-1)).sum(dim=0)
+    mass = mass / mass.sum().clamp(min=1e-8)
+
+    floor = float(min_bin_frac) / float(n_bins)
+    deficit = torch.relu(floor - mass)
+    loss = deficit.pow(2).mean() * float(scale)
+
+    hard = soft.argmax(dim=-1)
+    # Detached diagnostics on soft-weighted mid/rim set.
+    rim_mask = w > 0.5
+    if bool(rim_mask.any()):
+        hard_rim = hard[rim_mask]
+        counts = torch.bincount(hard_rim, minlength=n_bins).float()
+        empty = (counts < 0.5).float().sum()
+        min_mass = (counts / counts.sum().clamp(min=1.0)).min()
+    else:
+        empty = z
+        min_mass = z
+
+    return {
+        "disc_angular_coverage": loss,
+        "disc_angular_coverage_empty_bins": empty.detach(),
+        "disc_angular_coverage_min_mass": min_mass.detach(),
+    }
+
+
 def disc_occupancy_loss(
     hyp_proj_2d: torch.Tensor,
     *,

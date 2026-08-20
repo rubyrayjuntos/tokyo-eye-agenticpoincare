@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "gate": "kras_basin_observation_classify_prereg",
+  "recorded_at": "2026-07-21T06:00:00+00:00",
+  "checkpoint_ssot": "experiments.training.v66.healthy_fix1.FIX1_SPARSITY_CHAMPION_CKPT",
+  "spec": "docs/specs/kras-topo-structural-inference/kras-basin-observation-classify-prereg.md",
+  "prerequisite_workstream": "gnn_perturbation_boundary",
+  "prerequisite": [
+    "data/gates/kras_g12_residue_graft_closeout.json",
+    "data/gates/kras_g12_neighborhood_graft_closeout.json",
+    "data/gates/kras_g12_neighborhood_graft_on_closeout.json",
+    "data/gates/kras_g12_hyperbolic_latent_graft_closeout.json"
+  ],
+  "architecture": {
+    "sensor": "gnn_post_lift_hyp_depth_on_R_star",
+    "referee": "deposit_nucleotide_and_g12_allele_guards",
+    "memory": "discrete_basin_labels",
+    "not": [
+      "md_integration",
+      "hyperbolic_message_passing",
+      "disc_alone_pass"
+    ],
+    "ssot": "docs/audit/EUCLIDEAN_CONSTRUCTION_HYPERBOLIC_INFERENCE.md"
+  },
+  "roster": {
+    "OFF_WT": {"pdb": "4LPK", "nucleotide": "GDP", "allele": "G12", "chain": "A"},
+    "OFF_MUT": {"pdb": "5US4", "nucleotide": "GDP", "allele": "G12D", "chain": "A"},
+    "ON_WT": {"pdb": "6GOD", "nucleotide": "GppNHp", "allele": "G12", "chain": "A"},
+    "ON_MUT": {"pdb": "6GOF", "nucleotide": "GppNHp", "allele": "G12D", "chain": "A"}
+  },
+  "observation": {
+    "field": "cone_depth_dist0_x_hyp",
+    "residue_set": "switch_I_25_40_union_switch_II_57_75_union_N12"
+  },
+  "pass_form": {
+    "primary": [
+      "guards_parse_all_four",
+      "same_nucleotide_mean_spearman > cross_nucleotide_mean_spearman",
+      "mean_abs_delta_N12 > mean_abs_delta_scramble on both OFF and ON arms (scramble = within R★ \\ N12)"
+    ]
+  },
+  "allele_scramble_policy": "within_R_star_minus_N12_sorted",
+  "forbidden_until_grade": [
+    "Changing Pass bars after inspecting four-quadrant Spearmans",
+    "Adding 4OBE/4DSO/5VQ2 into Pass",
+    "Using disc/Klein as Pass",
+    "Claiming dynamic multi-step transition simulation under this stamp"
+  ]
+}

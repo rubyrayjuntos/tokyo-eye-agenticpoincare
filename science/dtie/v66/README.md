@@ -1,7 +1,16 @@
-# V6.6 GNN lineage — feeler cold-start fork
+# V6.6 GNN lineage — standalone feeler fork
 
-**Status:** Training-only experiment line (forked from v6 / v6.5)  
+**Status:** Training-only experiment line (fully forked from v6 / v6.5)  
 **Production:** Unchanged — do not promote or wire to ingest until a separate contract pass.
+
+## Standalone lineage (CRITICAL)
+
+- **No shims.** `experiments/training/v66/` is a real copy — never import
+  `experiments.training.v6`.
+- **No look-back.** `science/dtie/v66/` must not import `science.dtie.v6` or
+  `science.dtie.v65` (model, loss, visualization, MoE, evidential are forked).
+- Shared infra OK: `science.training.*`, `science.dtie.common.*`,
+  `science.dtie.v5` primitives (e.g. `MobiusLinear`).
 
 ## Why v6.6 exists
 
@@ -11,6 +20,7 @@ v6.6 is a **clean cold-start** lineage for restoring full MP → geometry → Mo
 | Concern | v6 (frozen) | v6.5 | v6.6 (feeler) |
 |---------|-------------|------|----------------|
 | Model code | `science/dtie/v6/gnn/` | `science/dtie/v65/gnn/` | `science/dtie/v66/gnn/` |
+| Training | `experiments/training/v6/` | (via v6) | `experiments/training/v66/` (standalone) |
 | Checkpoints | `checkpoints/v6/runs/` | `checkpoints/v65/runs/` | `checkpoints/v66/runs/` |
 | MLflow | `tokyo-eyes-v6` | `tokyo-eyes-v65` | `tokyo-eyes-v66` |
 | Ingest runner | `V6GNNRunner` | not wired | **not wired** |
@@ -40,7 +50,7 @@ make gate-p-feature-01 CORPUS=v6_corpus_stage_a_feeler_expand_v1.json
 make train-v66-feeler-expand RUN_ID=feeler_expand_23_v1 DEVICE=cuda \
   RESUME=checkpoints/v66/runs/feeler_p2_v4_50ep/v66_phase2_12prot.pt
 
-# Generic v6.6 launcher (inherits v6 flags)
+# Generic v6.6 launcher (standalone package)
 make train-v66 RUN_ID=my_run STAGE=1 DEVICE=cuda NO_WARM_START=1
 ```
 
@@ -67,8 +77,6 @@ make train-v66 RUN_ID=my_run STAGE=1 DEVICE=cuda NO_WARM_START=1
 - Resume late P2 (`v66_phase2_12prot.pt`); corpus `v6_corpus_stage_a_feeler_expand_v1.json` (23 enabled; 3CON/4GQB off); 50 epochs  
 - Same P2 coeffs + timeout@45% — no random expert ban, no floor/ceiling, no evidential stack  
 - Success watch: σ₂/σ₁ / loop thickness, e1≠e3 geometry, routing_H drift without save-ceiling chase, e0 core niche  
-
-Shared modules (`hyperbolic_moe.py`, `loss.py`) still import from v6 until v6.6 diverges.
 
 ## Champion (2026-07-11)
 

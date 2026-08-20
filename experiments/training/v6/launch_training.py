@@ -354,6 +354,15 @@ def main() -> None:
         help="Margin m for prototype nearest-pair repulsion hinge (default 0.25 = L2 floor)",
     )
     parser.add_argument(
+        "--directionality-asym-coeff",
+        type=float,
+        default=0.0,
+        help=(
+            "Path 2 directionality asym reward λ "
+            "(maximize 1−asym on encoder_h; diam≤9 mask). 0=off"
+        ),
+    )
+    parser.add_argument(
         "--prototype-gram-logdet-coeff",
         type=float,
         default=0.0,
@@ -968,6 +977,14 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--ha-edge-mp",
+        action="store_true",
+        help=(
+            "ha_edges_v1: heavy-atom packing existence + packing/dehydron strength aux "
+            "(requires role_edge_mp; same relation IDs; train-side only)"
+        ),
+    )
+    parser.add_argument(
         "--containment-edge-mp",
         action="store_true",
         help=(
@@ -1397,6 +1414,9 @@ def main() -> None:
         prototype_repulsion_margin=float(
             getattr(args, "prototype_repulsion_margin", 0.25) or 0.25
         ),
+        directionality_asym_coeff=float(
+            getattr(args, "directionality_asym_coeff", 0.0) or 0.0
+        ),
         prototype_gram_logdet_coeff=float(
             getattr(args, "prototype_gram_logdet_coeff", 0.0) or 0.0
         ),
@@ -1470,6 +1490,7 @@ def main() -> None:
         dehydron_barcode_dir=args.dehydron_barcode_dir,
         dehydron_edge_barcode=args.dehydron_edge_barcode,
         chem_edge_mp=args.chem_edge_mp,
+        ha_edge_mp=args.ha_edge_mp,
         containment_edge_mp=args.containment_edge_mp,
         allow_dead_feature_channel=args.allow_dead_feature_channel,
         feature_liveness_probe=args.feature_liveness_probe,
@@ -1697,6 +1718,12 @@ def main() -> None:
                 "(enabled by --v66-feeler-lineage unless S4 hyp-MP disables it)"
             )
             sys.exit(2)
+        if config.ha_edge_mp and not config.role_edge_mp:
+            logger.error(
+                "--ha-edge-mp requires role_edge_mp "
+                "(enabled by --v66-feeler-lineage unless S4 hyp-MP disables it)"
+            )
+            sys.exit(2)
         if config.containment_edge_mp and not (
             config.role_edge_mp and config.chem_edge_mp
         ):
@@ -1825,6 +1852,12 @@ def main() -> None:
     if config.chem_edge_mp and not config.role_edge_mp:
         logger.error(
             "--chem-edge-mp requires role_edge_mp "
+            "(use --v66-feeler-lineage, or an explicit role-edge lineage)"
+        )
+        sys.exit(2)
+    if config.ha_edge_mp and not config.role_edge_mp:
+        logger.error(
+            "--ha-edge-mp requires role_edge_mp "
             "(use --v66-feeler-lineage, or an explicit role-edge lineage)"
         )
         sys.exit(2)

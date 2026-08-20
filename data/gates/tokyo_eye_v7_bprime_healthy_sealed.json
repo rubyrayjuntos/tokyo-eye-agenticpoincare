@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_bprime_healthy_sealed",
+  "recorded_at": "2026-07-21T16:26:21.904168+00:00",
+  "status": "PASS",
+  "checkpoint": "/app/checkpoints/v7/runs/tokyo_eye_v7_bprime_core_floor_continue_v1/v7_healthy_sealed.pt",
+  "source_epoch": 41,
+  "source_run": "tokyo_eye_v7_bprime_core_floor_continue_v1",
+  "health": {
+    "disc_r_mean_min": 0.25,
+    "pass": true,
+    "closeout": "data/gates/tokyo_eye_v7_bprime_core_radial_floor_closeout.json"
+  },
+  "locks": {
+    "hyp_mp_primary": true,
+    "se3_aux": false,
+    "hyperbolic_mp_graph": false
+  },
+  "forbidden_claims": [
+    "biology_pass_vs_fix1",
+    "uncertainty_pass",
+    "promote",
+    "kras_hub_migration"
+  ],
+  "note": "Disc-health sealed; ale/epi recovery is a separate gate."
+}

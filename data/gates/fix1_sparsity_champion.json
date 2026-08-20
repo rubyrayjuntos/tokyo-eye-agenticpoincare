@@ -1,0 +1,36 @@
+{
+  "phase": "routing_entropy_sparsity",
+  "status": "PHASE_COMPLETE",
+  "verdict": "BANKED_CHAMPION",
+  "run_id": "fix1_s4_sparsity_confirm_continue_v2",
+  "global_epoch": 48,
+  "champion_ckpt": "checkpoints/v66/runs/fix1_s4_sparsity_confirm_continue_v2/v66_sparsity_champion.pt",
+  "source_epoch": "checkpoints/v66/runs/fix1_s4_sparsity_confirm_continue_v2/epochs/epoch_048.pt",
+  "gate_stamp": "checkpoints/v66/runs/fix1_s4_sparsity_confirm_continue_v2/sparsity_gate.json",
+  "python_constant": "experiments.training.v66.healthy_fix1.FIX1_SPARSITY_CHAMPION_CKPT",
+  "mean_residue_H": 0.5218817666172981,
+  "routing_entropy_H_fbar": 1.3433784743150075,
+  "max_share": 0.28046146035194397,
+  "hub_knockout_4obe_rho": 0.5282507085674507,
+  "hub_holds": true,
+  "lambda_sparse": 0.0075,
+  "governor": "save_band_mean_residue_H_in_[0.50,0.90]",
+  "dynamic_lambda_release": false,
+  "sealed_baseline_immutable": "checkpoints/v66/runs/fix1_s4_stack_initseed_controlled_3d_seed2_v1/v66_healthy_sealed.pt",
+  "next_phase": {
+    "name": "kras_topo_structural_matrix",
+    "structures": ["4OBE", "4DSO", "5VQ2"],
+    "pass_rules": [
+      "rho(4DSO,5VQ2) > rho(4OBE,5VQ2)",
+      "|ΔE(4DSO,5VQ2)| < |ΔE(4OBE,5VQ2)|",
+      "switch_lock Asp12-Tyr32 / Asp12-Gln61"
+    ],
+    "make": "grade-v66-fix1-sparsity-kras-topo-matrix",
+    "probe": "experiments.diagnostics.kras_topo_structural_matrix",
+    "spec": "docs/specs/kras-topo-structural-inference/design.md",
+    "section_13_observational": "docs/specs/kras-topo-structural-inference/section-13-amendment.md",
+    "completed_hub_migration_make": "grade-v66-fix1-sparsity-g12d-hub-migration"
+  },
+  "banked_at": "2026-07-20T17:00:13+00:00",
+  "note": "Last eligible confirm epoch before mean_H floor breach (ep49). Static λ overshoots; do not promote ep49/50."
+}

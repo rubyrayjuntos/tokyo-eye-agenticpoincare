@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_b1_teleconnections_prereg",
+  "recorded_at": "2026-07-21T18:20:00+00:00",
+  "status": "FROZEN",
+  "spec": "docs/specs/tokyo-eye-v7/b1-teleconnections-prereg.md",
+  "theta_ssot": "checkpoints/v7/runs/tokyo_eye_v7_bprime_core_floor_continue_v1/v7_healthy_sealed.pt",
+  "panel": {
+    "off": {"wt": "4LPK", "mut": "5US4", "chain": "A"},
+    "on": {"wt": "6GOD", "mut": "6GOF", "chain": "A"}
+  },
+  "neighborhood": {
+    "kind": "conduit_n12",
+    "seed_resseq": 12,
+    "include_mut_ca_neighbors_of_12": true,
+    "include_switch_lock_partners": [32, 60, 61],
+    "ca_cutoff_a": 10.0,
+    "scramble": "child2_sorted_exclude_seed_and_switch_bands"
+  },
+  "pass_form": {
+    "style": "relative_plus_soft_absolute_monitor",
+    "primary": [
+      "AlleleSens_ON(N12) > AlleleSens_OFF(N12)",
+      "AlleleSens_ON(N12) > AlleleSens_ON(scramble)",
+      "AlleleSens_OFF(N12) > AlleleSens_OFF(scramble) OR OFF_N12 < 1e-4 waiver",
+      "finite_curvature_no_nan"
+    ],
+    "not_pass": [
+      "absolute_AlleleSens_floor",
+      "hub_vs_pocket_destination_winner",
+      "fix1_hub_migration_rank",
+      "euclidean_ca_distance",
+      "disc_alone"
+    ]
+  },
+  "investigation_only": {
+    "destination": "report_hub_and_pocket_singletons; prior_belief_hub_hub; pocket_ok_as_finding",
+    "absolute_AlleleSens": "soft_monitor",
+    "fix1_hub_migration_rank": "soft_monitor"
+  },
+  "forbidden_claims": [
+    "hidden_driver_discovery",
+    "ligands",
+    "phylogeny",
+    "nig_pass",
+    "biology_champion_vs_fix1",
+    "free_energy",
+    "destination_type_pass"
+  ]
+}

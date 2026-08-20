@@ -1,9 +1,13 @@
 """GNN interactive 3D viewer — enhanced PDB + standalone NGL HTML.
 
 Restores the v2 autonomous viewer pattern for v6 ingest:
-  per-residue investigation score (high aleatoric, low epistemic) → B-factor default
+  default color = physics Investigation (ρ/τ underwrap) — checkpoint-stable
+  evidential Investigation (ale×(1−epi)) kept as an explicitly experimental overlay
   cone_depth → occupancy; toggles for aleatoric / epistemic on structure + disc HTML
   cartoon + semi-transparent surface colored by selected metric (outer-shell read).
+
+Disc canvas ``colorScale`` must match NGL ``RdYlBu`` + ``colorReverse: true``
+(low=blue, high=red). See ``docs/audit/VIEWER_INVESTIGATION_CORRECTNESS.md``.
 
 Triggered after ``gnn_inference`` (non-fatal). Files land under
 ``GNN_VIEWER_OUTPUT_DIR`` (default ``data/local_objects/gnn_viewer``).
@@ -34,6 +38,20 @@ logger = logging.getLogger(__name__)
 from shared.gnn_viewer_paths import interactive_viewer_enabled, viewer_output_dir
 
 _ASSET_TYPE = "gnn_interactive_view"
+
+# Shared by disc / split HTML — must stay aligned with NGL RdYlBu + colorReverse.
+_DISC_COLOR_SCALE_JS = """
+    function colorScale(t) {
+      // Match NGL RdYlBu + colorReverse:true — low=blue, high=red.
+      t = Math.max(0, Math.min(1, t));
+      var r = t < 0.5 ? Math.round(t * 2 * 255) : 255;
+      var b = t < 0.5 ? 255 : Math.round(255 - (t - 0.5) * 2 * 255);
+      var g = Math.round(80 + 80 * (1 - Math.abs(t - 0.5) * 2));
+      return "rgb(" + r + "," + g + "," + b + ")";
+    }"""
+
+# NGL caches bfactor colors; repr.update alone often no-ops after AtomProxy writes.
+# Viewers rebuild surface/cartoon (see refreshStructureColors in generated HTML).
 
 # dim_residue stores one-letter codes; NGL cartoon needs standard 3-letter names.
 _AA1_TO_AA3: dict[str, str] = {
@@ -147,7 +165,12 @@ def _node_aleatoric(node: GNNNodeOutput) -> float:
 
 
 def investigation_scores(epistemic: np.ndarray, aleatoric: np.ndarray) -> np.ndarray:
-    """Per-residue score: high aleatoric + low epistemic → investigation priority."""
+    """Evidential overlay: high aleatoric + low epistemic.
+
+    Not a trusted product default — heads are near-flat and ρ-correlated (G5b;
+    ``docs/audit/VIEWER_INVESTIGATION_CORRECTNESS.md``). Prefer
+    ``physics_investigation_scores`` for user-facing Investigation coloring.
+    """
     epi = np.asarray(epistemic, dtype=np.float64)
     ale = np.asarray(aleatoric, dtype=np.float64)
     epi_n = (epi - epi.min()) / (epi.max() - epi.min() + 1e-8)
@@ -155,20 +178,59 @@ def investigation_scores(epistemic: np.ndarray, aleatoric: np.ndarray) -> np.nda
     return ale_n * (1.0 - epi_n)
 
 
+def physics_investigation_scores(rho: np.ndarray, tau_flag: np.ndarray) -> np.ndarray:
+    """Trusted Investigation default: underwrap priority from frozen physics.
+
+    High = dehydron-flagged (τ=1) and/or low wrapping count ρ. Independent of
+    evidential heads and checkpoint seed.
+    """
+    rho_arr = np.asarray(rho, dtype=np.float64)
+    tau = np.asarray(tau_flag, dtype=np.float64)
+    if rho_arr.size == 0:
+        return rho_arr
+    rho_n = (rho_arr - rho_arr.min()) / (rho_arr.max() - rho_arr.min() + 1e-8)
+    underwrap = 1.0 - rho_n
+    return tau * underwrap + (1.0 - tau) * 0.25 * underwrap
+
+
+def _node_rho(node: GNNNodeOutput) -> float:
+    feats = node.input_features
+    if feats is not None and len(feats) > 0:
+        return float(feats[0])
+    return 0.0
+
+
+def _node_tau_flag(node: GNNNodeOutput) -> float:
+    feats = node.input_features
+    if feats is not None and len(feats) > 1:
+        return float(feats[1])
+    return 0.0
+
+
 def _metric_maps_from_nodes(
     node_lookup: dict[tuple[str, int], GNNNodeOutput],
-) -> tuple[dict[tuple[str, int], float], dict[tuple[str, int], float], dict[tuple[str, int], float]]:
+) -> tuple[
+    dict[tuple[str, int], float],
+    dict[tuple[str, int], float],
+    dict[tuple[str, int], float],
+    dict[tuple[str, int], float],
+]:
     keys = list(node_lookup.keys())
     epistemic = np.array([node_lookup[k].epistemic_uncertainty for k in keys], dtype=np.float64)
     aleatoric = np.array([_node_aleatoric(node_lookup[k]) for k in keys], dtype=np.float64)
+    rho = np.array([_node_rho(node_lookup[k]) for k in keys], dtype=np.float64)
+    tau = np.array([_node_tau_flag(node_lookup[k]) for k in keys], dtype=np.float64)
     investigation = investigation_scores(epistemic, aleatoric)
+    physics_inv = physics_investigation_scores(rho, tau)
     epist_scaled = _scale_channel(epistemic, out_min=0.0, out_max=99.0)
     ale_scaled = _scale_channel(aleatoric, out_min=0.0, out_max=99.0)
     inv_scaled = _scale_channel(investigation, out_min=0.0, out_max=99.0)
+    phys_scaled = _scale_channel(physics_inv, out_min=0.0, out_max=99.0)
     epist_map = {key: float(epist_scaled[i]) for i, key in enumerate(keys)}
     ale_map = {key: float(ale_scaled[i]) for i, key in enumerate(keys)}
     inv_map = {key: float(inv_scaled[i]) for i, key in enumerate(keys)}
-    return epist_map, ale_map, inv_map
+    phys_map = {key: float(phys_scaled[i]) for i, key in enumerate(keys)}
+    return epist_map, ale_map, inv_map, phys_map
 
 
 def _expert_seg(node: GNNNodeOutput) -> str:
@@ -216,7 +278,7 @@ async def write_annotated_pdb(
     keys = list(node_lookup.keys())
     epistemic = np.array([node_lookup[k].epistemic_uncertainty for k in keys], dtype=np.float64)
     depth = np.array([node_lookup[k].cone_depth for k in keys], dtype=np.float64)
-    epist_map, ale_map, inv_map = _metric_maps_from_nodes(node_lookup)
+    _epist_map, _ale_map, _inv_map, phys_map = _metric_maps_from_nodes(node_lookup)
     depth_norm = _scale_channel(depth, out_min=0.0, out_max=1.0)
     depth_map = {key: float(depth_norm[i]) for i, key in enumerate(keys)}
 
@@ -250,7 +312,7 @@ async def write_annotated_pdb(
             prev_chain = chain
 
             node = node_lookup.get(key) or node_lookup.get((chain[:1], res_index))
-            b_factor = inv_map.get(key, 50.0) if node else 50.0
+            b_factor = phys_map.get(key, 50.0) if node else 50.0
             occupancy = max(0.35, depth_map.get(key, 0.5) if node else 0.5)
 
             residue_name = residue_names[key]
@@ -317,7 +379,7 @@ def write_offline_annotated_pdb(
     keys = list(node_lookup.keys())
     epistemic = np.array([node_lookup[k].epistemic_uncertainty for k in keys], dtype=np.float64)
     depth = np.array([node_lookup[k].cone_depth for k in keys], dtype=np.float64)
-    epist_map, ale_map, inv_map = _metric_maps_from_nodes(node_lookup)
+    _epist_map, _ale_map, _inv_map, phys_map = _metric_maps_from_nodes(node_lookup)
     depth_norm = _scale_channel(depth, out_min=0.0, out_max=1.0)
     depth_map = {key: float(depth_norm[i]) for i, key in enumerate(keys)}
 
@@ -350,7 +412,7 @@ def write_offline_annotated_pdb(
             prev_chain = chain_label
 
             node = node_lookup.get(key) or node_lookup.get((chain_label[:1], res_index))
-            b_factor = inv_map.get(key, 50.0) if node else 50.0
+            b_factor = phys_map.get(key, 50.0) if node else 50.0
             occupancy = max(0.35, depth_map.get(key, 0.5) if node else 0.5)
 
             residue_name = residue_names[key]
@@ -433,8 +495,9 @@ def write_interactive_html(
     {model_version}{checkpoint_note}<br/>
     <b>ν<sub>epi</sub></b> = model training gap (red = under-trained) &nbsp;|&nbsp;
     <b>ν<sub>ale</sub></b> = structural ambiguity (red = information-poor local geometry)<br/>
-    <b>Investigation</b> = high ν<sub>ale</sub> + low ν<sub>epi</sub>
-    (<span class="hi">red = priority sites</span> — model is confident the structure is ambiguous here)
+    <b>Investigation</b> = ρ/τ underwrap priority
+    (<span class="hi">red = dehydron / under-wrapped</span> — frozen physics layer)
+    &nbsp;|&nbsp; Evidential overlay available in Color by (experimental)
     &nbsp;|&nbsp; Occupancy = Cone depth
 """
         pharma_js = ""
@@ -446,10 +509,13 @@ def write_interactive_html(
         metrics_toolbar = """
     <label style="margin-left:12px">Color by
       <select id="structure-metric">
-        <option value="investigation" selected>Investigation (high ale, low epi)</option>
+        <option value="physics_investigation" selected>Investigation (ρ/τ physics)</option>
+        <option value="rho">Dehydron ρ</option>
+        <option value="tau">τ flag</option>
+        <option value="cone_depth">Cone depth</option>
+        <option value="investigation">Investigation (evidential · experimental)</option>
         <option value="aleatoric">Aleatoric uncertainty</option>
         <option value="epistemic">Epistemic uncertainty</option>
-        <option value="cone_depth">Cone depth</option>
         <option value="expert">Route expert (E0–E3)</option>
       </select>
     </label>"""
@@ -477,17 +543,38 @@ def write_interactive_html(
           return scaleMetric(row[key], key);
         }
 
+        function writeAtomBfactor(ap, value) {
+          ap.bfactor = value;
+          var store = comp.structure.atomStore;
+          if (store && store.bfactor) store.bfactor[ap.index] = value;
+        }
+
+        function refreshStructureColors() {
+          // Rebuild colored reps so NGL re-reads atomStore.bfactor (update alone is a no-op).
+          var colorOpts = { colorScheme: "bfactor", colorScale: "RdYlBu", colorReverse: true };
+          if (surfaceRep) { comp.removeRepresentation(surfaceRep); surfaceRep = null; }
+          if (cartoonRep) { comp.removeRepresentation(cartoonRep); cartoonRep = null; }
+          if (heteroRep) { comp.removeRepresentation(heteroRep); heteroRep = null; }
+          surfaceRep = comp.addRepresentation("surface", Object.assign({
+            sele: "polymer", opacity: 0.18, side: "front", smooth: 2
+          }, colorOpts));
+          cartoonRep = comp.addRepresentation("cartoon", Object.assign({
+            sele: "polymer", opacity: 1.0, smoothSheet: true, quality: "high"
+          }, colorOpts));
+          heteroRep = comp.addRepresentation("ball+stick", Object.assign({
+            sele: "hetero or water or ion", opacity: 0.7
+          }, colorOpts));
+        }
+
         function applyStructureMetric(key) {
           comp.structure.eachAtom(function(ap) {
             if (!ap.isProtein()) return;
             var rk = ap.chainname + ":" + ap.resno;
             var row = metricLookup[rk];
             if (!row) return;
-            ap.bfactor = bfactorForMetric(row, key);
+            writeAtomBfactor(ap, bfactorForMetric(row, key));
           });
-          comp.eachRepresentation(function(repr) {
-            repr.update({ what: { color: true } });
-          });
+          refreshStructureColors();
         }
 
         document.getElementById("structure-metric").addEventListener("change", function(ev) {
@@ -523,25 +610,25 @@ def write_interactive_html(
           colorScale: "RdYlBu",
           colorReverse: true
         }};
-        comp.addRepresentation("surface", Object.assign({{
+        var surfaceRep = comp.addRepresentation("surface", Object.assign({{
           sele: "polymer",
           opacity: 0.18,
           side: "front",
           smooth: 2
         }}, colorOpts));
-        comp.addRepresentation("cartoon", Object.assign({{
+        var cartoonRep = comp.addRepresentation("cartoon", Object.assign({{
           sele: "polymer",
           opacity: 1.0,
           smoothSheet: true,
           quality: "high"
         }}, colorOpts));
-        comp.addRepresentation("ball+stick", Object.assign({{
+        var heteroRep = comp.addRepresentation("ball+stick", Object.assign({{
           sele: "hetero or water or ion",
           opacity: 0.7
         }}, colorOpts));{pharma_js}
         {metrics_js.replace("__METRICS_JSON__", metrics_json)}
         if (typeof applyStructureMetric === "function") {{
-          applyStructureMetric("investigation");
+          applyStructureMetric("physics_investigation");
         }}
         comp.autoView();
       }});
@@ -594,6 +681,8 @@ def disc_payload_from_nodes(
                 "epistemic": float(node.epistemic_uncertainty),
                 "aleatoric": _node_aleatoric(node),
                 "cone_depth": float(node.cone_depth),
+                "rho": _node_rho(node),
+                "tau": _node_tau_flag(node),
                 "sasa": sasa,
                 "expert": expert,
             }
@@ -601,9 +690,13 @@ def disc_payload_from_nodes(
     if points:
         epi = np.array([p["epistemic"] for p in points], dtype=np.float64)
         ale = np.array([p["aleatoric"] for p in points], dtype=np.float64)
+        rho = np.array([p["rho"] for p in points], dtype=np.float64)
+        tau = np.array([p["tau"] for p in points], dtype=np.float64)
         inv = investigation_scores(epi, ale)
+        phys = physics_investigation_scores(rho, tau)
         for i, point in enumerate(points):
             point["investigation"] = float(inv[i])
+            point["physics_investigation"] = float(phys[i])
     return points
 
 
@@ -614,7 +707,10 @@ def residue_metrics_payload(nodes: list[GNNNodeOutput]) -> list[dict[str, Any]]:
         return payload
     epi = np.array([n.epistemic_uncertainty for n in nodes], dtype=np.float64)
     ale = np.array([_node_aleatoric(n) for n in nodes], dtype=np.float64)
+    rho = np.array([_node_rho(n) for n in nodes], dtype=np.float64)
+    tau = np.array([_node_tau_flag(n) for n in nodes], dtype=np.float64)
     inv = investigation_scores(epi, ale)
+    phys = physics_investigation_scores(rho, tau)
     for i, node in enumerate(nodes):
         expert = 0
         if node.expert_weights is not None and len(node.expert_weights):
@@ -625,6 +721,9 @@ def residue_metrics_payload(nodes: list[GNNNodeOutput]) -> list[dict[str, Any]]:
                 "epistemic": float(epi[i]),
                 "aleatoric": float(ale[i]),
                 "investigation": float(inv[i]),
+                "physics_investigation": float(phys[i]),
+                "rho": float(rho[i]),
+                "tau": float(tau[i]),
                 "cone_depth": float(node.cone_depth),
                 "expert": expert,
             }
@@ -681,10 +780,13 @@ def write_poincare_disc_html(
     &nbsp;|&nbsp; <b>{disc_layout_label}</b>
     <label>Color by
       <select id="metric">
-        <option value="investigation" selected>Investigation (high ale, low epi)</option>
+        <option value="physics_investigation" selected>Investigation (ρ/τ physics)</option>
+        <option value="rho">Dehydron ρ</option>
+        <option value="tau">τ flag</option>
+        <option value="cone_depth">Cone depth</option>
+        <option value="investigation">Investigation (evidential · experimental)</option>
         <option value="aleatoric">Aleatoric uncertainty</option>
         <option value="epistemic">Epistemic uncertainty</option>
-        <option value="cone_depth">Cone depth</option>
         <option value="expert">Route expert (E0–E3)</option>
         <option value="sasa">SASA proxy</option>
         <option value="r">Disc radius |z|</option>
@@ -697,14 +799,7 @@ def write_poincare_disc_html(
   <script>
     var POINTS = {points_json};
     var DISC_BOUNDARY = {disc_boundary};
-
-    function colorScale(t) {{
-      t = Math.max(0, Math.min(1, t));
-      var r = t < 0.5 ? 255 : Math.round(255 - (t - 0.5) * 2 * 255);
-      var b = t < 0.5 ? Math.round(t * 2 * 255) : 255;
-      var g = Math.round(80 + 80 * (1 - Math.abs(t - 0.5) * 2));
-      return "rgb(" + r + "," + g + "," + b + ")";
-    }}
+{_DISC_COLOR_SCALE_JS}
 
     function metricValue(p, key) {{
       if (key === "expert") return p.expert / 3.0;
@@ -779,9 +874,10 @@ def write_poincare_disc_html(
         tip.textContent = p.label + "\\nr=" + p.r.toFixed(3) +
           " d_H=" + (p.hyperbolic_r != null ? p.hyperbolic_r.toFixed(3) : p.r.toFixed(3)) +
           " depth=" + p.cone_depth.toFixed(2) +
-          " nu_epi=" + p.epistemic.toFixed(3) +
-          " nu_ale=" + (p.aleatoric || 0).toFixed(3) +
-          " inv=" + (p.investigation || 0).toFixed(3) +
+          " rho=" + (p.rho != null ? p.rho.toFixed(1) : "?") +
+          " tau=" + (p.tau != null ? p.tau.toFixed(0) : "?") +
+          " phys=" + (p.physics_investigation || 0).toFixed(3) +
+          " inv_e=" + (p.investigation || 0).toFixed(3) +
           " E" + p.expert;
       }} else {{
         tip.style.display = "none";
@@ -864,10 +960,13 @@ def write_split_screen_viewer_html(
     &nbsp;|&nbsp; <b>{disc_layout_label}</b>
     <label>Color by
       <select id="metric">
-        <option value="investigation" selected>Investigation</option>
+        <option value="physics_investigation" selected>Investigation (ρ/τ physics)</option>
+        <option value="rho">Dehydron ρ</option>
+        <option value="tau">τ flag</option>
+        <option value="cone_depth">Cone depth</option>
+        <option value="investigation">Investigation (evidential · experimental)</option>
         <option value="aleatoric">Aleatoric</option>
         <option value="epistemic">Epistemic</option>
-        <option value="cone_depth">Cone depth</option>
         <option value="expert">Expert route</option>
         <option value="r">Disc radius</option>
       </select>
@@ -911,7 +1010,7 @@ def write_split_screen_viewer_html(
 
     var selectedKey = null;
     var hoverKey = null;
-    var metricKey = "investigation";
+    var metricKey = "physics_investigation";
 
     // ── Disc view transform (pan / zoom) ─────────────────────────────
     var canvas = document.getElementById("canvas-disc");
@@ -931,14 +1030,7 @@ def write_split_screen_viewer_html(
       var scale = (L.size * viewScale / 2) / DISC_BOUNDARY;
       return [L.cx + x * scale, L.cy - y * scale];
     }}
-
-    function colorScale(t) {{
-      t = Math.max(0, Math.min(1, t));
-      var r = t < 0.5 ? 255 : Math.round(255 - (t - 0.5) * 2 * 255);
-      var b = t < 0.5 ? Math.round(t * 2 * 255) : 255;
-      var g = Math.round(80 + 80 * (1 - Math.abs(t - 0.5) * 2));
-      return "rgb(" + r + "," + g + "," + b + ")";
-    }}
+{_DISC_COLOR_SCALE_JS}
 
     function metricValue(row, key) {{
       if (key === "expert") return (row.expert || 0) / 3.0;
@@ -976,8 +1068,10 @@ def write_split_screen_viewer_html(
       if (!p) return key;
       return key + " | r=" + p.r.toFixed(3) + " d_H=" + (p.hyperbolic_r != null ? p.hyperbolic_r.toFixed(3) : p.r.toFixed(3)) +
         " depth=" + p.cone_depth.toFixed(2) +
-        " ν_epi=" + p.epistemic.toFixed(3) + " ν_ale=" + p.aleatoric.toFixed(3) +
-        " inv=" + (p.investigation || 0).toFixed(3) + " E" + p.expert;
+        " rho=" + (p.rho != null ? Number(p.rho).toFixed(1) : "?") +
+        " tau=" + (p.tau != null ? Number(p.tau).toFixed(0) : "?") +
+        " phys=" + (p.physics_investigation || 0).toFixed(3) +
+        " inv_e=" + (p.investigation || 0).toFixed(3) + " E" + p.expert;
     }}
 
     function updateStructureHighlight() {{
@@ -992,9 +1086,40 @@ def write_split_screen_viewer_html(
 
     function refreshStructureColors() {{
       if (!comp) return;
-      comp.eachRepresentation(function(repr) {{
-        repr.update({{ what: {{ color: true }} }});
-      }});
+      // Rebuild polymer reps so NGL re-reads atomStore.bfactor (update alone is a no-op).
+      var colorOpts = {{
+        colorScheme: "bfactor",
+        colorScale: "RdYlBu",
+        colorReverse: true
+      }};
+      if (surfaceRep) {{ comp.removeRepresentation(surfaceRep); surfaceRep = null; }}
+      if (cartoonRep) {{ comp.removeRepresentation(cartoonRep); cartoonRep = null; }}
+      surfaceRep = comp.addRepresentation("surface", Object.assign({{
+        sele: "polymer",
+        opacity: 0.18,
+        side: "front",
+        smooth: 2,
+        pickable: false
+      }}, colorOpts));
+      cartoonRep = comp.addRepresentation("cartoon", Object.assign({{
+        sele: "polymer",
+        opacity: 1.0,
+        smoothSheet: true,
+        quality: "high",
+        pickable: true
+      }}, colorOpts));
+    }}
+
+    function writeAtomBfactor(ap, value) {{
+      ap.bfactor = value;
+      var store = comp.structure.atomStore;
+      if (store && store.bfactor) store.bfactor[ap.index] = value;
+    }}
+
+    function writeAtomOccupancy(ap, value) {{
+      ap.occupancy = value;
+      var store = comp.structure.atomStore;
+      if (store && store.occupancy) store.occupancy[ap.index] = value;
     }}
 
     function applyStructureMetric(key) {{
@@ -1005,12 +1130,12 @@ def write_split_screen_viewer_html(
         var rk = residueKey(ap.chainname, ap.resno);
         var row = unifiedRow[rk];
         if (!row) return;
-        ap.bfactor = bfactorForMetric(row, key);
+        writeAtomBfactor(ap, bfactorForMetric(row, key));
         if (row.cone_depth != null) {{
           var occ = depthRR.max > depthRR.min
             ? 0.35 + 0.65 * (row.cone_depth - depthRR.min) / (depthRR.max - depthRR.min)
             : 0.5;
-          ap.occupancy = occ;
+          writeAtomOccupancy(ap, occ);
         }}
       }});
       refreshStructureColors();
@@ -1121,7 +1246,7 @@ def write_split_screen_viewer_html(
     }});
 
     // ── NGL 3D ───────────────────────────────────────────────────────
-    var stage, comp, highlightRep;
+    var stage, comp, surfaceRep, cartoonRep, highlightRep;
     var lastMouseX = 0, lastMouseY = 0;
     document.addEventListener("mousemove", function(ev) {{
       lastMouseX = ev.clientX;
@@ -1139,14 +1264,14 @@ def write_split_screen_viewer_html(
           colorScale: "RdYlBu",
           colorReverse: true
         }};
-        comp.addRepresentation("surface", Object.assign({{
+        surfaceRep = comp.addRepresentation("surface", Object.assign({{
           sele: "polymer",
           opacity: 0.18,
           side: "front",
           smooth: 2,
           pickable: false
         }}, colorOpts));
-        comp.addRepresentation("cartoon", Object.assign({{
+        cartoonRep = comp.addRepresentation("cartoon", Object.assign({{
           sele: "polymer",
           opacity: 1.0,
           smoothSheet: true,

@@ -24,8 +24,11 @@ GTPASE_CAP2_FOLD = "3.40.50.300"
 GTPASE_CAP2_REASON_PREFIX = "GTPase cap-2 biological-centrality override"
 
 # Stage A train ceiling — smoke, curriculum, and P_CORPUS_01 loadability share this value.
-# 4GQB (PRMT5) is 625 residues; 650 is the pinned floor with margin.
-STAGE_A_MAX_RESIDUES = 650
+# Locked Stage A max today is 4GQB (625); 650 was historical floor + margin.
+# Raised to 1200 so corpus expand can include full-length single chains (kinases,
+# multi-domain, larger receptors) without a separate MAX_RESIDUES override on every run.
+# Training is per-protein (OOM skips one graph); raise further via MAX_RESIDUES= if needed.
+STAGE_A_MAX_RESIDUES = 1200
 STAGE_A_TRAIN_STRUCTURE_COUNT = 25
 
 

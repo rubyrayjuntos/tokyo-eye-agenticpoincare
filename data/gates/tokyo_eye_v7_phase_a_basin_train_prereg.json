@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_phase_a_basin_train_prereg",
+  "recorded_at": "2026-07-21T23:00:00+00:00",
+  "status": "LOCKED",
+  "checkpoint_resume": "experiments.training.v7.healthy_bprime.HEALTHY_V7_CKPT",
+  "spec": "docs/specs/tokyo-eye-v7/phase-a-nucleotide-basin-train-prereg.md",
+  "hyp_mp_primary": true,
+  "se3_aux": false,
+  "disc_r_mean_hold": 0.25,
+  "roster": {
+    "OFF": [
+      {"pdb": "4LPK", "chain": "A", "nucleotide": "GDP"},
+      {"pdb": "5US4", "chain": "A", "nucleotide": "GDP"}
+    ],
+    "ON": [
+      {"pdb": "6GOD", "chain": "A", "nucleotide": "GppNHp"},
+      {"pdb": "6GOF", "chain": "A", "nucleotide": "GppNHp"}
+    ]
+  },
+  "loss": {
+    "name": "basin_contrastive_margin",
+    "embedding": "mean_logmap0_x_hyp_on_R_star",
+    "margin": 0.5,
+    "coeff": 0.1,
+    "same_basin_attract": false
+  },
+  "epochs_default": 12,
+  "run_id_default": "tokyo_eye_v7_phase_a_nucleotide_basin_v1",
+  "manifest": "manifests/v7_phase_a_nucleotide_basin_v1.json",
+  "pass_form": {
+    "disc_r_mean_min": 0.25,
+    "basin_sep_gap_min": 0.1,
+    "hyp_mp_primary": true,
+    "migration_spotcheck": "report_only"
+  },
+  "forbidden": [
+    "allele_g12_loss",
+    "jacobian",
+    "gini_train_objective",
+    "overwrite_v7_healthy_sealed",
+    "phase_b_allele_current_flow"
+  ]
+}

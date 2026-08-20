@@ -60,6 +60,11 @@ class MotifPersistenceMockDB:
     async def fetch_one(
         self, query: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any] | None:
+        q = query.strip().lower()
+        if "from provenance_run" in q and params is not None:
+            run_id = params.get("run_id")
+            if any(row.get("run_id") == run_id for row in self.provenance_runs):
+                return {"ok": 1}
         return None
 
     async def begin(self) -> None:

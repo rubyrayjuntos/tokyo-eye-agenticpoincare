@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_cutover_scaffold",
+  "recorded_at": "2026-07-21T12:35:49.574577+00:00",
+  "checkpoint": "/app/checkpoints/v7/tokyo_eye_v7_cutover_scaffold.pt",
+  "biology_graded": false,
+  "model_version": "TokyoEye-v7",
+  "curvature_init": 0.6932471990585327,
+  "note": "Init scaffold for contract cutover; replace via promote when champion trains."
+}

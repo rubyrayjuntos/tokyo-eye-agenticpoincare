@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000")
 ALIAS_CHAMPION = "champion"
 ALIAS_CHALLENGER = "challenger"
+_ALLOW_LEGACY_REGISTRY_ENV = "TOKYOEYE_ALLOW_LEGACY_LINEAGE_REGISTRY"
 
 
 def _import_mlflow() -> Any:
@@ -63,6 +64,7 @@ def register_checkpoint_version(
     Uses runs:/ URI when run_id is set and an artifact was logged; otherwise
     registers via a local file URI so hyperbolic custom checkpoints work.
     """
+    _assert_legacy_lineage_registry_allowed(lineage_id)
     from mlflow.tracking import MlflowClient
 
     mlf = ensure_tracking(tracking_uri)
@@ -109,6 +111,7 @@ def set_alias(
     alias: str,
     tracking_uri: str | None = None,
 ) -> dict[str, Any]:
+    _assert_legacy_lineage_registry_allowed(lineage_id)
     from mlflow.tracking import MlflowClient
 
     ensure_tracking(tracking_uri)
@@ -116,6 +119,19 @@ def set_alias(
     client = MlflowClient()
     client.set_registered_model_alias(name, alias, int(version))
     return {"name": name, "version": str(version), "alias": alias, "lineage_id": lineage_id}
+
+
+def _assert_legacy_lineage_registry_allowed(lineage_id: str | GnnLineageId) -> None:
+    if str(lineage_id).strip().lower() != "v8":
+        return
+    raw = os.environ.get(_ALLOW_LEGACY_REGISTRY_ENV, "")
+    if raw.strip().lower() in {"1", "true", "yes", "on"}:
+        return
+    raise RuntimeError(
+        "Legacy v8 per-lineage MLflow registry is fenced. Use the TokyoEye "
+        "governance registry (`models:/TokyoEye@champion` / `@experimental`) "
+        f"or set {_ALLOW_LEGACY_REGISTRY_ENV}=true for archaeology-only work."
+    )
 
 
 def get_version_by_alias(

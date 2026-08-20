@@ -43,7 +43,7 @@ export default function ModelLifecyclePanel({
   const [status, setStatus] = useState<LifecycleStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [runId, setRunId] = useState("cold_start_v1");
+  const [runId, setRunId] = useState("master_cold_v1");
   const [lineageId, setLineageId] = useState<"v6" | "v6.5">("v6.5");
   const [checkpointPath, setCheckpointPath] = useState("");
   const [corpusManifest, setCorpusManifest] = useState(
@@ -216,7 +216,7 @@ export default function ModelLifecyclePanel({
               const job = await api.enqueueLifecycleTrain({
                 lineage_id: lineageId,
                 run_id: runId,
-                preset: "slim_moe_structural_ssot",
+                preset: "master_cold",
                 no_warm_start: true,
               });
               setMessage(

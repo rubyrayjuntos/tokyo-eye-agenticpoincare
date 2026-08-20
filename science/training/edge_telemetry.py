@@ -300,6 +300,30 @@ def stratify_same_expert_by_flow(
     }
 
 
+def _residue_only_mp_edges(
+    data: Any,
+    edge_index: torch.Tensor,
+    edge_attr: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, int]:
+    """Drop Path B parent endpoints from telemetry MP edges.
+
+    When ``data.n_residue_nodes`` is set, containment parents sit at
+    ``[n_residue_nodes:]``. Residue metrics (uncertainty, expert weights)
+    are leaf-aligned — parent indices IndexError unless filtered.
+    """
+    n_res = getattr(data, "n_residue_nodes", None)
+    if n_res is None:
+        return edge_index, edge_attr, int(data.x.size(0))
+    n_res = int(n_res)
+    if n_res <= 0 or edge_index.numel() == 0:
+        return edge_index, edge_attr, n_res
+    src, dst = edge_index[0], edge_index[1]
+    mask = (src < n_res) & (dst < n_res)
+    if bool(mask.all()):
+        return edge_index, edge_attr, n_res
+    return edge_index[:, mask], edge_attr[mask], n_res
+
+
 def collect_edge_telemetry(
     model: torch.nn.Module,
     data: Any,
@@ -312,6 +336,7 @@ def collect_edge_telemetry(
 ) -> EdgeTelemetryRecord:
     """Compute edge telemetry for one forward pass (read-only)."""
     mp_ei, mp_ea = resolve_message_passing_edges(data)
+    mp_ei, mp_ea, n_nodes = _residue_only_mp_edges(data, mp_ei, mp_ea)
     edge_set = (
         "hyperbolic"
         if bool(getattr(data, "hyperbolic_graph", False))
@@ -322,20 +347,32 @@ def collect_edge_telemetry(
     unc = output["uncertainty"]
     epi = unc["epistemic"].squeeze(-1)
     ale = unc["aleatoric"].squeeze(-1)
+    expert_weights = output["expert_weights"]
+    # Defensive: callers may pass unsliced parent-inclusive forwards.
+    if epi.shape[0] > n_nodes:
+        epi = epi[:n_nodes]
+        ale = ale[:n_nodes]
+    if expert_weights.shape[0] > n_nodes:
+        expert_weights = expert_weights[:n_nodes]
     edge_epi, edge_ale = edge_uncertainty_from_nodes(mp_ei, epi, ale)
 
     embed_signal = edge_embed_signal_from_conv(model, mp_ea)
 
     cone_depth = output["cone_depth"].squeeze(-1).detach().cpu().numpy()
+    if cone_depth.shape[0] > n_nodes:
+        cone_depth = cone_depth[:n_nodes]
     if ca_coords is None:
         ca_coords = getattr(data, "pos", None)
         if ca_coords is not None:
             ca_coords = ca_coords.detach().cpu().numpy()
     if ca_coords is None:
         ca_coords = np.full((cone_depth.shape[0], 3), np.nan)
+    ca_coords = np.asarray(ca_coords, dtype=np.float64)
+    if ca_coords.shape[0] > n_nodes:
+        ca_coords = ca_coords[:n_nodes]
 
     G = _build_conductance_graph(
-        np.asarray(ca_coords, dtype=np.float64),
+        ca_coords,
         cone_depth,
         cutoff=CONTACT_CUTOFF,
     )
@@ -349,11 +386,11 @@ def collect_edge_telemetry(
 
     flow = edge_flow_scores(G, mp_ei, cone_depths=cone_depth)
     same_rate, null_rate, excess, dominant = same_expert_stats(
-        mp_ei, output["expert_weights"]
+        mp_ei, expert_weights
     )
-    flow_strat = stratify_same_expert_by_flow(mp_ei, output["expert_weights"], flow)
+    flow_strat = stratify_same_expert_by_flow(mp_ei, expert_weights, flow)
 
-    rho = data.x[:, 0].detach().cpu().numpy()
+    rho = data.x[:n_nodes, 0].detach().cpu().numpy()
     tau_mask = _tau_boundary_mask(rho)
     boundary_edges = float(
         np.mean(tau_mask[src] | tau_mask[dst])
@@ -370,7 +407,7 @@ def collect_edge_telemetry(
         else float("nan")
     )
 
-    assign = output["expert_weights"].argmax(dim=1).cpu().numpy()
+    assign = expert_weights.argmax(dim=1).cpu().numpy()
     edge_same = (assign[src] == assign[dst]).astype(np.int8) if src.size else np.array([], dtype=np.int8)
 
     alive, alive_reason = assess_telemetry_alive(edge_epi, edge_ale, corr)
@@ -378,7 +415,7 @@ def collect_edge_telemetry(
     return EdgeTelemetryRecord(
         structure_id=structure_id.lower(),
         chain=chain,
-        n_nodes=int(data.x.size(0)),
+        n_nodes=n_nodes,
         n_edges=int(mp_ei.size(1)),
         edge_set=edge_set,
         edge_embed_resistance_corr=corr,

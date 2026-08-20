@@ -20,12 +20,14 @@ async def run_gnn_inference(
     pipeline_name: str,
     caller_identity: str = "compute_job_gnn_inference",
     device: str = "cpu",
+    job_params: dict[str, Any] | None = None,
 ) -> tuple[PhaseResult, GNNInferenceResult | None]:
     """Run GNN inference via contract-registered runner and persist via Normalizer."""
     from data.normalizer.core import Normalizer
     from science.contracts.model_registry import get_production_model
     from science.dtie.common.adapters import GNNOutputAdapter
     from science.dtie.common.graph_builder import GraphBuilder
+    from science.dtie.common.structural_disc_policy import resolve_structural_disc_frozen
 
     structure_id = config.structure_id
     builder = GraphBuilder(db=db)
@@ -36,7 +38,7 @@ async def run_gnn_inference(
             PhaseResult(
                 phase_name="gnn_inference",
                 structure_id=structure_id,
-                model_version="GOSPConeMapper-v6",
+                model_version=get_production_model().model_version,
                 success=False,
                 outputs={"error": str(exc)},
             ),
@@ -56,7 +58,13 @@ async def run_gnn_inference(
         curvature_override=config.curvature_override,
     )
 
-    structural_frozen = getattr(config, "structural_disc_frozen", True)
+    structural_frozen, ssot_reason = resolve_structural_disc_frozen(
+        config.checkpoint_path,
+        pipeline_config_value=bool(getattr(config, "structural_disc_frozen", True)),
+        job_params=job_params,
+    )
+    # Keep config in sync for downstream consumers / metadata.
+    config.structural_disc_frozen = structural_frozen
     structural_artifact = None
     if structural_frozen:
         from science.dtie.common.structural_disc_compose import (
@@ -67,13 +75,29 @@ async def run_gnn_inference(
         await runner._ensure_model_loaded()
         curvature_c = config.curvature_override
         if curvature_c is None:
-            curvature_c = float(runner._model.curvature.detach().cpu().item())
+            if hasattr(runner, "get_curvature"):
+                curvature_c = float(runner.get_curvature())
+            elif hasattr(runner, "curvature"):
+                raw_curvature = getattr(runner, "curvature")
+                curvature_c = (
+                    float(raw_curvature.detach().cpu().item())
+                    if hasattr(raw_curvature, "detach")
+                    else float(raw_curvature)
+                )
+            else:
+                curvature_c = float(runner._model.curvature.detach().cpu().item())
         structural_artifact = compose_from_protein_graph(graph, curvature_c)
         attach_structural_disc_to_pyg(pyg_data, structural_artifact, residue_ids=graph.residue_ids)
         logger.info(
-            "Structural disc SSOT attached (%s nodes, c=%.6f)",
+            "Structural disc SSOT attached (%s nodes, c=%.6f, reason=%s)",
             len(graph.residue_ids),
             curvature_c,
+            ssot_reason,
+        )
+    else:
+        logger.info(
+            "Structural disc SSOT skipped — using learned MP→geometry path (reason=%s)",
+            ssot_reason,
         )
 
     result = await runner.run_inference(structure_id, pyg_data)
@@ -137,6 +161,7 @@ async def run_gnn_inference(
         "structural_disc_frozen": result.metadata.get("structural_disc_frozen"),
         "structural_disc_layout": result.metadata.get("structural_disc_layout"),
         "hyp_projections_2d_source": result.metadata.get("hyp_projections_2d_source"),
+        "structural_disc_policy_reason": ssot_reason,
     }
     if hyp_dist_outputs:
         outputs["hyperbolic_distances"] = hyp_dist_outputs

@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "gate": "kras_basin_observation_classify_closeout",
+  "recorded_at": "2026-07-21T06:15:00+00:00",
+  "decision": "fail_allele_off_n12_does_not_beat_within_rstar_scramble",
+  "checkpoint_ssot": "experiments.training.v66.healthy_fix1.FIX1_SPARSITY_CHAMPION_CKPT",
+  "workstream": "kras_basin_routing_automaton",
+  "workstream_order": 1,
+  "roster": ["4LPK", "5US4", "6GOD", "6GOF"],
+  "headline": {
+    "guards_ok": true,
+    "same_nuc": 0.941,
+    "cross_nuc": 0.911,
+    "nucleotide_separation": true,
+    "allele_off": {"mean_abs_delta_n12": 0.0316, "mean_abs_delta_scramble": 0.0356, "pass": false},
+    "allele_on": {"mean_abs_delta_n12": 0.0385, "mean_abs_delta_scramble": 0.0212, "pass": true}
+  },
+  "artifacts": {
+    "prereg": "data/gates/kras_basin_observation_classify_prereg.json",
+    "grade": "checkpoints/v66/diagnostics/routing_sparsity/kras_basin_observation_classify.json",
+    "narrative": "docs/specs/kras-topo-structural-inference/kras-basin-observation-classify-closeout.md"
+  },
+  "claim_allowed": [
+    "Guards parse correctly on four-quadrant roster",
+    "Same-nucleotide mean R★ hyp-depth Spearman exceeds cross-nucleotide mean (basin axis signal present)"
+  ],
+  "claim_forbidden": [
+    "Full basin observation classify Pass",
+    "Allele site-specificity on both OFF and ON under locked bars",
+    "Dynamic transition automaton readiness",
+    "Softening allele bars post-hoc"
+  ]
+}

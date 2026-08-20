@@ -1,0 +1,28 @@
+{
+  "gate_id": "tokyoeye_mlflow_ssot",
+  "date": "2026-07-24",
+  "status": "active",
+  "registered_model": "TokyoEye",
+  "production_restore": "models:/TokyoEye@champion",
+  "staging_restore": "models:/TokyoEye@experimental",
+  "experiment_hierarchy": "tokyoeye/equiformer-v3-moe/{domain}/{subsystem}",
+  "lineage": "equiformer-v3-moe",
+  "implementation_package": "science/tokyo_eye/v8",
+  "mlflow_is_ssot_for": [
+    "model registry identity",
+    "production and staging aliases",
+    "run metrics and parameters",
+    "weight artifacts after import",
+    "gate evidence logged as run artifacts"
+  ],
+  "repo_remains_ssot_for": [
+    "source code",
+    "onboard contract schema",
+    "CI configuration",
+    "governed science facts",
+    "local MLflow download cache"
+  ],
+  "local_checkpoints": "cache_or_historical_evidence_only",
+  "runtime_policy": "fail_closed_if_mlflow_alias_or_artifact_missing",
+  "legacy_policy": "old package lineages are compare-only and cannot mutate active TokyoEye production without explicit archaeology flags"
+}

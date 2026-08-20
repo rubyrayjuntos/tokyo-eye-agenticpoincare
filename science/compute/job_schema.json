@@ -270,7 +270,7 @@
         },
         {
           "check": "checkpoint",
-          "description": "V6 checkpoint file present on disk"
+          "description": "TokyoEye production checkpoint file present on disk"
         }
       ],
       "execution": {
@@ -288,6 +288,13 @@
         "priority_group": 0,
         "legacy_alias": "gnn_inference_v6"
       },
+      "job_params": [
+        {
+          "name": "structural_disc_frozen",
+          "type": "boolean",
+          "description": "A/B override for structural disc SSOT attach. If omitted, follows checkpoint training_config (learned=False, slim/unknown=legacy default)."
+        }
+      ],
       "output_fields": [
         {
           "name": "node_count",

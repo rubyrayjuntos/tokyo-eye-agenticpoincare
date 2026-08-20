@@ -1,0 +1,48 @@
+{
+  "version": "1.0",
+  "description": "TokyoEye-v8 Mode C — KRAS nucleotide basin (thin wrap of v7 Phase A roster).",
+  "spec": "docs/superpowers/specs/2026-07-22-tokyo-eye-v8-sprint8-biophys-harden-design.md",
+  "source_manifest": "manifests/v7_phase_a_nucleotide_basin_v1.json",
+  "proteins": [
+    {
+      "pdb_id": "4LPK",
+      "chain": "A",
+      "gene": "KRAS",
+      "role": "train",
+      "enabled": true,
+      "nucleotide_basin": "OFF",
+      "nucleotide": "GDP",
+      "allele": "WT"
+    },
+    {
+      "pdb_id": "5US4",
+      "chain": "A",
+      "gene": "KRAS",
+      "role": "train",
+      "enabled": true,
+      "nucleotide_basin": "OFF",
+      "nucleotide": "GDP",
+      "allele": "G12D"
+    },
+    {
+      "pdb_id": "6GOD",
+      "chain": "A",
+      "gene": "KRAS",
+      "role": "train",
+      "enabled": true,
+      "nucleotide_basin": "ON",
+      "nucleotide": "GppNHp",
+      "allele": "WT"
+    },
+    {
+      "pdb_id": "6GOF",
+      "chain": "A",
+      "gene": "KRAS",
+      "role": "train",
+      "enabled": true,
+      "nucleotide_basin": "ON",
+      "nucleotide": "GppNHp",
+      "allele": "G12D"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "gate": "kras_g12_residue_graft_closeout",
+  "recorded_at": "2026-07-21T04:50:00+00:00",
+  "decision": "panel_pass_sealed_tiny_delta_honest",
+  "checkpoint_ssot": "experiments.training.v66.healthy_fix1.FIX1_SPARSITY_CHAMPION_CKPT",
+  "artifacts": {
+    "off": {"rho_wt_mut": 0.792, "rho_graft_mut": 0.793, "delta_rho": 0.0015, "rho_scramble_mut": 0.772},
+    "on": {"rho_wt_mut": 0.902, "rho_graft_mut": 0.902, "delta_rho": 0.0004, "rho_scramble_mut": 0.893}
+  },
+  "artifacts": {
+    "prereg": "data/gates/kras_g12_residue_graft_prereg.json",
+    "grade": "checkpoints/v66/diagnostics/routing_sparsity/kras_g12_residue_graft.json",
+    "narrative": "docs/specs/kras-topo-structural-inference/kras-g12-residue-graft-closeout.md",
+    "next_prereg": "docs/specs/kras-topo-structural-inference/kras-g12-neighborhood-graft-prereg.md"
+  },
+  "claim_allowed": [
+    "Local site physics/geometry sensitivity at resseq 12 (ρ/τ/ss + Cα graft)",
+    "Matched graft beats distal scramble",
+    "Single-node graft cannot override backbone inertia (tiny Δρ)"
+  ],
+  "claim_forbidden": [
+    "AA identity / Asp electronic recognition",
+    "Full WT→mut state rewrite from site 12 alone",
+    "CB concordance or Ledger B interface Pass via this probe"
+  ]
+}

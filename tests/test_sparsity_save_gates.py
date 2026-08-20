@@ -99,5 +99,19 @@ def test_sparsity_mode_rejects_final3_out_of_band() -> None:
     assert any("final3" in r for r in bad.reasons)
 
 
+def test_widened_mean_residue_band_allows_bprime_niche() -> None:
+    """B′ disc-continue prereg: mean_H≈0.31 + H(f̄)≈1.35 eligible under [0.25, 0.90]."""
+    scored = score_checkpoint(
+        _healthy_geom(),
+        _base_losses(routing_entropy_mean_residue=0.31, routing_entropy=1.35),
+        phase=12,
+        routing_entropy_mean_residue_min_save=0.25,
+        routing_entropy_mean_residue_max_save=0.90,
+        inference_routing={"max_routing_fraction": 0.31},
+    )
+    assert scored.eligible is True
+    assert not any("routing_H" in r for r in scored.reasons)
+
+
 def test_diversity_abort_constant() -> None:
     assert LOAD_ENTROPY_DIVERSITY_ABORT == 0.80

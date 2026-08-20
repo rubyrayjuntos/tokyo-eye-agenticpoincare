@@ -29,12 +29,15 @@ Downstream hyperbolic jobs must receive this learned value via `JobRunContext.le
 make contract-sync   # job_schema.json + frontend TypeScript types
 ```
 
-### Tokyo Eye v8 (production inference)
+### TokyoEye (production inference)
 
-Architecture lives in `science/tokyo_eye/v8/`; contract id `tokyo_eye_v8`;
-weights at `checkpoints/v8/runs/tokyo_eye_v8_mode_c_moe_rebalance_s9/v8_best.pt`
-(`HEALTHY_V8_SPINE_CKPT`). Spec: [`docs/specs/tokyo-eye-v8/README.md`](../../docs/specs/tokyo-eye-v8/README.md).
-v7 Hyp-MP (`tokyo_eye_v7`) is **deprecated archaeology**.
+Production restore is `models:/TokyoEye@champion`; staging restore is
+`models:/TokyoEye@experimental`. Architecture code lives under
+`science/tokyo_eye/` (the current implementation package still includes an
+internal `v8` directory). Local `.pt` files are cache/evidence only, not
+contract restore pointers. Spec:
+[`docs/superpowers/specs/2026-07-23-tokyoeye-mlflow-governance-design.md`](../../docs/superpowers/specs/2026-07-23-tokyoeye-mlflow-governance-design.md).
+Hyp-MP package lines are **deprecated archaeology**.
 
 ### Legacy V6 GNN (compare-only)
 

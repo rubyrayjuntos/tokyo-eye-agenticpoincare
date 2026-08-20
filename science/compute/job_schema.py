@@ -188,13 +188,24 @@ def build_job_catalog() -> dict[str, Any]:
             "preconditions": [
                 {"check": "artifact:dims", "description": "Residue coordinates in dim_residue"},
                 {"check": "artifact:scope", "description": "structure_computation_scope assigned"},
-                {"check": "checkpoint", "description": "V6 checkpoint file present on disk"},
+                {"check": "checkpoint", "description": "TokyoEye production checkpoint file present on disk"},
             ],
             "execution": _execution(
                 "gnn_inference",
                 job_module="science/compute/jobs/gnn_inference.py",
                 aliases=["POST /compute/gnn"],
             ),
+            "job_params": [
+                {
+                    "name": "structural_disc_frozen",
+                    "type": "boolean",
+                    "description": (
+                        "A/B override for structural disc SSOT attach. "
+                        "If omitted, follows checkpoint training_config "
+                        "(learned=False, slim/unknown=legacy default)."
+                    ),
+                },
+            ],
             "output_fields": [
                 {"name": "node_count", "type": "integer", "role": "job_output"},
                 {"name": "embedding_run_id", "type": "string", "role": "provenance"},

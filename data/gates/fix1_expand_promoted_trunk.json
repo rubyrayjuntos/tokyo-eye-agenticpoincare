@@ -1,0 +1,13 @@
+{
+  "promoted_trunk": true,
+  "run_id": "fix1_s4_raf1_mix_continue_v1",
+  "mlflow_experiment": "tokyo-eyes-v66-fix1-expand",
+  "champion_ckpt": "checkpoints/v66/runs/fix1_s4_raf1_mix_continue_v1/epochs/epoch_066.pt",
+  "resilience_gate": "checkpoints/v66/runs/fix1_s4_raf1_mix_continue_v1/resilience_gate.json",
+  "biology_pack": "checkpoints/v66/diagnostics/fix1_expand_biology/biology_pack_report.json",
+  "biology_passed": true,
+  "delta_disc_r_mean_4obe": 0.02665543556213379,
+  "sealed_baseline_immutable": "checkpoints/v66/runs/fix1_s4_stack_initseed_controlled_3d_seed2_v1/v66_healthy_sealed.pt",
+  "promoted_at": "2026-07-20T06:59:54.108807+00:00",
+  "note": "P3 transfer Pass + P4 biology Pass on held epoch_066 (fat training_config); never bare phase_12"
+}

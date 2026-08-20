@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "gate": "shp2_2shp_6crf_ood",
+  "locked_at": "2026-07-20T22:14:00+00:00",
+  "amended_at": "2026-07-20T22:30:00+00:00",
+  "status": "PHASE_COMPLETE_PASS",
+  "completed_at": "2026-07-20T23:06:14+00:00",
+  "result_artifact": "checkpoints/v66/diagnostics/routing_sparsity/shp2_2shp_6crf_ood.json",
+  "result_summary": {
+    "verdict": "PASS",
+    "spearman": 0.763,
+    "hub_jaccard_report": 0.343,
+    "perturb_jaccard": [1.0, 1.0, 1.0],
+    "gini_active": 0.188,
+    "max_over_median_active": 2.29
+  },
+  "checkpoint_ssot": "experiments.training.v66.healthy_fix1.FIX1_SPARSITY_CHAMPION_CKPT",
+  "panel": {
+    "inactive": {"pdb_id": "2SHP", "chain": "A", "role": "autoinhibited"},
+    "active": {
+      "pdb_id": "6CRF",
+      "chain": "A",
+      "role": "open_active_E76K",
+      "citation": "Fodor/Stams et al. Nat Commun 2018; PDB 6CRF"
+    }
+  },
+  "pdb_identity_correction": {
+    "rejected": "6MCF",
+    "reason": "RCSB 6MCF is 7SK stem-loop 1 + HIV-1 Tat RBD (NMR), not SHP2",
+    "replacement": "6CRF",
+    "note": "Historical Tier-2 docs labeled 6MCF as open SHP2 — typo; corrected before first champion grade stamp"
+  },
+  "mechanistic_axes": "N-SH2/PTP coupling (SHP2); not Src C-lobe/αC",
+  "bars": {
+    "state_spearman_min": 0.5,
+    "perturb_jaccard_min": 0.5,
+    "perturb_k_frac": 0.1,
+    "gini_active_min": 0.12,
+    "gini_active_max": 0.25,
+    "max_over_median_max": 3.0,
+    "gini_blowup_slack": 0.05
+  },
+  "arms": {
+    "state_transition": {
+      "metric": "spearman_out_effect_shared_auth_resseq",
+      "bar": ">= state_spearman_min",
+      "hub_jaccard_top10pct": "report_only"
+    },
+    "perturbation_invariance": {
+      "target": "6CRF",
+      "perturbations": [
+        "contact_cutoff_EDGE_CUTOFF-0.5A",
+        "contact_cutoff_EDGE_CUTOFF+0.5A",
+        "edge_truncate_keep_frac_0.8"
+      ],
+      "metric": "jaccard_top10pct_hub_set_vs_unperturbed",
+      "bar": ">= perturb_jaccard_min on all arms"
+    },
+    "cross_structure_calibration": {
+      "metric": "gini_and_max_over_median_on_6CRF",
+      "bars": [
+        "gini_active in [gini_active_min, gini_active_max]",
+        "max_over_median_active <= max_over_median_max",
+        "gini_active <= gini_inactive + gini_blowup_slack"
+      ]
+    }
+  },
+  "aggregate": "all_three_arms_pass",
+  "make": "grade-v66-fix1-shp2-2shp-6crf-ood",
+  "make_alias": "grade-v66-fix1-shp2-2shp-6mcf-ood",
+  "probe": "experiments.diagnostics.shp2_2shp_6mcf_ood",
+  "artifact": "checkpoints/v66/diagnostics/routing_sparsity/shp2_2shp_6crf_ood.json",
+  "notes": [
+    "Do not retune bars after seeing champion results.",
+    "Bars unchanged in the 6MCF→6CRF identity amendment — only the active PDB was corrected."
+  ]
+}

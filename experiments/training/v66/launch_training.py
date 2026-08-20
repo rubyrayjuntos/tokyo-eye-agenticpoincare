@@ -357,6 +357,61 @@ def main() -> None:
         help="Linear warmup epochs for routing entropy sparsity λ (default 8)",
     )
     parser.add_argument(
+        "--sparsity-style-save",
+        action="store_true",
+        help=(
+            "Use sparsity-style checkpoint save (mean_residue_H band + max_share; "
+            "no legacy H(f̄)≤1.21 ceiling). Does not enable sparsity λ."
+        ),
+    )
+    parser.add_argument(
+        "--routing-entropy-mean-residue-min-save",
+        type=float,
+        default=None,
+        help="Lower save bound for mean_i H(p_i) when sparsity-style save is on",
+    )
+    parser.add_argument(
+        "--routing-entropy-mean-residue-max-save",
+        type=float,
+        default=None,
+        help="Upper save bound for mean_i H(p_i) when sparsity-style save is on",
+    )
+    parser.add_argument(
+        "--disc-occupancy-coeff",
+        type=float,
+        default=None,
+        dest="disc_occupancy_coeff_override",
+        help="Override phase disc_occupancy_coeff (mild bump for B′ disc health)",
+    )
+    parser.add_argument(
+        "--disc-depth-scale-coeff",
+        type=float,
+        default=None,
+        dest="disc_depth_scale_coeff_override",
+        help="Override phase disc_depth_scale_coeff",
+    )
+    parser.add_argument(
+        "--disc-depth-scale-target",
+        type=float,
+        default=None,
+        dest="disc_depth_scale_target_override",
+        help="Override phase disc_depth_scale_target",
+    )
+    parser.add_argument(
+        "--core-radial-floor-coeff",
+        type=float,
+        default=None,
+        dest="core_radial_floor_coeff_override",
+        help="Soft min-r for high-ρ low-τ residues (e1 origin drag; 0=off)",
+    )
+    parser.add_argument(
+        "--core-radial-floor-min-r",
+        type=float,
+        default=None,
+        dest="core_radial_floor_min_r_override",
+        help="Near-origin floor for core_radial_floor (default phase 0.15)",
+    )
+    parser.add_argument(
         "--prototype-repulsion-coeff",
         type=float,
         default=0.0,
@@ -506,9 +561,9 @@ def main() -> None:
     parser.add_argument("--mlflow-experiment", default="tokyo-eyes-v66")
     parser.add_argument(
         "--gnn-lineage",
-        choices=["v6", "v6.5", "v6.6"],
+        choices=["v6", "v6.5", "v6.6", "v7"],
         default="v6.6",
-        help="Architecture package line (v66 launcher defaults to v6.6)",
+        help="Architecture package line (v66 launcher defaults to v6.6; use v7 via experiments.training.v7)",
     )
     parser.add_argument("--no-mlflow", action="store_true")
     parser.add_argument(
@@ -767,6 +822,28 @@ def main() -> None:
         "--p4-uncertainty-calibration",
         action="store_true",
         help="Phase 4 uncertainty calibration from rs2_post_p4 (decouple epi/ale, gated saves)",
+    )
+    parser.add_argument(
+        "--v7-bprime-uncertainty-heads",
+        action="store_true",
+        help=(
+            "Tokyo Eye v7 B′: heads-only ale/epi recovery from sealed health "
+            "(forces epistemic_uncertainty_only_train; skips feeler geom phase)"
+        ),
+    )
+    parser.add_argument(
+        "--v7-bprime-uncertainty-heads-rematch",
+        action="store_true",
+        help=(
+            "Pre-authorized rematch-1: higher anticollapse/decorrelation, "
+            "still uncertainty_head-only"
+        ),
+    )
+    parser.add_argument(
+        "--min-disc-r-mean-hold",
+        type=float,
+        default=None,
+        help="Abort if disc_r_mean stays below this for 2 consecutive epochs",
     )
     parser.add_argument(
         "--p4-head-decouple",
@@ -1041,10 +1118,15 @@ def main() -> None:
     from science.training.gnn_lineage import get_lineage
 
     lineage_spec = get_lineage(args.gnn_lineage)
-    if args.gnn_lineage in {"v6.5", "v6.6"}:
-        if Path(args.output_dir).as_posix() == "checkpoints/v6/runs/default":
+    if args.gnn_lineage in {"v6.5", "v6.6", "v7"}:
+        if Path(args.output_dir).as_posix() in {
+            "checkpoints/v6/runs/default",
+            "checkpoints/v66/runs/default",
+        }:
             args.output_dir = lineage_spec.checkpoint_root / "default"
-        if args.mlflow_experiment == "tokyo-eyes-v6":
+        if args.mlflow_experiment in {"tokyo-eyes-v6", "tokyo-eyes-v66"} and args.gnn_lineage == "v7":
+            args.mlflow_experiment = lineage_spec.mlflow_experiment
+        elif args.mlflow_experiment == "tokyo-eyes-v6":
             args.mlflow_experiment = lineage_spec.mlflow_experiment
 
     gate_disc_scale = args.gate_disc_scale
@@ -1355,6 +1437,13 @@ def main() -> None:
         shell_corr_epi_sasa_weight=args.shell_corr_epi_sasa_weight,
         p4_epistemic_staged=args.p4_epistemic_staged,
         p4_uncertainty_calibration=args.p4_uncertainty_calibration,
+        v7_bprime_uncertainty_heads=bool(
+            getattr(args, "v7_bprime_uncertainty_heads", False)
+        ),
+        v7_bprime_uncertainty_heads_rematch=bool(
+            getattr(args, "v7_bprime_uncertainty_heads_rematch", False)
+        ),
+        min_disc_r_mean_hold=getattr(args, "min_disc_r_mean_hold", None),
         p4_head_decouple=args.p4_head_decouple,
         p4_head_decouple_decorr_only=args.p4_head_decouple_decorr_only,
         p4_v3_aleatoric_shaping=args.p4_v3_aleatoric_shaping,
@@ -1442,6 +1531,28 @@ def main() -> None:
             getattr(args, "routing_entropy_sparsity_warmup_epochs", 8)
             if getattr(args, "routing_entropy_sparsity_warmup_epochs", None) is not None
             else 8
+        ),
+        sparsity_style_save=bool(getattr(args, "sparsity_style_save", False)),
+        routing_entropy_mean_residue_min_save=getattr(
+            args, "routing_entropy_mean_residue_min_save", None
+        ),
+        routing_entropy_mean_residue_max_save=getattr(
+            args, "routing_entropy_mean_residue_max_save", None
+        ),
+        disc_occupancy_coeff_override=getattr(
+            args, "disc_occupancy_coeff_override", None
+        ),
+        disc_depth_scale_coeff_override=getattr(
+            args, "disc_depth_scale_coeff_override", None
+        ),
+        disc_depth_scale_target_override=getattr(
+            args, "disc_depth_scale_target_override", None
+        ),
+        core_radial_floor_coeff_override=getattr(
+            args, "core_radial_floor_coeff_override", None
+        ),
+        core_radial_floor_min_r_override=getattr(
+            args, "core_radial_floor_min_r_override", None
         ),
         prototype_repulsion_coeff=float(
             getattr(args, "prototype_repulsion_coeff", 0.0) or 0.0

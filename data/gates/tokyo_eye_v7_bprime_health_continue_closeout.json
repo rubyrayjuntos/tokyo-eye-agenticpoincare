@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v7_bprime_health_continue_closeout",
+  "recorded_at": "2026-07-21T13:48:00+00:00",
+  "status": "FAIL",
+  "run_id": "tokyo_eye_v7_bprime_health_continue_v1",
+  "resume": "checkpoints/v7/runs/tokyo_eye_v7_bprime_health_v1/v7_best_disc.pt",
+  "bars": {
+    "disc_r_mean_min": {
+      "threshold": 0.25,
+      "observed_final": 0.1903664730489254,
+      "observed_max": 0.21024104952812195,
+      "max_at_ge": 12,
+      "pass": false
+    },
+    "eligible_v7_best": {
+      "pass": false,
+      "blocker": "routing_entropy ~1.34–1.35 > save ceiling ~1.21"
+    },
+    "no_nan_loss": {"pass": true},
+    "train_completed": {"pass": true}
+  },
+  "note": "Depth/cone_range improved; mean disc_r peaked ~0.21 then drifted down; routing never entered save band. Do not promote.",
+  "artifacts": {
+    "v7_best_disc": "checkpoints/v7/runs/tokyo_eye_v7_bprime_health_continue_v1/v7_best_disc.pt",
+    "overlay": "checkpoints/v7/diagnostics/expert_overlay_bprime_health_continue_v1.html"
+  }
+}

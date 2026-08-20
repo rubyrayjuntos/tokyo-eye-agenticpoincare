@@ -242,6 +242,19 @@ def build_governance_params(
         "gnn_lineage": config.gnn_lineage,
         "model_version": config.model_version,
     }
+    if str(config.gnn_lineage) == "v7":
+        from experiments.training.v7 import (
+            PRODUCTION_MODULE,
+            V7_HYP_SPACE_NAME,
+        )
+
+        params["space_name"] = V7_HYP_SPACE_NAME
+        params["production_module"] = PRODUCTION_MODULE
+        params["hyp_mp_primary"] = str(
+            bool(getattr(config, "hyp_mp_primary", True))
+        ).lower()
+        params["se3_aux"] = str(bool(getattr(config, "se3_aux", False))).lower()
+        params["curvature_mode"] = "learned_log_c"
     from science.training.routing_gate_bounds import (
         CAPACITY_OUTCOME_A_VS_C,
         routing_entropy_save_ceiling,
@@ -256,8 +269,17 @@ def build_governance_params(
         params["lineage_root"] = "true"
         params["topology_only_gate"] = "true"
         params["v2_teacher"] = "disabled"
+    params["structural_disc_frozen"] = "true" if config.structural_disc_frozen else "false"
     if config.structural_disc_frozen:
         params["disc_layout_source"] = "structural_ssot_frozen"
+    else:
+        params["disc_layout_source"] = config.disc_layout_source or "gnn_learned"
+    backbone_trainable = not config.slim_moe_structural_ssot
+    if config.master_cold_lineage:
+        backbone_trainable = True
+    params["backbone_trainable"] = "true" if backbone_trainable else "false"
+    params["slim_moe_structural_ssot"] = "true" if config.slim_moe_structural_ssot else "false"
+    params["use_dehydron_barcode"] = "true" if config.use_dehydron_barcode else "false"
     try:
         from science.training.p_feature_01_gate import (
             DEFAULT_STAMP_PATH,
@@ -523,6 +545,13 @@ def _disc_scatter_candidates(
     return out
 
 
+def _is_node_feature_dim_mismatch(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    return "mat1 and mat2 shapes cannot be multiplied" in msg or (
+        "size mismatch" in msg and "node_emb" in msg
+    )
+
+
 def export_disc_governance_artifacts(
     model: nn.Module,
     config: TrainingConfig,
@@ -531,7 +560,14 @@ def export_disc_governance_artifacts(
     device: str = "cpu",
     proteins: list[dict[str, Any]] | None = None,
 ) -> dict[str, Path]:
-    """Write mandatory disc overlay + angular stats artifacts (§3.3)."""
+    """Write mandatory disc overlay + angular stats artifacts (§3.3).
+
+    When ``config.use_dehydron_barcode`` is set, biology graphs are widened with
+    the same dehydron barcode sidecars used in training before the forward pass.
+    If every candidate still fails with a node-feature width mismatch, returns
+    only ``probe_curvature_sources.json`` (overlay/stats omitted) so finalize
+    can complete without aborting the training run.
+    """
     from experiments.diagnostics.crescent_biology_projection import (
         _angular_stats_to_dict,
         _compute_angular_stats,
@@ -546,14 +582,41 @@ def export_disc_governance_artifacts(
     pdb_id = ""
     chain = "A"
     last_err: Exception | None = None
+    dim_mismatch_only = True
     for pdb_id, chain in _disc_scatter_candidates(config, proteins):
         try:
-            bio = _load_biology_arrays(pdb_id, chain, model, config.pdb_dir, device)
+            bio = _load_biology_arrays(
+                pdb_id,
+                chain,
+                model,
+                config.pdb_dir,
+                device,
+                use_dehydron_barcode=bool(config.use_dehydron_barcode),
+                use_binned_dehydron=bool(config.use_binned_dehydron),
+                dehydron_barcode_dir=config.dehydron_barcode_dir,
+            )
             break
         except RuntimeError as exc:
             last_err = exc
+            if not _is_node_feature_dim_mismatch(exc):
+                dim_mismatch_only = False
             continue
+
+    probe_path = out_dir / "probe_curvature_sources.json"
+    probe_path.write_text(
+        json.dumps(probe_curvature_sources_training(model), indent=2),
+        encoding="utf-8",
+    )
+    paths: dict[str, Path] = {"probe_curvature_sources.json": probe_path}
+
     if bio is None:
+        if dim_mismatch_only and last_err is not None and _is_node_feature_dim_mismatch(last_err):
+            logger.warning(
+                "Skipping disc overlay/angular governance artifacts: node feature "
+                "dim mismatch vs model.node_emb (%s). Wrote probe_curvature_sources only.",
+                last_err,
+            )
+            return paths
         raise last_err or RuntimeError("No structure available for disc governance export")
 
     ang = _compute_angular_stats(bio)
@@ -569,20 +632,14 @@ def export_disc_governance_artifacts(
         "checkpoint_curvature": curvature,
         "disc_layout_source": "structural_ssot_frozen",
         "angular_distribution_stats": [_angular_stats_to_dict(ang)],
+        "use_dehydron_barcode": bool(config.use_dehydron_barcode),
+        "use_binned_dehydron": bool(config.use_binned_dehydron),
     }
     stats_path.write_text(json.dumps(stats_payload, indent=2), encoding="utf-8")
 
-    probe_path = out_dir / "probe_curvature_sources.json"
-    probe_path.write_text(
-        json.dumps(probe_curvature_sources_training(model), indent=2),
-        encoding="utf-8",
-    )
-
-    return {
-        "poincare_disc_overlay.png": overlay_path,
-        "angular_distribution_stats.json": stats_path,
-        "probe_curvature_sources.json": probe_path,
-    }
+    paths["poincare_disc_overlay.png"] = overlay_path
+    paths["angular_distribution_stats.json"] = stats_path
+    return paths
 
 
 def finalize_governance_run(

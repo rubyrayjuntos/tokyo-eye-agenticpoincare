@@ -1,5 +1,18 @@
 # Dehydron Barcode Input Channel (P1) Implementation Plan
 
+> **2026-07-16 supersession:** Open parameters and ablation risks were re-locked in
+> [`docs/specs/dehydron-barcode-input-channel/design.md`](../../specs/dehydron-barcode-input-channel/design.md) §11
+> and tracked in [`tasks.md`](../../specs/dehydron-barcode-input-channel/tasks.md).
+> Do **not** treat the Global Constraints defaults below (`long_lived=2.0`, full 11-dim
+> scalars, Full arm as primary) as standing science — Phase 1 diagnostics first.
+> Scaffolding from this plan may already exist in-tree; remaining work is parameter
+> lock + isolated cold init + physics-scored audit, not a greenfield rewrite.
+
+> **2026-07-17 lineage supersession:** Training ablation is **v66 feeler + edge barcode**
+> ([`ablation.md`](../../specs/dehydron-barcode-input-channel/ablation.md)). Ignore
+> `train-v65-dbh-*` / `checkpoints/v65/runs/...` commands in the steps below — those
+> are archive paths that silently drifted after the working lineage moved to v66.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a cacheable Euclidean dehydron-midpoint witness-persistence channel to training graphs (scalars always-on; binned vector optional) and run a baseline vs scalars vs full ablation without changing the slim MoE recipe.

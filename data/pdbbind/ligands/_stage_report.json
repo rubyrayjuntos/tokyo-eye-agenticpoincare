@@ -1,0 +1,31 @@
+{
+  "n_ids": 3710,
+  "n_mol2": 0,
+  "n_sdf": 0,
+  "n_missing": 3710,
+  "coverage": 0.0,
+  "dst": "data/pdbbind/ligands",
+  "dry_run": true,
+  "missing_examples": [
+    "6r8o",
+    "3fh7",
+    "3qfd",
+    "1h6h",
+    "5iwg",
+    "6ml9",
+    "6mle",
+    "4b5w",
+    "6eog",
+    "6p89",
+    "3n9s",
+    "4wk1",
+    "4w97",
+    "3rm4",
+    "5j0d",
+    "4hpi",
+    "6e7u",
+    "5xo7",
+    "2dri",
+    "4bt5"
+  ]
+}

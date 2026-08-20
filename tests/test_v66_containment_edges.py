@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 import torch
 from torch_geometric.data import Data
 
+from experiments.training.v6.corpus import stamp_prot_pdb_paths
 from experiments.training.v6.train_loop import (
     _pad_containment_parent_node_attrs,
     _slice_residue_outputs,
     prepare_training_batch,
     residue_node_count,
+    resolve_prot_pdb_path,
 )
 from science.dtie.common.isolated_init import isolated_torch_seed
 from science.dtie.v66.chem_edge_graph import EDGE_ATTR_CHEM_DIM
@@ -149,6 +153,81 @@ def test_pad_containment_parent_attrs_matches_grown_x() -> None:
     assert padded.degree.shape[0] == 7
     assert padded.ss_onehot.shape[0] == 7
     assert padded.rho.shape[0] == 7
+
+
+def test_collect_edge_telemetry_residue_slice_with_parent_edges() -> None:
+    """Path B: residue-sliced outputs + parent MP edges must not IndexError."""
+    from science.training.edge_telemetry import collect_edge_telemetry
+
+    n_res, n_parent = 8, 2
+    n_total = n_res + n_parent
+    # Residue–residue contacts + containment edges into parents.
+    ei = torch.tensor(
+        [
+            [0, 1, 2, 3, 0, 1, 4, 5],
+            [1, 2, 3, 0, n_res, n_res + 1, n_res, n_res + 1],
+        ],
+        dtype=torch.long,
+    )
+    ea = torch.zeros(ei.size(1), EDGE_ATTR_CONTAIN_DIM)
+    ea[:, 3] = 1.0
+    data = Data(x=torch.randn(n_total, 3), edge_index=ei, edge_attr=ea)
+    data.n_residue_nodes = n_res
+    data.n_parent_nodes = n_parent
+    data.containment_edge_graph = True
+
+    class _Conv(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.radial_mlp = torch.nn.Sequential(
+                torch.nn.Linear(1, 4),
+                torch.nn.ReLU(),
+                torch.nn.Linear(4, 8),
+            )
+
+    class _Model(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.convs = torch.nn.ModuleList([_Conv()])
+
+    out = {
+        "uncertainty": {
+            "epistemic": torch.rand(n_res, 1),
+            "aleatoric": torch.rand(n_res, 1),
+        },
+        "cone_depth": torch.rand(n_res, 1),
+        "expert_weights": torch.softmax(torch.randn(n_res, 4), dim=-1),
+    }
+    ca = np.random.default_rng(0).normal(size=(n_res, 3)).astype(np.float64)
+    rec = collect_edge_telemetry(
+        _Model(),
+        data,
+        out,
+        structure_id="TOY",
+        ca_coords=ca,
+    )
+    assert rec.n_nodes == n_res
+    assert rec.n_edges == 4  # containment edges dropped
+    assert math.isfinite(rec.edge_epistemic_var_mean)
+
+
+def test_stamp_prot_pdb_paths_restamps_cache_without_pdb_path(tmp_path: Path) -> None:
+    """Corpus caches omit pdb_path; Path B needs restamp from --pdb-dir."""
+    pdb = tmp_path / "1MBN.pdb"
+    pdb.write_text("END\n")
+    proteins = [{"pdb_id": "1MBN", "pdb_path": None, "pdb_dir": None}]
+    stamp_prot_pdb_paths(proteins, tmp_path)
+    assert proteins[0]["pdb_dir"] == str(tmp_path)
+    assert proteins[0]["pdb_path"] == str(pdb)
+    assert resolve_prot_pdb_path(proteins[0]) == str(pdb)
+
+
+def test_resolve_prot_pdb_path_via_pdb_dir_when_path_missing(tmp_path: Path) -> None:
+    """resolve_prot_pdb_path uses prot['pdb_dir'] when pdb_path is unset."""
+    pdb = tmp_path / "4OBE.pdb"
+    pdb.write_text("END\n")
+    prot = {"pdb_id": "4OBE", "pdb_dir": str(tmp_path)}
+    assert resolve_prot_pdb_path(prot) == str(pdb)
 
 
 def test_prepare_training_batch_containment_attach_and_pad(

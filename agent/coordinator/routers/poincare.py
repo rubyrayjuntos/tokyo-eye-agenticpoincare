@@ -89,7 +89,7 @@ async def get_poincare_data(
             "structure_id": structure_id,
             "condition": condition,
             "curvature_c": curvature_c,
-            "model_version": rows[0].get("model_version") or "GOSPConeMapper-v5",
+            "model_version": rows[0].get("model_version") or "TokyoEye-v7",
             "residues": residues,
         }
 

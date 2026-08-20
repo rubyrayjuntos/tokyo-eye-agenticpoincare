@@ -1,330 +1,218 @@
-# TokyoEye MLflow Governance Design
+# TokyoEye MLflow-Native Governance Design
 
-**Status:** DRAFT — awaiting user review before implementation  
+**Status:** APPROVED — 2026-07-23  
 **Date:** 2026-07-23  
-**Scope:** Generalized **definition + automation** for the model lifecycle (active trunk and all future lineages). Archaeology may appear in the catalog as `status: archived` history without requiring trainer migration.  
-**Approach:** One hierarchical **model catalog JSON** drives all automations; **MLflow** holds runs, metrics, artifacts, registry versions, and aliases.  
-**Supersedes:** ad-hoc `HEALTHY_*` seals, manual “open a lineage” checklists, lineage-hardcoded process docs  
-**Seed pattern:** `tokyoeye_governance_implementation_spec.py` (manifests, VSD, promotion gate)
+**Scope:** End-to-end model lifecycle for Tokyo Eye. **MLflow is the governance system** (dedicated Postgres DB `mlflow` + artifact store + UI).  
+**Supersedes:** Dual-SSOT catalog JSON draft in earlier revisions of this file; ad-hoc `HEALTHY_*` path seals; Makefile/script-as-SSOT for train/eval/promote.  
+**Companion cookbook:** [`docs/architecture/MLflow Transformer End-to-End Management.md`](../../architecture/MLflow%20Transformer%20End-to-End%20Management.md) (API patterns; product packaging is **pyfunc**, not HF Transformers).
 
 ---
 
 ## 0. Purpose
 
-Stop lifecycle steps from being left to chance. Every new lineage / family / train / promote / resolve path must be:
+Govern Tokyo Eye **entirely inside MLflow** so that:
 
-1. **Defined** in one hierarchical catalog file  
-2. **Executed** by automation that reads that file  
-3. **Recorded** in MLflow (and mirrored as history entries in the catalog)
+1. Nothing critical to lineage lives only as a loose file that can be lost or overlooked.  
+2. The UI drill path is the institutional hierarchy.  
+3. Train → evaluate → register → alias can be triggered without external orchestration SSOTs.  
+4. Reusable tests/scorers live with the model control plane and are invoked from MLflow Projects.
 
-### Classifiers (data, not prose)
-
-| Classifier | Meaning |
-|------------|---------|
-| **model** | Product model id (root of the catalog) |
-| **lineage** | Architecture family under that model |
-| **version** | MLflow Model Registry version |
-| **experiment** | MLflow experiment path |
-| **run** | MLflow training run id |
-| **alias** | Mutable registry pointer |
-
-**Dual SSOT (clear split):**
-
-| Store | Owns |
-|-------|------|
-| **Model catalog JSON** | Hierarchy, lifecycle stage definitions, automation bindings, pointers to configs/manifests/VSD, **historical index** (run ids, registry versions, alias moves, gate stamps) |
-| **MLflow** | Actual runs, metrics, logged artifacts, registered model versions, live alias targets |
-
-Local `.pt` files are **cache only** after download from MLflow.
-
-Failure modes prevented:
-
-1. Dropped steps when opening a lineage (manual ritual)  
-2. Sacred filesystem paths as “production”  
-3. Process docs that hardcode one revision id as if it were governance  
-4. History scattered across chat / hub / random gate files with no single index  
+**Non-goals for v1:** live traffic serving, Unity Catalog, auto Docker deploy (may use `build_docker` later).
 
 ---
 
-## 0.1 MLflow platform mapping (use native surfaces)
+## 1. Principle: governance *is* MLflow
 
-We lean on MLflow for the full lifecycle. Catalog automation **orchestrates** these surfaces; it does not reinvent them.
+| Concern | Authority |
+|---------|-----------|
+| Hierarchy, history, metrics, datasets, specs, thresholds | **MLflow Tracking + Model Registry** (DB + artifacts) |
+| Live restore pointer | **`models:/TokyoEye@champion`** |
+| Staging pointer | **`models:/TokyoEye@experimental`** |
+| Code that *implements* train/infer | Repo package `science/tokyo_eye/…` + `MLproject` entry points |
+| Local `.pt` under `checkpoints/` / `HEALTHY_*` | **Archaeology / untouched transition cache** — **not** consulted by governance resolve |
 
-| Lifecycle need | MLflow surface | Our binding |
-|----------------|----------------|-------------|
-| Experiment tracking | **Tracking** (experiments, runs, params, metrics, artifacts) | Catalog `experiment` path; every train is a run |
-| Packaging | **Models** (`mlflow.pytorch` / `mlflow.pyfunc`) | Log/register the chosen artifact role (`best`, …) |
-| Versioning + named pointers | **Model Registry** + **aliases** (`models:/Name@alias`) | `@champion`, `@candidate`, `@<family>-seal` |
-| Evaluation gates | Metrics on the run + optional MLflow evaluation APIs | Catalog VSD stage before register/alias |
-| CI/CD triggers | **Webhooks** / Registry APIs | On `model_version.created`, `model_version_alias.created` / `.deleted` → CI jobs (status sync, deploy, notify) |
-| Serving (later) | **Deployments** / serving URI from alias | Resolve `@champion` only; out of band until onboard runner is wired |
+### 1.1 Separation rule (locked)
 
-**Locked choices vs common MLflow prose:**
+The MLflow governance path is **completely separate** from filesystem seals:
 
-1. **Aliases, not registry Stages** — MLflow deprecated Stages (`Staging` / `Production`) in favor of aliases/tags. We **do not** build on Stages.  
-2. **Not the Transformers flavor** — institutional copy often says “Transformers flavor” (Hugging Face). Package Tokyo Eye weights with **`mlflow.pytorch` or `mlflow.pyfunc`**, not `mlflow.transformers`. Flavor is a packaging choice, not a product identity.  
-3. **Webhooks are the preferred CI hook** — alias creation/deletion and model-version creation fire automation; the catalog CLI also remains callable for the same transitions (idempotent).  
-4. **Catalog remains the definition of stage order** — MLflow does not know “validate_definition → train → VSD → register → alias”; the catalog + CLI encode that; MLflow stores outcomes.
+1. **`resolve` / production restore** may only use `models:/TokyoEye@alias` and MLflow artifact download. **No fallback** to `HEALTHY_*`, gate JSON paths, or `gnn_lineage` package ids.  
+2. **`import-weights`** may accept an explicit local file path as a one-time **byte source** to copy into the MLflow artifact store. It does **not** import `healthy_v8` constants, does **not** delete or rewrite the source, and after import the registry must own `runs:/…` (or pyfunc) URIs — not `file://` as SSOT.  
+3. Legacy files and scripts remain on disk for easy transition / archaeology; governance automation must not depend on them at runtime.
 
----
+There is **no** separate model-catalog JSON SSOT. Manifests/gate JSON in the repo may still exist as *optional evidence files that get logged* into a run; after log, the run artifact + dataset digest are authoritative.
 
-## 1. Frozen policy decisions
-
-1. **Single catalog file** — one hierarchical JSON is the operational definition of the model and its lineages/families/history/automation hooks.  
-2. **Automations key only off the catalog (+ MLflow)** — no Makefile one-liner that bypasses catalog stage machine.  
-3. **Lifecycle stages are enumerated and mandatory** — automation refuses to skip or reorder unless the catalog marks a stage `optional` (default: required).  
-4. **Aliases replace `HEALTHY_*` as restore SSOT** — resolve `models:/{registered_model}@{alias}`.  
-5. **Promotion is automated after VSD Pass** — register → update catalog history → set alias per catalog rules (human approval only where catalog requires `approval: required`).  
-6. **Process is lineage-parameterized** — `{lineage}` / `{family}` are fields in the catalog, never the name of the governance system.  
-7. **Checkpoint cache names** — `{lineage}_{family}_{run_short}_{role}.pt`; full `mlflow_run_id` in MLflow + catalog history.  
+Legacy `science/training/gnn_lineage.py` package ids (`v6`/`v7`/`v8`) remain archaeology/compare helpers — **not** the product governance identity.
 
 ---
 
-## 2. The model catalog (single hierarchical JSON)
-
-**Path (proposed):** `data/model_catalog/tokyoeye.model.json`  
-**Schema id:** `tokyoeye.model_catalog` / `schema_version: 1`
-
-### 2.1 Hierarchy
+## 2. Hierarchy (UI drill path)
 
 ```text
-model
- └── lineages{}
-      └── families{}
-           ├── definition (experiment, package, configs, vsd, manifests)
-           ├── lifecycle[]          # ordered stages + automation
-           ├── aliases{}            # intended alias policy + current pointer summary
-           └── history[]            # append-only index into MLflow
+Registered model: TokyoEye
+  └── lineage (architecture stack): equiformer-v3-moe
+        └── domain (finite, expandable): geometric | biologic | chemical | …
+              └── subsystem / family (finite): equiformer-frontend | hyperbolic-spine | …
+                    └── run (name = capability + goal)
+                          └── registry version (integer, under the hood)
+                                └── aliases @champion | @experimental  (model-level only)
 ```
 
-### 2.2 Sketch (illustrative — values are placeholders)
-
-```json
-{
-  "schema_version": 1,
-  "schema_id": "tokyoeye.model_catalog",
-  "model": {
-    "id": "TokyoEye",
-    "registered_model_template": "TokyoEye-{lineage}",
-    "active_lineage": "<lineage_id>",
-    "lineages": {
-      "<lineage_id>": {
-        "status": "active",
-        "opened_at": "ISO-8601",
-        "package": "science.tokyo_eye.<…>",
-        "registered_model": "TokyoEye-<lineage_id>",
-        "families": {
-          "<family_id>": {
-            "experiment": "tokyoeye/<lineage_id>/<family_id>",
-            "train_config": "science/tokyo_eye/<…>/configs/train/<family>.json",
-            "vsd": "science/tokyo_eye/<…>/configs/vsd/<family>.json",
-            "data_manifest": "manifests/<…>.json",
-            "lifecycle": [
-              {
-                "stage": "validate_definition",
-                "automation": "governance.stages.validate_definition",
-                "required": true
-              },
-              {
-                "stage": "train",
-                "automation": "governance.stages.train_from_config",
-                "required": true
-              },
-              {
-                "stage": "evaluate_vsd",
-                "automation": "governance.stages.evaluate_vsd",
-                "required": true
-              },
-              {
-                "stage": "register",
-                "automation": "governance.stages.register_best",
-                "required": true,
-                "on_fail": "stop"
-              },
-              {
-                "stage": "alias",
-                "automation": "governance.stages.set_alias",
-                "required": true,
-                "alias": "candidate",
-                "approval": "none"
-              },
-              {
-                "stage": "promote_champion",
-                "automation": "governance.stages.set_alias",
-                "required": false,
-                "alias": "champion",
-                "approval": "required"
-              }
-            ],
-            "aliases": {
-              "champion": { "registry_version": null, "mlflow_run_id": null },
-              "candidate": { "registry_version": null, "mlflow_run_id": null }
-            },
-            "history": [
-              {
-                "at": "ISO-8601",
-                "event": "register",
-                "mlflow_run_id": "<uuid>",
-                "registry_version": 1,
-                "artifact_role": "best",
-                "git_commit": "<sha>",
-                "train_config_hash": "<hash>",
-                "vsd_id": "<id>",
-                "gate_status": "pass",
-                "aliases_set": ["candidate"]
-              }
-            ]
-          }
-        }
-      }
-    }
-  }
-}
-```
-
-### 2.3 What “includes historical” means
-
-- **Deep history** (metrics, plots, full artifact bytes) stays in **MLflow**.  
-- **Catalog `history[]`** is the **append-only institutional index**: every register / alias move / gate Pass|Fail with `mlflow_run_id` + `registry_version` + config/VSD hashes + git commit.  
-- Closing a lineage sets `status: archived` but **retains** its families and history (no delete).  
-- Opening a lineage is a **catalog transaction** (add node + required families + lifecycle templates), not a wiki edit.
-
-### 2.4 Definition docs
-
-Human-readable docs (README, sprint notes) **must cite catalog paths** (`model.lineages.<id>.families.<id>`). They are narrative, not SSOT. Automation never reads prose for stage order.
-
----
-
-## 3. Lifecycle stages (locked set)
-
-Every family lifecycle is an ordered list. Default stages:
-
-| Stage | Purpose | Automation |
-|-------|---------|------------|
-| `validate_definition` | Configs/manifests/VSD exist; hashes recordable; experiment path legal | Fail if missing |
-| `ensure_mlflow` | Experiment created; tracking URI set | Idempotent |
-| `train` | Run training from family’s `train_config` | Logs run under catalog experiment |
-| `evaluate_vsd` | Apply family’s VSD to run metrics | Fail → no register |
-| `register` | Log artifact role → Model Registry version | Writes catalog history entry |
-| `alias` | Set alias per stage config (`candidate`, seals, …) | MLflow alias + catalog `aliases` + history |
-| `promote_champion` | Optional; may require approval | Same as alias with `approval: required` |
-| `resolve_check` | Smoke: load `models:/…@alias` | CI / pre-deploy |
-
-**Rule:** CLI `governance run --lineage L --family F` executes stages in order and **stops on first required failure**. No silent skip.
-
-**Opening a new lineage:**  
-`governance lineage open --id <id> --from-template default` → inserts lineage + required families + default lifecycle from a **template in the catalog schema** (or `templates/` referenced by catalog). No hand-built Makefile forest.
-
----
-
-## 4. Identity + MLflow mapping
-
-### 4.1 Experiment path
-
-From catalog: `families.<family>.experiment`  
-Template convention: `tokyoeye/{lineage}/{family}`
-
-### 4.2 Registered model
-
-From catalog: `lineages.<id>.registered_model`  
-Template: `TokyoEye-{lineage}`
-
-### 4.3 Resolve order
-
-1. Explicit model URI  
-2. Catalog `aliases.<name>` → registry version / run id  
-3. Fail  
-
-### 4.4 Cache naming
+### 2.1 Experiment path (locked)
 
 ```text
-{lineage}_{family}_{run_id_short8}_{artifact_role}.pt
+tokyoeye/equiformer-v3-moe/{domain}/{subsystem}
+```
+
+Example: `tokyoeye/equiformer-v3-moe/chemical/affinity-head`  
+Run name example: `affinity_core_pearson_ge_0.40`
+
+### 2.2 Domains (start set; may add)
+
+| Domain | Intent |
+|--------|--------|
+| `geometric` | Geometry / hyperbolic / SE(3) structure of the representation |
+| `biologic` | Biology-facing probes (teleconnections, epistasis, basins, …) |
+| `chemical` | Ligand / affinity / chemistry heads and related gates |
+
+### 2.3 Subsystems / families (start set; may add)
+
+| Subsystem | Intent |
+|-----------|--------|
+| `equiformer-frontend` | SE(3) Equiformer frontend |
+| `hyperbolic-spine` | Hyperbolic backbone |
+| `moe-router` | Mixture-of-Experts routing |
+| `affinity-head` | Affinity / binding head |
+| `full-stack` | Joint stack; preferred path toward `@champion` |
+
+### 2.4 Product version numbers
+
+Package labels like `v8` are **optional run tags** (`package_revision`), not governance identity. Operators navigate by model → lineage → domain → subsystem → run → alias.
+
+Registry version integers (1, 2, 3…) are MLflow-internal; aliases hide them for restore.
+
+---
+
+## 3. Aliases (model-level only)
+
+| Alias | Meaning |
+|-------|---------|
+| `@champion` | Live / production restore |
+| `@experimental` | Promoted-but-not-live staging |
+
+No per-domain or per-subsystem aliases (avoids confusion about what is live). Domain/subsystem live only in the experiment path and run tags.
+
+Resolve:
+
+```text
+models:/TokyoEye@champion
+models:/TokyoEye@experimental
 ```
 
 ---
 
-## 5. Config packs (referenced by catalog, not parallel SSOTs)
+## 4. What is stored where (all in MLflow)
 
-```
-science/tokyo_eye/governance/     # shared stage machine + catalog IO
-science/tokyo_eye/{lineage}/configs/train/*.json
-science/tokyo_eye/{lineage}/configs/vsd/*.json
-manifests/                        # data splits
-data/model_catalog/tokyoeye.model.json
-```
-
-Train/VSD JSON remain the **payload** for a stage; the **catalog** decides *which* payload and *which* stage runs next.
-
----
-
-## 6. Automation surface
-
-| Entry | Behavior |
-|-------|----------|
-| `experiments/training/governance_cli.py` (name TBD) | `lineage open`, `run`, `promote`, `status`, `sync-history` |
-| `governance run -l L -f F` | Execute family’s `lifecycle[]` via MLflow Tracking |
-| `governance promote -l L -f F --alias champion` | VSD+approval gates from catalog, then Registry alias |
-| `governance status -l L` | Print catalog aliases + last history vs live MLflow |
-| `governance sync-history` | Reconcile catalog history with MLflow registry (detect drift) |
-| **MLflow webhooks** | On `model_version.created` / `model_version_alias.created` / `.deleted` → CI: sync catalog, smoke `resolve_check`, notify, optional deploy |
-
-CI: on train PRs / scheduled jobs, invoke `governance run` / `status` — not ad-hoc train scripts that skip register/alias. Webhooks cover **post-registry** events so promotion is not “hope someone ran the next script.”
-
-Makefile targets become **thin wrappers** around the CLI with lineage/family args from the catalog’s `active_lineage`.
+| Asset | MLflow surface |
+|-------|----------------|
+| Corpus / splits | `mlflow.data` + `log_input` (digest on the run) |
+| Sprint / gate / prereg specs | Run or model-version **artifacts** |
+| Threshold packs (VSD) | Artifacts + `MetricThreshold` / evaluate gate |
+| Reusable scorers / diagnostic tests | Shared eval components logged once; invoked from Project `evaluate` |
+| Weights + inference contract | **`mlflow.pyfunc`** with `load_context` (MoE / Equiformer must not pickle in `__init__`) |
+| Orchestration | **`MLproject`** entry points |
+| System telemetry | `mlflow.enable_system_metrics_logging()` where useful |
+| CI hooks | Registry webhooks on version/alias events (optional follow-on) |
 
 ---
 
-## 7. Contract / onboard
+## 5. Orchestration: Projects + PyFunc (locked)
 
-- Onboard production pointer reads catalog `active_lineage` + family alias policy (default `@champion`).  
-- Runner resolves MLflow URI; cache optional.  
-- Normalizer `run_inference` adapter remains a separate completion item where unfinished.
+**(3) Both:**
+
+1. **MLflow Project** entry points orchestrate the mandatory order:  
+   `train` → `evaluate` → `register` → `set_alias`  
+2. **PyFunc `PythonModel`** is what aliases load for inference.  
+3. Shared scorers/tests are generalized and stored/attached via MLflow for reuse — not one-off post-run shell scripts.
+
+**Hard rule:** Alias moves to `@experimental` or `@champion` only after Project `evaluate` Pass (thresholds). Fail → stop; no silent promote.
+
+**Hard rule:** No Makefile / wrapper script as SSOT. Thin make targets may call `mlflow run` for DX only.
+
+---
+
+## 6. Run tags (mandatory)
+
+Every governed run sets at least:
+
+| Tag / param | Example |
+|-------------|---------|
+| `model` | `TokyoEye` |
+| `lineage` | `equiformer-v3-moe` |
+| `domain` | `chemical` |
+| `subsystem` | `affinity-head` |
+| `capability_goal` | `affinity_core_pearson_ge_0.40` |
+| `package_revision` | optional, e.g. `v8` |
+| `git_sha` | commit |
+
+---
+
+## 7. Packaging
+
+- Use **`mlflow.pyfunc.log_model`** (and/or `mlflow.pytorch` for weights as artifacts consumed in `load_context`).  
+- **Do not** use `mlflow.transformers` (Hugging Face) for Tokyo Eye.  
+- **Do not** use deprecated registry Stages; aliases only.  
+- Signatures via `infer_signature` on representative graph/ligand inputs when practical.
 
 ---
 
 ## 8. Migration
 
-1. Create catalog with `active_lineage` + families for current trunk work.  
-2. Backfill `history[]` from known seals (affinity / spine) with `mlflow_run_id` when available; if a seal never had a run id, **register once** then record.  
-3. Retire hub/AGENTS language that treats local HEALTHY paths as SSOT.  
-4. Mark older lineages `archived` in catalog with history stubs as needed (optional).
+1. Ensure registered model `TokyoEye` exists on the `mlflow` DB.  
+2. Backfill: register current healthy spine/affinity weights once; set `@experimental` then `@champion` after evaluate Pass where evidence already exists.  
+3. Retire hub/AGENTS language that treats local `HEALTHY_*` paths as SSOT (point to aliases).  
+4. Leave legacy GNN lineage registry for archaeology; new work uses this hierarchy only.  
+5. Log existing prereg/closeout JSON as artifacts on backfill runs (optional but preferred).
 
 ---
 
-## 9. Out of scope (later)
+## 9. Acceptance
 
-- Object store tiering beyond MLflow artifact store  
-- Live traffic drift monitors  
-- Rich biophysical plugin registry (stub hooks OK on `evaluate_vsd`)  
-- Auto-writing sprint prose from catalog  
-
----
-
-## 10. Acceptance
-
-1. Catalog schema validated by unit tests (hierarchy + required lifecycle stages).  
-2. `governance lineage open` creates a legal node; `governance run` cannot skip a required stage.  
-3. Train smoke: catalog-driven run → MLflow metrics/artifacts → register → history append → alias.  
-4. `governance status` detects catalog vs MLflow alias drift.  
-5. Docs: AGENTS/hub point to **catalog + aliases**, not sacred paths; process language stays lineage-agnostic.  
-6. No promote-by-file-copy path.
+1. Experiment path helper enforces domain ∈ start set ∪ registered extensions and subsystem ∈ start set ∪ extensions.  
+2. Project entry points refuse `set_alias` without evaluate Pass.  
+3. `models:/TokyoEye@champion` and `@experimental` resolve after a smoke register.  
+4. PyFunc loads via `load_context` without pickling expert weights in `__init__`.  
+5. Docs: AGENTS / hub cite MLflow aliases + experiment path, not sacred `.pt` paths.  
+6. No dual catalog JSON required for automation.
 
 ---
 
-## 11. Locked decisions
+## 10. Locked decisions
 
 | # | Decision |
 |---|----------|
-| 1 | Single hierarchical `tokyoeye.model.json` catalog — **LOCKED** |
-| 2 | Automations key off catalog; MLflow holds deep run/registry state — **LOCKED** |
-| 3 | Mandatory ordered lifecycle stages; no silent skip — **LOCKED** |
-| 4 | Aliases replace HEALTHY restore SSOT — **LOCKED** |
-| 5 | History index in catalog; bytes/metrics in MLflow — **LOCKED** |
-| 6 | Shared `science/tokyo_eye/governance/` — **LOCKED** |
-| 7 | MLflow Tracking + Registry aliases + webhooks; **no** Stages; **no** Transformers flavor — **LOCKED** |
+| 1 | MLflow alone is governance SSOT — **LOCKED** |
+| 2 | Hierarchy: model → lineage → domain → subsystem → run — **LOCKED** |
+| 3 | Experiment path `tokyoeye/equiformer-v3-moe/{domain}/{subsystem}` — **LOCKED** |
+| 4 | Run name = capability + goal — **LOCKED** |
+| 5 | Aliases only on `TokyoEye`: `@champion`, `@experimental` — **LOCKED** |
+| 6 | Projects + PyFunc (option 3) — **LOCKED** |
+| 7 | No product version numbers as identity; package_revision optional tag — **LOCKED** |
+| 8 | Separation: resolve/promote path never falls back to HEALTHY_*; import-weights copies bytes without deleting sources — **LOCKED** |
+| 9 | **Ops via MLflow HTTP API** (`http://localhost:5000` from host / `http://mlflow:5000` in Docker network). The MLflow **service is the API** (UI is one client). Agent/governance use Python `MlflowClient` / fluent API — not Make, not docker-exec for routine ops — **LOCKED** |
+| 10 | **Artifact proxy (`--serve-artifacts`)** so host clients can full read/write without sharing `/app` filesystem paths — **LOCKED** |
+| 11 | **No Make for MLflow governance** — **LOCKED** |
 
 ---
 
-## 12. Next step
+## 11. Ops path vs UI
 
-User reviews this file. On approval → implementation plan, then code (catalog schema + CLI stage machine first).
+| Surface | Role |
+|---------|------|
+| `http://localhost:5000` | **Tracking + Registry + Artifact HTTP API** and the browser UI |
+| Python `MlflowClient` / `mlflow.*` | Preferred agent and automation plane (request/response) |
+| `tokyoeye_science` | Still valid for long training jobs; not required for registry/artifact API ops once serve-artifacts is on |
+| Make / Makefile | **Not** used for MLflow lifecycle |
+
+Server flags (compose): `--serve-artifacts`, `--artifacts-destination /app/mlflow-artifacts`, `--default-artifact-root mlflow-artifacts:/`.
+
+**Note:** Experiments created *before* the proxy default keep filesystem `artifact_location` values; new experiments use `mlflow-artifacts:/`. Host full-write works for new experiments immediately; legacy experiment roots can be left as history or migrated separately without touching `@champion` / `@experimental`.

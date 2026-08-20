@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import shutil
 from pathlib import Path
 
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_CONTRACT_PATH = _REPO_ROOT / "science" / "contracts" / "onboard_contract.yaml"
+_ALLOW_LEGACY_PROMOTE_ENV = "TOKYOEYE_ALLOW_LEGACY_CONTRACT_PROMOTE"
 
 
 def _contract_path(override: Path | None = None) -> Path:
@@ -36,9 +38,12 @@ def _write_contract(contract: dict, contract_path: Path | None = None) -> None:
 
 
 def _dest_subdir_for_model(model_id: str) -> str:
-    if "v65" in model_id or "v6.5" in model_id or model_id.endswith("_v65"):
+    mid = model_id.lower()
+    if "tokyo_eye" in mid or mid.endswith("_v7") or mid == "v7":
+        return "v7"
+    if "v65" in mid or "v6.5" in mid or mid.endswith("_v65"):
         return "v65"
-    if "v5" in model_id and "v6" not in model_id:
+    if "v5" in mid and "v6" not in mid:
         return "v5"
     return "v6"
 
@@ -49,6 +54,12 @@ def promote_checkpoint(
     contract_path: Path | None = None,
 ) -> dict[str, str]:
     """Copy checkpoint into repo checkpoints tree and register in contract."""
+    if config.status == "production" and not _legacy_contract_promote_allowed():
+        raise RuntimeError(
+            "Legacy promote_checkpoint cannot mutate active production. "
+            "Use science.tokyo_eye.governance promote/set-alias for TokyoEye, "
+            f"or set {_ALLOW_LEGACY_PROMOTE_ENV}=true for archaeology-only work."
+        )
     src = config.checkpoint_path.resolve()
     if not src.is_file():
         raise FileNotFoundError(f"Checkpoint not found: {src}")
@@ -102,14 +113,19 @@ def promote_checkpoint(
     return result
 
 
+def _legacy_contract_promote_allowed() -> bool:
+    raw = os.environ.get(_ALLOW_LEGACY_PROMOTE_ENV, "")
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
     parser = argparse.ArgumentParser(description="Promote v6 checkpoint into onboard contract")
     src = parser.add_mutually_exclusive_group(required=True)
     src.add_argument("--checkpoint-path", help="Path to .pt checkpoint file")
     src.add_argument("--mlflow-run-id", help="MLflow run id (uses checkpoint_path tag or artifact)")
-    parser.add_argument("--checkpoint-id", default="tokyo_eyes_v6_candidate")
-    parser.add_argument("--model-id", default="gospc_v6")
+    parser.add_argument("--checkpoint-id", default="tokyo_eye_v7_candidate")
+    parser.add_argument("--model-id", default="tokyo_eye_v7")
     parser.add_argument("--status", choices=["candidate", "production"], default="candidate")
     parser.add_argument("--run-id", default=None, help="Optional MLflow run id for audit (with --checkpoint-path)")
     parser.add_argument(

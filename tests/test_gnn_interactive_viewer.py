@@ -15,6 +15,7 @@ from science.dtie.v6.visualization.interactive_viewer import (
     disc_payload_from_nodes,
     disc_xy_from_model_output,
     investigation_scores,
+    physics_investigation_scores,
     write_interactive_html,
     write_poincare_disc_html,
     _format_pdb_atom_name,
@@ -26,7 +27,7 @@ def _sample_node(res_index: int, *, epistemic: float, depth: float) -> GNNNodeOu
     return GNNNodeOutput(
         residue_index=res_index,
         chain_label="A",
-        input_features=np.zeros(4),
+        input_features=np.array([10.0 + res_index, float(res_index % 2), 1.0, 0.3]),
         projections=np.zeros(8),
         cone_depth=depth,
         cone_width=0.5,
@@ -111,13 +112,47 @@ class TestInteractiveViewerHelpers:
         assert inv[1] > inv[0]
         assert inv[1] > inv[2]
 
+    def test_physics_investigation_prefers_tau_underwrap(self) -> None:
+        rho = np.array([30.0, 5.0, 20.0])
+        tau = np.array([0.0, 1.0, 1.0])
+        phys = physics_investigation_scores(rho, tau)
+        assert phys[1] > phys[0]
+        assert phys[1] > phys[2]
+
     def test_disc_payload_includes_aleatoric_and_investigation(self) -> None:
         nodes = [_sample_node(i, epistemic=0.2 + i * 0.1, depth=float(i)) for i in range(1, 5)]
         for i, node in enumerate(nodes, start=1):
             node.aleatoric_uncertainty = 0.1 * i
             node.hyp_projections = np.array([0.1 * i, 0.05 * i])
         points = disc_payload_from_nodes(nodes)
-        assert all("aleatoric" in p and "investigation" in p for p in points)
+        assert all(
+            "aleatoric" in p
+            and "investigation" in p
+            and "physics_investigation" in p
+            and "rho" in p
+            and "tau" in p
+            for p in points
+        )
+
+    def test_disc_color_scale_matches_ngl_high_red(self, tmp_path: Path) -> None:
+        nodes = [_sample_node(i, epistemic=0.5 + i * 0.1, depth=float(i)) for i in range(1, 6)]
+        for i, node in enumerate(nodes, start=1):
+            node.hyp_projections = np.array([0.1 * i, 0.05 * i])
+        out = tmp_path / "9est_poincare_disc.html"
+        write_poincare_disc_html(
+            structure_id="9est",
+            points=disc_payload_from_nodes(nodes),
+            model_version="GOSPConeMapper-v6",
+            output_path=out,
+            curvature=1.2,
+        )
+        text = out.read_text(encoding="utf-8")
+        assert "physics_investigation" in text
+        assert 'value="physics_investigation" selected' in text
+        assert "evidential · experimental" in text
+        # low=blue, high=red (matches NGL RdYlBu + colorReverse)
+        assert "var r = t < 0.5 ? Math.round(t * 2 * 255) : 255" in text
+        assert "Match NGL RdYlBu + colorReverse" in text
 
     def test_interactive_viewer_enabled_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("GNN_INTERACTIVE_HTML", raising=False)

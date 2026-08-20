@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "gate": "kras_g12_hyperbolic_latent_graft_prereg",
+  "recorded_at": "2026-07-21T05:45:00+00:00",
+  "checkpoint_ssot": "experiments.training.v66.healthy_fix1.FIX1_SPARSITY_CHAMPION_CKPT",
+  "spec": "docs/specs/kras-topo-structural-inference/kras-g12-hyperbolic-latent-graft-prereg.md",
+  "prerequisite": "data/gates/kras_g12_neighborhood_graft_closeout.json",
+  "architecture": {
+    "intervention_layer": "post_lift_x_hyp",
+    "not": "hyperbolic_message_passing",
+    "ssot": "docs/audit/EUCLIDEAN_CONSTRUCTION_HYPERBOLIC_INFERENCE.md"
+  },
+  "arm": {"name": "off", "wt": "4LPK", "mut": "5US4", "chain": "A"},
+  "neighborhood": {
+    "seed_resseq": 12,
+    "policy": "same_as_child_2_N12",
+    "include_mut_ca_neighbors_of_12": true,
+    "include_switch_lock_partners": [32, 60, 61],
+    "ca_cutoff_a": 10.0
+  },
+  "graft": {
+    "copy": ["x_hyp_or_logmap0_at_N12"],
+    "keep_euclidean": ["data.x", "edges", "encoder_h_path"],
+    "re_execute": "downstream_of_lift_only"
+  },
+  "pass_form": {
+    "primary": [
+      "delta_rho_hyp_depth > delta_rho_euc_neigh_on_hyp_depth",
+      "rho(depth_hyp_graft, depth_mut) > rho(depth_hyp_scramble, depth_mut)"
+    ],
+    "panel": "off_arm_only",
+    "metric": "spearman_hyperbolic_depth_dist0_aligned_shared_resseqs"
+  },
+  "forbidden_until_grade": [
+    "Changing Pass bars after inspecting hyp graft depth",
+    "Treating disc/Klein as Pass",
+    "Relocating MP trunk into hyperbolic space under this stamp",
+    "Adding ON arm or G12V/C into this stamp"
+  ]
+}

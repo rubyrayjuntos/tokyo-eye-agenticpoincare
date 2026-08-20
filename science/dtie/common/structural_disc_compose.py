@@ -626,3 +626,43 @@ def attach_structural_disc_for_forward(
         artifact,
         residue_ids=list(prot.get("residue_ids") or []),
     )
+
+
+def attach_hyperbolic_mp_graph_for_forward(
+    graph_data: Any,
+    prot: dict[str, Any],
+    curvature_c: float,
+    *,
+    use_cache: bool = True,
+    k_neighbors: int = 8,
+) -> Any:
+    """Attach hyperbolic k-NN edges for message passing without freezing SSOT lift.
+
+    Sets ``hyperbolic_edge_index`` / ``hyperbolic_edge_attr`` / ``hyperbolic_graph``
+    from the structural disc compose SSOT, but does **not** set
+    ``structural_z_disc_frozen`` — learned Radial/Angular heads remain active.
+    Used for S4 (hyperbolic MP during training) stacked with Fix-1.
+    """
+    import torch
+
+    from science.dtie.common.hyperbolic_disc_graph import build_hyperbolic_disc_graph
+
+    artifact = compose_from_training_prot(
+        prot, curvature_c, use_cache=use_cache
+    )
+    ids = list(prot.get("residue_ids") or artifact.residue_ids)
+    z = z_disc_matrix_for_residue_ids(artifact, ids)
+    c = float(artifact.curvature_c)
+    device = _pyg_data_device(graph_data)
+    hyp_ei, hyp_ea = build_hyperbolic_disc_graph(z, c, k_neighbors=k_neighbors)
+    graph_data.hyperbolic_edge_index = torch.tensor(hyp_ei, dtype=torch.long, device=device)
+    graph_data.hyperbolic_edge_attr = torch.tensor(hyp_ea, dtype=torch.float32, device=device)
+    graph_data.hyperbolic_graph = True
+    num_nodes = int(z.shape[0])
+    hyp_degree = torch.zeros(num_nodes, dtype=torch.long, device=device)
+    if hyp_ei.size > 0:
+        src = graph_data.hyperbolic_edge_index[0]
+        hyp_degree.scatter_add_(0, src, torch.ones_like(src, dtype=torch.long))
+    graph_data.hyperbolic_degree = hyp_degree
+    # Do not overwrite Cα ``degree`` / freeze lift — learned path stays open.
+    return graph_data

@@ -165,6 +165,10 @@ class GraphBuilder:
 
         data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
         data.sasa = torch.tensor(sasa, dtype=torch.float32)
+        data.ca_coords = torch.tensor(
+            [[r.ca_x, r.ca_y, r.ca_z] for r in graph.residues],
+            dtype=torch.float32,
+        )
 
         # --- V6 topological features ---
 

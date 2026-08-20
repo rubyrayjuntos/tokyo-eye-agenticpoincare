@@ -51,30 +51,60 @@ _BOND_TYPE_TO_ROLE = {
 
 def pad_role_edge_attr_for_chem(
     edge_attr: torch.Tensor | np.ndarray,
+    *,
+    ha_edges: bool = False,
 ) -> torch.Tensor | np.ndarray:
-    """Insert two zero one-hot columns after the base 5 role slots (before aux)."""
+    """Insert two zero one-hot columns after the base 5 role slots (before aux).
+
+    ``EDGE_ATTR_ROLE_HA_DIM`` equals ``EDGE_ATTR_CHEM_DIM`` (both 17) — when
+    ``ha_edges=True``, width 17 is treated as role+HA, not chem-MVP.
+    """
     is_torch = isinstance(edge_attr, torch.Tensor)
     ea = edge_attr if is_torch else np.asarray(edge_attr)
+    from science.dtie.v66.ha_edge_graph import (
+        EDGE_ATTR_CHEM_HA_DIM,
+        EDGE_ATTR_ROLE_HA_DIM,
+        HA_AUX_DIM,
+    )
+
+    if ea.shape[-1] == EDGE_ATTR_CHEM_HA_DIM:
+        return ea
+    # Role+HA width collides with chem-MVP width — flag disambiguates.
+    if bool(ha_edges) and ea.shape[-1] == EDGE_ATTR_ROLE_HA_DIM:
+        head = ea[..., : GEO_DIM + NUM_ROLE_RELATIONS]
+        mid_aux = ea[..., GEO_DIM + NUM_ROLE_RELATIONS : EDGE_ATTR_ROLE_DIM]
+        ha = ea[..., EDGE_ATTR_ROLE_DIM : EDGE_ATTR_ROLE_DIM + HA_AUX_DIM]
+        if is_torch:
+            zeros = torch.zeros(
+                *ea.shape[:-1],
+                2,
+                dtype=ea.dtype,
+                device=ea.device,
+            )
+            return torch.cat([head, zeros, mid_aux, ha], dim=-1)
+        zeros = np.zeros((*ea.shape[:-1], 2), dtype=ea.dtype)
+        return np.concatenate([head, zeros, mid_aux, ha], axis=-1)
     if ea.shape[-1] == EDGE_ATTR_CHEM_DIM:
         return ea
-    if ea.shape[-1] != EDGE_ATTR_ROLE_DIM:
-        raise ValueError(
-            f"expected role edge_attr width {EDGE_ATTR_ROLE_DIM} or "
-            f"{EDGE_ATTR_CHEM_DIM}, got {ea.shape[-1]}"
-        )
-    # [geo | role5 | aux...] → [geo | role5 | chem2zeros | aux...]
-    head = ea[..., : GEO_DIM + NUM_ROLE_RELATIONS]
-    aux = ea[..., GEO_DIM + NUM_ROLE_RELATIONS :]
-    if is_torch:
-        zeros = torch.zeros(
-            *ea.shape[:-1],
-            2,
-            dtype=ea.dtype,
-            device=ea.device,
-        )
-        return torch.cat([head, zeros, aux], dim=-1)
-    zeros = np.zeros((*ea.shape[:-1], 2), dtype=ea.dtype)
-    return np.concatenate([head, zeros, aux], axis=-1)
+    if ea.shape[-1] == EDGE_ATTR_ROLE_DIM:
+        # [geo | role5 | aux...] → [geo | role5 | chem2zeros | aux...]
+        head = ea[..., : GEO_DIM + NUM_ROLE_RELATIONS]
+        aux = ea[..., GEO_DIM + NUM_ROLE_RELATIONS :]
+        if is_torch:
+            zeros = torch.zeros(
+                *ea.shape[:-1],
+                2,
+                dtype=ea.dtype,
+                device=ea.device,
+            )
+            return torch.cat([head, zeros, aux], dim=-1)
+        zeros = np.zeros((*ea.shape[:-1], 2), dtype=ea.dtype)
+        return np.concatenate([head, zeros, aux], axis=-1)
+    raise ValueError(
+        f"expected role edge_attr width {EDGE_ATTR_ROLE_DIM}, "
+        f"{EDGE_ATTR_ROLE_HA_DIM}, {EDGE_ATTR_CHEM_DIM}, or "
+        f"{EDGE_ATTR_CHEM_HA_DIM}, got {ea.shape[-1]} (ha_edges={ha_edges})"
+    )
 
 
 def _parse_canonical_residue_id(
@@ -183,7 +213,8 @@ def attach_chem_edge_graph(
     device = data.edge_index.device
     dtype = data.edge_attr.dtype if data.edge_attr is not None else torch.float32
 
-    padded = pad_role_edge_attr_for_chem(data.edge_attr)
+    ha_mode = bool(getattr(data, "ha_edge_graph", False))
+    padded = pad_role_edge_attr_for_chem(data.edge_attr, ha_edges=ha_mode)
     if not isinstance(padded, torch.Tensor):
         padded = torch.tensor(padded, dtype=dtype, device=device)
     else:
@@ -195,6 +226,11 @@ def attach_chem_edge_graph(
         structure_id=structure_id,
         chain_label=chain_label,
     )
+
+    from science.dtie.v66.ha_edge_graph import EDGE_ATTR_CHEM_HA_DIM
+
+    ha_mode = ha_mode or (padded.size(-1) == EDGE_ATTR_CHEM_HA_DIM)
+    attr_dim = EDGE_ATTR_CHEM_HA_DIM if ha_mode else EDGE_ATTR_CHEM_DIM
 
     new_src: list[int] = []
     new_dst: list[int] = []
@@ -212,7 +248,7 @@ def attach_chem_edge_graph(
             (i, j, diff),
             (j, i, -diff),
         ):
-            row = torch.zeros(EDGE_ATTR_CHEM_DIM, dtype=dtype, device=device)
+            row = torch.zeros(attr_dim, dtype=dtype, device=device)
             row[0] = float(vec[0])
             row[1] = float(vec[1])
             row[2] = float(vec[2])

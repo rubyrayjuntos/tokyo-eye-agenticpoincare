@@ -72,6 +72,7 @@ def test_master_cold_tracker_skips_duplicate_topology_only_gate(
 ) -> None:
     """Config logs topology_only_gate; governance must not re-log the same key."""
     mlflow = pytest.importorskip("mlflow")
+    monkeypatch.setenv("MLFLOW_ALLOW_FILE_STORE", "true")
     from science.training.config import apply_master_cold_dehydron_config
     from science.training.tracking import TrainingTracker
 
@@ -185,6 +186,7 @@ def test_governance_epoch_metrics_prefers_inference_routing() -> None:
 
 def test_p_mlflow_01_schema_on_finished_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     mlflow = pytest.importorskip("mlflow")
+    monkeypatch.setenv("MLFLOW_ALLOW_FILE_STORE", "true")
 
     from science.training.tracking import TrainingTracker
 
@@ -210,6 +212,7 @@ def test_p_mlflow_01_schema_on_finished_run(tmp_path: Path, monkeypatch: pytest.
         out_dir: Path,
         *,
         device: str = "cpu",
+        **_ignored: object,
     ) -> dict[str, Path]:
         out_dir.mkdir(parents=True, exist_ok=True)
         paths = {
@@ -302,3 +305,88 @@ def test_export_disc_governance_artifacts_requires_structure(
     assert paths["poincare_disc_overlay.png"].is_file()
     stats = json.loads(paths["angular_distribution_stats.json"].read_text())
     assert "angular_distribution_stats" in stats
+
+
+def test_export_passes_dehydron_barcode_flags_to_biology_loader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Governance must widen graphs with barcode sidecars when training used them."""
+    captured: dict[str, object] = {}
+
+    class _Bio:
+        structure_id = "4OBE"
+        chain = "A"
+        disc_layout_source = "structural_ssot_frozen"
+        disc_xy = [[0.1, 0.0], [0.2, 0.1]]
+        disc_r = [0.1, 0.22]
+        disc_theta_deg = [0.0, 26.5]
+        rho = [0.1, 0.9]
+        dehydron = [True, False]
+        res_ids = ["A:1:", "A:2:"]
+        cone_depth = [0.5, 0.6]
+        n_residues = 2
+
+    def _fake_load(pdb_id, chain, model, pdb_dir, device, **kwargs):
+        captured.update(kwargs)
+        captured["pdb_id"] = pdb_id
+        return _Bio()
+
+    monkeypatch.setattr(
+        "experiments.diagnostics.crescent_biology_projection._load_biology_arrays",
+        _fake_load,
+    )
+    monkeypatch.setattr(
+        "experiments.diagnostics.crescent_biology_projection._plot_composite",
+        lambda *a, **k: None,
+    )
+    monkeypatch.setattr(
+        "experiments.diagnostics.crescent_biology_projection._compute_angular_stats",
+        lambda bio: type("A", (), {"n_dehydron": 1, "n_non": 1})(),
+    )
+    monkeypatch.setattr(
+        "experiments.diagnostics.crescent_biology_projection._angular_stats_to_dict",
+        lambda ang: {"ok": True},
+    )
+
+    barcode_dir = tmp_path / "barcodes"
+    barcode_dir.mkdir()
+    cfg = TrainingConfig(
+        output_dir=tmp_path / "run",
+        pdb_dir=tmp_path / "pdb",
+        disc_scatter_structure="4OBE:A",
+        use_dehydron_barcode=True,
+        use_binned_dehydron=False,
+        dehydron_barcode_dir=barcode_dir,
+        device="cpu",
+    )
+    model = _StubModel()
+    paths = export_disc_governance_artifacts(model, cfg, tmp_path / "gov", device="cpu")
+    assert captured["use_dehydron_barcode"] is True
+    assert captured["use_binned_dehydron"] is False
+    assert Path(captured["dehydron_barcode_dir"]) == barcode_dir
+    assert "poincare_disc_overlay.png" in paths
+    assert "angular_distribution_stats.json" in paths
+    assert "probe_curvature_sources.json" in paths
+
+
+def test_export_skips_overlay_on_node_dim_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _boom(*_a, **_k):
+        raise RuntimeError("mat1 and mat2 shapes cannot be multiplied (491x4 and 15x128)")
+
+    monkeypatch.setattr(
+        "experiments.diagnostics.crescent_biology_projection._load_biology_arrays",
+        _boom,
+    )
+    cfg = TrainingConfig(
+        output_dir=tmp_path / "run",
+        pdb_dir=tmp_path / "pdb",
+        disc_scatter_structure="4OBE:A",
+        use_dehydron_barcode=True,
+        dehydron_barcode_dir=tmp_path / "barcodes",
+        device="cpu",
+    )
+    paths = export_disc_governance_artifacts(_StubModel(), cfg, tmp_path / "gov", device="cpu")
+    assert set(paths) == {"probe_curvature_sources.json"}
+    assert paths["probe_curvature_sources.json"].is_file()

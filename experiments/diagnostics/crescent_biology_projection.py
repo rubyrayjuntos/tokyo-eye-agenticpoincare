@@ -413,10 +413,27 @@ def _load_biology_arrays(
     device: str,
     *,
     use_structural_disc_ssot: bool = True,
+    use_dehydron_barcode: bool = False,
+    use_binned_dehydron: bool = False,
+    dehydron_barcode_dir: Path | None = None,
 ) -> ResidueBiology:
     prot = load_protein_graph(structure_id, chain, pdb_dir)
     if prot is None:
         raise RuntimeError(f"Could not load {structure_id}:{chain}")
+
+    if use_dehydron_barcode:
+        if dehydron_barcode_dir is None:
+            raise RuntimeError(
+                f"use_dehydron_barcode requires dehydron_barcode_dir "
+                f"(structure {structure_id}:{chain})"
+            )
+        from experiments.training.v6._data import attach_dehydron_barcode_features
+
+        attach_dehydron_barcode_features(
+            prot,
+            barcode_dir=Path(dehydron_barcode_dir),
+            use_binned=bool(use_binned_dehydron),
+        )
 
     out = _forward_audit(
         model,

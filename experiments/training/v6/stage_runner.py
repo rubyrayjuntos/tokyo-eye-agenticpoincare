@@ -20,7 +20,13 @@ from science.training.config import (
     apply_phase_coeff_ramp,
     apply_master_cold_dehydron_phases,
     apply_routing_load_floor_phase2,
+    apply_prototype_nearest_pair_repulsion,
+    apply_directionality_asym_reward,
+    apply_prototype_gram_logdet_hinge,
+    apply_majority_committed_share_hinge,
+    apply_core_majority_committed_share_hinge,
     apply_slim_moe_structural_ssot_phases,
+    apply_v66_feeler_phases,
     default_v6_phases,
     dehydron_rim_recovery_phase_config,
     topology_routing_recovery_phase_config,
@@ -47,6 +53,24 @@ from science.training.config import (
     p2_disc_proj_recovery_v3_phase_config,
     p2_disc_proj_recovery_v4_phase_config,
     p2_disc_proj_recovery_v5_phase_config,
+    v66_feeler_angular_lift_phase_config,
+    v66_feeler_coupling_phase_config,
+    v66_feeler_dehydron_angular_phase_config,
+    v66_feeler_no_exclusivity_phase_config,
+    v66_feeler_rim_decouple_phase_config,
+    v66_feeler_p3_geom_edges_phase_config,
+    v66_feeler_p3_geom_phase_config,
+    v66_feeler_rim_fanout_model_phase_config,
+    v66_feeler_rim_fanout_warm_phase_config,
+    v66_feeler_rim_fanout_polish_phase_config,
+    v66_feeler_rim_fanout_angular_phase_config,
+    v66_feeler_rim_fanout_angular_v2_phase_config,
+    v66_feeler_rim_fanout_radius_phase_config,
+    v66_feeler_rim_fanout_coverage_phase_config,
+    v66_feeler_rim_fanout_antibarrier_phase_config,
+    v66_feeler_rim_fanout_expert_arc_phase_config,
+    v66_feeler_geom_angular_prior_phase_config,
+    apply_v66_feeler_rim_fanout_cold_phases,
     p2_rec_ablation_phase_config,
     p4_epistemic_decoupling_phase_config,
     p4_head_decouple_phase_config,
@@ -127,8 +151,15 @@ class StageRunner:
             and resume_state is not None
             and config.resume is not None
         ):
-            sibling = Path(config.resume).resolve().parent / "metrics.json"
-            if sibling.is_file() and sibling != metrics_path.resolve():
+            resume_path = Path(config.resume).resolve()
+            sibling_candidates = [
+                resume_path.parent / "metrics.json",
+                # epoch snapshots live under runs/<id>/epochs/epoch_NNN.pt
+                resume_path.parent.parent / "metrics.json",
+            ]
+            for sibling in sibling_candidates:
+                if not sibling.is_file() or sibling == metrics_path.resolve():
+                    continue
                 try:
                     import json
 
@@ -140,6 +171,7 @@ class StageRunner:
                             len(seeded),
                             sibling,
                         )
+                        break
                 except (json.JSONDecodeError, OSError) as exc:
                     logger.warning("Could not seed metrics from %s: %s", sibling, exc)
         self.global_epoch = resume_state.global_epoch if resume_state else 0
@@ -147,6 +179,29 @@ class StageRunner:
         self._saved_eligible = resume_state is not None and resume_state.score > -math.inf
         self._resume_checkpoint_phase = resume_state.phase if resume_state else None
         self._shell_low_streak = 0
+        self._probe_regression_streak = 0
+        self._resume_probe_r_proj_baseline: float | None = None
+        if config.v66_feeler_lineage and resume_state is not None and self.metrics_log:
+            target_ep = int(resume_state.global_epoch)
+            matched = next(
+                (
+                    e
+                    for e in reversed(self.metrics_log)
+                    if int(e.get("global_epoch", -1)) == target_ep
+                ),
+                None,
+            )
+            last_health = ((matched or self.metrics_log[-1]).get("health") or {})
+            baseline = last_health.get("probe_r_proj_depth")
+            if baseline is not None:
+                self._resume_probe_r_proj_baseline = float(baseline)
+                logger.info(
+                    "Feeler probe guard baseline probe_r_proj_depth=%.3f (epoch %d)",
+                    self._resume_probe_r_proj_baseline,
+                    target_ep if matched is not None else int(
+                        self.metrics_log[-1].get("global_epoch", -1)
+                    ),
+                )
         self._last_focus_summary: dict[str, Any] | None = None
         self._best_disc_sigma = -1.0
         self._best_disc_visual_score = -1.0
@@ -157,6 +212,7 @@ class StageRunner:
         )
         self._topology_depth = topology_depth_lineage(
             master_cold=config.master_cold_lineage
+            or config.v66_feeler_lineage
             or config.slim_moe_structural_ssot
             or config.topology_routing_recovery
             or config.topology_gate_disc_recovery
@@ -693,6 +749,155 @@ class StageRunner:
             if self.config.structural_disc_frozen:
                 phases = apply_slim_moe_structural_ssot_phases(phases)
             return phases
+        if self.config.v66_feeler_rim_fanout_model:
+            if self.config.v66_feeler_rim_fanout_cold_curriculum:
+                p12 = self.config.epochs_override or 10
+                return apply_v66_feeler_rim_fanout_cold_phases(
+                    base_lr=self.config.lr,
+                    p12_epochs=p12,
+                    p12_lr=self.config.p2_bridge_lr,
+                )
+            if self.config.v66_feeler_rim_fanout_polish:
+                epochs = self.config.epochs_override or 10
+                return [
+                    v66_feeler_rim_fanout_polish_phase_config(
+                        lr=self.config.p2_bridge_lr,
+                        epochs=epochs,
+                    )
+                ]
+            if self.config.v66_feeler_rim_fanout_angular_v2:
+                epochs = self.config.epochs_override or 8
+                return [
+                    v66_feeler_rim_fanout_angular_v2_phase_config(
+                        lr=self.config.p2_bridge_lr,
+                        epochs=epochs,
+                    )
+                ]
+            if self.config.v66_feeler_rim_fanout_radius:
+                epochs = self.config.epochs_override or 8
+                return [
+                    v66_feeler_rim_fanout_radius_phase_config(
+                        lr=self.config.p2_bridge_lr,
+                        epochs=epochs,
+                    )
+                ]
+            if self.config.v66_feeler_rim_fanout_coverage:
+                epochs = self.config.epochs_override or 8
+                return [
+                    v66_feeler_rim_fanout_coverage_phase_config(
+                        lr=self.config.p2_bridge_lr,
+                        epochs=epochs,
+                    )
+                ]
+            if self.config.v66_feeler_rim_fanout_antibarrier:
+                epochs = self.config.epochs_override or 25
+                return [
+                    v66_feeler_rim_fanout_antibarrier_phase_config(
+                        lr=self.config.p2_bridge_lr,
+                        epochs=epochs,
+                    )
+                ]
+            if self.config.v66_feeler_rim_fanout_expert_arc:
+                epochs = self.config.epochs_override or 20
+                return [
+                    v66_feeler_rim_fanout_expert_arc_phase_config(
+                        lr=self.config.p2_bridge_lr,
+                        epochs=epochs,
+                    )
+                ]
+            if self.config.v66_feeler_geom_angular_prior:
+                epochs = self.config.epochs_override or 20
+                return [
+                    v66_feeler_geom_angular_prior_phase_config(
+                        lr=self.config.p2_bridge_lr,
+                        epochs=epochs,
+                    )
+                ]
+            if self.config.v66_feeler_rim_fanout_angular:
+                epochs = self.config.epochs_override or 8
+                return [
+                    v66_feeler_rim_fanout_angular_phase_config(
+                        lr=self.config.p2_bridge_lr,
+                        epochs=epochs,
+                    )
+                ]
+            epochs = self.config.epochs_override or (
+                15 if self.config.resume is not None else 12
+            )
+            phase_factory = (
+                v66_feeler_rim_fanout_warm_phase_config
+                if self.config.resume is not None
+                else v66_feeler_rim_fanout_model_phase_config
+            )
+            return [
+                phase_factory(
+                    lr=self.config.p2_bridge_lr,
+                    epochs=epochs,
+                )
+            ]
+        if self.config.v66_feeler_p3_geom:
+            epochs = self.config.epochs_override or 20
+            stack = 0.5 if self.config.v66_feeler_p3_geom_half_stack else 1.0
+            return [
+                v66_feeler_p3_geom_phase_config(epochs=epochs, stack_scale=stack)
+            ]
+        if self.config.v66_feeler_p3_geom_edges:
+            epochs = self.config.epochs_override or 15
+            return [
+                v66_feeler_p3_geom_edges_phase_config(
+                    lr=self.config.p2_bridge_lr,
+                    epochs=epochs,
+                )
+            ]
+        if self.config.v66_feeler_angular_lift:
+            epochs = self.config.epochs_override or 15
+            return [
+                v66_feeler_angular_lift_phase_config(
+                    lr=self.config.p2_bridge_lr,
+                    epochs=epochs,
+                )
+            ]
+        if self.config.v66_feeler_coupling:
+            epochs = self.config.epochs_override or 12
+            return [
+                v66_feeler_coupling_phase_config(
+                    lr=self.config.p2_bridge_lr,
+                    epochs=epochs,
+                )
+            ]
+        if self.config.v66_feeler_rim_decouple:
+            epochs = self.config.epochs_override or 12
+            return [
+                v66_feeler_rim_decouple_phase_config(
+                    lr=self.config.p2_bridge_lr,
+                    epochs=epochs,
+                )
+            ]
+        if self.config.v66_feeler_no_exclusivity:
+            epochs = self.config.epochs_override or 12
+            return [
+                v66_feeler_no_exclusivity_phase_config(
+                    lr=self.config.p2_bridge_lr,
+                    epochs=epochs,
+                )
+            ]
+        if self.config.v66_feeler_dehydron_angular:
+            epochs = self.config.epochs_override or 12
+            return [
+                v66_feeler_dehydron_angular_phase_config(
+                    lr=self.config.p2_bridge_lr,
+                    epochs=epochs,
+                )
+            ]
+        if self.config.v66_feeler_lineage:
+            epochs = self.config.epochs_override or 20
+            phases = apply_v66_feeler_phases(base_lr=self.config.lr, epochs=epochs)
+            if self.config.phase is not None:
+                phases = [p for p in phases if p.phase == self.config.phase]
+            if self.config.epochs_override is not None:
+                override = self.config.epochs_override
+                phases = [p.model_copy(update={"epochs": override}) for p in phases]
+            return phases
         if self.config.p1d:
             return [self._resolve_p1d_phase()]
         if self.config.p1c:
@@ -738,6 +943,301 @@ class StageRunner:
             ]
         return phases
 
+    def _maybe_log_t1a_trunk_ranks(self, *, global_epoch: int) -> None:
+        if not (
+            bool(getattr(self.config, "input_feature_zscore", False))
+            or bool(getattr(self.config, "replace_tau_with_abs_dist", False))
+        ):
+            return
+        try:
+            from experiments.diagnostics.t1a_trunk_rank_epoch import measure_t1a_trunk_ranks
+
+            ranks = measure_t1a_trunk_ranks(
+                self.model, self.proteins, self.config.device
+            )
+            logger.info(
+                "    T1a trunk | ge=%d | pre_mp ER=%.3f | encoder_h ER=%.3f | n=%d",
+                global_epoch,
+                float(ranks.get("pre_mp_effective_rank") or float("nan")),
+                float(ranks.get("encoder_h_effective_rank") or float("nan")),
+                int(ranks.get("n_residues") or 0),
+            )
+            gate_path = (
+                self.checkpoint_mgr.output_dir / "t1a_trunk_rank_per_epoch.jsonl"
+            )
+            with gate_path.open("a", encoding="utf-8") as fh:
+                import json as _json
+
+                fh.write(
+                    _json.dumps({"global_epoch": global_epoch, **ranks}) + "\n"
+                )
+        except Exception as exc:
+            logger.warning("T1a trunk-rank logging failed (non-fatal): %s", exc)
+
+    def _maybe_log_scale_train_structure(self, *, global_epoch: int) -> None:
+        """L1/L2 logit-scale runs: MI/R² + optional softplus≈1.32 ablation reference."""
+        if getattr(self.config, "gate_logit_softplus_init", None) is None and getattr(
+            self.config, "gate_logit_softplus_floor", None
+        ) is None:
+            return
+        try:
+            import math
+
+            import torch.nn.functional as F
+
+            from experiments.diagnostics.topology_gate_logit_scale_sweep import (
+                _collect_soft_and_structure,
+                _routing_pack,
+                _structure_effect_sizes,
+                _usage_moved_letter,
+            )
+
+            soft, tau, depth = _collect_soft_and_structure(
+                self.model, self.proteins, self.config.device
+            )
+            pack = _routing_pack(soft)
+            effects = _structure_effect_sizes(soft, tau=tau, depth=depth)
+            letter = _usage_moved_letter(pack, bool(effects["feature_hold_pass"]))
+            gate = self.model.gate
+            softplus = float(F.softplus(gate.logit_scale.detach()).cpu())
+            floor = getattr(gate, "logit_softplus_floor", None)
+            if floor is not None:
+                softplus = max(softplus, float(floor))
+            row = {
+                "global_epoch": global_epoch,
+                "softplus_scale": softplus,
+                "logit_scale_param": float(gate.logit_scale.detach().cpu()),
+                **pack,
+                **letter,
+                "structure": effects,
+            }
+            # ge0: also ablate softplus≈1.32 reference for SIGNAL_HOLD denominator
+            if global_epoch == 0 and hasattr(gate, "logit_scale"):
+                old = float(gate.logit_scale.detach().cpu())
+                old_floor = getattr(gate, "logit_softplus_floor", None)
+                y = 1.3225833177566528  # softplus(1.0) baseline from IBU ckpt band
+                init_param = y if y > 20.0 else math.log(math.expm1(y))
+                with torch.no_grad():
+                    gate.logit_scale.fill_(init_param)
+                if old_floor is not None:
+                    gate.logit_softplus_floor = None
+                soft_a, tau_a, depth_a = _collect_soft_and_structure(
+                    self.model, self.proteins, self.config.device
+                )
+                pack_a = _routing_pack(soft_a)
+                eff_a = _structure_effect_sizes(soft_a, tau=tau_a, depth=depth_a)
+                row["scale1_ablation"] = {
+                    "softplus_target": y,
+                    **pack_a,
+                    "structure": eff_a,
+                }
+                with torch.no_grad():
+                    gate.logit_scale.fill_(old)
+                if old_floor is not None:
+                    gate.logit_softplus_floor = old_floor
+            logger.info(
+                "    Scale-train | ge=%d softplus=%.3f H=%.4f max=%.3f spread=%.3f "
+                "letter=%s MI(τ)=%.3f",
+                global_epoch,
+                softplus,
+                pack["H"],
+                pack["max_soft_share"],
+                pack["load_spread"],
+                letter["usage_gate_letter"],
+                float(effects["mi_hard_vs_tau_nats"]),
+            )
+            path = self.checkpoint_mgr.output_dir / "scale_train_structure_per_epoch.jsonl"
+            with path.open("a", encoding="utf-8") as fh:
+                import json as _json
+
+                fh.write(_json.dumps(row) + "\n")
+        except Exception as exc:
+            logger.warning("Scale-train structure logging failed (non-fatal): %s", exc)
+
+    def _maybe_log_prototype_repulsion(self, *, global_epoch: int) -> None:
+        if float(getattr(self.config, "prototype_repulsion_coeff", 0.0) or 0.0) <= 0:
+            # Still log when majority hinge alone is on (same standing metrics).
+            if float(getattr(self.config, "majority_committed_share_coeff", 0.0) or 0.0) <= 0:
+                if float(
+                    getattr(self.config, "core_majority_committed_share_coeff", 0.0)
+                    or 0.0
+                ) <= 0:
+                    if float(
+                        getattr(self.config, "core_capacity_quota_tau", 0.0) or 0.0
+                    ) <= 0:
+                        if float(
+                            getattr(self.config, "prototype_gram_logdet_coeff", 0.0)
+                            or 0.0
+                        ) <= 0:
+                            return
+        try:
+            from experiments.diagnostics.prototype_repulsion_epoch import (
+                measure_prototype_repulsion_epoch,
+                score_committed_distribution,
+                score_majority_conditional_ladder,
+                score_core_majority_conditional_ladder,
+                score_core_quota_ladder,
+                score_gram_cond_ladder,
+                score_proto_sep_ladder,
+                score_stack_ladder,
+            )
+
+            report = measure_prototype_repulsion_epoch(
+                self.model, self.proteins, self.config.device
+            )
+            stack_mode = (
+                getattr(self.config, "gate_logit_softplus_floor", None) is not None
+                or getattr(self.config, "gate_logit_softplus_init", None) is not None
+            )
+            scored = (
+                score_stack_ladder(report)
+                if stack_mode
+                else score_proto_sep_ladder(report)
+            )
+            dist_scored = score_committed_distribution(report)
+            purity = report.get("dehydron_partition_purity") or {}
+            maj_scored = score_majority_conditional_ladder(
+                {
+                    **report,
+                    "committed_distribution": dist_scored,
+                    "dehydron_partition_purity": purity,
+                }
+            )
+            core_maj_scored = score_core_majority_conditional_ladder(
+                {
+                    **report,
+                    "committed_distribution": dist_scored,
+                    "dehydron_partition_purity": purity,
+                }
+            )
+            quota_scored = score_core_quota_ladder(
+                {
+                    **report,
+                    "committed_distribution": dist_scored,
+                    "dehydron_partition_purity": purity,
+                }
+            )
+            gram_scored = score_gram_cond_ladder(
+                {
+                    **report,
+                    "dehydron_partition_purity": purity,
+                }
+            )
+            row = {
+                "global_epoch": global_epoch,
+                "stack_mode": stack_mode,
+                **report,
+                "ladder": scored,
+                "committed_distribution": dist_scored,
+                "majority_conditional": maj_scored,
+                "core_majority_conditional": core_maj_scored,
+                "core_quota_conditional": quota_scored,
+                "gram_conditional": gram_scored,
+            }
+            path = (
+                self.checkpoint_mgr.output_dir / "prototype_repulsion_per_epoch.jsonl"
+            )
+            with path.open("a", encoding="utf-8") as fh:
+                import json as _json
+
+                fh.write(_json.dumps(row) + "\n")
+            logger.info(
+                "    Proto repulsion | ge=%d | nearest=%s d=%.3f | twin=%.3f | "
+                "softplus=%.3f distR=%.3f cv=%.3f | deg|Δlogit|=%.4f | "
+                "rival_soft=%.3f | frac_mp≥0.60=%.3f | "
+                "hard_max=%.3f commit_hard_max=%.3f | "
+                "struct_soft_max=%.3f struct_hard_max=%.3f | "
+                "commit_prots=%d/%d prot_share_max=%.3f | dist=%s | purity=%s | "
+                "maj=%s | core_maj=%s | quota=%s | gram=%s | eig_min=%.3f cond=%.1f "
+                "logdet=%.2f | %s",
+                global_epoch,
+                report.get("nearest_pair"),
+                float(report.get("nearest_pair_hyp_dist", float("nan"))),
+                float(report.get("historical_twin_hyp_dist", float("nan"))),
+                float(report.get("effective_softplus", float("nan"))),
+                float(report.get("mean_dist_range", float("nan"))),
+                float(report.get("mean_dist_cv", float("nan"))),
+                float(
+                    report.get(
+                        "degree_swap_mean_abs_delta_logit_gap", float("nan")
+                    )
+                ),
+                float(report.get("mean_soft_on_rival_twin", float("nan"))),
+                float(report.get("frac_max_p_ge_0_60", float("nan"))),
+                float(report.get("hard_share_max", float("nan"))),
+                float(report.get("committed_hard_share_max", float("nan"))),
+                float(report.get("per_structure_soft_max", float("nan"))),
+                float(report.get("per_structure_hard_max", float("nan"))),
+                int(report.get("n_proteins_with_committed") or 0),
+                int(report.get("n_proteins_total") or 0),
+                float(report.get("committed_protein_share_max", float("nan"))),
+                dist_scored.get("verdict"),
+                purity.get("verdict"),
+                maj_scored.get("verdict"),
+                core_maj_scored.get("verdict"),
+                quota_scored.get("verdict"),
+                gram_scored.get("verdict"),
+                float(report.get("gram_eig_min", float("nan"))),
+                float(report.get("gram_condition", float("nan"))),
+                float(report.get("gram_logdet", float("nan"))),
+                scored.get("verdict"),
+            )
+        except Exception as exc:
+            logger.warning("Prototype repulsion logging failed (non-fatal): %s", exc)
+
+    def _freeze_core_quota_masks(self) -> None:
+        """Ge0 freeze of dehydron-dominant experts (never recomputed mid-run)."""
+        from experiments.training.v6.train_loop import prepare_training_batch
+        from science.training.core_capacity_quota import freeze_dehydron_dominant_mask
+
+        tau = float(getattr(self.config, "core_capacity_quota_tau", 0.0) or 0.0)
+        if tau <= 0:
+            return
+        model = self.model
+        model.core_capacity_quota_tau = 0.0  # freeze pass: soft scores only
+        if not hasattr(model, "_core_quota_dominant"):
+            model._core_quota_dominant = {}
+        model.eval()
+        frozen: dict[str, list[bool]] = {}
+        with torch.no_grad():
+            for prot in self.proteins:
+                data = prepare_training_batch(model, prot, self.config.device)
+                out = model(data)
+                w = out["expert_weights"].float()
+                dh = getattr(data, "dehydron", None)
+                if dh is None and data.x.size(1) > 1:
+                    dh = data.x[:, 1].float()
+                if dh is None:
+                    continue
+                pdb = str(prot.get("pdb_id") or "?").upper()
+                mask = freeze_dehydron_dominant_mask(w, dh)
+                model._core_quota_dominant[pdb] = mask.detach().cpu()
+                frozen[pdb] = [bool(x) for x in mask.cpu().tolist()]
+        model.core_capacity_quota_tau = tau
+        path = self.checkpoint_mgr.output_dir / "core_quota_dominant_ge0.json"
+        import json as _json
+
+        path.write_text(
+            _json.dumps(
+                {
+                    "tau_cap": tau,
+                    "n_structures": len(frozen),
+                    "dominant_by_pdb": frozen,
+                    "note": "Frozen at ge0 before optimizer; never recomputed",
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        logger.info(
+            "  Core capacity quotas: τ_cap=%.2f; frozen dehydron-dominant masks "
+            "for %d structures → %s",
+            tau,
+            len(frozen),
+            path,
+        )
+
     def run(self) -> dict[str, Any]:
         from science.dtie.v5.gnn.model import build_optimizer
 
@@ -746,15 +1246,125 @@ class StageRunner:
         p2_dehydron_blocked = False
         p2_dehydron_reason = ""
 
-        for phase_cfg in self._phases():
-            if phase_cfg.phase in (2, 3) and p2_dehydron_blocked:
+        # ep0 snapshot before any optimizer step (T1a cold-retrain discipline).
+        if self.global_epoch == 0:
+            # Freeze dehydron-dominant masks from soft ge0 scores, then score once.
+            self._freeze_core_quota_masks()
+            self._maybe_log_t1a_trunk_ranks(global_epoch=0)
+            self._maybe_log_scale_train_structure(global_epoch=0)
+            self._maybe_log_prototype_repulsion(global_epoch=0)
+            if self.config.save_epoch_snapshots:
+                self.checkpoint_mgr.save_epoch(
+                    self.model,
+                    global_epoch=0,
+                    phase=0,
+                    training_config=self.config.model_dump(mode="json"),
+                )
+        phases = self._phases()
+        if float(getattr(self.config, "prototype_repulsion_coeff", 0.0) or 0.0) > 0:
+            phases = apply_prototype_nearest_pair_repulsion(
+                phases,
+                coeff=float(self.config.prototype_repulsion_coeff),
+                margin=float(
+                    getattr(self.config, "prototype_repulsion_margin", 0.25) or 0.25
+                ),
+            )
+            logger.info(
+                "  Prototype nearest-pair repulsion: λ=%.3f margin=%.3f "
+                "(hinge relu(m − min pairwise d_H))",
+                float(self.config.prototype_repulsion_coeff),
+                float(getattr(self.config, "prototype_repulsion_margin", 0.25) or 0.25),
+            )
+        if float(getattr(self.config, "directionality_asym_coeff", 0.0) or 0.0) > 0:
+            phases = apply_directionality_asym_reward(
+                phases,
+                coeff=float(self.config.directionality_asym_coeff),
+            )
+            logger.info(
+                "  Path 2 directionality asym: λ=%.3f "
+                "(diam≤9 mask in train_loop; maximize 1−asym)",
+                float(self.config.directionality_asym_coeff),
+            )
+        if float(getattr(self.config, "prototype_gram_logdet_coeff", 0.0) or 0.0) > 0:
+            phases = apply_prototype_gram_logdet_hinge(
+                phases,
+                coeff=float(self.config.prototype_gram_logdet_coeff),
+                tau_logdet=float(
+                    getattr(self.config, "prototype_gram_logdet_tau", -1.15) or -1.15
+                ),
+            )
+            logger.info(
+                "  Prototype Gram logdet hinge: λ=%.4f τ=%.2f "
+                "(saturating ReLU(τ − logdet)² on unit-row Gram)",
+                float(self.config.prototype_gram_logdet_coeff),
+                float(
+                    getattr(self.config, "prototype_gram_logdet_tau", -1.15) or -1.15
+                ),
+            )
+        if float(getattr(self.config, "majority_committed_share_coeff", 0.0) or 0.0) > 0:
+            phases = apply_majority_committed_share_hinge(
+                phases,
+                coeff=float(self.config.majority_committed_share_coeff),
+                tau=float(
+                    getattr(self.config, "majority_committed_share_tau", 0.56) or 0.56
+                ),
+                commit_thr=float(
+                    getattr(
+                        self.config, "majority_committed_share_commit_thr", 0.60
+                    )
+                    or 0.60
+                ),
+                min_n=int(
+                    getattr(self.config, "majority_committed_share_min_n", 20) or 20
+                ),
+            )
+            logger.info(
+                "  Majority committed-share hinge: λ=%.3f tau=%.3f "
+                "(STE hard share; maj-mask grads)",
+                float(self.config.majority_committed_share_coeff),
+                float(
+                    getattr(self.config, "majority_committed_share_tau", 0.56) or 0.56
+                ),
+            )
+        if float(
+            getattr(self.config, "core_majority_committed_share_coeff", 0.0) or 0.0
+        ) > 0:
+            phases = apply_core_majority_committed_share_hinge(
+                phases,
+                coeff=float(self.config.core_majority_committed_share_coeff),
+                tau=float(
+                    getattr(self.config, "core_majority_committed_share_tau", 0.56)
+                    or 0.56
+                ),
+                commit_thr=float(
+                    getattr(
+                        self.config, "core_majority_committed_share_commit_thr", 0.60
+                    )
+                    or 0.60
+                ),
+                min_n=int(
+                    getattr(self.config, "core_majority_committed_share_min_n", 20)
+                    or 20
+                ),
+            )
+            logger.info(
+                "  Core majority committed-share hinge: λ=%.3f tau=%.3f "
+                "(dh=0 eligible; no direct grad on dh=1)",
+                float(self.config.core_majority_committed_share_coeff),
+                float(
+                    getattr(self.config, "core_majority_committed_share_tau", 0.56)
+                    or 0.56
+                ),
+            )
+        for phase_cfg in phases:
+            if phase_cfg.phase in (2, 3, 4) and p2_dehydron_blocked:
                 logger.error(
                     "P_DEHYDRON_CONE_01 skipped Phase %d: %s",
                     phase_cfg.phase,
                     p2_dehydron_reason,
                 )
                 continue
-            if phase_cfg.phase == 3:
+            if phase_cfg.phase == 3 and not self.config.v66_feeler_lineage:
                 p2_route_h = [
                     float(e["losses"]["routing_entropy"])
                     for e in self.metrics_log
@@ -790,6 +1400,145 @@ class StageRunner:
                         p3_gate.ceiling,
                     )
                     continue
+            elif phase_cfg.phase == 3 and self.config.v66_feeler_lineage:
+                logger.info(
+                    "v6.6 feeler P3: geometry fill (no P3_ENTRY_GATE — routing still soft)"
+                )
+            elif phase_cfg.phase == 4 and self.config.v66_feeler_lineage:
+                logger.info(
+                    "v6.6 feeler P4: rim fan-out (rim angular repulsion + PC2 floor, no disc occupancy)"
+                )
+            elif phase_cfg.lift_path_recovery_train and self.config.v66_feeler_angular_lift:
+                logger.info(
+                    "v6.6 feeler angular_lift: lift-path recovery "
+                    "(radial+angular+fusion+hyp_proj_2d; backbone/MoE frozen; no disc occupancy)"
+                )
+            elif phase_cfg.phase == 6 and self.config.v66_feeler_coupling:
+                logger.info(
+                    "v6.6 feeler coupling: cross-subgraph propagation edges "
+                    "(5th relation; P3 loss recipe; no disc occupancy)"
+                )
+            elif phase_cfg.phase == 9 and self.config.v66_feeler_rim_decouple:
+                logger.info(
+                    "v6.6 feeler rim decouple: multi-rel dehydron pairs + "
+                    "dehydron angular_scale=%.2f (P3 loss recipe)",
+                    self.config.dehydron_angular_scale,
+                )
+            elif phase_cfg.phase == 7 and self.config.v66_feeler_no_exclusivity:
+                logger.info(
+                    "v6.6 feeler no exclusivity: dehydron pairs carry packing/ribbon/spoke "
+                    "(P3 loss recipe; no disc occupancy)"
+                )
+            elif phase_cfg.phase == 8 and self.config.v66_feeler_dehydron_angular:
+                logger.info(
+                    "v6.6 feeler dehydron angular scale=%.2f "
+                    "(weaken dehydron SH l=1; P3 loss recipe)",
+                    self.config.dehydron_angular_scale,
+                )
+            elif phase_cfg.phase == 12 and self.config.v66_feeler_rim_fanout_model:
+                if self.config.v66_feeler_rim_fanout_polish:
+                    logger.info(
+                        "v6.6 feeler rim fan-out POLISH: forward spread + spoke×%.2f ribbon×%.2f "
+                        "+ quarter P3 geom + disc_depth_scale + light rim loss "
+                        "(gate: probe_r_proj_depth ≥ baseline−0.08 + 4OBE viewer)",
+                        self.config.spoke_edge_scale,
+                        self.config.ribbon_edge_scale,
+                    )
+                elif self.config.v66_feeler_rim_fanout_angular_v2:
+                    logger.info(
+                        "v6.6 feeler rim fan-out ANGULAR-FILL v2: forward min_r=%.2f + spoke×%.2f "
+                        "ribbon×%.2f + mid/low-disc rim_* (min_r=0.12) + disc_depth_scale "
+                        "(gate: probe ≥ baseline−0.08; target 1F88 wedge ≤~20°)",
+                        self.config.rim_fanout_min_r,
+                        self.config.spoke_edge_scale,
+                        self.config.ribbon_edge_scale,
+                    )
+                elif self.config.v66_feeler_rim_fanout_radius:
+                    logger.info(
+                        "v6.6 feeler rim fan-out RADIUS: forward min_r=%.2f + spoke×%.2f "
+                        "ribbon×%.2f + depth_scale_target=0.55 (coeff≥1.2) + light rim hold "
+                        "(gate: rim_frac↑ ~40%%; probe ≥ baseline−0.08; don't reopen wedge)",
+                        self.config.rim_fanout_min_r,
+                        self.config.spoke_edge_scale,
+                        self.config.ribbon_edge_scale,
+                    )
+                elif self.config.v66_feeler_rim_fanout_coverage:
+                    logger.info(
+                        "v6.6 feeler rim fan-out COVERAGE: forward min_r=%.2f + spoke×%.2f "
+                        "ribbon×%.2f + soft angular-bin floor (empty-sector pressure) "
+                        "+ depth_scale hold (gate: 1F88 gap ↓; probe ≥ baseline−0.08)",
+                        self.config.rim_fanout_min_r,
+                        self.config.spoke_edge_scale,
+                        self.config.ribbon_edge_scale,
+                    )
+                elif self.config.v66_feeler_rim_fanout_antibarrier:
+                    logger.info(
+                        "v6.6 feeler rim fan-out ANTI-BARRIER: forward min_r=%.2f + spoke×%.2f "
+                        "ribbon×%.2f + expert θ diversity/recruit + eased coverage "
+                        "(gate: gap ↓, crest wall_share ↓, r̄≳0.18; probe ≥ baseline−0.08)",
+                        self.config.rim_fanout_min_r,
+                        self.config.spoke_edge_scale,
+                        self.config.ribbon_edge_scale,
+                    )
+                elif self.config.v66_feeler_rim_fanout_expert_arc:
+                    logger.info(
+                        "v6.6 feeler mild EXPERT-ARC: forward min_r=%.2f + spoke×%.2f "
+                        "ribbon×%.2f + soft expert θ diversity (no recruit) + coverage hold "
+                        "+ anchors=%s (gates: probe ≥ baseline−0.08; 1F88 gap; 4OBE circ-R≲0.60)",
+                        self.config.rim_fanout_min_r,
+                        self.config.spoke_edge_scale,
+                        self.config.ribbon_edge_scale,
+                        list(self.config.epoch_anchor_pdb_ids) or ["(none)"],
+                    )
+                elif self.config.v66_feeler_geom_angular_prior:
+                    logger.info(
+                        "v6.6 feeler GEOMETRIC ANGULAR PRIOR: disc θ = θ_prior + α tanh(δ) "
+                        "(κ=%.2f α=%.2f) + fidelity; spoke×%.2f ribbon×%.2f anchors=%s "
+                        "(gates: probe; 1F88 gap; 4OBE circ-R)",
+                        self.config.geometric_angular_kappa,
+                        self.config.geometric_angular_alpha,
+                        self.config.spoke_edge_scale,
+                        self.config.ribbon_edge_scale,
+                        list(self.config.epoch_anchor_pdb_ids) or ["1F88"],
+                    )
+                elif self.config.v66_feeler_rim_fanout_angular:
+                    logger.info(
+                        "v6.6 feeler rim fan-out ANGULAR-FILL: forward spread + spoke×%.2f ribbon×%.2f "
+                        "+ 0.75× P3 geom + mid-disc rim_* (min_r=0.20) + disc_depth_scale "
+                        "(gate: probe_r_proj_depth ≥ baseline−0.08; close blank wedge before radius)",
+                        self.config.spoke_edge_scale,
+                        self.config.ribbon_edge_scale,
+                    )
+                elif self.config.resume is not None:
+                    logger.info(
+                        "v6.6 feeler rim fan-out WARM: forward spread + spoke×%.2f ribbon×%.2f "
+                        "+ half P3 geom + rim loss backup (P4 resume; gate: 4OBE viewer)",
+                        self.config.spoke_edge_scale,
+                        self.config.ribbon_edge_scale,
+                    )
+                else:
+                    logger.info(
+                        "v6.6 feeler rim fan-out model: forward spread + spoke×%.2f ribbon×%.2f "
+                        "(full P3 geom stack; cold curriculum or no resume)",
+                        self.config.spoke_edge_scale,
+                        self.config.ribbon_edge_scale,
+                    )
+            elif phase_cfg.phase == 10 and self.config.v66_feeler_p3_geom_edges:
+                logger.info(
+                    "v6.6 feeler P3 geom + edge barcode: disc occupancy stack ON "
+                    "(resume p3_geom champion; freeze radial 3 ep)"
+                )
+            elif phase_cfg.phase == 11 and self.config.v66_feeler_p3_geom:
+                if self.config.v66_feeler_p3_geom_half_stack:
+                    logger.info(
+                        "v6.6 feeler P3 geom continue (half stack): occupancy×0.5 "
+                        "(gate: probe_r_proj_depth ≥ 0.30 + 4OBE viewer)"
+                    )
+                else:
+                    logger.info(
+                        "v6.6 feeler P3 geom continue: disc occupancy stack ON, no barcode "
+                        "(gate: probe_r_proj_depth ≥ 0.30 + 4OBE viewer)"
+                    )
 
             logger.info("=" * 70)
             logger.info("%s (%d epochs, lr=%.2e)", phase_cfg.name, phase_cfg.epochs, phase_cfg.lr)
@@ -894,9 +1643,12 @@ class StageRunner:
                     "  Frozen experts: %s (weights locked; gate may still route to them)",
                     ",".join(f"e{i}" for i in phase_cfg.freeze_experts),
                 )
-            # Soft expert timeout: slim MoE P1–P3. Default share>~50%; P3 may
-            # tighten and restrict to the generalist (e2) only.
-            if phase_cfg.slim_moe_structural_ssot_train and phase_cfg.phase in (1, 2, 3):
+            # Soft expert timeout: enable when phase sets expert_timeout_max_share
+            # (v6.6 feeler) or slim MoE P1–P3 (default share>~50%; P3 may tighten).
+            enable_timeout = phase_cfg.expert_timeout_max_share is not None or (
+                phase_cfg.slim_moe_structural_ssot_train and phase_cfg.phase in (1, 2, 3)
+            )
+            if enable_timeout:
                 from science.training.routing_gate_bounds import model_num_experts
 
                 n_exp = model_num_experts(self.model, default=self.config.num_experts)
@@ -1083,6 +1835,7 @@ class StageRunner:
                     slim_moe_structural_ssot_train=phase_cfg.slim_moe_structural_ssot_train,
                     structural_disc_frozen=self.config.structural_disc_frozen,
                     topology_depth=self._topology_depth,
+                    epoch_anchor_pdb_ids=list(self.config.epoch_anchor_pdb_ids),
                 )
 
                 missing = ConvergenceMonitor.validate_epoch_metrics(losses)
@@ -1097,6 +1850,85 @@ class StageRunner:
                     structural_disc_frozen=self.config.structural_disc_frozen,
                 )
 
+                fix1_gates: dict[str, Any] | None = None
+                if bool(getattr(self.config, "geometric_angular_prior", False)):
+                    try:
+                        from experiments.diagnostics.geom_angular_prior_gates import (
+                            measure_fix1_anchor_gates,
+                        )
+
+                        fix1_gates = measure_fix1_anchor_gates(
+                            self.model,
+                            self.proteins,
+                            self.config.device,
+                        )
+                        summary = fix1_gates.get("summary") or {}
+                        route_h = float(losses.get("routing_entropy", float("nan")))
+                        loads = [
+                            float(losses.get(f"expert_load_{i}", float("nan")))
+                            for i in range(4)
+                        ]
+                        max_share = float(max(loads)) if loads else float("nan")
+                        min_share = float(min(loads)) if loads else float("nan")
+                        spread = max_share - min_share
+                        logger.info(
+                            "    Fix-1 gates | H=%.4f | max_share=%.3f Δ=%.3f | "
+                            "1F88 gap=%.1f° | 4OBE circ-R=%.3f "
+                            "| corr(r,d) 1F88=%.3f 4OBE=%.3f | probe_r(|p|,d)=%s",
+                            route_h,
+                            max_share,
+                            spread,
+                            float(summary.get("1f88_gap_deg") or float("nan")),
+                            float(summary.get("4obe_circ_R") or float("nan")),
+                            float(summary.get("1f88_corr_r_depth") or float("nan")),
+                            float(summary.get("4obe_corr_r_depth") or float("nan")),
+                            (
+                                f"{float(health['probe_r_proj_depth']):.3f}"
+                                if health.get("probe_r_proj_depth") is not None
+                                else "n/a"
+                            ),
+                        )
+                        health = {
+                            **health,
+                            "fix1_1f88_gap_deg": summary.get("1f88_gap_deg"),
+                            "fix1_4obe_circ_R": summary.get("4obe_circ_R"),
+                            "fix1_1f88_corr_r_depth": summary.get("1f88_corr_r_depth"),
+                            "fix1_4obe_corr_r_depth": summary.get("4obe_corr_r_depth"),
+                            "fix1_routing_H": route_h,
+                            "usage_max_soft_share": max_share,
+                            "usage_load_spread": spread,
+                        }
+                        gate_path = (
+                            self.checkpoint_mgr.output_dir / "fix1_gates_per_epoch.jsonl"
+                        )
+                        with gate_path.open("a", encoding="utf-8") as fh:
+                            import json as _json
+
+                            fh.write(
+                                _json.dumps(
+                                    {
+                                        "global_epoch": self.global_epoch,
+                                        "routing_H": route_h,
+                                        "max_soft_share": max_share,
+                                        "min_soft_share": min_share,
+                                        "load_spread": spread,
+                                        "expert_load": loads,
+                                        "probe_r_proj_depth": health.get(
+                                            "probe_r_proj_depth"
+                                        ),
+                                        **summary,
+                                        "anchors": fix1_gates.get("anchors"),
+                                    }
+                                )
+                                + "\n"
+                            )
+                    except Exception as exc:
+                        logger.warning("Fix-1 gate logging failed (non-fatal): %s", exc)
+
+                self._maybe_log_t1a_trunk_ranks(global_epoch=self.global_epoch)
+                self._maybe_log_scale_train_structure(global_epoch=self.global_epoch)
+                self._maybe_log_prototype_repulsion(global_epoch=self.global_epoch)
+
                 if phase_cfg.min_probe_r_depth_sasa is not None:
                     r_ds_guard = health.get("probe_r_depth_sasa")
                     if r_ds_guard is not None and r_ds_guard < phase_cfg.min_probe_r_depth_sasa:
@@ -1108,6 +1940,26 @@ class StageRunner:
                             f"Training aborted: probe_r_depth_sasa below "
                             f"{phase_cfg.min_probe_r_depth_sasa} for 2 consecutive epochs"
                         )
+
+                if (
+                    self.config.v66_feeler_lineage
+                    and self._resume_probe_r_proj_baseline is not None
+                    and phase_cfg.phase in (4, 10, 11, 12)
+                ):
+                    r_pd_guard = health.get("probe_r_proj_depth")
+                    floor = self._resume_probe_r_proj_baseline - 0.08
+                    if r_pd_guard is not None and float(r_pd_guard) < floor:
+                        self._probe_regression_streak += 1
+                    else:
+                        self._probe_regression_streak = 0
+                    if self._probe_regression_streak >= 2:
+                        logger.warning(
+                            "Feeler probe guard: probe_r_proj_depth=%.3f fell >0.08 below "
+                            "resume baseline %.3f for 2 epochs — stopping phase early",
+                            float(r_pd_guard) if r_pd_guard is not None else -1.0,
+                            self._resume_probe_r_proj_baseline,
+                        )
+                        stop_phase = True
 
                 elapsed = time.time() - t0
                 phase_monitor.record_epoch(losses, health)
@@ -1238,7 +2090,9 @@ class StageRunner:
                     self.model,
                     inference_routing=infer_routing,
                     master_cold_lineage=(
-                        self.config.master_cold_lineage or self.config.slim_moe_structural_ssot
+                        self.config.master_cold_lineage
+                        or self.config.v66_feeler_lineage
+                        or self.config.slim_moe_structural_ssot
                     ),
                 )
                 log_metrics.update(gov)
@@ -1680,10 +2534,19 @@ class StageRunner:
                         inference_routing=infer_routing,
                         num_experts=len(self.model.experts),
                         master_cold_lineage=(
-                        self.config.master_cold_lineage or self.config.slim_moe_structural_ssot
-                    ),
+                            self.config.master_cold_lineage
+                            or self.config.v66_feeler_lineage
+                            or self.config.slim_moe_structural_ssot
+                        ),
                     ),
                 }
+                # Persist liveness into metrics.json (not MLflow-only) so ablation
+                # checklists can be scored from the run directory.
+                for _lk, _lv in log_metrics.items():
+                    if _lk.startswith("liveness_") and isinstance(_lv, (int, float)):
+                        entry[_lk] = float(_lv)
+                if fix1_gates is not None:
+                    entry["fix1_gates"] = fix1_gates
                 if stop_verdict is not None:
                     entry["stop_enforced"] = stop_verdict.tripped
                     if stop_verdict.reasons:

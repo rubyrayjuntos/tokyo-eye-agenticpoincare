@@ -82,11 +82,11 @@ LINEAGE_REGISTRY: dict[GnnLineageId, GnnLineageSpec] = {
         lineage_id="v8",
         package="science.tokyo_eye.v8.model",
         model_class_name="TokyoEyesHyperbolicV8",
-        model_version="TokyoEye-v8",
+        model_version="TokyoEye",
         architecture_version="v8",
-        checkpoint_prefix="v8",
-        checkpoint_root=Path("checkpoints/v8/runs"),
-        mlflow_experiment="tokyo-eyes-v8",
+        checkpoint_prefix="tokyoeye",
+        checkpoint_root=Path("checkpoints/tokyoeye/runs"),
+        mlflow_experiment="tokyoeye/equiformer-v3-moe/geometric/full-stack",
         frozen_baseline=False,
     ),
 }
@@ -305,7 +305,7 @@ def load_model_from_checkpoint(
     resolved_lineage = lineage_id
     if resolved_lineage is None and isinstance(arch, dict):
         version = str(arch.get("version", "v6"))
-        if version in {"v8", "TokyoEye-v8"}:
+        if version == "v8" or version.endswith("-v8"):
             resolved_lineage = "v8"
         if version in {"v7", "TokyoEye-v7"}:
             resolved_lineage = "v7"
@@ -397,7 +397,7 @@ def apply_lineage_defaults(config: TrainingConfig) -> TrainingConfig:
         "GOSPConeMapper-v6.5",
         "GOSPConeMapper-v6.6",
         "TokyoEye-v7",
-        "TokyoEye-v8",
+        "TokyoEye",
     }
     if (
         config.model_version in default_versions
@@ -409,7 +409,7 @@ def apply_lineage_defaults(config: TrainingConfig) -> TrainingConfig:
         "tokyo-eyes-v65",
         "tokyo-eyes-v66",
         "tokyo-eyes-v7",
-        "tokyo-eyes-v8",
+        "tokyoeye/equiformer-v3-moe/geometric/full-stack",
     }
     if (
         config.mlflow_experiment in default_experiments
@@ -423,6 +423,7 @@ def apply_lineage_defaults(config: TrainingConfig) -> TrainingConfig:
         "checkpoints/v66/runs",
         "checkpoints/v7/runs",
         "checkpoints/v8/runs",
+        "checkpoints/tokyoeye/runs",
     )
     if any(out == root or out.startswith(root + "/") for root in default_roots):
         if not out.startswith(spec.checkpoint_root.as_posix()):

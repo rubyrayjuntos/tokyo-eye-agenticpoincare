@@ -25,13 +25,29 @@ from agent.llm.providers import LLMProvider
 DISCOVERY_TOOLS = [
     ToolDefinition(
         name="get_source_leaks",
-        description="Identify source-leak candidates: residues with high epistemic uncertainty at significant hyperbolic depth. These represent structural ambiguity deep in the conformational hierarchy.",
+        description=(
+            "Identify source-leak candidates using physics-rim ranking by default: "
+            "significant cone_depth (hyperbolic rim), preferring dehydron-flagged "
+            "(τ=1) residues. Do NOT treat epistemic uncertainty as the primary "
+            "look-here signal — evidential heads are experimental/unstable (G5b). "
+            "Pass ranking='evidential_experimental' only for explicit head debugging."
+        ),
         parameters={
             "type": "object",
             "properties": {
                 "structure_id": {"type": "string"},
-                "uncertainty_threshold": {"type": "number", "default": 0.3},
                 "min_depth": {"type": "number", "default": 1.5},
+                "ranking": {
+                    "type": "string",
+                    "enum": ["physics_rim", "evidential_experimental"],
+                    "default": "physics_rim",
+                },
+                "uncertainty_threshold": {
+                    "type": "number",
+                    "default": 0.3,
+                    "description": "Only used when ranking=evidential_experimental",
+                },
+                "top_n": {"type": "integer", "default": 50},
             },
             "required": ["structure_id"],
         },
@@ -39,13 +55,22 @@ DISCOVERY_TOOLS = [
     ),
     ToolDefinition(
         name="get_high_uncertainty_residues",
-        description="Get the residues with highest uncertainty (epistemic, aleatoric, or total). Useful for identifying regions where the GNN is least confident.",
+        description=(
+            "Rank residues by a channel. Prefer uncertainty_type='cone_depth' for "
+            "triage. epistemic/aleatoric/total are evidential-experimental (G5b: "
+            "heads near-duplicate ρ) — use only when inspecting the uncertainty "
+            "heads themselves, not as trusted investigation priority."
+        ),
         parameters={
             "type": "object",
             "properties": {
                 "structure_id": {"type": "string"},
                 "top_n": {"type": "integer", "default": 20},
-                "uncertainty_type": {"type": "string", "enum": ["epistemic", "aleatoric", "total"], "default": "epistemic"},
+                "uncertainty_type": {
+                    "type": "string",
+                    "enum": ["cone_depth", "epistemic", "aleatoric", "total"],
+                    "default": "cone_depth",
+                },
             },
             "required": ["structure_id"],
         },
@@ -487,8 +512,9 @@ COORDINATOR_PROMPT = """You are the Tokyo Eyes Data Science Coordinator — an e
 You help researchers analyze protein structures using the Discovery Story pathway (hyperbolic GNN, source leaks, cryptic pockets, and governed provenance).
 
 Your capabilities:
-- Detect source leaks (high uncertainty + deep in conformational hierarchy)
-- Analyze uncertainty patterns (epistemic vs aleatoric)
+- Detect source leaks (physics-rim: high cone_depth, prefer τ=1 dehydrons — not raw epistemic)
+- Prefer cone_depth / ρ / τ physics channels for “where to look”; treat epistemic/aleatoric as experimental
+- Analyze uncertainty patterns only when explicitly debugging evidential heads (G5b: ale≈epi≈ρ)
 - Compare wild-type vs mutant conformations
 - Control the Poincaré disc/ball visualizer to show findings
 - Generate matplotlib figures (Poincaré disc plots, uncertainty profiles, persistence barcodes, source-leak maps, WT vs mutant comparisons)
@@ -499,9 +525,9 @@ When the user asks about a structure, use your tools to analyze it and present f
 
 Key concepts:
 - Cone depth: how deep a residue sits in the learned conformational hierarchy (deeper = more structurally constrained)
-- Epistemic uncertainty: model uncertainty (high = training gap, the GNN hasn't seen enough similar structures)
-- Aleatoric uncertainty: genuine structural ambiguity (high = the residue is genuinely flexible/disordered)
-- Source leak: a residue with high epistemic uncertainty at significant depth — indicates a structural vulnerability the model detects but can't fully characterize
+- Epistemic / aleatoric uncertainty: evidential heads — **experimental / unstable** (G5b: near-duplicate of ρ and of each other). Do not use as primary investigation priority.
+- Source leak: rim residue (high cone_depth) preferably dehydron-flagged (τ=1 / low ρ) — physics-layer triage, not epistemic ranking
+- Cone depth / disc radius: learned hyperbolic depth (τ-rim training target); correlated with τ but not a per-structure identity (typical r≈0.56 on current feeler stack)
 
 The current structure being viewed is provided in the context. Use it to ground your analysis."""
 
