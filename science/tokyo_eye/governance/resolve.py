@@ -1,7 +1,7 @@
-"""Resolve ``models:/TokyoEye@alias`` to a local cache path from MLflow only.
+"""Resolve ``models:/TokyoEye@alias`` to a local cache path.
 
-This module must not import filesystem seal modules or gate-file SSOTs.
-If the alias is missing or artifacts cannot be downloaded, it fails closed.
+MLflow chooses the version (SSOT). When the version is vault-tagged, production
+bytes come from the GitHub Release. Local files are a sha256 cache only.
 """
 
 from __future__ import annotations
@@ -73,16 +73,17 @@ def resolve_alias_checkpoint(
     version = meta["version"]
     run_id = meta.get("run_id")
     source = meta.get("source") or ""
+    tags = dict(meta.get("tags") or {})
+    expected = str(tags.get("checkpoint_sha256") or "").strip()
     dest_dir = _cache_root() / f"{_MODEL}_{alias}_v{version}"
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     import mlflow
 
-    local_model_dir = dest_dir / "model"
-    if local_model_dir.exists():
-        cached = _find_checkpoint(local_model_dir, prefer_filename_substrings)
-        if cached is not None:
-            digest = hashlib.sha256(cached.read_bytes()).hexdigest()
+    cached = _find_checkpoint(dest_dir, prefer_filename_substrings)
+    if cached is not None:
+        digest = sha256_file(cached)
+        if not expected or digest == expected:
             return {
                 "path": str(cached.resolve()),
                 "version": version,
@@ -92,14 +93,33 @@ def resolve_alias_checkpoint(
                 "name": REGISTERED_MODEL_NAME,
                 "sha256": digest,
                 "sha256_16": digest[:16],
-                "source": source,
+                "source": tags.get("vault_release_tag") or source,
                 "cache_hit": True,
-                "restored_from_vault": False,
+                "restored_from_vault": bool(tags.get("vault_release_tag")),
+                "served_from": "sha_cache",
             }
-        shutil.rmtree(local_model_dir)
 
-    # Prefer registry URI so we always pull through MLflow, not a stale file:// tag.
+    if tags.get("vault_release_tag") and expected:
+        vault_hit = _restore_from_vault(
+            meta,
+            dest_dir=dest_dir / "from_vault",
+            runner=vault_runner,
+        )
+        if vault_hit is not None:
+            return {**vault_hit, "served_from": "github_release"}
+        if alias == "champion":
+            raise ResolveError(
+                f"Champion version {version} is vault-tagged "
+                f"({tags.get('vault_release_tag')}) but the GitHub Release "
+                "download failed. Production does not fall back to a local "
+                "artifact folder."
+            )
+
+    # Unvaulted aliases (typically @experimental) still load from MLflow artifacts.
     uri = resolve_alias_uri(alias)
+    local_model_dir = dest_dir / "model"
+    if local_model_dir.exists():
+        shutil.rmtree(local_model_dir)
     try:
         downloaded = mlflow.artifacts.download_artifacts(
             artifact_uri=uri,
@@ -121,7 +141,7 @@ def resolve_alias_checkpoint(
                     runner=vault_runner,
                 )
                 if vault_hit is not None:
-                    return vault_hit
+                    return {**vault_hit, "served_from": "github_release"}
                 raise ResolveError(
                     f"Failed to download {uri} (and run checkpoints); "
                     f"GitHub Release vault also unavailable: {exc}; {exc2}"
@@ -133,7 +153,7 @@ def resolve_alias_checkpoint(
                 runner=vault_runner,
             )
             if vault_hit is not None:
-                return vault_hit
+                return {**vault_hit, "served_from": "github_release"}
             raise ResolveError(f"Failed to download {uri}: {exc}") from exc
 
     ckpt = _find_checkpoint(Path(downloaded), prefer_filename_substrings)
@@ -161,7 +181,7 @@ def resolve_alias_checkpoint(
             runner=vault_runner,
         )
         if vault_hit is not None:
-            return vault_hit
+            return {**vault_hit, "served_from": "github_release"}
         raise ResolveError(
             f"Downloaded {uri} but found no checkpoint file under {downloaded}. "
             "No GitHub Release vault tag on this version."
@@ -180,6 +200,7 @@ def resolve_alias_checkpoint(
         "source": source,
         "cache_hit": False,
         "restored_from_vault": False,
+        "served_from": "mlflow_artifacts",
     }
 
 
@@ -217,6 +238,7 @@ def _restore_from_vault(
         "source": f"github_release:{tag}",
         "cache_hit": False,
         "restored_from_vault": True,
+        "served_from": "github_release",
     }
 
 

@@ -72,13 +72,17 @@ Low-level `registry.set_model_alias` stays a thin MLflow wrapper for tests. Poli
 
 ---
 
-## 4. Resolve rule (locked)
+## 4. Resolve / production serve (locked)
 
-1. Resolve `models:/TokyoEye@alias` from MLflow artifacts (existing path).
-2. If download fails **and** the version/run carries `vault_release_tag` + `checkpoint_sha256`, download from GitHub Release into the MLflow cache, verify sha256, then return that path.
-3. Still no fallback to `HEALTHY_*` or other filesystem seals.
+MLflow chooses **which** version (`@champion`). GitHub Release supplies **the bytes**.
 
-If both MLflow artifacts and the Release are missing, fail with a message that names both.
+1. Look up `models:/TokyoEye@alias` in the registry (required).
+2. If a sha256-matching file is already in the local cache, use it.
+3. If the version is vault-tagged, download from GitHub Release and verify sha256. **Champion does not fall back** to `./mlflow-artifacts`.
+4. Unvaulted aliases (typically `@experimental`) may still load from MLflow artifacts.
+5. Still no fallback to `HEALTHY_*` or other filesystem seals.
+
+Production inference (`TokyoEyeV8Runner`) already calls this resolver. Serving from GitHub means serving the Release named by MLflow, not bypassing the registry.
 
 ---
 
@@ -91,6 +95,22 @@ python -m science.tokyo_eye.governance.entrypoints verify --alias champion
 ```
 
 Implementation talks to GitHub only through `gh` (injectable runner for tests).
+
+---
+
+## 5b. Control-pane visibility (locked)
+
+Every lifecycle step that can succeed or fail must leave a run on
+`tokyoeye/equiformer-v3-moe/{domain}/{subsystem}` plus tags on the model version:
+
+| Step | MLflow surface |
+|------|----------------|
+| Train / evaluate / register / alias | Existing governance runs |
+| Vault verify | `lifecycle/verify.json` + metrics `vault_ok`, `mlflow_ok`, `lifecycle_ok` |
+| GitHub Actions | `ci-report` → kind `github_actions`, metric `ci_success` |
+| Deploy / compete / retrain (later) | Same `log_lifecycle_event` helper, new `kind` |
+
+GitHub-hosted runners cannot reach `localhost:5000`. Repo secret `MLFLOW_TRACKING_URI=http://localhost:5000` is consumed only by job `mlflow-report` on the self-hosted runner labeled `tokyoeye`. That job is not a code gate. `property-gates` on `ubuntu-latest` remains the gate.
 
 ---
 

@@ -293,6 +293,14 @@ def test_import_champion_requires_vault_then_resolve_restores(
     assert imported["alias"]["alias"] == "champion"
     assert imported["vault"]["tag"] in gh.releases
 
+    live = resolve_alias_checkpoint(
+        alias="champion",
+        tracking_uri=tracking,
+        vault_runner=gh,
+    )
+    assert live.get("served_from") == "github_release"
+    assert Path(live["path"]).read_bytes() == b"champion-bytes-keep"
+
     # Wipe MLflow artifact store + local cache (the loss we just had).
     import shutil
 
@@ -311,3 +319,58 @@ def test_import_champion_requires_vault_then_resolve_restores(
     )
     assert Path(resolved["path"]).read_bytes() == b"champion-bytes-keep"
     assert resolved.get("restored_from_vault") is True
+    assert resolved.get("served_from") == "github_release"
+
+
+def test_ci_report_and_verify_land_on_mlflow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mlflow = pytest.importorskip("mlflow")
+    monkeypatch.setenv("MLFLOW_ALLOW_FILE_STORE", "true")
+    tracking = (tmp_path / "mlruns").as_uri()
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", tracking)
+
+    from science.tokyo_eye.governance.entrypoints import main
+    from science.tokyo_eye.governance.lifecycle_log import log_lifecycle_event
+
+    rc = main(
+        [
+            "--tracking-uri",
+            tracking,
+            "ci-report",
+            "--status",
+            "success",
+            "--alias",
+            "champion",
+            "--workflow",
+            "Property Gates",
+            "--note",
+            "unit",
+        ]
+    )
+    assert rc == 0
+    rc_fail = main(
+        [
+            "--tracking-uri",
+            tracking,
+            "ci-report",
+            "--status",
+            "failure",
+            "--alias",
+            "champion",
+            "--note",
+            "gate-failed-still-logged",
+        ]
+    )
+    assert rc_fail == 0
+    logged = log_lifecycle_event(
+        kind="verify",
+        alias="experimental",
+        payload={"ok": True, "vault_ok": True, "mlflow_ok": False},
+        tracking_uri=tracking,
+    )
+    client = mlflow.tracking.MlflowClient()
+    run = client.get_run(logged["run_id"])
+    assert run.data.metrics.get("lifecycle_ok") == 1.0
+    assert run.data.metrics.get("vault_ok") == 1.0
+    assert run.data.tags.get("lifecycle_kind") == "verify"

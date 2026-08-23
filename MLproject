@@ -131,6 +131,17 @@ entry_points:
       --tracking-uri {tracking_uri}
       vault-restore --alias {alias} --tag {tag}
 
+  ci_report:
+    parameters:
+      status: {type: string}
+      alias: {type: string, default: "champion"}
+      tracking_uri: {type: string, default: "http://mlflow:5000"}
+      note: {type: string, default: "none"}
+    command: >
+      python -m science.tokyo_eye.governance.entrypoints
+      --tracking-uri {tracking_uri}
+      ci-report --status {status} --alias {alias} --note {note}
+
   verify:
     parameters:
       alias: {type: string, default: "champion"}

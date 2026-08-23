@@ -36,6 +36,7 @@ from science.tokyo_eye.governance.registry import (
     set_model_alias,
 )
 from science.tokyo_eye.governance.resolve import ResolveError, resolve_alias_checkpoint
+from science.tokyo_eye.governance.lifecycle_log import log_lifecycle_event
 from science.tokyo_eye.governance.vault import (
     VaultError,
     VaultRequired,
@@ -575,6 +576,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
         vault = None
         vault_error = "version has no checkpoint_sha256 tag"
     ok = vault_ok if args.alias == ALIAS_CHAMPION else mlflow_ok
+    served = (resolved or {}).get("served_from")
     payload = {
         "ok": ok,
         "alias": args.alias,
@@ -583,13 +585,49 @@ def cmd_verify(args: argparse.Namespace) -> int:
         "mlflow_error": mlflow_error,
         "vault_ok": vault_ok,
         "vault_error": vault_error,
+        "served_from_github": served == "github_release",
         "resolved": resolved,
         "vault": vault.as_dict() if vault else None,
     }
+    logged = log_lifecycle_event(
+        kind="verify",
+        alias=args.alias,
+        payload=payload,
+        tracking_uri=args.tracking_uri,
+        version=str(meta.get("version") or ""),
+    )
+    payload["lifecycle_run_id"] = logged["run_id"]
     if not ok:
         print(json.dumps(payload), file=sys.stderr)
         return 2
     print(json.dumps(payload))
+    return 0
+
+
+def cmd_ci_report(args: argparse.Namespace) -> int:
+    """GitHub Actions (or any CI) reports success/fail onto the MLflow control pane."""
+    status = str(args.status or "unknown").lower()
+    ok = status == "success"
+    payload = {
+        "ok": ok,
+        "status": status,
+        "kind": "github_actions",
+        "github_run_id": args.github_run_id or os.environ.get("GITHUB_RUN_ID"),
+        "github_sha": args.github_sha or os.environ.get("GITHUB_SHA"),
+        "github_ref": args.github_ref or os.environ.get("GITHUB_REF"),
+        "workflow": args.workflow or os.environ.get("GITHUB_WORKFLOW"),
+        "job": args.job or os.environ.get("GITHUB_JOB"),
+        "note": args.note,
+    }
+    logged = log_lifecycle_event(
+        kind="github_actions",
+        alias=args.alias or ALIAS_CHAMPION,
+        payload=payload,
+        tracking_uri=args.tracking_uri,
+        version=args.version,
+    )
+    # Always 0 if MLflow accepted the row. Gate success/fail is a metric, not a CI gate.
+    print(json.dumps({"logged": True, "gate_ok": ok, **logged, "ci": payload}))
     return 0
 
 
@@ -737,6 +775,21 @@ def build_parser() -> argparse.ArgumentParser:
     vf.add_argument("--vault-repo", default=None)
     vf.set_defaults(func=cmd_verify)
 
+    cr = sub.add_parser(
+        "ci-report",
+        help="Log a CI/CD result onto MLflow (GitHub Actions → control pane)",
+    )
+    cr.add_argument("--status", required=True, help="success or failure")
+    cr.add_argument("--alias", default=ALIAS_CHAMPION, choices=[ALIAS_CHAMPION, ALIAS_EXPERIMENTAL])
+    cr.add_argument("--version", default=None, help="Optional TokyoEye model version to tag")
+    cr.add_argument("--github-run-id", default=None)
+    cr.add_argument("--github-sha", default=None)
+    cr.add_argument("--github-ref", default=None)
+    cr.add_argument("--workflow", default=None)
+    cr.add_argument("--job", default=None)
+    cr.add_argument("--note", default=None)
+    cr.set_defaults(func=cmd_ci_report)
+
     return p
 
 
@@ -774,6 +827,14 @@ def main(argv: list[str] | None = None) -> int:
         "dest",
         "tag",
         "expected_sha256",
+        "status",
+        "github_run_id",
+        "github_sha",
+        "github_ref",
+        "workflow",
+        "job",
+        "note",
+        "version",
     ):
         if hasattr(args, key):
             setattr(args, key, _empty_to_none(getattr(args, key)))

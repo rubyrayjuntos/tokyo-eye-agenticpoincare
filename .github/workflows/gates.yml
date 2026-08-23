@@ -12,6 +12,7 @@ on:
 env:
   DATABASE_URL: postgresql://tokyoeye:tokyoeye_test_ci@localhost:5432/tokyoeye_test
   P_CURV_01_CHECKPOINT_PATH: tests/fixtures/checkpoints/lever_a_v6_best_disc.pt
+  MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
 
 jobs:
   property-gates:
@@ -82,7 +83,31 @@ jobs:
             tests/test_master_residue_features.py \
             tests/test_ingest_master_features.py \
             tests/test_load_graph_from_db.py \
+            tests/test_tokyoeye_github_vault.py \
             -m "not integration" \
             --tb=short -q
 
       # feature/multiscale-experiment: add P_COUPLE_03 to this job when layers exist.
+
+  mlflow-report:
+    name: Report to MLflow (not a code gate)
+    needs: property-gates
+    if: always()
+    runs-on: [self-hosted, linux, tokyoeye]
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write CI row to local MLflow
+        env:
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+          GATE_STATUS: ${{ needs.property-gates.result }}
+        run: |
+          PYTHONPATH="$GITHUB_WORKSPACE" python3 -m science.tokyo_eye.governance.entrypoints \
+            --tracking-uri "$MLFLOW_TRACKING_URI" \
+            ci-report \
+            --status "$GATE_STATUS" \
+            --alias champion \
+            --workflow "$GITHUB_WORKFLOW" \
+            --job "$GITHUB_JOB" \
+            --note "property-gates"

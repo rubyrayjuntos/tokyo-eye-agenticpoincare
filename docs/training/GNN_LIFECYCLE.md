@@ -62,7 +62,11 @@ python -m science.tokyo_eye.governance.entrypoints vault-upload \
 python -m science.tokyo_eye.governance.entrypoints verify --alias champion
 ```
 
-If the local MLflow artifact folder is empty, `resolve` downloads the Release into the cache when the version carries `vault_release_tag`.
+Production inference serves **GitHub Release bytes** for a vault-tagged `@champion`. MLflow still chooses the version. `resolve` downloads the Release into a sha256 cache; it does not read `./mlflow-artifacts` for champion.
+
+Verify and CI results are logged as MLflow runs (`lifecycle/verify.json`, `ci-report`).
+
+**CI split:** `property-gates` runs on GitHub-hosted `ubuntu-latest` and is the code gate. `mlflow-report` runs on the self-hosted `tokyoeye` runner (`MLFLOW_TRACKING_URI=http://localhost:5000`), writes the pane row, and cannot fail the gate (`continue-on-error`, 5 minute timeout). Keep `~/actions-runner-tokyoeye` running so the report job is not queued.
 
 ## Train (MLflow pipeline)
 
