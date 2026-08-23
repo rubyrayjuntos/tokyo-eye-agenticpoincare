@@ -1,0 +1,23 @@
+---
+description: Keep git trunk clean — no leftover agent branches or worktrees
+alwaysApply: true
+---
+
+# Git trunk hygiene
+
+`master` is the only durable branch. Agent branches and worktrees are scratch.
+
+- Create a branch only when asked. Name it `wip/<task>`.
+- Never push `stash`, `local-sync`, or `safety` snapshot branches.
+- Never use `git stash` as the way to save work. Commit on the task branch or leave the working tree.
+- A worktree is one disposable checkout for one task. Do not start a second worktree unless the user asked for parallel work.
+- When finished: land the work on `master` (fast-forward or PR), then delete the branch and remove the worktree. Do not leave a second long-lived branch.
+- Before starting and before stopping, run:
+  `git fetch --prune && git status && git worktree list && git branch -vv`
+- Close `[gone]` remotes and leftover worktrees the same day.
+
+```text
+❌ git push origin stash-0-local-sync-2026-08-20
+❌ leave 4 worktrees each holding part of the same change
+✅ commit on wip/v8-affinity, merge to master, delete the branch and worktree
+```

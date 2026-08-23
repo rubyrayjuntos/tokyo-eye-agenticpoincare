@@ -133,6 +133,7 @@ infra/terraform/            Aurora PostgreSQL + S3 (AWS)
 7. **Thread-safe model loading** — inference runner uses asyncio.Lock to prevent duplicate loads.
 8. **Never hardcode secrets** — JWT_SECRET must come from env, fail fast in prod if missing.
 9. **Follow the compliance guide** — [`docs/DEVELOPER_ONBOARDING.md`](docs/DEVELOPER_ONBOARDING.md) for contract, geometry, audit, and PR checklists on every new effort. See [`docs/ENFORCEMENT_MATRIX.md`](docs/ENFORCEMENT_MATRIX.md) for which rules CI actually enforces.
+10. **Git trunk hygiene** — `master` is the only durable branch. Agent branches and worktrees are scratch: land on `master`, then delete them. Never push `stash` / `local-sync` / `safety` snapshots. See `.cursor/rules/git-trunk-hygiene.mdc`.
 
 ---
 
