@@ -21,7 +21,7 @@
 | **Production model** | Registered model `TokyoEye` — package under [`science/tokyo_eye/`](../science/tokyo_eye/) |
 | **Restore SSOT (live)** | `models:/TokyoEye@champion` via MLflow API (`http://localhost:5000`) |
 | **Staging alias** | `models:/TokyoEye@experimental` |
-| **Governance** | MLflow HTTP API + Python client (UI at same URL). Artifact proxy on. Not Make. · [`superpowers/specs/2026-07-23-tokyoeye-mlflow-governance-design.md`](superpowers/specs/2026-07-23-tokyoeye-mlflow-governance-design.md) |
+| **Governance** | MLflow HTTP API + Python client (UI at same URL). Artifact proxy on. Not Make. Durable bytes: GitHub Releases (`tokyoeye-eqf-<sha16>`). · [`superpowers/specs/2026-07-23-tokyoeye-mlflow-governance-design.md`](superpowers/specs/2026-07-23-tokyoeye-mlflow-governance-design.md) · [`2026-08-23 vault`](superpowers/specs/2026-08-23-tokyoeye-github-release-vault-design.md) |
 | **Cache (not SSOT)** | Local `.pt` under `checkpoints/` after alias/run download — e.g. prior spine/affinity seals |
 | **SSOT stamp** | [`tokyoeye_mlflow_ssot.json`](../data/gates/tokyoeye_mlflow_ssot.json) |
 | **Biology roadmap** | Active biology work should reference `TokyoEye@experimental` / `@champion`, not a package revision label |

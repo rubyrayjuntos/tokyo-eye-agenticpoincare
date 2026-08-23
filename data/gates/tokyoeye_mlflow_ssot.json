@@ -23,6 +23,9 @@
     "local MLflow download cache"
   ],
   "local_checkpoints": "cache_or_historical_evidence_only",
-  "runtime_policy": "fail_closed_if_mlflow_alias_or_artifact_missing",
+  "durable_byte_replica": "github_release",
+  "vault_tag_prefix": "tokyoeye-eqf",
+  "champion_requires_release": true,
+  "runtime_policy": "fail_closed_if_mlflow_alias_or_artifact_and_vault_missing",
   "legacy_policy": "old package lineages are compare-only and cannot mutate active TokyoEye production without explicit archaeology flags"
 }

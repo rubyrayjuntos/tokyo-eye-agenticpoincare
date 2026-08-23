@@ -109,6 +109,37 @@ entry_points:
       --tracking-uri {tracking_uri}
       set-alias --version {version} --alias {alias}
 
+  vault_upload:
+    parameters:
+      checkpoint: {type: string}
+      alias: {type: string, default: "champion"}
+      capability_goal: {type: string}
+      tracking_uri: {type: string, default: "http://mlflow:5000"}
+    command: >
+      python -m science.tokyo_eye.governance.entrypoints
+      --tracking-uri {tracking_uri}
+      vault-upload --checkpoint {checkpoint}
+      --alias {alias} --capability-goal {capability_goal}
+
+  vault_restore:
+    parameters:
+      alias: {type: string, default: "champion"}
+      tag: {type: string, default: "none"}
+      tracking_uri: {type: string, default: "http://mlflow:5000"}
+    command: >
+      python -m science.tokyo_eye.governance.entrypoints
+      --tracking-uri {tracking_uri}
+      vault-restore --alias {alias} --tag {tag}
+
+  verify:
+    parameters:
+      alias: {type: string, default: "champion"}
+      tracking_uri: {type: string, default: "http://mlflow:5000"}
+    command: >
+      python -m science.tokyo_eye.governance.entrypoints
+      --tracking-uri {tracking_uri}
+      verify --alias {alias}
+
   promote:
     parameters:
       run_id: {type: string}

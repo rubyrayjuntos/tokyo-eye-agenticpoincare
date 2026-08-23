@@ -2,7 +2,7 @@
 
 Primary surface: MLflow HTTP API + UI at **http://localhost:5000**.
 
-Backend: MLflow 3.x server with Postgres `mlflow` DB + artifact proxy. Local checkpoint files are cache/evidence only; production restore is `models:/TokyoEye@champion`.
+Backend: MLflow 3.x server with Postgres `mlflow` DB + artifact proxy. Local checkpoint files are cache/evidence only; production restore is `models:/TokyoEye@champion`. Durable weight bytes live on **GitHub Releases** (`tokyoeye-eqf-<sha256_16>`). See [`docs/superpowers/specs/2026-08-23-tokyoeye-github-release-vault-design.md`](../superpowers/specs/2026-08-23-tokyoeye-github-release-vault-design.md).
 
 **Ops note:** Prefer the Python client / CLI against the tracking server. From the host, `http://localhost:5000` is both UI and HTTP API. Inside Docker science containers use `http://mlflow:5000`. Do **not** use Make targets for MLflow governance.
 
@@ -51,7 +51,18 @@ python -m science.tokyo_eye.governance.entrypoints \
 
 (`--thresholds-run-id` optional when a template pack is already seeded.)
 
-Alias moves must follow evaluate → register/import → set-alias. Automated pipelines never set `@champion` (explicit approval only).
+Alias moves must follow evaluate → register/import → set-alias. Automated pipelines never set `@champion` (explicit `--confirm-champion` only).
+
+`@champion` also requires a GitHub Release whose sha256 matches the checkpoint. Upload first if needed:
+
+```bash
+python -m science.tokyo_eye.governance.entrypoints vault-upload \
+  --checkpoint "$CKPT" --alias champion --capability-goal "$CAPABILITY_GOAL"
+
+python -m science.tokyo_eye.governance.entrypoints verify --alias champion
+```
+
+If the local MLflow artifact folder is empty, `resolve` downloads the Release into the cache when the version carries `vault_release_tag`.
 
 ## Train (MLflow pipeline)
 

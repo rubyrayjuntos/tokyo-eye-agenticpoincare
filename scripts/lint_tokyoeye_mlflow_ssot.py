@@ -30,6 +30,8 @@ ACTIVE_PATHS = [
     "science/tokyo_eye/governance/registry.py",
     "science/tokyo_eye/governance/resolve.py",
     "science/tokyo_eye/governance/taxonomy.py",
+    "science/tokyo_eye/governance/vault.py",
+    "docs/superpowers/specs/2026-08-23-tokyoeye-github-release-vault-design.md",
 ]
 
 FORBIDDEN = [

@@ -22,14 +22,27 @@ from science.tokyo_eye.governance.evaluate import (
     ThresholdSpec,
     assert_promotable,
 )
-from science.tokyo_eye.governance.import_weights import ImportBlocked, import_checkpoint_into_mlflow
+from science.tokyo_eye.governance.import_weights import (
+    ArtifactVerifyError,
+    ImportBlocked,
+    import_checkpoint_into_mlflow,
+)
 from science.tokyo_eye.governance.registry import (
     ALIAS_CHAMPION,
     ALIAS_EXPERIMENTAL,
+    get_model_by_alias,
+    get_model_version,
     register_run_model_version,
     set_model_alias,
 )
 from science.tokyo_eye.governance.resolve import ResolveError, resolve_alias_checkpoint
+from science.tokyo_eye.governance.vault import (
+    VaultError,
+    VaultRequired,
+    assert_vaulted,
+    download_checkpoint,
+    upload_checkpoint,
+)
 from science.tokyo_eye.governance.taxonomy import (
     experiment_path,
     mandatory_run_tags,
@@ -137,12 +150,45 @@ def cmd_register(args: argparse.Namespace) -> int:
     return 0
 
 
+def _require_champion_vault(
+    *,
+    version: str,
+    tracking_uri: str | None,
+    confirm_champion: bool,
+) -> None:
+    if not confirm_champion:
+        raise VaultRequired(
+            "set-alias --alias champion requires --confirm-champion "
+            "and a matching GitHub Release (vault-upload)."
+        )
+    meta = get_model_version(version=version, tracking_uri=tracking_uri)
+    if meta is None:
+        raise VaultRequired(f"TokyoEye version {version} not found")
+    sha = str((meta.get("tags") or {}).get("checkpoint_sha256") or "")
+    if not sha:
+        raise VaultRequired(
+            f"Version {version} has no checkpoint_sha256 tag. "
+            "Run vault-upload then import-weights, or re-import with --confirm-champion."
+        )
+    assert_vaulted(sha256=sha, alias=ALIAS_CHAMPION)
+
+
 def cmd_set_alias(args: argparse.Namespace) -> int:
-    out = set_model_alias(
-        version=args.version,
-        alias=args.alias,
-        tracking_uri=args.tracking_uri,
-    )
+    try:
+        if args.alias == ALIAS_CHAMPION:
+            _require_champion_vault(
+                version=str(args.version),
+                tracking_uri=args.tracking_uri,
+                confirm_champion=bool(getattr(args, "confirm_champion", False)),
+            )
+        out = set_model_alias(
+            version=args.version,
+            alias=args.alias,
+            tracking_uri=args.tracking_uri,
+        )
+    except VaultError as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
+        return 2
     print(json.dumps(out))
     return 0
 
@@ -173,11 +219,15 @@ def cmd_import_weights(args: argparse.Namespace) -> int:
             overwrite_alias=bool(args.overwrite_alias),
             log_pyfunc=not args.no_pyfunc,
             evidence_artifact=args.evidence,
+            confirm_champion=bool(getattr(args, "confirm_champion", False)),
         )
     except ImportBlocked as exc:
         print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
         return 2
     except PromoteBlocked as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
+        return 2
+    except (VaultError, ArtifactVerifyError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
         return 2
     print(json.dumps({"ok": True, **out}))
@@ -369,19 +419,27 @@ def cmd_promote(args: argparse.Namespace) -> int:
             metrics = {
                 k: float(v) for k, v in json.loads(Path(args.metrics).read_text()).items()
             }
-        out = import_checkpoint_into_mlflow(
-            checkpoint_path=args.checkpoint,
-            domain=args.domain,
-            subsystem=args.subsystem,
-            capability_goal=args.capability_goal,
-            tracking_uri=args.tracking_uri,
-            alias=args.alias,
-            metrics=metrics,
-            thresholds=thresholds,
-            package_revision=args.package_revision,
-            overwrite_alias=True,
-            log_pyfunc=not args.no_pyfunc,
-        )
+        try:
+            out = import_checkpoint_into_mlflow(
+                checkpoint_path=args.checkpoint,
+                domain=args.domain,
+                subsystem=args.subsystem,
+                capability_goal=args.capability_goal,
+                tracking_uri=args.tracking_uri,
+                alias=args.alias,
+                metrics=metrics,
+                thresholds=thresholds,
+                package_revision=args.package_revision,
+                overwrite_alias=True,
+                log_pyfunc=not args.no_pyfunc,
+                confirm_champion=bool(getattr(args, "confirm_champion", False)),
+            )
+        except (VaultError, ArtifactVerifyError) as exc:
+            print(
+                json.dumps({"passed": False, "error": str(exc), "thresholds": provenance}),
+                file=sys.stderr,
+            )
+            return 2
         print(json.dumps({"passed": True, "thresholds": provenance, **out}))
         return 0
 
@@ -409,12 +467,129 @@ def cmd_promote(args: argparse.Namespace) -> int:
         tags=tags,
         tracking_uri=args.tracking_uri,
     )
-    alias = set_model_alias(
-        version=reg["version"],
-        alias=args.alias,
-        tracking_uri=args.tracking_uri,
-    )
+    try:
+        if args.alias == ALIAS_CHAMPION:
+            _require_champion_vault(
+                version=reg["version"],
+                tracking_uri=args.tracking_uri,
+                confirm_champion=bool(getattr(args, "confirm_champion", False)),
+            )
+        alias = set_model_alias(
+            version=reg["version"],
+            alias=args.alias,
+            tracking_uri=args.tracking_uri,
+        )
+    except VaultError as exc:
+        print(
+            json.dumps({"passed": False, "error": str(exc), "thresholds": provenance}),
+            file=sys.stderr,
+        )
+        return 2
     print(json.dumps({"register": reg, "alias": alias, "passed": True, "thresholds": provenance}))
+    return 0
+
+
+def cmd_vault_upload(args: argparse.Namespace) -> int:
+    try:
+        out = upload_checkpoint(
+            checkpoint_path=args.checkpoint,
+            alias=args.alias,
+            capability_goal=args.capability_goal,
+            repo=args.vault_repo,
+        )
+    except VaultError as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
+        return 2
+    print(json.dumps({"ok": True, **out.as_dict()}))
+    return 0
+
+
+def cmd_vault_restore(args: argparse.Namespace) -> int:
+    dest = Path(args.dest or "checkpoints/tokyoeye/vault")
+    try:
+        if args.tag:
+            path = download_checkpoint(
+                tag=args.tag,
+                dest_dir=dest,
+                expected_sha256=args.expected_sha256,
+                repo=args.vault_repo,
+            )
+            print(json.dumps({"ok": True, "path": str(path), "tag": args.tag}))
+            return 0
+        meta = get_model_by_alias(alias=args.alias, tracking_uri=args.tracking_uri)
+        if meta is None:
+            raise VaultRequired(f"No model version for @{args.alias}")
+        tags = dict(meta.get("tags") or {})
+        tag = args.tag or tags.get("vault_release_tag") or tags.get("vault_moving_tag")
+        if not tag:
+            raise VaultRequired(
+                f"@{args.alias} has no vault_release_tag. Upload a Release first."
+            )
+        path = download_checkpoint(
+            tag=tag,
+            dest_dir=dest,
+            expected_sha256=args.expected_sha256 or tags.get("checkpoint_sha256"),
+            repo=args.vault_repo or tags.get("vault_repo"),
+        )
+    except VaultError as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
+        return 2
+    print(json.dumps({"ok": True, "path": str(path), "tag": tag, "alias": args.alias}))
+    return 0
+
+
+def cmd_verify(args: argparse.Namespace) -> int:
+    meta = get_model_by_alias(alias=args.alias, tracking_uri=args.tracking_uri)
+    if meta is None:
+        print(
+            json.dumps({"ok": False, "error": f"No model version for @{args.alias}"}),
+            file=sys.stderr,
+        )
+        return 2
+    tags = dict(meta.get("tags") or {})
+    sha = tags.get("checkpoint_sha256")
+    mlflow_ok = False
+    mlflow_error = None
+    try:
+        resolved = resolve_alias_checkpoint(
+            alias=args.alias,
+            tracking_uri=args.tracking_uri,
+        )
+        mlflow_ok = True
+        if sha and resolved.get("sha256") and resolved["sha256"] != sha:
+            mlflow_ok = False
+            mlflow_error = "MLflow cache sha256 does not match version tag"
+    except ResolveError as exc:
+        mlflow_error = str(exc)
+        resolved = None
+    vault_ok = False
+    vault_error = None
+    if sha:
+        try:
+            vault = assert_vaulted(sha256=sha, alias=args.alias, repo=args.vault_repo)
+            vault_ok = True
+        except VaultError as exc:
+            vault_error = str(exc)
+            vault = None
+    else:
+        vault = None
+        vault_error = "version has no checkpoint_sha256 tag"
+    ok = vault_ok if args.alias == ALIAS_CHAMPION else mlflow_ok
+    payload = {
+        "ok": ok,
+        "alias": args.alias,
+        "version": meta.get("version"),
+        "mlflow_ok": mlflow_ok,
+        "mlflow_error": mlflow_error,
+        "vault_ok": vault_ok,
+        "vault_error": vault_error,
+        "resolved": resolved,
+        "vault": vault.as_dict() if vault else None,
+    }
+    if not ok:
+        print(json.dumps(payload), file=sys.stderr)
+        return 2
+    print(json.dumps(payload))
     return 0
 
 
@@ -462,6 +637,11 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         choices=[ALIAS_CHAMPION, ALIAS_EXPERIMENTAL],
     )
+    a.add_argument(
+        "--confirm-champion",
+        action="store_true",
+        help="Required to move @champion; also requires a matching GitHub Release",
+    )
     a.set_defaults(func=cmd_set_alias)
 
     im = sub.add_parser(
@@ -483,6 +663,11 @@ def build_parser() -> argparse.ArgumentParser:
     im.add_argument("--evidence", default=None, help="Optional evidence JSON to log")
     im.add_argument("--overwrite-alias", action="store_true")
     im.add_argument("--no-pyfunc", action="store_true")
+    im.add_argument(
+        "--confirm-champion",
+        action="store_true",
+        help="Required with --alias champion; uploads GitHub Release then aliases",
+    )
     im.set_defaults(func=cmd_import_weights)
 
     rs = sub.add_parser("resolve", help="Download models:/TokyoEye@alias (MLflow only)")
@@ -524,8 +709,33 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--metrics", default=None)
     pr.add_argument("--package-revision", default=None)
     pr.add_argument("--no-pyfunc", action="store_true")
+    pr.add_argument(
+        "--confirm-champion",
+        action="store_true",
+        help="Required to promote @champion; evaluate + Release + checksum",
+    )
     _add_threshold_args(pr)
     pr.set_defaults(func=cmd_promote)
+
+    vu = sub.add_parser("vault-upload", help="Copy a checkpoint into a GitHub Release")
+    vu.add_argument("--checkpoint", required=True)
+    vu.add_argument("--alias", required=True, choices=[ALIAS_CHAMPION, ALIAS_EXPERIMENTAL])
+    vu.add_argument("--capability-goal", required=True)
+    vu.add_argument("--vault-repo", default=None)
+    vu.set_defaults(func=cmd_vault_upload)
+
+    vr = sub.add_parser("vault-restore", help="Download a GitHub Release checkpoint")
+    vr.add_argument("--alias", default=ALIAS_CHAMPION, choices=[ALIAS_CHAMPION, ALIAS_EXPERIMENTAL])
+    vr.add_argument("--tag", default=None, help="Immutable or moving release tag")
+    vr.add_argument("--dest", default=None)
+    vr.add_argument("--expected-sha256", default=None)
+    vr.add_argument("--vault-repo", default=None)
+    vr.set_defaults(func=cmd_vault_restore)
+
+    vf = sub.add_parser("verify", help="Check MLflow artifacts and GitHub Release checksums")
+    vf.add_argument("--alias", default=ALIAS_CHAMPION, choices=[ALIAS_CHAMPION, ALIAS_EXPERIMENTAL])
+    vf.add_argument("--vault-repo", default=None)
+    vf.set_defaults(func=cmd_verify)
 
     return p
 
@@ -560,6 +770,10 @@ def main(argv: list[str] | None = None) -> int:
         "alias",
         "device",
         "epochs",
+        "vault_repo",
+        "dest",
+        "tag",
+        "expected_sha256",
     ):
         if hasattr(args, key):
             setattr(args, key, _empty_to_none(getattr(args, key)))

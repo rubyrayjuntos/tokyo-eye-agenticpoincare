@@ -84,6 +84,44 @@ def register_run_model_version(
     }
 
 
+def get_model_version(
+    *,
+    version: str | int,
+    tracking_uri: str | None = None,
+) -> dict[str, Any] | None:
+    from mlflow.tracking import MlflowClient
+
+    ensure_tracking(tracking_uri)
+    client = MlflowClient()
+    try:
+        mv = client.get_model_version(REGISTERED_MODEL_NAME, str(version))
+    except Exception:
+        return None
+    return {
+        "name": REGISTERED_MODEL_NAME,
+        "version": str(mv.version),
+        "run_id": mv.run_id,
+        "source": mv.source,
+        "tags": dict(getattr(mv, "tags", {}) or {}),
+    }
+
+
+def set_model_version_tags(
+    *,
+    version: str | int,
+    tags: dict[str, str],
+    tracking_uri: str | None = None,
+) -> None:
+    from mlflow.tracking import MlflowClient
+
+    ensure_tracking(tracking_uri)
+    client = MlflowClient()
+    for key, value in tags.items():
+        client.set_model_version_tag(
+            REGISTERED_MODEL_NAME, str(version), str(key), str(value)
+        )
+
+
 def set_model_alias(
     *,
     version: str | int,

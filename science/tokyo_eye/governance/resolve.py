@@ -21,6 +21,12 @@ from science.tokyo_eye.governance.registry import (
     resolve_alias_uri,
 )
 from science.tokyo_eye.governance.taxonomy import REGISTERED_MODEL_NAME as _MODEL
+from science.tokyo_eye.governance.vault import (
+    GhRunner,
+    VaultError,
+    download_checkpoint,
+    sha256_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +48,7 @@ def resolve_alias_checkpoint(
     alias: str = "champion",
     tracking_uri: str | None = None,
     prefer_filename_substrings: tuple[str, ...] = (".pt", "checkpoint", "weights"),
+    vault_runner: GhRunner | None = None,
 ) -> dict[str, Any]:
     """Download checkpoint bytes for ``models:/TokyoEye@alias`` into an MLflow cache.
 
@@ -87,6 +94,7 @@ def resolve_alias_checkpoint(
                 "sha256_16": digest[:16],
                 "source": source,
                 "cache_hit": True,
+                "restored_from_vault": False,
             }
         shutil.rmtree(local_model_dir)
 
@@ -107,10 +115,25 @@ def resolve_alias_checkpoint(
                     dst_path=str(dest_dir / "from_run"),
                 )
             except Exception as exc2:
+                vault_hit = _restore_from_vault(
+                    meta,
+                    dest_dir=dest_dir / "from_vault",
+                    runner=vault_runner,
+                )
+                if vault_hit is not None:
+                    return vault_hit
                 raise ResolveError(
-                    f"Failed to download {uri} (and run checkpoints): {exc}; {exc2}"
+                    f"Failed to download {uri} (and run checkpoints); "
+                    f"GitHub Release vault also unavailable: {exc}; {exc2}"
                 ) from exc2
         else:
+            vault_hit = _restore_from_vault(
+                meta,
+                dest_dir=dest_dir / "from_vault",
+                runner=vault_runner,
+            )
+            if vault_hit is not None:
+                return vault_hit
             raise ResolveError(f"Failed to download {uri}: {exc}") from exc
 
     ckpt = _find_checkpoint(Path(downloaded), prefer_filename_substrings)
@@ -132,8 +155,16 @@ def resolve_alias_checkpoint(
                 version,
             )
     if ckpt is None:
+        vault_hit = _restore_from_vault(
+            meta,
+            dest_dir=dest_dir / "from_vault",
+            runner=vault_runner,
+        )
+        if vault_hit is not None:
+            return vault_hit
         raise ResolveError(
-            f"Downloaded {uri} but found no checkpoint file under {downloaded}"
+            f"Downloaded {uri} but found no checkpoint file under {downloaded}. "
+            "No GitHub Release vault tag on this version."
         )
 
     digest = hashlib.sha256(ckpt.read_bytes()).hexdigest()
@@ -148,6 +179,44 @@ def resolve_alias_checkpoint(
         "sha256_16": digest[:16],
         "source": source,
         "cache_hit": False,
+        "restored_from_vault": False,
+    }
+
+
+def _restore_from_vault(
+    meta: dict[str, Any],
+    *,
+    dest_dir: Path,
+    runner: GhRunner | None,
+) -> dict[str, Any] | None:
+    tags = dict(meta.get("tags") or {})
+    tag = (tags.get("vault_release_tag") or "").strip()
+    expected = (tags.get("checkpoint_sha256") or "").strip()
+    if not tag or not expected:
+        return None
+    try:
+        ckpt = download_checkpoint(
+            tag=tag,
+            dest_dir=dest_dir,
+            expected_sha256=expected,
+            runner=runner,
+            repo=tags.get("vault_repo") or None,
+        )
+    except VaultError:
+        return None
+    digest = sha256_file(ckpt)
+    return {
+        "path": str(ckpt.resolve()),
+        "version": meta.get("version"),
+        "run_id": meta.get("run_id"),
+        "alias": meta.get("alias"),
+        "uri": resolve_alias_uri(str(meta.get("alias") or "champion")),
+        "name": REGISTERED_MODEL_NAME,
+        "sha256": digest,
+        "sha256_16": digest[:16],
+        "source": f"github_release:{tag}",
+        "cache_hit": False,
+        "restored_from_vault": True,
     }
 
 

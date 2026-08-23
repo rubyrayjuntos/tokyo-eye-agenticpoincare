@@ -4,7 +4,8 @@
 **Date:** 2026-07-23  
 **Scope:** End-to-end model lifecycle for Tokyo Eye. **MLflow is the governance system** (dedicated Postgres DB `mlflow` + artifact store + UI).  
 **Supersedes:** Dual-SSOT catalog JSON draft in earlier revisions of this file; ad-hoc `HEALTHY_*` path seals; Makefile/script-as-SSOT for train/eval/promote.  
-**Companion cookbook:** [`docs/architecture/MLflow Transformer End-to-End Management.md`](../../architecture/MLflow%20Transformer%20End-to-End%20Management.md) (API patterns; product packaging is **pyfunc**, not HF Transformers).
+**Companion cookbook:** [`docs/architecture/MLflow Transformer End-to-End Management.md`](../../architecture/MLflow%20Transformer%20End-to-End%20Management.md) (API patterns; product packaging is **pyfunc**, not HF Transformers).  
+**Amended 2026-08-23:** durable bytes live on GitHub Releases — [`2026-08-23-tokyoeye-github-release-vault-design.md`](2026-08-23-tokyoeye-github-release-vault-design.md). MLflow remains identity SSOT.
 
 ---
 
