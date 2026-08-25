@@ -234,6 +234,72 @@ addEventListener('resize', resize); resize();
     output_path.write_text(html)
 
 
+def _eqf_split_nodes(
+    *,
+    z_hyp: torch.Tensor,
+    xy: np.ndarray,
+    dehydron_labels: torch.Tensor,
+    evidence: torch.Tensor,
+    residue_records: list[Any],
+    expert_id: torch.Tensor | None,
+    curvature: float,
+) -> list[Any]:
+    """Bridge EQF tensors onto the existing 3D+disc split writer.
+
+    Disc XY is ``ball_to_disc(z_hyp)``. Occupancy/cone_depth is hyperbolic
+    radius from the origin (not a cone_depth lift of the July store).
+    ρ/τ channels are the Mode-A dehydron labels so physics coloring matches
+    the train target, not evidential investigation.
+    """
+    from science.dtie.common.interfaces import GNNNodeOutput
+    from science.tokyo_eye.v8.attention import poincare_dist
+
+    n = int(z_hyp.shape[0])
+    if len(residue_records) != n:
+        raise ValueError(
+            f"residue record count {len(residue_records)} != z_hyp N={n}"
+        )
+    origin = torch.zeros_like(z_hyp)
+    hyp_r = poincare_dist(z_hyp, origin, c=curvature).detach()
+    depth_max = hyp_r.max().clamp_min(1e-8)
+    cone_depth = (hyp_r / depth_max) * 8.0
+    cone_width = torch.exp(-cone_depth)
+    nu = evidence[:, 1].clamp_min(1e-4)
+    alpha = evidence[:, 2].clamp_min(1.0001)
+    beta = evidence[:, 3].clamp_min(1e-4)
+    aleatoric = beta / (alpha - 1.0)
+    epistemic = beta / (nu * (alpha - 1.0))
+    dehyd = dehydron_labels.detach().cpu().numpy().astype(np.float32)
+    experts = (
+        expert_id.detach().cpu().numpy().astype(int)
+        if expert_id is not None
+        else np.zeros(n, dtype=int)
+    )
+    z_np = _as_numpy(z_hyp)
+    nodes = []
+    for i, rec in enumerate(residue_records):
+        rho = float(dehyd[i])
+        onehot = np.zeros(4, dtype=np.float32)
+        onehot[int(experts[i]) % 4] = 1.0
+        nodes.append(
+            GNNNodeOutput(
+                residue_index=int(rec.residue_index),
+                chain_label=str(rec.chain_label),
+                input_features=np.asarray([rho, rho, 0.0, 0.0], dtype=np.float32),
+                projections=z_np[i].astype(np.float32),
+                cone_depth=float(cone_depth[i]),
+                cone_width=float(cone_width[i]),
+                epistemic_uncertainty=float(epistemic[i]),
+                aleatoric_uncertainty=float(aleatoric[i]),
+                total_uncertainty=float(aleatoric[i] + epistemic[i]),
+                x_hyp=z_np[i],
+                hyp_projections=np.asarray([xy[i, 0], xy[i, 1]], dtype=np.float64),
+                expert_weights=onehot,
+            )
+        )
+    return nodes
+
+
 def export_v8_structure_viewers(
     *,
     pdb_id: str,
@@ -248,8 +314,10 @@ def export_v8_structure_viewers(
     z_lift: torch.Tensor | None = None,
     h_euc: torch.Tensor | None = None,
     expert_id: torch.Tensor | None = None,
+    pdb_text: str | None = None,
+    residue_records: list[Any] | None = None,
 ) -> dict[str, str]:
-    """Write disc HTML + JSON sidecar for one structure."""
+    """Write disc HTML + JSON sidecar, and the 3D+disc split when PDB is given."""
     pdb_id = pdb_id.strip().upper()
     out_dir = Path(out_root) / pdb_id.lower()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -300,12 +368,41 @@ def export_v8_structure_viewers(
         "unique_z_hyp_rows": n_unique_rows(z_hyp),
     }
     man_path = out_dir / "viewer_manifest.json"
+    paths = {"disc_html": str(disc_path), "manifest": str(man_path)}
+    if pdb_text and residue_records:
+        from science.dtie.v6.visualization.interactive_viewer import (
+            write_structure_viewers,
+        )
+
+        split_nodes = _eqf_split_nodes(
+            z_hyp=z_hyp,
+            xy=xy,
+            dehydron_labels=dehydron_labels,
+            evidence=evidence,
+            residue_records=residue_records,
+            expert_id=expert_id,
+            curvature=curvature,
+        )
+        split_paths = write_structure_viewers(
+            structure_id=pdb_id,
+            pdb_text=pdb_text,
+            nodes=split_nodes,
+            model_version="TokyoEye-EQF",
+            out_dir=out_dir,
+            checkpoint_path=checkpoint_path,
+            curvature=curvature,
+            disc_layout_label=f"z_hyp→disc {layout_name} (not cone_depth lift)",
+        )
+        paths.update(split_paths)
+        manifest["split_html"] = split_paths.get("split_html")
+        manifest["structure_html"] = split_paths.get("structure_html")
     man_path.write_text(json.dumps(manifest, indent=2))
-    return {"disc_html": str(disc_path), "manifest": str(man_path)}
+    return paths
 
 
 def main() -> None:
-    from science.tokyo_eye.v8.loader import parse_enabled_manifest
+    from science.tokyo_eye.v8.biophysics import parse_residue_records_from_pdb_chain
+    from science.tokyo_eye.v8.loader import ensure_pdb_cached, parse_enabled_manifest
     from science.tokyo_eye.v8.r0_r5_graph import set_dehydron_wrap_max
 
     p = argparse.ArgumentParser(description="Export TokyoEye-v8 Poincaré viewers")
@@ -390,6 +487,13 @@ def main() -> None:
                 batch["edge_type"],
                 tau_ceiling=tau_ceil,
             )
+        pdb_path = ensure_pdb_cached(pdb_id, args.pdb_dir)
+        pdb_text = pdb_path.read_text(encoding="utf-8", errors="replace")
+        records = [
+            rec
+            for rec in parse_residue_records_from_pdb_chain(pdb_path, chain)
+            if rec.get_atom("CA") is not None
+        ]
         paths = export_v8_structure_viewers(
             pdb_id=pdb_id,
             z_hyp=out["z_hyp"],
@@ -403,6 +507,8 @@ def main() -> None:
             z_lift=out.get("z_lift"),
             h_euc=out.get("h_euc"),
             expert_id=out["moe_aux"]["routing"].argmax(dim=-1),
+            pdb_text=pdb_text,
+            residue_records=records,
         )
         print(
             f"[v8-export] {pdb_id}:{chain} N={batch['num_nodes']} "
