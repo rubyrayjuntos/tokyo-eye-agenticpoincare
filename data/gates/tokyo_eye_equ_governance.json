@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_governance",
+  "status": "ACTIVE",
+  "date": "2026-09-15",
+  "display_lineage": "Tokyo Eye EQU",
+  "spec": "docs/superpowers/specs/2026-09-15-tokyoeye-equ-governance-design.md",
+  "author": "Ray Swan",
+  "protocol": "v1.1",
+  "locks": [
+    "git_contract_text_mlflow_live_ssot",
+    "tokyo_eye_equ_<slug>_naming",
+    "pure_hyp_pass_veto",
+    "no_remediation_theater",
+    "experiment_is_domain_charter_not_one_sprint"
+  ],
+  "next_open": "tokyo_eye_equ_correct_start",
+  "ssot_experiment": "tokyoeye/equiformer-v3-moe/geometric/hyperbolic-spine",
+  "ssot_run_id": "f0e706526c2c481fa7c3112c89a5aeca",
+  "reconciled_hierarchy": "1_domain_experiment_N_cards_runs"
+}

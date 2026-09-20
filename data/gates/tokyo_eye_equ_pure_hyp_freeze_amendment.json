@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_equ_pure_hyp_freeze_amendment",
+  "amendment_id": "tokyo_eye_equ_pure_hyp_v1",
+  "status": "APPROVED",
+  "approved_at": "2026-09-15",
+  "display_lineage": "Tokyo Eye EQU",
+  "amends": "docs/superpowers/specs/2026-07-22-tokyo-eye-v8-equiformer-hyp-design.md",
+  "spec": "docs/superpowers/specs/2026-09-15-tokyoeye-equ-pure-hyp-freeze-amendment.md",
+  "invariant": {
+    "from": "euclidean_to_hyperbolic_lift",
+    "until": "hyperbolic_graph_storage_and_on_manifold_heads",
+    "allowed": [
+      "einstein_klein_barycenters",
+      "poincare_distance",
+      "single_lift_expmap0",
+      "read_only_diag_logmap"
+    ],
+    "forbidden": [
+      "exp0_W_log0_as_linear",
+      "tangent_pool_as_graph_repr",
+      "tangent_residual_as_primary_path",
+      "vendor_leave_manifold_shortcuts",
+      "claim_pure_hyp_while_violations_live"
+    ]
+  },
+  "known_violations_at_amendment": [
+    "science/tokyo_eye/v8/attention.py::_tangent_linear",
+    "science/tokyo_eye/v8/attention.py::W_o(log_map_zero)",
+    "science/tokyo_eye/v8/attention.py::tangent_residual_mix",
+    "science/tokyo_eye/v8/affinity_head.py::tangent_pool"
+  ],
+  "blocks_geometry_trunk_promotion_unless": "pure_hyp_pass=true",
+  "implementation_remediation": "separate_preregistered_sprint_card_required",
+  "forbidden_whim": [
+    "silent_attention_rewrite_without_card",
+    "waive_pure_hyp_for_pearson_or_moe",
+    "continue_from_tangent_shortcut_ckpt_as_pure_hyp_trunk"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "gate_id": "tokyo_eye_equ_theme_restore",
+  "pin_reconcile": "cold_boot_manifest_wins",
+  "timestamp": "2026-09-16T06:10:32.417499+00:00",
+  "frontend_ckpt": "checkpoints/tokyoeye/pretrained/hf/checkpoint/mptrj_gradient.pt",
+  "frontend_bank_sha256": "59c6c23573a3b05b347662f473209d1bb1ccb5b85f6624a8f87072e7c397addf",
+  "frontend_mode": "equiformer_v3_pool",
+  "lift": "geoopt.manifolds.PoincareBall",
+  "forbid_se3_lite": true,
+  "spine_init": "checkpoints/tokyoeye/runs/eqf_equ_geoopt_restore_20260916/tokyoeye_best.pt",
+  "predecessor": "tokyo_eye_equ_geoopt_restore",
+  "predecessor_mlflow_run_id": "b0480b85e87f492f965f2993a9298dba",
+  "wrap_max": 1,
+  "source_manifest": "manifests/equ_cold_boot_v1.json",
+  "pearson_parked": true,
+  "affinity_pass": false
+}

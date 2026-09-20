@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "display_lineage": "Tokyo Eye EQU",
+  "ssot": "mlflow",
+  "operator_policy": {
+    "after_cold_boot_fail": "correct_start_under_amended_freeze",
+    "forbid": [
+      "remediation_patch_of_tangent_spine_as_trunk_continue",
+      "pearson_waive_of_pure_hyp",
+      "hunting_scattered_markdown_as_truth"
+    ],
+    "strictness": "not_too_strict \u2014 remediation of a lying spine recreates Pearson shortcuts"
+  },
+  "law": {
+    "freeze": "docs/superpowers/specs/2026-07-22-tokyo-eye-v8-equiformer-hyp-design.md",
+    "pure_hyp_amendment": "docs/superpowers/specs/2026-09-15-tokyoeye-equ-pure-hyp-freeze-amendment.md",
+    "amendment_id": "tokyo_eye_equ_pure_hyp_v1",
+    "pure_hyp_pass": false,
+    "known_violations": [
+      "science/tokyo_eye/v8/attention.py::_tangent_linear",
+      "science/tokyo_eye/v8/attention.py::W_o(log_map_zero)",
+      "science/tokyo_eye/v8/attention.py::tangent_residual_mix",
+      "science/tokyo_eye/v8/affinity_head.py::tangent_pool"
+    ]
+  },
+  "decisions": {
+    "champion_v5": {
+      "status": "lesson_only_non_trunk",
+      "spec": "docs/superpowers/specs/2026-09-15-tokyoeye-equ-champion-disposition-design.md",
+      "stamp": "data/gates/tokyo_eye_equ_champion_disposition.json"
+    },
+    "cold_boot": {
+      "status": "hygiene_fail_sealed",
+      "spec": "docs/superpowers/specs/2026-09-15-tokyoeye-equ-cold-boot-design.md",
+      "plan": "docs/superpowers/plans/2026-09-15-tokyoeye-equ-cold-boot.md",
+      "stamp": "data/gates/tokyo_eye_equ_cold_boot.json",
+      "mlflow_run_id": "f217ade3e6f0416b97fd7227465c5809",
+      "pure_hyp_pass": false,
+      "note": "MoE 6/6 alive; rim/volume Fail; curriculum as rim escalator; lesson object not trunk"
+    },
+    "pure_hyp_freeze_amendment": {
+      "status": "APPROVED",
+      "spec": "docs/superpowers/specs/2026-09-15-tokyoeye-equ-pure-hyp-freeze-amendment.md",
+      "stamp": "data/gates/tokyo_eye_equ_pure_hyp_freeze_amendment.json"
+    }
+  },
+  "sprint_ladder": [
+    {
+      "id": "S1",
+      "name": "Sparse HyperbolicGraphAttention",
+      "status": "LOCKED_GREEN_code_tests \u2014 FAIL pure_hyp vs amended freeze",
+      "spec_home": "freeze \u00a77 + \u00a712 (no separate sprint-1 design file)",
+      "code": "science/tokyo_eye/v8/attention.py",
+      "tests": "tests/v8/test_hyperbolic_graph_attention.py"
+    },
+    {
+      "id": "S2",
+      "name": "R0\u2013R5 PDB/CIF graph loader",
+      "status": "LOCKED_GREEN",
+      "spec_home": "freeze \u00a75 + \u00a712 (no separate sprint-2 design file)",
+      "code": "science/tokyo_eye/v8/r0_r5_graph.py",
+      "tests": "tests/v8/test_r0_r5_graph.py"
+    },
+    {
+      "id": "S3",
+      "name": "Hard-commitment MoE",
+      "status": "LOCKED_GREEN",
+      "spec_home": "freeze \u00a78 + \u00a712 (no separate sprint-3 design file)",
+      "code": "science/tokyo_eye/v8/moe.py",
+      "tests": "tests/v8/test_hard_moe.py"
+    },
+    {
+      "id": "S4",
+      "name": "Top-level spine + train driver",
+      "status": "LOCKED_GREEN",
+      "spec_home": "freeze \u00a712 (no separate sprint-4 design file)",
+      "code": [
+        "science/tokyo_eye/v8/model.py",
+        "science/tokyo_eye/v8/engine.py"
+      ],
+      "tests": "tests/v8/test_spine_integration.py"
+    },
+    {
+      "id": "S5",
+      "name": "Equiformer bind + MLflow harness",
+      "status": "LOCKED_GREEN",
+      "spec_home": "freeze \u00a712 (no separate sprint-5 design file)",
+      "code": "science/tokyo_eye/v8/equiformer_frontend.py",
+      "tests": "tests/v8/test_sprint5_harness.py"
+    },
+    {
+      "id": "S6",
+      "name": "Curated loader",
+      "status": "has_own_spec_plan",
+      "spec": "docs/superpowers/specs/2026-07-22-tokyo-eye-v8-sprint6-curated-loader-design.md",
+      "plan": "docs/superpowers/plans/2026-07-22-tokyo-eye-v8-sprint6-curated-loader.md",
+      "tests": "tests/v8/test_curated_loader.py"
+    },
+    {
+      "id": "S7",
+      "name": "Live backbone",
+      "status": "has_own_spec_plan",
+      "spec": "docs/superpowers/specs/2026-07-22-tokyo-eye-v8-sprint7-live-backbone-design.md",
+      "plan": "docs/superpowers/plans/2026-07-22-tokyo-eye-v8-sprint7-live-backbone.md"
+    },
+    {
+      "id": "S8",
+      "name": "Biophys harden",
+      "status": "has_own_spec_plan",
+      "spec": "docs/superpowers/specs/2026-07-22-tokyo-eye-v8-sprint8-biophys-harden-design.md",
+      "plan": "docs/superpowers/plans/2026-07-22-tokyo-eye-v8-sprint8-biophys-harden.md"
+    },
+    {
+      "id": "S9",
+      "name": "MoE rebalance",
+      "status": "has_own_spec_plan",
+      "spec": "docs/superpowers/specs/2026-07-22-tokyo-eye-v8-sprint9-moe-rebalance-design.md",
+      "plan": "docs/superpowers/plans/2026-07-22-tokyo-eye-v8-sprint9-moe-rebalance.md"
+    },
+    {
+      "id": "S10+",
+      "name": "Affinity / ligand ladder",
+      "status": "PARKED_until_geometry_and_pure_hyp_Pass",
+      "specs_glob": "docs/superpowers/specs/2026-07-22-tokyo-eye-v8-sprint10*"
+    }
+  ],
+  "why_sprints_1_5_were_hard_to_find": "They were never separate dated design files. Their SSOT prose lives only in the 2026-07-22 freeze \u00a712 table + code/tests. Sprint 6+ got individual specs/plans. Without an MLflow index, operators had to archaeology the freeze.",
+  "next_open": {
+    "card": "tokyo_eye_equ_correct_start",
+    "gate_id": "tokyo_eye_equ_correct_start",
+    "not": "remediation_patch_of_existing_tangent_spine",
+    "requires": [
+      "pre_registered_sprint_doc",
+      "sealed_gates_including_pure_hyp_pass",
+      "fresh_spine_implementing_amended_freeze_not_patching_live_lie"
+    ]
+  },
+  "not_trunk": [
+    "models:/TokyoEye@champion v5 (lesson-only for EQU geometry)",
+    "tokyo_eye_v7 / HEALTHY_V7_CKPT",
+    "equ_cold_boot weights (hygiene Fail + pure_hyp Fail)",
+    "data/gates/*.json alone without MLflow registration"
+  ],
+  "naming": {
+    "convention_gate": "tokyo_eye_equ_naming_convention",
+    "stem": "tokyo_eye_equ_<slug>",
+    "this_gate": "tokyo_eye_equ_ssot"
+  }
+}

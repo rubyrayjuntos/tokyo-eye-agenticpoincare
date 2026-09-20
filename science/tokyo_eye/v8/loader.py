@@ -35,6 +35,7 @@ from science.tokyo_eye.v8.r0_r5_graph import (
     R5_LOCAL_NEIGHBORHOOD,
     WRAPPING_RADIUS_A,
     build_r0_r5_graph,
+    chemistry_gate_features,
     get_dehydron_wrap_max,
 )
 from science.tokyo_eye.v8.types import ResidueRecord
@@ -244,6 +245,9 @@ def batch_from_records(
         graph.num_nodes, graph.edge_index, graph.edge_type
     )
     pos, neg = mechanism_soft_targets(dehydron)
+    gate_chem = chemistry_gate_features(
+        graph.num_nodes, graph.edge_index, graph.edge_type, coords
+    )
     return _batch_from_arrays(
         coords=coords,
         edge_index=graph.edge_index,
@@ -256,6 +260,7 @@ def batch_from_records(
         pdb_id=pdb_id,
         chain=chain,
         graph_meta=graph.meta,
+        gate_chem=gate_chem,
         device=device,
     )
 
@@ -273,6 +278,7 @@ def _batch_from_arrays(
     pdb_id: str,
     chain: str,
     graph_meta: Mapping[str, Any],
+    gate_chem: np.ndarray,
     device: torch.device | str = "cpu",
 ) -> dict[str, Any]:
     device = torch.device(device)
@@ -284,6 +290,7 @@ def _batch_from_arrays(
         "sdrp_target": torch.from_numpy(sdrp.astype(np.int64)).to(device),
         "mechanism_pos": torch.from_numpy(pos.astype(np.float32)).to(device),
         "mechanism_neg": torch.from_numpy(neg.astype(np.float32)).to(device),
+        "gate_chem": torch.from_numpy(np.asarray(gate_chem, dtype=np.float32)).to(device),
         "num_nodes": int(num_nodes),
         "pdb_id": pdb_id.upper(),
         "chain": chain,
@@ -305,6 +312,7 @@ def _save_graph_cache(path: Path, batch: dict[str, Any]) -> None:
         "sdrp_target": batch["sdrp_target"].detach().cpu(),
         "mechanism_pos": batch["mechanism_pos"].detach().cpu(),
         "mechanism_neg": batch["mechanism_neg"].detach().cpu(),
+        "gate_chem": batch["gate_chem"].detach().cpu(),
         "num_nodes": int(batch["num_nodes"]),
         "pdb_id": batch["pdb_id"],
         "chain": batch["chain"],
@@ -336,6 +344,8 @@ def _load_graph_cache(
         return None
     device = torch.device(device)
     dehydron = payload["dehydron_labels"]
+    if "gate_chem" not in payload:
+        return None
     return {
         "x": payload["x"].to(device),
         "edge_index": payload["edge_index"].to(device),
@@ -344,6 +354,7 @@ def _load_graph_cache(
         "sdrp_target": payload["sdrp_target"].to(device),
         "mechanism_pos": payload["mechanism_pos"].to(device),
         "mechanism_neg": payload["mechanism_neg"].to(device),
+        "gate_chem": payload["gate_chem"].to(device),
         "num_nodes": int(payload["num_nodes"]),
         "pdb_id": str(payload["pdb_id"]).upper(),
         "chain": str(payload["chain"]),
@@ -444,6 +455,7 @@ __all__ = [
     "NUM_SDRP_HEURISTIC",
     "TokyoEyeCuratedDataset",
     "batch_from_records",
+    "chemistry_gate_features",
     "dehydron_labels_from_edges",
     "ensure_pdb_cached",
     "graph_cache_hash",

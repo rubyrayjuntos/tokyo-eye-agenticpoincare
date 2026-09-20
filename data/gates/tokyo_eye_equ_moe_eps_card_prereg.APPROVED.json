@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_moe_eps_card_prereg",
+  "display_lineage": "Tokyo Eye EQU",
+  "status": "APPROVED",
+  "approval_status": "APPROVED",
+  "execution_state": "IMPLEMENTATION_LANDED",
+  "date_drafted": "2026-09-18",
+  "drafted_by": "Claude Sonnet 5 (assistant) - draft for operator review",
+  "trunk_step": "1 of 4 (MoE / epsilon remediation or explicit ablation)",
+  "do_not_promote": true,
+  "diagnostic": true,
+  "evidence": {
+    "stamp": "data/gates/tokyo_eye_equ_epsilon_decay_floor_hold_full_spine.json",
+    "stamp_sha256": "416f318b7088822776eb589c6246d1cbc0edf98d35302f26510099e10738143d",
+    "mlflow_run_id": "ea3133c7d9894306b67d1fa1f8e0f701",
+    "verified_findings": {
+      "F1_never_live_in_eval": "eval_moe_liveness_pass is false on 38/38 rows. eval n_alive==1 and load==[1,0,0,0] on epochs 0-13 (pre-floor and floor row) and n_alive stays 1 through epoch 15. The gate's collapsed_at_epoch=13 / '0 epochs after floor' is just the first post-floor row; the router was never live in eval, so the stamp does not show that eps->0 caused a collapse.",
+      "F2_eps_is_train_only": "moe.py TopologyAwareHardMoE._route applies the eps override only when self.training; eval is argmax and ignores eps. eps decay cannot directly change eval routing, only which experts receive gradient during training.",
+      "F3_partial_recovery_still_fails": "Post-floor n_alive peaks at 3 (epochs 25-26), entropy_norm peaks at 0.591 (epoch 29) vs 0.85 floor, load_min is 0.0 on every row, expert 2 has eval load 0.0 on all 38 rows; final load [0, 0.217, 0, 0.783].",
+      "F4_protocol": "One optimizer step per epoch on a single round-robin structure (38 steps total); eval routing is measured on the structure just trained on (not held-out), one seed (torch.manual_seed(0)).",
+      "F5_coeffs_already_high": "cv_coeff=10, moe_quota_coeff=5, eval_proxy_quota_coeff=140 under the locked tokyo_eye_equ_moe_eval_util gate. More coefficient escalation is the forbidden silent retune.",
+      "F6_no_ablation_switch": "grep of science/tokyo_eye/v8/model.py and experiments/training/v8/run_v8_experiment.py finds no MoE-ablation flag; Option A needs a small flag-gated code change."
+    },
+    "isolated_router_stamp_note": "tokyo_eye_equ_epsilon_decay_floor_hold.json (synthetic 4-cluster, final load [0.125,0,0.648,0.227]) is not used as evidence here."
+  },
+  "options": {
+    "R_remediate_single_shot": {
+      "change": "Exactly one structural change, no coefficient/schedule change: each epoch, gradients are averaged over all 12 Stage-A-12 structures and applied in ONE optimizer step (same step count and lr as the stamp). Eval liveness is measured on pooled nodes of all 12 structures (node-weighted) in addition to the per-structure rows.",
+      "rationale": "F4: the gate sees one structure per step and is scored on that same structure; F1: liveness fails from init, before any eps effect. This tests whether gradient/eval diversity alone makes routing multi-expert.",
+      "attempts_allowed": 1,
+      "seeds": [
+        0,
+        1,
+        2
+      ],
+      "control": "existing stamp (seed 0); NOT re-run",
+      "on_fail": "automatic fallback to Option A for step 3; no second remediation without a new signed card"
+    },
+    "A_ablate_explicit": {
+      "change": "Add flag-gated moe_mode in {live (default), ablated}. ablated = routing fixed one-hot to expert 0; experts 1-3 not executed; gate params excluded from the optimizer; cv/quota/switch/eval_proxy/majority/soft_quota terms and the eps override are not computed. MLflow tags: moe_mode=ablated, moe_claim=none, diagnostic=true, do_not_promote=true.",
+      "rationale": "Step 4 needs an ablated arm for the MoE-on vs ablated comparison regardless of how R turns out.",
+      "rejected_variant": "Dense/soft mean over experts as the ablation - violates the frozen hard=True one-hot contract."
+    },
+    "A0_attribution_note": {
+      "change": "Sidecar note only (no edit to the original stamp): relabel attribution of the full-spine result from COLLAPSED_POST_FLOOR to NEVER_LIVE_IN_EVAL_FROM_INIT under the verdict table below. Zero compute.",
+      "included_in_default": true
+    }
+  },
+  "recommended_default": "A0 + R (single shot, seeds 0/1/2) with pre-declared automatic fallback to A. Build the A flag in parallel because step 4 needs it either way.",
+  "pass_fail_bars": {
+    "thresholds_source": "data/gates/tokyo_eye_equ_moe_eval_util_pins.json (locked; NOT relaxed): min_load>=0.10, n_alive>=4 at alive_floor 0.05, entropy_norm>=0.85",
+    "R": {
+      "P1_hold": "PASS iff on EVERY post-floor row (floor_epoch..floor_epoch+24, 25 rows) the pooled 12-structure eval routing passes all three moe_eval_utilization sub-gates, for ALL 3 seeds. Any failing row on any seed = FAIL.",
+      "P2_finite": "PASS iff no non-finite loss/grad on any seed.",
+      "P3_no_ablation_leak": "PASS iff moe_mode==live and all schedule/coeff pins below are byte-identical to the pins in this card.",
+      "verdict_table": {
+        "HELD": "P1 and P2 and P3 pass. MoE-on remains a candidate for step 3; step 4 MoE-on arm is meaningful.",
+        "COLLAPSED_POST_FLOOR": "pooled eval liveness passes on the last pre-floor row (floor_epoch-1) on that seed, then fails post-floor. eps-attributable. Fall back to A.",
+        "NEVER_LIVE": "pooled eval liveness fails on the last pre-floor row. Not eps-attributable. Fall back to A; MoE-on labelled unhealthy in step 4.",
+        "ABORT_NONFINITE": "P2 fails. Fall back to A."
+      }
+    },
+    "A": {
+      "A1_default_bit_identical": "PASS iff with moe_mode=live the model output on one fixed batch (seed 0, 1MBN:A) has max abs diff == 0 vs the pre-change code.",
+      "A2_ablation_exact": "PASS iff with moe_mode=ablated: eval load == [1,0,0,0]; all listed MoE loss terms == 0 exactly; gate param grads are None; experts 1-3 never called.",
+      "A3_pure_hyp_holds": "PASS iff the pure_hyp full-spine scan (2 tau cases x 12 structures) still returns pure_hyp_pass=true with moe_mode=ablated.",
+      "A4_finite_train": "PASS iff the 38-epoch round-robin run stays finite. No performance bar.",
+      "claim_rule": "decay_floor_hold is recorded N/A_ABLATED, never PASS. Load [1,0,0,0] is by construction and is not MoE evidence."
+    }
+  },
+  "pins_at_draft": {
+    "eps_start": 0.2,
+    "eps_end": 0.0,
+    "eps_half_epochs": 12,
+    "gumbel_tau_start": 1.0,
+    "gumbel_tau_end": 0.3,
+    "gumbel_exp_alpha": 0.1002,
+    "cv_coeff": 10.0,
+    "moe_quota_floor": 0.05,
+    "moe_quota_coeff": 5.0,
+    "eval_proxy_quota_coeff": 140.0,
+    "lr_backbone": 1e-05,
+    "lr_hyperbolic": 0.001,
+    "weight_map": "science/tokyo_eye/v8/configs/equiformer_v3_weight_map.json",
+    "dehydron_wrap_max": 1,
+    "manifest": "manifests/v8_stage_a_small_v1.json",
+    "manifest_sha256": "ed499fad1252820052d38e39d842f532550b57b0012e4eb6b3ccab90bd565eda",
+    "verify_script_sha256": "0c5af4e2491f5febbf7138fa0199baf6fb866ad25d332f8238277dc198181db8",
+    "moe_py_sha256": "59f475fe846e96e60ba6dec4915fc502695c05e4f90b83af74cc8c6de92edd24",
+    "engine_py_sha256": "b0a7da65e31982770b47b9cfa5499de30b1ea302e81c7ce7074755c1fdcfda9d",
+    "run_v8_experiment_py_sha256": "60211ecc965468bfabfb6af047b139c79a19ee447d9a167fde05378161c9a49e"
+  },
+  "constraints": {
+    "no_promote": true,
+    "no_alias_moves": true,
+    "no_silent_retune": true,
+    "no_registry_write_beyond_DRAFT": true,
+    "unchanged_by_this_card": [
+      "all coefficients and schedules in pins_at_draft",
+      "dehydron labels / wrap SSOT",
+      "SDRP loss, targets and loader (step 2 is a separate card; no C1)",
+      "locked tokyo_eye_equ_moe_eval_util thresholds"
+    ],
+    "amendment_rule": "Any change to a threshold, seed set, attempt count or pin after approval requires a new signed card.",
+    "not_claims": [
+      "HELD is not a biology pass",
+      "no wrap=19 numbers, no v6/v66/v7/Chem-MVP, no affinity implication"
+    ]
+  },
+  "open_questions_for_operator": [],
+  "next_command_after_approval": "python3 scripts/moe_eps_card_run.py --arm R --seeds 0 1 2",
+  "approver": "Ray Swan (via Cursor operator)",
+  "approved_at": "2026-09-18T18:57:55Z",
+  "operator_decisions": {
+    "P1_hold_window": "KEEP every post-floor row (25 rows) \u2014 do not soften",
+    "seeds": "ALL 3 seeds (0,1,2) must pass P1 \u2014 any seed fail = R FAIL",
+    "R_gradient_aggregation": "MEAN over 12 structures (one optimizer step). Prefer mean over sum so loss/grad scale stays comparable to the single-structure baseline; do not multiply lr.",
+    "path": "A0 attribution sidecar + build A (moe_mode) in parallel + single-shot R; on R FAIL auto-fallback to A for step 3",
+    "implementation": "APPROVED \u2014 moe_mode + scripts/moe_eps_card_run.py written"
+  }
+}

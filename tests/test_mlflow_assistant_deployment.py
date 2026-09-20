@@ -12,8 +12,11 @@ def test_mlflow_image_contains_pinned_codex() -> None:
     dockerfile = (ROOT / "Dockerfile.mlflow").read_text()
     assert "FROM node:22-bookworm-slim AS node" in dockerfile
     assert "FROM tokyoeye-science:latest" in dockerfile
-    assert "npm install --global @openai/codex@0.146.0" in dockerfile
+    assert "npm install --global @openai/codex@0.146.0 @anthropic-ai/claude-code" in dockerfile
     assert "codex --version" in dockerfile
+    assert "claude --version" in dockerfile
+    assert "mlflow_assistant_localhost_gate.py" in dockerfile
+    assert "scripts/mlflow_assistant_localhost_gate.py" in dockerfile
     assert dockerfile.rstrip().endswith("USER appuser")
 
 
@@ -24,8 +27,10 @@ def test_mlflow_compose_security_boundary() -> None:
     assert mlflow["build"]["dockerfile"] == "Dockerfile.mlflow"
     assert mlflow["image"] == "tokyoeye-mlflow:latest"
     assert mlflow["ports"] == ["127.0.0.1:5000:5000"]
+    assert mlflow["environment"]["MLFLOW_ASSISTANT_ALLOW_PRIVATE_CLIENT"] == "1"
     assert "./:/workspace:rw" in mlflow["volumes"]
     assert "mlflow_codex_auth:/home/appuser/.codex" in mlflow["volumes"]
+    assert "${HOME}/.claude:/home/appuser/.claude:rw" in mlflow["volumes"]
     assert "mlflow_assistant_cfg:/home/appuser/.mlflow/assistant" in mlflow["volumes"]
     assert "mlflow_codex_auth" in compose["volumes"]
     assert "mlflow_assistant_cfg" in compose["volumes"]
@@ -47,13 +52,36 @@ def test_preflight_checks_cover_install_auth_config_and_health() -> None:
     names = [check.name for check in checks]
     commands = "\n".join(check.command for check in checks)
 
-    assert names == ["mlflow-health", "mlflow-version", "codex-installed", "codex-auth", "assistant-config"]
+    assert names == [
+        "mlflow-health",
+        "mlflow-version",
+        "codex-installed",
+        "claude-installed",
+        "assistant-config",
+        "codex-auth",
+        "claude-auth",
+        "claude-home-mount",
+    ]
     assert "http://localhost:5000/health" in commands
     assert "mlflow.__version__" in commands
     assert "codex --version" in commands
+    assert "claude --version" in commands
     assert "codex login status" in commands
+    assert "claude -p hi" in commands
     assert "config.json" in commands
     assert "/workspace" in commands
+    assert ".credentials.json" in commands
+
+    claude_only = build_checks(["claude_code"])
+    assert [c.name for c in claude_only] == [
+        "mlflow-health",
+        "mlflow-version",
+        "codex-installed",
+        "claude-installed",
+        "assistant-config",
+        "claude-home-mount",
+        "claude-auth",
+    ]
 
 
 def test_preflight_exit_status(monkeypatch, capsys) -> None:
@@ -102,8 +130,12 @@ def test_preflight_check_timeout(monkeypatch) -> None:
 def test_assistant_runbook_documents_bootstrap_and_security() -> None:
     runbook = (ROOT / "docs/training/MLFLOW_ASSISTANT.md").read_text()
     assert "docker compose exec mlflow codex login" in runbook
+    assert "scripts/mlflow_claude_host_auth_acl.sh" in runbook
+    assert "${HOME}/.claude" in runbook
+    assert "MLFLOW_ASSISTANT_ALLOW_PRIVATE_CLIENT" in runbook
+    assert "You do not have permission to access this resource" in runbook
     assert "docker compose exec mlflow mlflow assistant --configure" in runbook
     assert "python scripts/mlflow_assistant_preflight.py" in runbook
-    assert "danger-full-access" in runbook
+    assert "Claude Code" in runbook
     assert "read/write" in runbook
     assert "TokyoEye@champion" in runbook

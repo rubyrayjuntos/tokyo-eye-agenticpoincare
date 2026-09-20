@@ -40,7 +40,7 @@ def test_live_backbone_grads_reach_atom_embed() -> None:
     )
     apply_weight_map(fe, CKPT, cfg)
     spine = TokyoEyesHyperbolicV8(
-        scalar_dim=128, vector_dim=3, hidden_dim=128, num_attn_layers=1, num_sdrp_classes=5
+        scalar_dim=128, vector_dim=3, hidden_dim=128, num_attn_layers=2, num_sdrp_classes=5
     )
     system = TokyoEyeV8WithFrontend(fe, spine)
     x, ei, et = _tiny_batch()
@@ -58,7 +58,7 @@ def test_freeze_backbone_uses_stub_no_bank_grad() -> None:
         in_dim=3, scalar_dim=32, vector_dim=3, live_backbone=False
     )
     spine = TokyoEyesHyperbolicV8(
-        scalar_dim=32, vector_dim=3, hidden_dim=32, num_attn_layers=1, num_sdrp_classes=5
+        scalar_dim=32, vector_dim=3, hidden_dim=32, num_attn_layers=2, num_sdrp_classes=5
     )
     system = TokyoEyeV8WithFrontend(fe, spine)
     x, ei, et = _tiny_batch()

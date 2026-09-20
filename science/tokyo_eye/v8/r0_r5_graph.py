@@ -57,13 +57,15 @@ R_TYPE_TO_NAME: dict[int, str] = {
 }
 
 # Dehydron wrap gate (edge classification) — not node τ TAU=13.
-DEHYDRON_WRAP_MAX = 19
+# AMEND 2026-09-17 (tokyo_eye_equ_wrap_threshold): Stage-A-12 median-then-descend
+# under double-cone wraps → 1. Classical Fernández 19 was sphere-calibrated.
+DEHYDRON_WRAP_MAX = 1
 WRAPPING_RADIUS_A = 6.5
 CB_NEIGHBORHOOD_A = 8.0
 PI_CENTROID_MAX_A = 5.0
 HYDROPHOBIC_CENTROID_MAX_A = 5.0
 
-# Mutable runtime override (Sprint 8 Epoch-0 median retune)
+# Frozen wrap (addendum §2.7 AMEND). Runtime retune is forbidden.
 _ACTIVE_DEHYDRON_WRAP_MAX = DEHYDRON_WRAP_MAX
 
 HYDROPHOBIC_RESIDUES = frozenset(
@@ -91,9 +93,16 @@ def get_dehydron_wrap_max() -> int:
 
 
 def set_dehydron_wrap_max(value: int) -> None:
-    """Set runtime wrap threshold (Epoch-0 median retune)."""
+    """Freeze §5 wrap is DEHYDRON_WRAP_MAX. Any other value is forbidden retune."""
     global _ACTIVE_DEHYDRON_WRAP_MAX
-    _ACTIVE_DEHYDRON_WRAP_MAX = int(value)
+    v = int(value)
+    if v != int(DEHYDRON_WRAP_MAX):
+        raise ValueError(
+            f"dehydron wrap is frozen at {DEHYDRON_WRAP_MAX}; "
+            f"runtime retune to {v} is forbidden "
+            "(tokyo_eye_equ_wrap_threshold / addendum §2.7)"
+        )
+    _ACTIVE_DEHYDRON_WRAP_MAX = v
 
 
 def classify_hbond_vs_dehydron(
@@ -142,6 +151,117 @@ def resolve_layer_b_primary(
     if has_r5_neighborhood:
         return R5_LOCAL_NEIGHBORHOOD, flags
     return None, 0
+
+
+def assert_layer_b_exclusivity(
+    edge_index: np.ndarray,
+    edge_type: np.ndarray,
+) -> None:
+    """Property: at most one Layer-B type per undirected pair; R0 may coexist."""
+    ei = np.asarray(edge_index, dtype=np.int64)
+    et = np.asarray(edge_type, dtype=np.int64).reshape(-1)
+    layer_b: dict[tuple[int, int], set[int]] = {}
+    for k in range(et.shape[0]):
+        i, j, r = int(ei[0, k]), int(ei[1, k]), int(et[k])
+        if r == R0_COVALENT:
+            continue
+        if r < R1_HBOND or r > R5_LOCAL_NEIGHBORHOOD:
+            raise AssertionError(f"edge_type {r} outside R0–R5")
+        key = (i, j) if i < j else (j, i)
+        layer_b.setdefault(key, set()).add(r)
+    for key, types in layer_b.items():
+        if len(types) != 1:
+            raise AssertionError(
+                f"Layer-B exclusivity violated for {key}: types={sorted(types)}"
+            )
+
+
+def edge_type_directed_fractions(
+    edge_type: np.ndarray, *, num_relations: int = 6
+) -> dict[str, float]:
+    """Directed edge-type fractions for R0–R5 (logged every run)."""
+    et = np.asarray(edge_type, dtype=np.int64).reshape(-1)
+    out: dict[str, float] = {}
+    for r in range(int(num_relations)):
+        out[f"edge_frac_r{r}"] = float(np.mean(et == r)) if et.size else 0.0
+    out["n_edges_directed"] = float(et.shape[0])
+    return out
+
+
+def chemistry_gate_features(
+    num_nodes: int,
+    edge_index: np.ndarray,
+    edge_type: np.ndarray,
+    coords: np.ndarray,
+) -> np.ndarray:
+    """Per-node ``[ρ, τ, ss_H, ss_E, ss_C, degree, sasa]`` for the MoE gate.
+
+    ρ: incident R1 (wrapped H-bond) fraction of degree.
+    τ: incident R2 (dehydron) fraction of degree.
+    ss_*: crude CA-geometry helix/sheet/coil one-hot (not DSSP assign).
+    sasa: inverse CA-neighborhood density within 8 Å, scaled to (0,1].
+    """
+    n = int(num_nodes)
+    ei = np.asarray(edge_index, dtype=np.int64)
+    et = np.asarray(edge_type, dtype=np.int64).reshape(-1)
+    deg = np.zeros(n, dtype=np.float64)
+    n_r1 = np.zeros(n, dtype=np.float64)
+    n_r2 = np.zeros(n, dtype=np.float64)
+    if et.size:
+        dst = ei[1]
+        for k in range(et.shape[0]):
+            j = int(dst[k])
+            if j < 0 or j >= n:
+                continue
+            deg[j] += 1.0
+            if int(et[k]) == R1_HBOND:
+                n_r1[j] += 1.0
+            elif int(et[k]) == R2_DEHYDRON:
+                n_r2[j] += 1.0
+    denom = np.maximum(deg, 1.0)
+    rho = n_r1 / denom
+    tau = n_r2 / denom
+    ss = _ca_ss_onehot(np.asarray(coords, dtype=np.float64), n)
+    sasa = _ca_sasa_proxy(np.asarray(coords, dtype=np.float64), n)
+    return np.stack(
+        [rho, tau, ss[:, 0], ss[:, 1], ss[:, 2], deg, sasa], axis=1
+    ).astype(np.float32)
+
+
+def _ca_ss_onehot(coords: np.ndarray, n: int) -> np.ndarray:
+    """Very small CA-angle heuristic: coil default; helix-like if 70–120°; sheet if >140°."""
+    ss = np.zeros((n, 3), dtype=np.float64)
+    ss[:, 2] = 1.0
+    if coords.shape[0] != n or n < 3:
+        return ss
+    for i in range(1, n - 1):
+        a = coords[i - 1] - coords[i]
+        b = coords[i + 1] - coords[i]
+        na = float(np.linalg.norm(a))
+        nb = float(np.linalg.norm(b))
+        if na < 1e-6 or nb < 1e-6:
+            continue
+        ang = float(np.degrees(np.arccos(np.clip(np.dot(a, b) / (na * nb), -1, 1))))
+        ss[i] = 0.0
+        if 70.0 <= ang <= 120.0:
+            ss[i, 0] = 1.0
+        elif ang >= 140.0:
+            ss[i, 1] = 1.0
+        else:
+            ss[i, 2] = 1.0
+    return ss
+
+
+def _ca_sasa_proxy(coords: np.ndarray, n: int, radius: float = 8.0) -> np.ndarray:
+    if coords.shape[0] != n or n == 0:
+        return np.ones(n, dtype=np.float64)
+    sasa = np.ones(n, dtype=np.float64)
+    r2 = float(radius) ** 2
+    for i in range(n):
+        d2 = np.sum((coords - coords[i]) ** 2, axis=1)
+        neigh = int(np.sum((d2 > 1e-8) & (d2 <= r2)))
+        sasa[i] = 1.0 / (1.0 + float(neigh))
+    return sasa
 
 
 def directed_pairs_for_type(
@@ -490,9 +610,15 @@ def build_r0_r5_graph(
         "hbond_energy_mean": (
             float(np.mean(list(hbond_energies.values()))) if hbond_energies else None
         ),
+        "n_r0": int(counts["r0"]),
         "n_r1": int(counts["r1"]),
         "n_r2": int(counts["r2"]),
+        "n_r3": int(counts["r3"]),
+        "n_r4": int(counts["r4"]),
+        "n_r5": int(counts["r5"]),
+        **edge_type_directed_fractions(edge_type),
     }
+    assert_layer_b_exclusivity(edge_index, edge_type)
     return R0R5GraphResult(
         edge_index=edge_index,
         edge_type=edge_type,
@@ -555,9 +681,12 @@ __all__ = [
     "R_TYPE_TO_NAME",
     "WRAPPING_RADIUS_A",
     "attach_r0_r5_graph",
+    "assert_layer_b_exclusivity",
     "build_r0_r5_graph",
+    "chemistry_gate_features",
     "classify_hbond_vs_dehydron",
     "directed_pairs_for_type",
+    "edge_type_directed_fractions",
     "get_dehydron_wrap_max",
     "load_r0_r5_from_pdb",
     "resolve_layer_b_primary",

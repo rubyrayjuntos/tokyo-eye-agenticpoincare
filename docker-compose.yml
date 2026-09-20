@@ -12,7 +12,9 @@ services:
       # Performance tuning for development
       POSTGRES_INITDB_ARGS: "-c shared_buffers=256MB -c effective_cache_size=1GB -c work_mem=16MB -c maintenance_work_mem=64MB"
     ports:
-      - "5432:5432"
+      # Host Postgres often owns :5432; keep publish on a free localhost port.
+      # In-compose clients still use hostname `db:5432`.
+      - "127.0.0.1:5434:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - wal_archive:/var/lib/postgresql/wal_archive
@@ -160,6 +162,11 @@ services:
       # Proxied artifact API: clients (host agent / science) upload via HTTP to this server.
       # localhost:5000 is both the UI and the Tracking/Registry/Artifacts API.
       MLFLOW_DEFAULT_ARTIFACT_ROOT: mlflow-artifacts:/
+      # Browser → 127.0.0.1:5000 is remapped to the Docker bridge IP inside the
+      # container; without this, Assistant APIs return 403 and the UI says
+      # "You do not have permission to access this resource." Safe because
+      # ports are bound to 127.0.0.1 only.
+      MLFLOW_ASSISTANT_ALLOW_PRIVATE_CLIENT: "1"
     command:
       - sh
       - -c
@@ -182,12 +189,23 @@ services:
       - ./experiments:/app/experiments
       - ./:/workspace:rw
       - mlflow_codex_auth:/home/appuser/.codex
+      # Host Claude Code auth (option 2): credentials from ~/.claude on the host.
+      # Grant uid 999 read via scripts/mlflow_claude_host_auth_acl.sh (mode 600 otherwise blocks appuser).
+      - ${HOME}/.claude:/home/appuser/.claude:rw
       - mlflow_assistant_cfg:/home/appuser/.mlflow/assistant
     depends_on:
       db:
         condition: service_healthy
     networks:
       - tokyoeye_net
+    # Assistant training runs in this container — needs the same GPU path as science.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
       interval: 15s

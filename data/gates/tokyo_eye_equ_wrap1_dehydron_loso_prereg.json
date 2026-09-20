@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_wrap1_dehydron_loso_prereg",
+  "display_lineage": "Tokyo Eye EQU",
+  "status": "DRAFT",
+  "approval_status": "NOT_APPROVED",
+  "execution_state": "NOT_STARTED",
+  "date_drafted": "2026-09-18",
+  "drafted_by": "Claude Sonnet 5 (assistant) - draft for operator review",
+  "trunk_step": "3 of 4 (serious wrap=1 dehydron train)",
+  "do_not_promote": true,
+  "promote_eligible": false,
+  "no_code_or_train_until_approved": true,
+  "question": "Trained on 11 structures, can the ablated-MoE hyperbolic spine rank dehydron nodes on a held-out structure better than chance under wrap=1, when the edge-type input is removed?",
+  "predecessors": {
+    "step1_close": "data/gates/tokyo_eye_equ_moe_eps_card_close.json",
+    "step1_close_sha256": "51dd201dfdf6026da559d76e45ee39c1308ee6e257a6fe78f3745c80769443cb",
+    "step2_close": "data/gates/tokyo_eye_equ_sdrp_target_wrap1_close.json",
+    "baseline_stamp": "data/gates/tokyo_eye_equ_wrap1_biology_rescore.json",
+    "baseline_stamp_sha256": "331f86aff036748d5a238330fad8be6c8d7db31bd415c9028bedb4c0d8484ac1"
+  },
+  "design": {
+    "moe_mode": "ablated",
+    "moe_claim": "none",
+    "sdrp_coeff": 0.0,
+    "sdrp_coeff_note": "EXPLICIT: the pinned default is SDRP_LOSS_COEFF=0.1; this card sets it to 0.0 because SDRP is parked (tokyo_eye_equ_sdrp_target_wrap1_close). The SDRP head stays in the forward pass but receives zero loss weight; no loader, label or cache-key change. SDRP metrics are logged as diagnostics and are not used for any bar.",
+    "dehydron_wrap_max": 1,
+    "manifest": "manifests/v8_stage_a_small_v1.json",
+    "structures": ["1MBN:A", "1LYZ:A", "1BG1:A", "1F88:A", "2Z6H:A", "1HHP:A", "1TEN:A", "1UBQ:A", "1TIM:A", "4OBE:A", "1IVO:A", "2SHP:A"],
+    "frontend": {
+      "mode": "live SE(3)-lite, cold random-init, freeze_backbone=false",
+      "pretrained_bank": "NOT AVAILABLE - checkpoints/v8/pretrained/ does not exist in this environment",
+      "claim_consequence": "Results speak to the cold SE(3)-lite frontend + hyperbolic spine, NOT to a pretrained EquiformerV3 backbone. A pretrained-bank arm needs the checkpoint present and a separate card."
+    },
+    "protocol": {
+      "split": "leave-one-structure-out (LOSO), 12 folds: train on 11, evaluate on the 1 held-out structure",
+      "group_rule": "Before folds are frozen, record pairwise sequence identity of the 12 chains (science/tokyo_eye/v8/seq_cluster.py tooling if usable offline; otherwise state that the check could not be run). Any pair >= 30% identity is held out together as one fold group. Result is reported either way.",
+      "epochs_E": 200,
+      "epochs_note": "PROPOSED. About 3x-5x the earlier 38/60-epoch stubs; fixed in advance. One optimizer step per epoch on the MEAN gradient over the 11 training structures (same aggregation as run_epoch_mean_structures in the approved MoE/eps card). lr unchanged.",
+      "model_selection": "NONE. No early stopping, no best-epoch pick, no checkpoint selection on the held-out structure. The reported number is the LAST epoch. Held-out metrics logged during training are read-only diagnostics.",
+      "eval": "eval mode, tau = tau_end (0.995), same as the wrap1 rescore stamp; dehydron score = sigmoid(mechanism_score)",
+      "seed": 0,
+      "seed_note": "Single seed; seed variance is not estimated. See open_questions."
+    },
+    "arms": {
+      "B_blind": {
+        "role": "CLAIM-BEARING",
+        "input": "edge_type collapsed to one constant relation (R5) and gate_chem dropped, as in _blind() of the wrap1 rescore script; edge topology kept",
+        "why": "dehydron_labels == R2-edge incidence on all 12 structures and edge_type is a model input, so a typed score is label-leak-confounded."
+      },
+      "T_typed": {
+        "role": "SETUP SANITY ONLY - never a biology claim",
+        "input": "unchanged (edge_type and gate_chem present)",
+        "why": "The label is directly readable from the input here, so if this arm cannot fit even its training folds, the setup is broken and the blind arm's result is uninterpretable."
+      }
+    },
+    "learning_curves": "Per epoch: train-fold dehydron BCE and total loss. Every 10 epochs: train-fold pooled AUPRC, held-out AUPRC / lift / ROC-AUC. All logged to MLflow with step=epoch, tags fold, arm, moe_mode=ablated, moe_claim=none, sdrp_coeff=0.0."
+  },
+  "pass_fail_bars": {
+    "status": "PROPOSED - every threshold below is fixed here, before any run, and is not to be adjusted after seeing results",
+    "reference_numbers_seen_at_draft": {
+      "source": "wrap1_biology_rescore (in-sample, cold, 60 epochs, seed 0)",
+      "pooled_prevalence": 0.425,
+      "init_mean_per_structure_lift": 1.095,
+      "typed_final_pooled_auprc": 0.493,
+      "typed_final_mean_per_structure_lift": 1.282,
+      "blind_final_pooled_auprc": 0.451,
+      "blind_final_mean_per_structure_lift": 1.256,
+      "hbond_incidence_baseline_mean_auprc": 0.448,
+      "reading": "Even the typed arm, whose input contains the label, reached only 0.49 pooled AUPRC in-sample, and the blind arm barely moved off random init. So the old stub was likely under-fit; that is what G_fit below checks."
+    },
+    "lift_definition": "held-out AUPRC / held-out prevalence, per structure",
+    "G_finite": "no non-finite loss or gradient in any fold or arm",
+    "G_fit": "T_typed: train-fold pooled AUPRC at the last epoch >= 0.80 in EVERY fold. Fails => verdict INCONCLUSIVE_UNDERFIT.",
+    "S1_mean_lift": "B_blind: mean over the 12 held-out structures of lift >= 1.30, AND the lower bound of a 95% percentile bootstrap CI (structure-level resampling, 10000 draws, seed 0) is > 1.10",
+    "S2_consistency": "B_blind: lift > 1.0 on >= 10 of 12 held-out structures (one-sided sign test p ~ 0.019 at 10/12)",
+    "verdict_table": {
+      "PASS_SIGNAL": "G_finite and G_fit and S1 and S2. Held-out dehydron signal under wrap=1 with edge type removed. Still not a biology pass: see not_claims.",
+      "FAIL_NO_SIGNAL": "G_finite and G_fit and (S1 fails or S2 fails). The setup can fit but does not generalize; step 4 asks whether the architecture underperforms the theory.",
+      "INCONCLUSIVE_UNDERFIT": "G_fit fails. No claim either way. A new card is required; do NOT silently add epochs or retune.",
+      "ABORT_NONFINITE": "G_finite fails."
+    }
+  },
+  "pins": {
+    "lr_backbone": 1e-5,
+    "lr_hyperbolic": 1e-3,
+    "curvature_c": 1.0,
+    "tau_start": 0.7,
+    "tau_end": 0.995,
+    "tau_curriculum_total_epochs": 200,
+    "tau_curriculum_note": "CurriculumRadiusController(tau_start, tau_end, E) is stretched to E=200 as its constructor defines; this is the only schedule that changes with E.",
+    "margin_coeff": 1.0,
+    "dehydron_coeff": 1.0,
+    "max_grad_norm": 1.0,
+    "optimizer": "Adam via build_param_groups (as in the earlier full-spine runs)",
+    "moe_coeffs_ignored_under_ablation": "cv=10, quota=5, eval_proxy_quota=140, eps schedule and gumbel schedule stay in the weight map, unchanged and inactive under moe_mode=ablated",
+    "weight_map": "science/tokyo_eye/v8/configs/equiformer_v3_weight_map.json",
+    "weight_map_sha256": "aada48cb979ff3128e89edd6b7bbbd56f0c1114ef64a394ca31a7a240464c4ef",
+    "manifest_sha256": "ed499fad1252820052d38e39d842f532550b57b0012e4eb6b3ccab90bd565eda",
+    "moe_py_sha256": "92317a490d0c8fff90d2611ba7bdb02f441ed3364733c0e86249bb4e1b139423",
+    "model_py_sha256": "28e243bd8ed821c4830f77a3a3f8d42130bdccc1f6c6ef92da0767b9ba420159",
+    "engine_py_sha256": "b0a7da65e31982770b47b9cfa5499de30b1ea302e81c7ce7074755c1fdcfda9d",
+    "run_v8_experiment_py_sha256": "8c7e2be2e73bc8ca5d11f2eaa5becc3e2c1b6e5984f62db4f90a9a7efd676ae1"
+  },
+  "code_after_approval": {
+    "scope": "ONE new script scripts/wrap1_dehydron_loso.py (fallback /tmp if scripts/ is unwritable), reusing run_epoch_mean_structures with 11 batches, moe_mode=ablated, sdrp_coeff=0.0. Held-out metric code copied from the wrap1 rescore script. No edits to moe.py, model.py, engine.py, the loader, the loss code or the weight map. The harness has no split/held-out support today, which is why a new script is needed.",
+    "stamp_location": "data/gates/ (write test first; do not use data/gates_agent)",
+    "cost_estimate": "ESTIMATE, not measured for this protocol: the earlier live-MoE R arm ran about 4 s per epoch over 12 structures on CPU; ablated should be no slower. E=200 gives ~10 min per fold, ~2 h per arm, ~4 h for both arms."
+  },
+  "constraints": {
+    "no_promote": true,
+    "no_alias_moves": true,
+    "no_registry_write_beyond_DRAFT": true,
+    "no_silent_retune": true,
+    "no_wrap19_numbers": true,
+    "no_v6_v66_v7_chem_mvp_trunk": true,
+    "no_c1_no_stage2_no_loader_change": true,
+    "no_moe_on_claim": "moe_mode=ablated is declared in tags and in every stamp. Any MoE-on vs ablated comparison needs a new signed card (step 4).",
+    "no_rerun_of_closed_evidence": true,
+    "amendment_rule": "Any change to a threshold, E, fold rule, seed set or pin after approval requires a new signed card."
+  },
+  "not_claims": [
+    "PASS_SIGNAL is not a biology pass and not an experimental-dehydron validation: the label is a deterministic function of structure geometry (H-bond wrap count at wrap=1), so this measures whether held-out geometry-derived structure can be learned, not agreement with experiment.",
+    "Even the blind arm keeps edge topology and coordinates, so it may still recover R2 incidence from geometry; that is the intended signal, but it is not independent of the label definition.",
+    "No affinity, CASF, cryptic-pocket or allostery claim.",
+    "Cold SE(3)-lite frontend: no statement about pretrained EquiformerV3.",
+    "12 structures, one seed: no claim of broad generalization."
+  ],
+  "open_questions_for_operator": [
+    "E=200: keep, or choose another value now (it cannot be changed after approval).",
+    "Thresholds (S1 mean lift >= 1.30 with CI lower bound > 1.10; S2 >= 10/12; G_fit >= 0.80): keep or set different values before approval.",
+    "Seeds: keep seed 0 only, or require seeds 0/1/2 for arm B (about 3x cost for that arm)?",
+    "Run the T_typed sanity arm on all 12 folds (default) or on 3 folds to save ~1.5 h?",
+    "Homology group rule at >= 30% identity: keep, or use a different cutoff?",
+    "Pretrained bank: fetching mptrj_gradient.pt is out of scope here; add a separate card if you want that arm."
+  ],
+  "next_command_after_approval": "python3 scripts/wrap1_dehydron_loso.py --arm B --seeds 0   (script not yet written; nothing has been run)"
+}

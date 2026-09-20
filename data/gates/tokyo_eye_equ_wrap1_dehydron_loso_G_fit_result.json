@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_wrap1_dehydron_loso_G_fit_result",
+  "status": "INCONCLUSIVE_UNDERFIT",
+  "date": "2026-09-20",
+  "display_lineage": "Tokyo Eye EQU",
+  "do_not_promote": true,
+  "task": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_G_fit_task.json",
+  "parent_b_result": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_B_result.json",
+  "disposition": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_B_disposition.json",
+  "arm": "T_typed_G_fit_only",
+  "seed": 0,
+  "epochs": 200,
+  "folds": [
+    "1MBN:A",
+    "1LYZ:A",
+    "1BG1:A"
+  ],
+  "g_fit_threshold": 0.8,
+  "g_fit_pass": false,
+  "G_finite": true,
+  "per_fold": {
+    "1MBN:A": {
+      "train_pooled_auprc": 0.7560634016990662,
+      "g_fit_pass_fold": false
+    },
+    "1LYZ:A": {
+      "train_pooled_auprc": 0.7364793419837952,
+      "g_fit_pass_fold": false
+    },
+    "1BG1:A": {
+      "train_pooled_auprc": 0.7523908615112305,
+      "g_fit_pass_fold": false
+    }
+  },
+  "frontend": "cold SE(3)-lite",
+  "moe_mode": "ablated",
+  "sdrp_coeff": 0.0,
+  "g_fit_meaning": {
+    "what_it_is": "Typed/leaked train-fold AUPRC \u2014 can the model fit when given the answer",
+    "what_it_is_not": "Not architecture validation, not biology discovery, not pool seal"
+  },
+  "card_verdict": "INCONCLUSIVE_UNDERFIT",
+  "script_sha256": "1fddb765dd01d0bd4ee23cca7f5e82597b718880b900ecbedcd7521834480204",
+  "folds_frozen_sha256": "bea720b0d67ae86b4ef0850091094948e05aceff9cf9d6214d602721b3bc3a0e",
+  "approved_sha256": "39fb5cdec7aa67754f4c675f2768b72de8ee0434aafad21b8251ddf20288f647",
+  "signed": "auto from wrap1_dehydron_loso_g_fit.py"
+}

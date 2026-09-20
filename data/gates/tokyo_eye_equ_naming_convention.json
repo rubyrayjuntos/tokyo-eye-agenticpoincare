@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_naming_convention",
+  "status": "ACTIVE",
+  "date": "2026-09-15",
+  "display_lineage": "Tokyo Eye EQU",
+  "one_rule": "One stem everywhere: tokyo_eye_equ_<slug>. Same string in gate JSON, MLflow run name, gate_id tag, and repo pointer basename.",
+  "stem": "tokyo_eye_equ_<slug>",
+  "surfaces": {
+    "gate_stamp": "data/gates/tokyo_eye_equ_<slug>.json",
+    "mlflow_run_name": "tokyo_eye_equ_<slug>",
+    "mlflow_tag_gate_id": "tokyo_eye_equ_<slug>",
+    "spec": "docs/superpowers/specs/YYYY-MM-DD-tokyoeye-equ-<slug-with-hyphens>-design.md",
+    "plan": "docs/superpowers/plans/YYYY-MM-DD-tokyoeye-equ-<slug-with-hyphens>.md"
+  },
+  "versioning": {
+    "forbid_in_run_name": [
+      "_v1",
+      "_v2",
+      "_index",
+      "index_v"
+    ],
+    "use_instead": "params/tags: schema_version, ssot_schema_version \u2014 never bake revision into the identity name"
+  },
+  "display_lineage_tag": "Tokyo Eye EQU",
+  "experiment_keys": {
+    "on_experiment": "tokyoeye/equiformer-v3-moe/geometric/hyperbolic-spine",
+    "required_tags": {
+      "tokyo_eye_equ_ssot_gate_id": "tokyo_eye_equ_ssot",
+      "tokyo_eye_equ_ssot_run_id": "<active_ssot_run_uuid>",
+      "tokyo_eye_equ_next_open": "tokyo_eye_equ_<next_slug>",
+      "tokyo_eye_equ_naming_convention": "tokyo_eye_equ_<slug>"
+    }
+  },
+  "known_slugs": {
+    "ssot": "Operator index (law + ladder + pointers). Not a train run.",
+    "champion_disposition": "v5 lesson-only decision",
+    "cold_boot": "Geometry-first boot card",
+    "pure_hyp_freeze_amendment": "Freeze amendment law",
+    "correct_start": "Next open card (under amended freeze; not remediation)",
+    "naming_convention": "This naming law",
+    "ssot_ladder": "Ladder payload artifact companion to ssot (same family)"
+  },
+  "retired_names": {
+    "equ_ssot_index_v1": "Opaque; replaced by tokyo_eye_equ_ssot",
+    "equ_correct_start_under_amended_freeze": "Replaced by tokyo_eye_equ_correct_start"
+  },
+  "repo_pointer_rule": "Repo gate JSON is a thin pointer with gate_id == MLflow run name == experiment tag tokyo_eye_equ_ssot_gate_id. No parallel vocabulary.",
+  "experiment_charter": {
+    "gate_id": "tokyo_eye_equ_experiment_charter",
+    "required": true,
+    "surfaces": {
+      "ui_note": "experiment tag mlflow.note.content",
+      "machine_tags": [
+        "tokyo_eye_equ_purpose",
+        "tokyo_eye_equ_primary_metrics",
+        "tokyo_eye_equ_trunk_requires",
+        "tokyo_eye_equ_experiment_charter_gate"
+      ],
+      "full_json": "data/gates/tokyo_eye_equ_experiment_charter.json logged on SSOT run"
+    },
+    "rule": "Every EQU-bearing experiment defines purpose, goals, non-goals, and primary metrics in MLflow \u2014 not only in chat or hub prose."
+  }
+}

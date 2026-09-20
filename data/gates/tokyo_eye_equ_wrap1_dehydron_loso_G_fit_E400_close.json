@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_wrap1_dehydron_loso_G_fit_E400_close",
+  "status": "CLOSED_MARGINAL",
+  "date": "2026-09-20",
+  "display_lineage": "Tokyo Eye EQU",
+  "standing_rule": "Prose without a failing test always loses to a convenient default.",
+  "do_not_promote": true,
+  "parent_e400_result": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_G_fit_E400_result.json",
+  "parent_e400_prereg": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_G_fit_E400_prereg.json",
+  "parent_e200_result": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_G_fit_result.json",
+  "disposition": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_B_disposition.json",
+
+  "locked_binary": {
+    "g_fit_threshold": 0.8,
+    "g_fit_pass": false,
+    "e400_classifier_outcome": "DECAY_UNSETTLED",
+    "note": "Bar not moved. 1LYZ 0.7991 fails by 0.0009. Classifier correctly refused CLEARS_0_80."
+  },
+
+  "per_fold_E400": {
+    "1MBN:A": 0.8093,
+    "1LYZ:A": 0.7991,
+    "1BG1:A": 0.8238
+  },
+  "per_fold_E200": {
+    "1MBN:A": 0.7561,
+    "1LYZ:A": 0.7365,
+    "1BG1:A": 0.7524
+  },
+
+  "scientific_read": {
+    "label": "MARGINAL",
+    "means": "Typed fit on cold SE(3)-lite is neither a clean clear nor a clean capacity fail. Two folds clear 0.80 late; one misses by noise-scale margin; late dynamics still unsettled (R_CLIMBING). A harness with clearly adequate capacity for this leaked-label task would likely have cleared early and by a wide margin — not asymptoted toward the bar over hundreds of epochs.",
+    "what_G_fit_was_for": "One boring yes/no: is the harness structurally sound enough to trust a negative from Arm B.",
+    "what_we_overfit_the_check_into": "Geometric decay ceilings, ratio-instability diagnosis, epoch-budget modeling — more precision on a marginal result does not turn it into strong evidence either way.",
+    "Arm_B": "Do not lean hard on Arm B S1/S2 as FAIL_NO_SIGNAL, and do not treat E=200 INCONCLUSIVE_UNDERFIT as decisive underfit either. Lite G_fit never gave a crisp binary."
+  },
+
+  "operator_amendment_to_E400_escalation": {
+    "prereg_said": "No pool escalate under DECAY_UNSETTLED; stop for new pre-reg before further lite extend or pool.",
+    "amendment": "CLOSED — no third lite pre-reg. Marginal is sufficient information. Next harness step is Equiformer-pool typed G_fit (capacity probe), not more SE(3)-lite curve modeling.",
+    "why_amendment_is_not_a_retune": "Does not change 0.80, epochs, coeffs, or labels. Changes only the stop/escalation read after the locked binary already resolved as non-clear + unsettled.",
+    "approved_by": "Ray Swan (operator) 2026-09-20"
+  },
+
+  "forbidden_next": [
+    "third_lite_epoch_prereg",
+    "silent_bar_nudge_to_0.799",
+    "silent_coeff_retune",
+    "more_decay_curve_modeling_as_trunk",
+    "treat_Arm_B_as_FAIL_NO_SIGNAL_from_this_alone",
+    "treat_as_clean_PLATEAU_BELOW_capacity_fail",
+    "promote"
+  ],
+
+  "honest_next": {
+    "action": "Equiformer-pool typed G_fit (same folds/threshold/seed protocol; governed frontend)",
+    "reason": "Not because lite failed decisively — because it never gave a clean enough signal to justify more cheap-rig time.",
+    "also_allowed_after_pool_G_fit_clean": "MoE-on-pool or non-leaking hyp biology per tokyo_eye_equ_next_experiment_sealed.json"
+  },
+
+  "bought_with_the_cheap_rig": "This task is not trivially easy even with leaked labels on SE(3)-lite — real information. Did not buy a crisp binary.",
+
+  "signed": "Ray Swan 2026-09-20"
+}

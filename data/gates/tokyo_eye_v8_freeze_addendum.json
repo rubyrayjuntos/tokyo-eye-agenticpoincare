@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_v8_freeze_reconciliation",
+  "addendum_id": "tokyo_eye_v8_freeze_reconciliation_v1",
+  "status": "SIGNED",
+  "date": "2026-09-16",
+  "approver": "Ray Swan",
+  "amends": "docs/superpowers/specs/2026-07-22-tokyo-eye-v8-equiformer-hyp-design.md",
+  "spec": "docs/superpowers/specs/2026-09-16-tokyo-eye-v8-freeze-addendum.md",
+  "pure_hyp_law": "docs/superpowers/specs/2026-09-15-tokyoeye-equ-pure-hyp-freeze-amendment.md",
+  "rebuild": "cold_init_against_freeze_clauses_not_rearchitecture",
+  "next_rewrite": "sprint_2_r0_r5_loader",
+  "signed_decisions": {
+    "section_6_lift": "REVERT_option_b",
+    "section_16_lr_hyperbolic": "REVERT_1e-3",
+    "canonical_mlflow": "tokyoeye/equiformer-v3-moe/geometric/full-stack",
+    "mlflow_historical_aliases": [
+      "tokyo-eyes-v8",
+      "tokyoeye/equiformer-v3-moe/geometric/hyperbolic-spine"
+    ]
+  },
+  "transparency_engine": "REVERT_mandatory_not_deferred",
+  "pure_hyp_pass_implementation": "science/tokyo_eye/v8/pure_hyp_pass.py",
+  "pure_hyp_pass_tests": "tests/v8/test_pure_hyp_pass.py",
+  "pure_hyp_pass_version": "section_2_4_live_forward_tracer_v1",
+  "pure_hyp_pass_gates_mlflow": false,
+  "pure_hyp_pass_gates_mlflow_when": "first_real_train_smoke",
+  "mlflow_do_not_backfill_pytest": true,
+  "mlflow_first_train_must_log": {
+    "experiment": "tokyoeye/equiformer-v3-moe/geometric/full-stack",
+    "params_and_tags": [
+      "addendum_id",
+      "pure_hyp_pass_version",
+      "mlflow_experiment"
+    ]
+  },
+  "forbidden": [
+    "warm_start_geoopt_restore",
+    "filename_grep_as_pure_hyp_pass",
+    "silent_code_drift_without_amend",
+    "relitigate_architecture_from_blank_page"
+  ]
+}

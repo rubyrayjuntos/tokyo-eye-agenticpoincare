@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_sdrp_target_wrap1_amendment1",
+  "display_lineage": "Tokyo Eye EQU",
+  "status": "APPROVED",
+  "approval_status": "APPROVED",
+  "approver": "Ray Swan (via Cursor operator)",
+  "approved_at": "2026-09-18T18:34:00Z",
+  "amendment_kind": "POST_STAGE1_SEMANTIC_GATES",
+  "parent_prereg": "data/gates/tokyo_eye_equ_sdrp_target_wrap1_prereg.json",
+  "parent_stamp": "data/gates/tokyo_eye_equ_sdrp_target_wrap1.json",
+  "stage1_results": "data/gates/tokyo_eye_equ_sdrp_target_wrap1_stage1_results.json",
+  "honesty": {
+    "post_hoc": true,
+    "reason": "G7/G8 added after Stage 1 results were known and C1's incidence-like capture was observed. This amendment may disqualify C1; it MUST NOT be cited as a clean pre-registered Pass for any candidate. Stage 1 balance/entropy results remain historical evidence under the original G1–G6 only."
+  },
+  "motivation": "G1–G6 only blocked histogram degeneracy. They did not test whether class assignment means more than edge-type incidence, nor whether class-1 is a dehydron shadow. C1 cleared G1–G6 while salt capture=1.00 and hydrophobe capture≈0.97 and class-1 Jaccard vs dehydron=0.75.",
+  "new_hard_gates": {
+    "G7": {
+      "definition": "incidence capture for salt (class 2) and hydrophobe (class 3): capture = |assigned∩incident| / |incident| for the class's defining relation (R4 salt, R3 hydrophobe). Both must pass.",
+      "threshold": "capture <= 0.80 for salt AND capture <= 0.80 for hydrophobe",
+      "salt_capture_le": 0.8,
+      "hydrophobe_capture_le": 0.8
+    },
+    "G8": {
+      "definition": "Jaccard(class==1, dehydron_labels==1)",
+      "threshold": "Jaccard <= 0.50",
+      "jaccard_le": 0.5
+    }
+  },
+  "applies_to": ["C0_status_quo", "C1_enrichment_normalized_argmax", "C2_exclusivity_order"],
+  "g4_waiver": "unchanged — C2 only; G8 still binds C2 (expected Jaccard 1.0 → fail G8)",
+  "c3_status": "still parked — not in this amendment's measurement scope",
+  "expected_outcome_if_remeasured": "C1 fails G7 and G8; C2 fails G2/G3/G8; C0 fails G1/G2/G3/G5 → NO_CANDIDATE; SDRP remains diagnostic-only under wrap=1 until a new card (C3 or other) is pre-registered with thresholds fixed before measurement",
+  "forbidden": [
+    "citing Stage 1 C1 as selected under G1–G8",
+    "drafting C1-prime tuned to beat G7/G8 in the same breath as this amendment",
+    "Stage 2 / loader change / cache-key change",
+    "promote or alias moves",
+    "silent retune"
+  ],
+  "next_after_remeasure": "Close card NO_CANDIDATE if none pass G1–G8. Operator chooses: park SDRP diagnostic-only, OR open a fresh C3 (edge-type-independent) prereg with thresholds locked before any candidate is seen."
+}

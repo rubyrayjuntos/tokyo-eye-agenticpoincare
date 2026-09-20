@@ -1,0 +1,16 @@
+{
+  "gate_id": "tokyo_eye_equ_moe_eval_util",
+  "timestamp": "2026-09-16T14:52:18.034371+00:00",
+  "moe_eval_min_load": 0.1,
+  "moe_eval_alive_floor": 0.05,
+  "moe_eval_n_alive_required": 4,
+  "moe_eval_entropy_norm_floor": 0.85,
+  "switch_lb": true,
+  "eval_not_train_gumbel": true,
+  "predecessor_ckpt": "checkpoints/tokyoeye/runs/eqf_equ_geoopt_restore_20260916/tokyoeye_best.pt",
+  "evidence": [
+    "data/local_objects/frontend_ablation/stripe_membership_crosstab.json",
+    "data/local_objects/frontend_ablation/moe_eval_vs_train_loads.json",
+    "data/local_objects/frontend_ablation/moe_collapse_mlflow_audit.json"
+  ]
+}

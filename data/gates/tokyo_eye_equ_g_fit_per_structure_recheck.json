@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_g_fit_per_structure_recheck",
+  "status": "DIAGNOSTIC_REPLAY",
+  "date": "2026-09-20",
+  "display_lineage": "Tokyo Eye EQU",
+  "do_not_promote": true,
+  "purpose": "Priority-1: does sealed pooled AUPRC misrepresent per-structure fit / memorisation?",
+  "method": "instrumented CUDA replay of sealed E400 G_fit folds; same harness wrapper; no disposition edit",
+  "script": "data/gates/tokyo_eye_equ_wrap1_g_fit_instrumented_replay.py",
+  "device": "cuda",
+  "sealed_stamps_lack_per_node_scores": true,
+  "run_v8_experiment_py_hash": {
+    "B_result_pin": "8c7e2be2e73bc8ca5d11f2eaa5becc3e2c1b6e5984f62db4f90a9a7efd676ae1",
+    "working_tree": "c1df1048bc817dac30afd1658a3b0c5c14eab3478fc8e6ea2dcd823d3b15f2c6",
+    "match": false
+  },
+  "folds": {
+    "1MBN:A": {
+      "hold": "1MBN:A",
+      "final_train_pooled_auprc": 0.8083860278129578,
+      "macro_mean_auprc": 0.8349889625202526,
+      "min_structure_auprc": 0.641353189945221,
+      "pooled_auprc_sealed_method": 0.8083863258361816,
+      "pooled_auprc_rank_normalised_per_structure": 0.7622105479240417,
+      "pooled_auprc_zscored_logit_per_structure": 0.7643804550170898,
+      "heldout": {
+        "tag": "1MBN:A",
+        "auprc": 0.4764133095741272,
+        "prevalence": 0.3921568691730499,
+        "lift": 1.2148539195010168,
+        "logit_mean": 1.2976394891738892
+      },
+      "train_auprc_min": [
+        "2Z6H:A",
+        0.641353189945221
+      ],
+      "train_auprc_max": [
+        "1LYZ:A",
+        0.9832642078399658
+      ],
+      "train_auprc_spread": 0.3419110178947449,
+      "n_train_structures_ge_0_90": 5,
+      "n_train_structures_lt_0_70": 1,
+      "artifact": "data/gates/wrap1_dehydron_loso/INSTR_seed0_hold_1MBNA_E400.json"
+    },
+    "1LYZ:A": {
+      "hold": "1LYZ:A",
+      "final_train_pooled_auprc": 0.7990630269050598,
+      "macro_mean_auprc": 0.827520262111317,
+      "min_structure_auprc": 0.6252645254135132,
+      "pooled_auprc_sealed_method": 0.7990630269050598,
+      "pooled_auprc_rank_normalised_per_structure": 0.7583194375038147,
+      "pooled_auprc_zscored_logit_per_structure": 0.7543227672576904,
+      "heldout": {
+        "tag": "1LYZ:A",
+        "auprc": 0.5659480094909668,
+        "prevalence": 0.5813953280448914,
+        "lift": 0.9734306111370543,
+        "logit_mean": 1.5331898927688599
+      },
+      "train_auprc_min": [
+        "2Z6H:A",
+        0.6252645254135132
+      ],
+      "train_auprc_max": [
+        "1MBN:A",
+        0.967841386795044
+      ],
+      "train_auprc_spread": 0.34257686138153076,
+      "n_train_structures_ge_0_90": 5,
+      "n_train_structures_lt_0_70": 2,
+      "artifact": "data/gates/wrap1_dehydron_loso/INSTR_seed0_hold_1LYZA_E400.json"
+    },
+    "1BG1:A": {
+      "hold": "1BG1:A",
+      "final_train_pooled_auprc": 0.8251628279685974,
+      "macro_mean_auprc": 0.8480240919373252,
+      "min_structure_auprc": 0.6317270398139954,
+      "pooled_auprc_sealed_method": 0.8251628279685974,
+      "pooled_auprc_rank_normalised_per_structure": 0.7733221650123596,
+      "pooled_auprc_zscored_logit_per_structure": 0.7708039283752441,
+      "heldout": {
+        "tag": "1BG1:A",
+        "auprc": 0.5262290835380554,
+        "prevalence": 0.4856630861759186,
+        "lift": 1.083527034515946,
+        "logit_mean": 1.4209296703338623
+      },
+      "train_auprc_min": [
+        "2Z6H:A",
+        0.6317270398139954
+      ],
+      "train_auprc_max": [
+        "1LYZ:A",
+        0.9803510904312134
+      ],
+      "train_auprc_spread": 0.348624050617218,
+      "n_train_structures_ge_0_90": 6,
+      "n_train_structures_lt_0_70": 2,
+      "artifact": "data/gates/wrap1_dehydron_loso/INSTR_seed0_hold_1BG1A_E400.json"
+    }
+  },
+  "read": "Sealed pooled train AUPRC (~0.80-0.83) is a roughly honest training-fit number, not a pooling artifact: macro-mean per-structure AUPRC is HIGHER than pooled (0.828-0.848), and rank-/z-normalised pooling lowers it by only ~0.04-0.05 (small cross-structure score-offset effect). Per-structure train AUPRC ranges 0.63-0.98 (5-6 of 11 structures >=0.90). Held-out AUPRC is 0.48-0.57 vs prevalence 0.39-0.58 (lift 0.97-1.21x, ~chance), so the fit is per-structure memorisation on a coordinate-only path (edge_type has no measurable effect; see edge_type_reachability_check). The E200->E400 chain is moot as a capacity question because of wiring and step budget (Euclidean-skip path, near-frozen frontend, hyperbolic layers not in the dehydron loss graph; see grad_attribution_check), not because the pooled metric is broken. 2026-09-20 amendment: an earlier draft of this line said the pooled headline was inflated and the chain characterised a pooling artifact; recomputation from the saved scores did not support that.",
+  "not_claims": [
+    "not a new G_fit card",
+    "not a biology result",
+    "not a capacity clear",
+    "not an Arm B disposition edit"
+  ],
+  "implication_for_epoch_budget_chain": "E200->E400 decay modelling is moot as a capacity question (wiring + step budget, not metric). G_fit is a train-fit gate, so near-chance held-out is expected and is a memorisation diagnostic, not a G_fit failure. Redesign G_fit (loss through z_hyp; report per-structure + held-out) before any new epoch card. Hold pool typed G_fit and Arm B disposition edit."
+}

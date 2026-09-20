@@ -1,0 +1,506 @@
+{
+  "gate_id": "tokyo_eye_equ_wrap1_dehydron_loso_B_result",
+  "display_lineage": "Tokyo Eye EQU",
+  "card": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_prereg.json",
+  "card_approved": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_prereg.APPROVED.json",
+  "do_not_promote": true,
+  "promote_eligible": false,
+  "moe_mode": "ablated",
+  "moe_claim": "none",
+  "sdrp_coeff": 0.0,
+  "dehydron_wrap_max": 1,
+  "epochs": 200,
+  "backbone": "cold SE(3)-lite (no pretrained bank)",
+  "folds": [
+    [
+      "1MBN:A"
+    ],
+    [
+      "1LYZ:A"
+    ],
+    [
+      "1BG1:A"
+    ],
+    [
+      "1F88:A"
+    ],
+    [
+      "2Z6H:A"
+    ],
+    [
+      "1HHP:A"
+    ],
+    [
+      "1TEN:A"
+    ],
+    [
+      "1UBQ:A"
+    ],
+    [
+      "1TIM:A"
+    ],
+    [
+      "4OBE:A"
+    ],
+    [
+      "1IVO:A"
+    ],
+    [
+      "2SHP:A"
+    ]
+  ],
+  "homology": {
+    "identity_threshold": 0.3,
+    "max_pairwise_identity": 0.19148936170212766,
+    "pairs_at_or_above_threshold": {},
+    "n_folds": 12
+  },
+  "provenance": {
+    "card_draft_sha256": "8ab67f3769bbc3ec87b6e29842d9c2ef034c6592e30607bb53415b52ee9d3cbc",
+    "card_approved_sha256": "39fb5cdec7aa67754f4c675f2768b72de8ee0434aafad21b8251ddf20288f647",
+    "pins_verified": {
+      "moe_py_sha256": "92317a490d0c8fff90d2611ba7bdb02f441ed3364733c0e86249bb4e1b139423",
+      "model_py_sha256": "28e243bd8ed821c4830f77a3a3f8d42130bdccc1f6c6ef92da0767b9ba420159",
+      "engine_py_sha256": "b0a7da65e31982770b47b9cfa5499de30b1ea302e81c7ce7074755c1fdcfda9d",
+      "run_v8_experiment_py_sha256": "8c7e2be2e73bc8ca5d11f2eaa5becc3e2c1b6e5984f62db4f90a9a7efd676ae1",
+      "weight_map_sha256": "aada48cb979ff3128e89edd6b7bbbd56f0c1114ef64a394ca31a7a240464c4ef",
+      "manifest_sha256": "ed499fad1252820052d38e39d842f532550b57b0012e4eb6b3ccab90bd565eda"
+    },
+    "script_sha256": "34b758077d1c6e45a911220dcc374902087909ad8df8f52fd35b735d85db5585"
+  },
+  "protocol_notes": [
+    "Per-epoch train-fold dehydron BCE is captured by a forward hook on the train-mode forwards of run_epoch_mean_structures (same scores the optimizer used); no harness edit.",
+    "run_epoch_mean_structures also runs a pooled eval-mode MoE utilization pass each epoch; it is irrelevant under moe_mode=ablated (load [1,0,0,0] by construction) and is ignored.",
+    "Held-out/train-fold metrics are logged every 10 epochs and at the last epoch, read-only; the reported number is the last epoch.",
+    "Eval tau = tau_end (0.995) per the card; the training radius ceiling reaches 0.9934 at epoch 199 because CurriculumRadiusController is stretched to E=200 as defined.",
+    "Sequence identity = matches / alignment length (gaps count against it), Biopython global PairwiseAligner (BLOSUM62, open -10, extend -0.5), sequences from CA-complete residues of the PDB chain; mmseqs not used. The card fixes the 30% threshold but not the metric; the first-draft metric (matches / shorter length) merged all 12 chains into one group and was replaced before any training; the alternatives are recorded in folds_frozen.json.",
+    "B seeds 0/1/2 share the same folds; per-seed init is torch.manual_seed(seed) before build_system, identical across folds of one seed."
+  ],
+  "mlflow_parent_run_ids": {
+    "0": "c9ca3c09148f4443964918af095599c2",
+    "1": "23db648dadbe4dd982e5c3a752574f10",
+    "2": "3ac1209f162d48159c8db5fd02cb80d3"
+  },
+  "not_claims": [
+    "not a biology pass; label is a deterministic function of geometry at wrap=1",
+    "cold SE(3)-lite frontend: nothing about pretrained EquiformerV3",
+    "12 structures; not broad generalization"
+  ],
+  "arm": "B",
+  "status": "B_COMPLETE",
+  "seeds": [
+    {
+      "seed": 0,
+      "verdict": "S1S2_FAIL",
+      "S1": {
+        "pass": false,
+        "mean_lift": 1.0953526388315578,
+        "ci95": [
+          1.000372597383502,
+          1.218831440335045
+        ],
+        "thresholds": {
+          "mean_lift_ge": 1.3,
+          "ci_lb_gt": 1.1
+        }
+      },
+      "S2": {
+        "pass": false,
+        "n_lift_gt_1": 7,
+        "threshold_ge": 10,
+        "n": 12
+      },
+      "per_structure": {
+        "1MBN:A": {
+          "n": 153,
+          "dehydron_prevalence": 0.39215686274509803,
+          "dehydron_auprc": 0.4880690574645996,
+          "dehydron_lift": 1.244576096534729,
+          "dehydron_roc_auc": 0.49731182795698925,
+          "hbond_incidence_baseline_auprc": 0.38531166315078735
+        },
+        "1LYZ:A": {
+          "n": 129,
+          "dehydron_prevalence": 0.5813953488372093,
+          "dehydron_auprc": 0.5610824823379517,
+          "dehydron_lift": 0.9650618696212768,
+          "dehydron_roc_auc": 0.42790123456790125,
+          "hbond_incidence_baseline_auprc": 0.5751777291297913
+        },
+        "1BG1:A": {
+          "n": 558,
+          "dehydron_prevalence": 0.48566308243727596,
+          "dehydron_auprc": 0.506590723991394,
+          "dehydron_lift": 1.0430908634213945,
+          "dehydron_roc_auc": 0.48871774432030035,
+          "hbond_incidence_baseline_auprc": 0.540587306022644
+        },
+        "1F88:A": {
+          "n": 338,
+          "dehydron_prevalence": 0.2603550295857988,
+          "dehydron_auprc": 0.23012416064739227,
+          "dehydron_lift": 0.8838859806683931,
+          "dehydron_roc_auc": 0.4253636363636364,
+          "hbond_incidence_baseline_auprc": 0.3136051893234253
+        },
+        "2Z6H:A": {
+          "n": 533,
+          "dehydron_prevalence": 0.3058161350844278,
+          "dehydron_auprc": 0.29840087890625,
+          "dehydron_lift": 0.9757525672210505,
+          "dehydron_roc_auc": 0.4995523130492456,
+          "hbond_incidence_baseline_auprc": 0.29479047656059265
+        },
+        "1HHP:A": {
+          "n": 99,
+          "dehydron_prevalence": 0.42424242424242425,
+          "dehydron_auprc": 0.4908789396286011,
+          "dehydron_lift": 1.1570717862674167,
+          "dehydron_roc_auc": 0.5877192982456141,
+          "hbond_incidence_baseline_auprc": 0.3855988383293152
+        },
+        "1TEN:A": {
+          "n": 89,
+          "dehydron_prevalence": 0.5280898876404494,
+          "dehydron_auprc": 0.5230839252471924,
+          "dehydron_lift": 0.990520624404258,
+          "dehydron_roc_auc": 0.45288753799392106,
+          "hbond_incidence_baseline_auprc": 0.5935232043266296
+        },
+        "1UBQ:A": {
+          "n": 76,
+          "dehydron_prevalence": 0.32894736842105265,
+          "dehydron_auprc": 0.545844554901123,
+          "dehydron_lift": 1.659367446899414,
+          "dehydron_roc_auc": 0.596078431372549,
+          "hbond_incidence_baseline_auprc": 0.44600245356559753
+        },
+        "1TIM:A": {
+          "n": 247,
+          "dehydron_prevalence": 0.38461538461538464,
+          "dehydron_auprc": 0.35554248094558716,
+          "dehydron_lift": 0.9244104504585265,
+          "dehydron_roc_auc": 0.4008310249307479,
+          "hbond_incidence_baseline_auprc": 0.38370954990386963
+        },
+        "4OBE:A": {
+          "n": 169,
+          "dehydron_prevalence": 0.46745562130177515,
+          "dehydron_auprc": 0.5314047932624817,
+          "dehydron_lift": 1.1368026590045495,
+          "dehydron_roc_auc": 0.5684950773558368,
+          "hbond_incidence_baseline_auprc": 0.48791560530662537
+        },
+        "1IVO:A": {
+          "n": 511,
+          "dehydron_prevalence": 0.487279843444227,
+          "dehydron_auprc": 0.5181070566177368,
+          "dehydron_lift": 1.0632638792436286,
+          "dehydron_roc_auc": 0.4880744351451608,
+          "hbond_incidence_baseline_auprc": 0.4424465298652649
+        },
+        "2SHP:A": {
+          "n": 491,
+          "dehydron_prevalence": 0.5030549898167006,
+          "dehydron_auprc": 0.5535755157470703,
+          "dehydron_lift": 1.1004274422340548,
+          "dehydron_roc_auc": 0.540120793787748,
+          "hbond_incidence_baseline_auprc": 0.5214303731918335
+        }
+      },
+      "mean_auprc": 0.4668920474747817,
+      "mean_prevalence": 0.42908933151431866,
+      "mean_roc_auc": 0.49775444625747095,
+      "fold_files": [
+        "B_seed0_hold_1MBNA.json",
+        "B_seed0_hold_1LYZA.json",
+        "B_seed0_hold_1BG1A.json",
+        "B_seed0_hold_1F88A.json",
+        "B_seed0_hold_2Z6HA.json",
+        "B_seed0_hold_1HHPA.json",
+        "B_seed0_hold_1TENA.json",
+        "B_seed0_hold_1UBQA.json",
+        "B_seed0_hold_1TIMA.json",
+        "B_seed0_hold_4OBEA.json",
+        "B_seed0_hold_1IVOA.json",
+        "B_seed0_hold_2SHPA.json"
+      ]
+    },
+    {
+      "seed": 1,
+      "verdict": "S1S2_FAIL",
+      "S1": {
+        "pass": false,
+        "mean_lift": 1.1266249590714206,
+        "ci95": [
+          1.0314720327164477,
+          1.2290717607015584
+        ],
+        "thresholds": {
+          "mean_lift_ge": 1.3,
+          "ci_lb_gt": 1.1
+        }
+      },
+      "S2": {
+        "pass": false,
+        "n_lift_gt_1": 9,
+        "threshold_ge": 10,
+        "n": 12
+      },
+      "per_structure": {
+        "1MBN:A": {
+          "n": 153,
+          "dehydron_prevalence": 0.39215686274509803,
+          "dehydron_auprc": 0.5343596339225769,
+          "dehydron_lift": 1.3626170665025712,
+          "dehydron_roc_auc": 0.5349462365591398,
+          "hbond_incidence_baseline_auprc": 0.38531166315078735
+        },
+        "1LYZ:A": {
+          "n": 129,
+          "dehydron_prevalence": 0.5813953488372093,
+          "dehydron_auprc": 0.5397621393203735,
+          "dehydron_lift": 0.9283908796310424,
+          "dehydron_roc_auc": 0.35209876543209884,
+          "hbond_incidence_baseline_auprc": 0.5751777291297913
+        },
+        "1BG1:A": {
+          "n": 558,
+          "dehydron_prevalence": 0.48566308243727596,
+          "dehydron_auprc": 0.5586956143379211,
+          "dehydron_lift": 1.1503769476035426,
+          "dehydron_roc_auc": 0.5646913611993263,
+          "hbond_incidence_baseline_auprc": 0.540587306022644
+        },
+        "1F88:A": {
+          "n": 338,
+          "dehydron_prevalence": 0.2603550295857988,
+          "dehydron_auprc": 0.23108215630054474,
+          "dehydron_lift": 0.8875655548816378,
+          "dehydron_roc_auc": 0.45640909090909093,
+          "hbond_incidence_baseline_auprc": 0.3136051893234253
+        },
+        "2Z6H:A": {
+          "n": 533,
+          "dehydron_prevalence": 0.3058161350844278,
+          "dehydron_auprc": 0.2859393358230591,
+          "dehydron_lift": 0.9350040858508618,
+          "dehydron_roc_auc": 0.4940142596584315,
+          "hbond_incidence_baseline_auprc": 0.29479047656059265
+        },
+        "1HHP:A": {
+          "n": 99,
+          "dehydron_prevalence": 0.42424242424242425,
+          "dehydron_auprc": 0.48695096373558044,
+          "dehydron_lift": 1.1478129859481538,
+          "dehydron_roc_auc": 0.5296574770258982,
+          "hbond_incidence_baseline_auprc": 0.3855988383293152
+        },
+        "1TEN:A": {
+          "n": 89,
+          "dehydron_prevalence": 0.5280898876404494,
+          "dehydron_auprc": 0.5844773054122925,
+          "dehydron_lift": 1.1067761740785964,
+          "dehydron_roc_auc": 0.49898682877406286,
+          "hbond_incidence_baseline_auprc": 0.5935232043266296
+        },
+        "1UBQ:A": {
+          "n": 76,
+          "dehydron_prevalence": 0.32894736842105265,
+          "dehydron_auprc": 0.5027099847793579,
+          "dehydron_lift": 1.5282383537292479,
+          "dehydron_roc_auc": 0.5874509803921568,
+          "hbond_incidence_baseline_auprc": 0.44600245356559753
+        },
+        "1TIM:A": {
+          "n": 247,
+          "dehydron_prevalence": 0.38461538461538464,
+          "dehydron_auprc": 0.38509654998779297,
+          "dehydron_lift": 1.0012510299682618,
+          "dehydron_roc_auc": 0.4587257617728532,
+          "hbond_incidence_baseline_auprc": 0.38370954990386963
+        },
+        "4OBE:A": {
+          "n": 169,
+          "dehydron_prevalence": 0.46745562130177515,
+          "dehydron_auprc": 0.5278586149215698,
+          "dehydron_lift": 1.1292165306550037,
+          "dehydron_roc_auc": 0.5644163150492264,
+          "hbond_incidence_baseline_auprc": 0.48791560530662537
+        },
+        "1IVO:A": {
+          "n": 511,
+          "dehydron_prevalence": 0.487279843444227,
+          "dehydron_auprc": 0.5505069494247437,
+          "dehydron_lift": 1.1297552255262813,
+          "dehydron_roc_auc": 0.5480241576995003,
+          "hbond_incidence_baseline_auprc": 0.4424465298652649
+        },
+        "2SHP:A": {
+          "n": 491,
+          "dehydron_prevalence": 0.5030549898167006,
+          "dehydron_auprc": 0.6099514961242676,
+          "dehydron_lift": 1.2124946744818437,
+          "dehydron_roc_auc": 0.617226388796708,
+          "hbond_incidence_baseline_auprc": 0.5214303731918335
+        }
+      },
+      "mean_auprc": 0.48311589534084004,
+      "mean_prevalence": 0.42908933151431866,
+      "mean_roc_auc": 0.5172206352723744,
+      "fold_files": [
+        "B_seed1_hold_1MBNA.json",
+        "B_seed1_hold_1LYZA.json",
+        "B_seed1_hold_1BG1A.json",
+        "B_seed1_hold_1F88A.json",
+        "B_seed1_hold_2Z6HA.json",
+        "B_seed1_hold_1HHPA.json",
+        "B_seed1_hold_1TENA.json",
+        "B_seed1_hold_1UBQA.json",
+        "B_seed1_hold_1TIMA.json",
+        "B_seed1_hold_4OBEA.json",
+        "B_seed1_hold_1IVOA.json",
+        "B_seed1_hold_2SHPA.json"
+      ]
+    },
+    {
+      "seed": 2,
+      "verdict": "S1S2_FAIL",
+      "S1": {
+        "pass": false,
+        "mean_lift": 1.174953886799116,
+        "ci95": [
+          1.080480271985289,
+          1.2862246717474721
+        ],
+        "thresholds": {
+          "mean_lift_ge": 1.3,
+          "ci_lb_gt": 1.1
+        }
+      },
+      "S2": {
+        "pass": true,
+        "n_lift_gt_1": 10,
+        "threshold_ge": 10,
+        "n": 12
+      },
+      "per_structure": {
+        "1MBN:A": {
+          "n": 153,
+          "dehydron_prevalence": 0.39215686274509803,
+          "dehydron_auprc": 0.43469399213790894,
+          "dehydron_lift": 1.1084696799516678,
+          "dehydron_roc_auc": 0.5747311827956989,
+          "hbond_incidence_baseline_auprc": 0.38531166315078735
+        },
+        "1LYZ:A": {
+          "n": 129,
+          "dehydron_prevalence": 0.5813953488372093,
+          "dehydron_auprc": 0.5802948474884033,
+          "dehydron_lift": 0.9981071376800537,
+          "dehydron_roc_auc": 0.4350617283950617,
+          "hbond_incidence_baseline_auprc": 0.5751777291297913
+        },
+        "1BG1:A": {
+          "n": 558,
+          "dehydron_prevalence": 0.48566308243727596,
+          "dehydron_auprc": 0.5167993903160095,
+          "dehydron_lift": 1.0641109217576876,
+          "dehydron_roc_auc": 0.4719647196471965,
+          "hbond_incidence_baseline_auprc": 0.540587306022644
+        },
+        "1F88:A": {
+          "n": 338,
+          "dehydron_prevalence": 0.2603550295857988,
+          "dehydron_auprc": 0.40663671493530273,
+          "dehydron_lift": 1.5618546550924128,
+          "dehydron_roc_auc": 0.5568181818181818,
+          "hbond_incidence_baseline_auprc": 0.3136051893234253
+        },
+        "2Z6H:A": {
+          "n": 533,
+          "dehydron_prevalence": 0.3058161350844278,
+          "dehydron_auprc": 0.28760242462158203,
+          "dehydron_lift": 0.9404422841920442,
+          "dehydron_roc_auc": 0.48491129165975794,
+          "hbond_incidence_baseline_auprc": 0.29479047656059265
+        },
+        "1HHP:A": {
+          "n": 99,
+          "dehydron_prevalence": 0.42424242424242425,
+          "dehydron_auprc": 0.523389995098114,
+          "dehydron_lift": 1.2337049884455544,
+          "dehydron_roc_auc": 0.5902255639097744,
+          "hbond_incidence_baseline_auprc": 0.3855988383293152
+        },
+        "1TEN:A": {
+          "n": 89,
+          "dehydron_prevalence": 0.5280898876404494,
+          "dehydron_auprc": 0.6040563583374023,
+          "dehydron_lift": 1.14385140195806,
+          "dehydron_roc_auc": 0.5334346504559271,
+          "hbond_incidence_baseline_auprc": 0.5935232043266296
+        },
+        "1UBQ:A": {
+          "n": 76,
+          "dehydron_prevalence": 0.32894736842105265,
+          "dehydron_auprc": 0.5070108771324158,
+          "dehydron_lift": 1.5413130664825438,
+          "dehydron_roc_auc": 0.5545098039215687,
+          "hbond_incidence_baseline_auprc": 0.44600245356559753
+        },
+        "1TIM:A": {
+          "n": 247,
+          "dehydron_prevalence": 0.38461538461538464,
+          "dehydron_auprc": 0.4219628572463989,
+          "dehydron_lift": 1.0971034288406372,
+          "dehydron_roc_auc": 0.5287396121883656,
+          "hbond_incidence_baseline_auprc": 0.38370954990386963
+        },
+        "4OBE:A": {
+          "n": 169,
+          "dehydron_prevalence": 0.46745562130177515,
+          "dehydron_auprc": 0.5089730024337769,
+          "dehydron_lift": 1.088815663434282,
+          "dehydron_roc_auc": 0.5395218002812939,
+          "hbond_incidence_baseline_auprc": 0.48791560530662537
+        },
+        "1IVO:A": {
+          "n": 511,
+          "dehydron_prevalence": 0.487279843444227,
+          "dehydron_auprc": 0.557910680770874,
+          "dehydron_lift": 1.1449492284093037,
+          "dehydron_roc_auc": 0.5563628560041693,
+          "hbond_incidence_baseline_auprc": 0.4424465298652649
+        },
+        "2SHP:A": {
+          "n": 491,
+          "dehydron_prevalence": 0.5030549898167006,
+          "dehydron_auprc": 0.5919569730758667,
+          "dehydron_lift": 1.176724185345144,
+          "dehydron_roc_auc": 0.5475874427556913,
+          "hbond_incidence_baseline_auprc": 0.5214303731918335
+        }
+      },
+      "mean_auprc": 0.4951073427995046,
+      "mean_prevalence": 0.42908933151431866,
+      "mean_roc_auc": 0.531155736152724,
+      "fold_files": [
+        "B_seed2_hold_1MBNA.json",
+        "B_seed2_hold_1LYZA.json",
+        "B_seed2_hold_1BG1A.json",
+        "B_seed2_hold_1F88A.json",
+        "B_seed2_hold_2Z6HA.json",
+        "B_seed2_hold_1HHPA.json",
+        "B_seed2_hold_1TENA.json",
+        "B_seed2_hold_1UBQA.json",
+        "B_seed2_hold_1TIMA.json",
+        "B_seed2_hold_4OBEA.json",
+        "B_seed2_hold_1IVOA.json",
+        "B_seed2_hold_2SHPA.json"
+      ]
+    }
+  ],
+  "t_arm_result": null,
+  "card_verdict": "PENDING_G_FIT (B fails S1/S2 on >=1 seed; FAIL_NO_SIGNAL if G_fit passes, INCONCLUSIVE_UNDERFIT if not)"
+}

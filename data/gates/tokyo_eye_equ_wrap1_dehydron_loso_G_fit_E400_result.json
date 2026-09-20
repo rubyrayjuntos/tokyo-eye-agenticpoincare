@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_wrap1_dehydron_loso_G_fit_E400_result",
+  "status": "DECAY_UNSETTLED",
+  "date": "2026-09-20",
+  "display_lineage": "Tokyo Eye EQU",
+  "do_not_promote": true,
+  "task": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_G_fit_E400_prereg.json",
+  "parent_b_result": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_B_result.json",
+  "disposition": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_B_disposition.json",
+  "arm": "T_typed_G_fit_only",
+  "seed": 0,
+  "epochs": 400,
+  "folds": [
+    "1MBN:A",
+    "1LYZ:A",
+    "1BG1:A"
+  ],
+  "g_fit_threshold": 0.8,
+  "g_fit_pass": false,
+  "G_finite": true,
+  "per_fold": {
+    "1MBN:A": {
+      "train_pooled_auprc": 0.8092747926712036,
+      "g_fit_pass_fold": true
+    },
+    "1LYZ:A": {
+      "train_pooled_auprc": 0.7990629076957703,
+      "g_fit_pass_fold": false
+    },
+    "1BG1:A": {
+      "train_pooled_auprc": 0.823769211769104,
+      "g_fit_pass_fold": true
+    }
+  },
+  "frontend": "cold SE(3)-lite",
+  "moe_mode": "ablated",
+  "sdrp_coeff": 0.0,
+  "g_fit_meaning": {
+    "what_it_is": "Typed/leaked train-fold AUPRC \u2014 can the model fit when given the answer",
+    "what_it_is_not": "Not architecture validation, not biology discovery, not pool seal"
+  },
+  "card_verdict": "DECAY_UNSETTLED",
+  "script_sha256": "a1799c154961d28b5c156c78a84ade5739cb06de27efe0221915f05bc6639198",
+  "folds_frozen_sha256": "bea720b0d67ae86b4ef0850091094948e05aceff9cf9d6214d602721b3bc3a0e",
+  "approved_sha256": "39fb5cdec7aa67754f4c675f2768b72de8ee0434aafad21b8251ddf20288f647",
+  "signed": "auto from wrap1_dehydron_loso_g_fit.py",
+  "e400_classification": {
+    "r_trajectory": "R_CLIMBING",
+    "plateau_confirmed": false,
+    "outcome": "DECAY_UNSETTLED",
+    "per_fold_blocks": {
+      "1MBN:A": {
+        "A": {
+          "0": 0.47234413027763367,
+          "100": 0.6815271973609924,
+          "200": 0.7560818195343018,
+          "300": 0.7827672362327576,
+          "400": 0.8092747926712036
+        },
+        "gains": {
+          "g1": 0.20918306708335876,
+          "g2": 0.07455462217330933,
+          "g3": 0.02668541669845581,
+          "g4": 0.026507556438446045
+        },
+        "ratios": {
+          "r12": 0.35640849526123236,
+          "r23": 0.3579310835540554,
+          "r34": 0.9933349266372873
+        },
+        "r_climbing": true,
+        "plateau": false,
+        "clears_0_80": true
+      },
+      "1LYZ:A": {
+        "A": {
+          "0": 0.4659712612628937,
+          "100": 0.6755331754684448,
+          "200": 0.7357439398765564,
+          "300": 0.7521724104881287,
+          "400": 0.7990629076957703
+        },
+        "gains": {
+          "g1": 0.20956191420555115,
+          "g2": 0.06021076440811157,
+          "g3": 0.016428470611572266,
+          "g4": 0.0468904972076416
+        },
+        "ratios": {
+          "r12": 0.2873173049424103,
+          "r23": 0.2728493945072557,
+          "r34": 2.8542216933213362
+        },
+        "r_climbing": true,
+        "plateau": false,
+        "clears_0_80": false
+      },
+      "1BG1:A": {
+        "A": {
+          "0": 0.45408856868743896,
+          "100": 0.7027669548988342,
+          "200": 0.7587429881095886,
+          "300": 0.8015149831771851,
+          "400": 0.823769211769104
+        },
+        "gains": {
+          "g1": 0.24867838621139526,
+          "g2": 0.055976033210754395,
+          "g3": 0.042771995067596436,
+          "g4": 0.022254228591918945
+        },
+        "ratios": {
+          "r12": 0.22509408261629368,
+          "r23": 0.7641126499006519,
+          "r34": 0.5202990544805914
+        },
+        "r_climbing": true,
+        "plateau": false,
+        "clears_0_80": true
+      }
+    },
+    "card_verdict_raw": "DECAY_UNSETTLED"
+  },
+  "read_order_applied": [
+    "r_trajectory",
+    "auprc_vs_0.80",
+    "plateau_test"
+  ],
+  "parent_g_fit_result": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_G_fit_result.json"
+}

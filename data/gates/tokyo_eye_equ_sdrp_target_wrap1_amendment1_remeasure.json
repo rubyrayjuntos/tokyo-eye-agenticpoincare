@@ -1,0 +1,264 @@
+{
+  "gate_id": "tokyo_eye_equ_sdrp_target_wrap1",
+  "artifact": "amendment1_remeasure",
+  "execution_state": "AMENDMENT1_REMEASURE_COMPLETE",
+  "amendment": "data/gates/tokyo_eye_equ_sdrp_target_wrap1_amendment1.json (APPROVED, post_hoc=true)",
+  "post_hoc_caveat": "G7/G8 added after Stage 1 results were known; not a clean pre-registered pass for any candidate",
+  "stage_2_approved": false,
+  "promotion_eligible": false,
+  "do_not_promote": true,
+  "executed_at_utc": "2026-09-18T18:36:53Z",
+  "script": "/tmp/sdrp_amend1_remeasure.py",
+  "dehydron_wrap_max": 1,
+  "n_structures": 12,
+  "n_nodes": 3393,
+  "pins_verified_unchanged": true,
+  "g1_g6_reproduce_stage1_results": true,
+  "excluded": {
+    "C3": "parked",
+    "C1_prime": "forbidden by operator"
+  },
+  "g4_waiver": "C2 only (unchanged); G8 not waivable and binds C2",
+  "candidates": {
+    "C0_status_quo": {
+      "pooled_class_hist": {
+        "core": 170,
+        "dehydron_rim": 85,
+        "salt": 0,
+        "hydrophobe": 0,
+        "neighborhood": 3138
+      },
+      "class1_vs_dehydron_label": {
+        "class1_nodes": 85,
+        "dehydron_label_nodes": 1441,
+        "intersection": 85,
+        "jaccard": 0.05898681471200555
+      },
+      "gates": {
+        "G1": {
+          "value": 0.9248452696728559,
+          "threshold_le": 0.6,
+          "pass": false
+        },
+        "G2": {
+          "value": 3,
+          "threshold_ge": 4,
+          "pass": false
+        },
+        "G3": {
+          "value": 0.19547822810297555,
+          "threshold_ge": 0.5,
+          "pass": false
+        },
+        "G4": {
+          "value": 0.05898681471200555,
+          "threshold_le": 0.8,
+          "raw_pass": true,
+          "waived": false,
+          "pass": true
+        },
+        "G5": {
+          "value": 1,
+          "threshold_ge": 10,
+          "pass": false
+        },
+        "G6": {
+          "value": true,
+          "pass": true
+        },
+        "G7": {
+          "salt": {
+            "assigned_and_incident": 0,
+            "incident": 288,
+            "assigned_total": 0,
+            "capture": 0.0
+          },
+          "hydrophobe": {
+            "assigned_and_incident": 0,
+            "incident": 815,
+            "assigned_total": 0,
+            "capture": 0.0
+          },
+          "salt_capture_le": 0.8,
+          "hydrophobe_capture_le": 0.8,
+          "pass": true
+        },
+        "G8": {
+          "value": 0.05898681471200555,
+          "threshold_le": 0.5,
+          "pass": true,
+          "waivable": false
+        }
+      },
+      "failed_gates": [
+        "G1",
+        "G2",
+        "G3",
+        "G5"
+      ],
+      "passes_G1_G6_original": false,
+      "passes_all_G1_G8": false
+    },
+    "C1_enrichment_normalized_argmax": {
+      "pooled_class_hist": {
+        "core": 639,
+        "dehydron_rim": 1084,
+        "salt": 288,
+        "hydrophobe": 788,
+        "neighborhood": 594
+      },
+      "class1_vs_dehydron_label": {
+        "class1_nodes": 1084,
+        "dehydron_label_nodes": 1441,
+        "intersection": 1084,
+        "jaccard": 0.7522553782095767
+      },
+      "gates": {
+        "G1": {
+          "value": 0.3194812849985264,
+          "threshold_le": 0.6,
+          "pass": true
+        },
+        "G2": {
+          "value": 5,
+          "threshold_ge": 4,
+          "pass": true
+        },
+        "G3": {
+          "value": 0.9521767694723153,
+          "threshold_ge": 0.5,
+          "pass": true
+        },
+        "G4": {
+          "value": 0.7522553782095767,
+          "threshold_le": 0.8,
+          "raw_pass": true,
+          "waived": false,
+          "pass": true
+        },
+        "G5": {
+          "value": 12,
+          "threshold_ge": 10,
+          "pass": true
+        },
+        "G6": {
+          "value": true,
+          "pass": true
+        },
+        "G7": {
+          "salt": {
+            "assigned_and_incident": 288,
+            "incident": 288,
+            "assigned_total": 288,
+            "capture": 1.0
+          },
+          "hydrophobe": {
+            "assigned_and_incident": 788,
+            "incident": 815,
+            "assigned_total": 788,
+            "capture": 0.9668711656441717
+          },
+          "salt_capture_le": 0.8,
+          "hydrophobe_capture_le": 0.8,
+          "pass": false
+        },
+        "G8": {
+          "value": 0.7522553782095767,
+          "threshold_le": 0.5,
+          "pass": false,
+          "waivable": false
+        }
+      },
+      "failed_gates": [
+        "G7",
+        "G8"
+      ],
+      "passes_G1_G6_original": true,
+      "passes_all_G1_G8": false
+    },
+    "C2_exclusivity_order": {
+      "pooled_class_hist": {
+        "core": 1952,
+        "dehydron_rim": 1441,
+        "salt": 0,
+        "hydrophobe": 0,
+        "neighborhood": 0
+      },
+      "class1_vs_dehydron_label": {
+        "class1_nodes": 1441,
+        "dehydron_label_nodes": 1441,
+        "intersection": 1441,
+        "jaccard": 1.0
+      },
+      "gates": {
+        "G1": {
+          "value": 0.5753020925434719,
+          "threshold_le": 0.6,
+          "pass": true
+        },
+        "G2": {
+          "value": 2,
+          "threshold_ge": 4,
+          "pass": false
+        },
+        "G3": {
+          "value": 0.4236032343550781,
+          "threshold_ge": 0.5,
+          "pass": false
+        },
+        "G4": {
+          "value": 1.0,
+          "threshold_le": 0.8,
+          "raw_pass": false,
+          "waived": true,
+          "pass": true
+        },
+        "G5": {
+          "value": 12,
+          "threshold_ge": 10,
+          "pass": true
+        },
+        "G6": {
+          "value": true,
+          "pass": true
+        },
+        "G7": {
+          "salt": {
+            "assigned_and_incident": 0,
+            "incident": 288,
+            "assigned_total": 0,
+            "capture": 0.0
+          },
+          "hydrophobe": {
+            "assigned_and_incident": 0,
+            "incident": 815,
+            "assigned_total": 0,
+            "capture": 0.0
+          },
+          "salt_capture_le": 0.8,
+          "hydrophobe_capture_le": 0.8,
+          "pass": true
+        },
+        "G8": {
+          "value": 1.0,
+          "threshold_le": 0.5,
+          "pass": false,
+          "waivable": false
+        }
+      },
+      "failed_gates": [
+        "G2",
+        "G3",
+        "G8"
+      ],
+      "passes_G1_G6_original": false,
+      "passes_all_G1_G8": false
+    }
+  },
+  "c1_stage1_selection": "REVOKED (amendment1)",
+  "candidates_passing_G1_G8": [],
+  "outcome": "NO_CANDIDATE",
+  "selected_candidate": null,
+  "sdrp_status": "diagnostic-only",
+  "next": "operator: park SDRP diagnostic-only OR open fresh C3 prereg with thresholds fixed before any candidate is measured"
+}

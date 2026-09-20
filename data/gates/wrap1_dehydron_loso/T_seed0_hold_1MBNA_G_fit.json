@@ -1,0 +1,161 @@
+{
+  "arm": "T",
+  "g_fit_only": true,
+  "seed": 0,
+  "heldout": [
+    "1MBN:A"
+  ],
+  "train": [
+    "1LYZ:A",
+    "1BG1:A",
+    "1F88:A",
+    "2Z6H:A",
+    "1HHP:A",
+    "1TEN:A",
+    "1UBQ:A",
+    "1TIM:A",
+    "4OBE:A",
+    "1IVO:A",
+    "2SHP:A"
+  ],
+  "epochs": 200,
+  "finite": true,
+  "moe_mode": "ablated",
+  "sdrp_coeff": 0.0,
+  "tau_eval": 0.995,
+  "frontend": "cold SE(3)-lite",
+  "final": {
+    "train_pooled_auprc": 0.7560634016990662,
+    "train_prevalence": 0.42623457312583923
+  },
+  "curve_every_10": [
+    {
+      "epoch": 0,
+      "train_pooled_auprc": 0.47234413027763367,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 3.8164680749177933
+    },
+    {
+      "epoch": 10,
+      "train_pooled_auprc": 0.5391638278961182,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 0.9087559804320335
+    },
+    {
+      "epoch": 20,
+      "train_pooled_auprc": 0.5611373782157898,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 0.8766494020819664
+    },
+    {
+      "epoch": 30,
+      "train_pooled_auprc": 0.614065945148468,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 0.8583341762423515
+    },
+    {
+      "epoch": 40,
+      "train_pooled_auprc": 0.6194061040878296,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 0.8499506749212742
+    },
+    {
+      "epoch": 50,
+      "train_pooled_auprc": 0.6455940008163452,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 0.8420449979603291
+    },
+    {
+      "epoch": 60,
+      "train_pooled_auprc": 0.6602280735969543,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 0.8427426181733608
+    },
+    {
+      "epoch": 70,
+      "train_pooled_auprc": 0.6697396636009216,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 0.8345146030187607
+    },
+    {
+      "epoch": 80,
+      "train_pooled_auprc": 0.6751859188079834,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 0.8341449163854122
+    },
+    {
+      "epoch": 90,
+      "train_pooled_auprc": 0.6788514256477356,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 0.8254440352320671
+    },
+    {
+      "epoch": 100,
+      "train_pooled_auprc": 0.6815277934074402,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 0.8321389071643353
+    },
+    {
+      "epoch": 110,
+      "train_pooled_auprc": 0.6997822523117065,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 0.8216946087777615
+    },
+    {
+      "epoch": 120,
+      "train_pooled_auprc": 0.6864082217216492,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 0.8191162496805191
+    },
+    {
+      "epoch": 130,
+      "train_pooled_auprc": 0.7111865878105164,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 0.817708145827055
+    },
+    {
+      "epoch": 140,
+      "train_pooled_auprc": 0.701336145401001,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 0.8182200193405151
+    },
+    {
+      "epoch": 150,
+      "train_pooled_auprc": 0.696304440498352,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 0.8062427751719952
+    },
+    {
+      "epoch": 160,
+      "train_pooled_auprc": 0.7343025207519531,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 0.8054555021226406
+    },
+    {
+      "epoch": 170,
+      "train_pooled_auprc": 0.729383111000061,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 0.813495472073555
+    },
+    {
+      "epoch": 180,
+      "train_pooled_auprc": 0.7406006455421448,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 0.7999703921377659
+    },
+    {
+      "epoch": 190,
+      "train_pooled_auprc": 0.7405758500099182,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 0.7974280975759029
+    },
+    {
+      "epoch": 199,
+      "train_pooled_auprc": 0.7560634016990662,
+      "train_prevalence": 0.42623457312583923,
+      "loss_total": 0.7938686385750771
+    }
+  ],
+  "g_fit_pass_fold": false,
+  "g_fit_threshold": 0.8
+}

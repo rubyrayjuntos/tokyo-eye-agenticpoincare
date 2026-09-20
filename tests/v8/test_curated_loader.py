@@ -24,14 +24,12 @@ MANIFEST = ROOT / "manifests" / "v8_stage_a_small_v1.json"
 
 @pytest.mark.skipif(not (PDB_DIR / "4OBE.pdb").is_file(), reason="4OBE.pdb missing")
 def test_4obe_batch_has_nontrivial_dehydron_labels() -> None:
-    import numpy as np
-
     from science.tokyo_eye.v8.r0_r5_graph import (
         get_dehydron_wrap_max,
         set_dehydron_wrap_max,
     )
 
-    set_dehydron_wrap_max(19)
+    set_dehydron_wrap_max(1)
     batch = load_structure_batch(
         "4OBE", "A", pdb_dir=PDB_DIR, device="cpu", use_graph_cache=False
     )
@@ -40,29 +38,19 @@ def test_4obe_batch_has_nontrivial_dehydron_labels() -> None:
     meta = batch["graph_meta"]
     assert "hbond_wrap_counts" in meta
     assert meta.get("dssp_energy_cutoff") == -0.5
-    # Cone compresses wraps; τ=19 marks nearly all DSSP H-bonds as R2.
+    assert meta.get("dehydron_wrap_max") == 1
+    for r in range(6):
+        assert f"edge_frac_r{r}" in meta
     wraps = meta["hbond_wrap_counts"]
     assert wraps, "expected DSSP-admitted H-bonds"
-    assert max(wraps) < 19, "cone wrap should compress below legacy τ=19"
-
-    # Epoch-0 style retune: median then descend until frac < 0.60
-    frac = float(batch["dehydron_labels"].mean())
-    if frac >= 0.60:
-        tau = int(np.median(np.asarray(wraps, dtype=float)))
-        while tau >= 0:
-            set_dehydron_wrap_max(tau)
-            batch = load_structure_batch(
-                "4OBE", "A", pdb_dir=PDB_DIR, device="cpu", use_graph_cache=False
-            )
-            frac = float(batch["dehydron_labels"].mean())
-            if frac < 0.60 or tau == 0:
-                break
-            tau -= 1
-    assert 0.05 < frac < 0.60, f"expected calibrated dehydron frac, got {frac}"
+    frac = float(batch["dehydron_frac"])
+    assert 0.05 < frac < 0.60, f"expected Stage-A calibrated dehydron frac, got {frac}"
+    assert int(meta.get("n_r1") or 0) > 0
+    assert batch["gate_chem"].shape[0] == batch["num_nodes"]
+    assert batch["gate_chem"].shape[1] == 7
     assert int(batch["sdrp_target"].max()) < 5
     assert batch["pdb_id"] == "4OBE"
-    set_dehydron_wrap_max(19)
-    assert get_dehydron_wrap_max() == 19
+    assert get_dehydron_wrap_max() == 1
 
 
 @pytest.mark.skipif(not (PDB_DIR / "4OBE.pdb").is_file(), reason="4OBE.pdb missing")

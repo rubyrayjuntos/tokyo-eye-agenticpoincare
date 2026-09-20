@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_moe_verify_on_pool",
+  "status": "READY_ON_POOL",
+  "date": "2026-09-18",
+  "display_lineage": "Tokyo Eye EQU",
+  "standing_rule": "Prose without a failing test always loses to a convenient default.",
+  "prerequisite": {
+    "gate_id": "tokyo_eye_equ_architecture_ssot",
+    "assembly_gate_enforced": true,
+    "module": "science/tokyo_eye/v8/assembly_gate.py",
+    "tests": "tests/v8/test_assembly_gate.py"
+  },
+  "requirement": "Any sealed MoE / freeze-addendum §2.6 acceptance run (epsilon-greedy inert / uniform / decay-floor hold) must use --frontend equiformer_pool (cold allowed). Stub-vs-pool similarity does not exempt sealed verification.",
+  "forbidden": [
+    "sealed_moe_verify_on_se3_lite",
+    "coeff_escalation_without_contract_change"
+  ],
+  "evidence_rule": "evaluation_time_argmax_assignment_only",
+  "numeric_pins_owner": "docs/superpowers/specs/2026-09-16-tokyo-eye-v8-freeze-addendum.md",
+  "related_pins": "data/gates/tokyo_eye_equ_moe_eval_util_pins.json",
+  "signed": "Ray Swan 2026-09-18"
+}

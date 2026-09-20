@@ -1,0 +1,21 @@
+{
+  "gate_id": "tokyo_eye_equ_theme_signal",
+  "display_lineage": "Tokyo Eye EQU",
+  "status": "ABORTED",
+  "approval_status": "APPROVED_LOCKED",
+  "execution_state": "ABORTED_BEFORE_TRAIN",
+  "approved_at": "2026-09-15",
+  "approver": "Bot (Ray sit-back lead)",
+  "design": "docs/superpowers/specs/2026-09-15-tokyoeye-equ-theme-signal-design.md",
+  "predecessor": "tokyo_eye_equ_theme_biology",
+  "predecessor_mlflow_run_id": "f071639f004947dc96f4ac83b7f84890",
+  "spine_init": "checkpoints/tokyoeye/runs/eqf_equ_lift_radius_20260916/tokyoeye_best.pt",
+  "amendments": [
+    "nmr_first_model_only",
+    "dehydron_coeff=2.5",
+    "epochs=40",
+    "init=lift_radius_qualified_not_theme_fail"
+  ],
+  "mlflow_experiment": "tokyoeye/equiformer-v3-moe/geometric/hyperbolic-spine",
+  "abort_reason": "operator_signal_terrible_start; halt thrash; redesign before relaunch"
+}

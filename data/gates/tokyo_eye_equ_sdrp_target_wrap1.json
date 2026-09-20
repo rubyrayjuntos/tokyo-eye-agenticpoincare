@@ -1,0 +1,1252 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_sdrp_target_wrap1",
+  "display_lineage": "Tokyo Eye EQU",
+  "status": "DRAFT",
+  "approval_status": "APPROVED_STAGE1_ONLY",
+  "execution_state": "STAGE1_COMPLETE",
+  "promotion_eligible": false,
+  "do_not_promote": true,
+  "prereg": "data/gates/tokyo_eye_equ_sdrp_target_wrap1_prereg.json",
+  "dehydron_wrap_max": 1,
+  "pins_at_draft": {
+    "wrap": 1,
+    "sdrp_heuristic_from_edges_sha256": "501b5eeef24cb0b30340c808d753013291ce5651a1f6a79b4a977658c157428a",
+    "loader_py_sha256": "522add382d0c8930f3a3a409dcc58c1e4cabb7b54b55a116e9bcc921d9bf3589",
+    "manifest": "manifests/v8_stage_a_small_v1.json",
+    "manifest_sha256": "ed499fad1252820052d38e39d842f532550b57b0012e4eb6b3ccab90bd565eda",
+    "BIOPHYS_CACHE_VERSION": "v8_biophys_freeze_r19",
+    "graph_cache_hash_wrap1": "31a5affe14ba",
+    "graph_cache_hash_covers_sdrp_rule": false,
+    "SDRP_LOSS_COEFF": 0.1,
+    "num_sdrp_classes": 5
+  },
+  "baseline_status_quo_measurement": {
+    "note": "read-only measurement of the CURRENT rule on cached wrap=1 Stage-A-12 graphs; not a candidate result; no training",
+    "n_structures": 12,
+    "n_nodes": 3393,
+    "all_graphs_from_cache": true,
+    "edges_by_relation": {
+      "R0_COVALENT": 6740,
+      "R1_HBOND": 5322,
+      "R2_DEHYDRON": 1980,
+      "R3_HYDROPHOBIC_PI": 1118,
+      "R4_SALT_BRIDGE": 324,
+      "R5_LOCAL_NEIGHBORHOOD": 25284
+    },
+    "nodes_incident_by_relation": {
+      "R0_COVALENT": 3393,
+      "R1_HBOND": 2953,
+      "R2_DEHYDRON": 1441,
+      "R3_HYDROPHOBIC_PI": 815,
+      "R4_SALT_BRIDGE": 288,
+      "R5_LOCAL_NEIGHBORHOOD": 3383
+    },
+    "r5_edge_ratio_vs": {
+      "R0_COVALENT": 3.7513353115727,
+      "R1_HBOND": 4.750845546786922,
+      "R2_DEHYDRON": 12.76969696969697,
+      "R3_HYDROPHOBIC_PI": 22.615384615384617,
+      "R4_SALT_BRIDGE": 78.03703703703704
+    },
+    "pooled_class_hist": {
+      "core": 170,
+      "dehydron_rim": 85,
+      "salt": 0,
+      "hydrophobe": 0,
+      "neighborhood": 3138
+    },
+    "pooled_class_frac": {
+      "core": 0.050103153551429414,
+      "dehydron_rim": 0.025051576775714707,
+      "salt": 0.0,
+      "hydrophobe": 0.0,
+      "neighborhood": 0.9248452696728559
+    },
+    "per_structure": {
+      "1MBN:A": {
+        "n": 153,
+        "hist": [
+          8,
+          3,
+          0,
+          0,
+          142
+        ],
+        "max_class_frac": 0.9281045751633987
+      },
+      "1LYZ:A": {
+        "n": 129,
+        "hist": [
+          5,
+          4,
+          0,
+          0,
+          120
+        ],
+        "max_class_frac": 0.9302325581395349
+      },
+      "1BG1:A": {
+        "n": 558,
+        "hist": [
+          24,
+          17,
+          0,
+          0,
+          517
+        ],
+        "max_class_frac": 0.9265232974910395
+      },
+      "1F88:A": {
+        "n": 338,
+        "hist": [
+          20,
+          8,
+          0,
+          0,
+          310
+        ],
+        "max_class_frac": 0.9171597633136095
+      },
+      "2Z6H:A": {
+        "n": 533,
+        "hist": [
+          30,
+          8,
+          0,
+          0,
+          495
+        ],
+        "max_class_frac": 0.9287054409005628
+      },
+      "1HHP:A": {
+        "n": 99,
+        "hist": [
+          9,
+          6,
+          0,
+          0,
+          84
+        ],
+        "max_class_frac": 0.8484848484848485
+      },
+      "1TEN:A": {
+        "n": 89,
+        "hist": [
+          2,
+          4,
+          0,
+          0,
+          83
+        ],
+        "max_class_frac": 0.9325842696629213
+      },
+      "1UBQ:A": {
+        "n": 76,
+        "hist": [
+          8,
+          1,
+          0,
+          0,
+          67
+        ],
+        "max_class_frac": 0.881578947368421
+      },
+      "1TIM:A": {
+        "n": 247,
+        "hist": [
+          15,
+          3,
+          0,
+          0,
+          229
+        ],
+        "max_class_frac": 0.9271255060728745
+      },
+      "4OBE:A": {
+        "n": 169,
+        "hist": [
+          10,
+          5,
+          0,
+          0,
+          154
+        ],
+        "max_class_frac": 0.9112426035502958
+      },
+      "1IVO:A": {
+        "n": 511,
+        "hist": [
+          26,
+          18,
+          0,
+          0,
+          467
+        ],
+        "max_class_frac": 0.913894324853229
+      },
+      "2SHP:A": {
+        "n": 491,
+        "hist": [
+          13,
+          8,
+          0,
+          0,
+          470
+        ],
+        "max_class_frac": 0.9572301425661914
+      }
+    },
+    "argmax_tie_nodes": 277,
+    "assigned_class_of_relation_incident_nodes": {
+      "R0_COVALENT": {
+        "core": 170,
+        "dehydron_rim": 85,
+        "salt": 0,
+        "hydrophobe": 0,
+        "neighborhood": 3138
+      },
+      "R1_HBOND": {
+        "core": 170,
+        "dehydron_rim": 0,
+        "salt": 0,
+        "hydrophobe": 0,
+        "neighborhood": 2783
+      },
+      "R2_DEHYDRON": {
+        "core": 81,
+        "dehydron_rim": 85,
+        "salt": 0,
+        "hydrophobe": 0,
+        "neighborhood": 1275
+      },
+      "R3_HYDROPHOBIC_PI": {
+        "core": 7,
+        "dehydron_rim": 0,
+        "salt": 0,
+        "hydrophobe": 0,
+        "neighborhood": 808
+      },
+      "R4_SALT_BRIDGE": {
+        "core": 19,
+        "dehydron_rim": 6,
+        "salt": 0,
+        "hydrophobe": 0,
+        "neighborhood": 263
+      },
+      "R5_LOCAL_NEIGHBORHOOD": {
+        "core": 167,
+        "dehydron_rim": 78,
+        "salt": 0,
+        "hydrophobe": 0,
+        "neighborhood": 3138
+      }
+    },
+    "class1_vs_dehydron_label": {
+      "class1_nodes": 85,
+      "dehydron_label_nodes": 1441,
+      "intersection": 85,
+      "jaccard": 0.05898681471200555,
+      "class1_precision_vs_label": 1.0,
+      "class1_recall_of_label": 0.05898681471200555
+    },
+    "gates_applied_to_status_quo": {
+      "G1_max_class_frac_pooled": {
+        "value": 0.9248452696728559,
+        "threshold_le": 0.6,
+        "pass": false
+      },
+      "G2_classes_with_frac_ge_floor": {
+        "value": 3,
+        "threshold_ge": 4,
+        "pass": false
+      },
+      "G3_norm_entropy_pooled": {
+        "value": 0.19547822810297555,
+        "threshold_ge": 0.5,
+        "pass": false
+      },
+      "G4_class1_dehydron_label_jaccard": {
+        "value": 0.05898681471200555,
+        "threshold_le": 0.8,
+        "pass": true
+      },
+      "G5_structures_with_max_class_frac_le_0p85": {
+        "value": 1,
+        "threshold_ge": 10,
+        "pass": false
+      }
+    },
+    "status_quo_fails_G1_G2_G3_G5": true
+  },
+  "candidates": {
+    "C1_enrichment_normalized_argmax": {
+      "stage_1": {
+        "pooled_class_hist": {
+          "core": 639,
+          "dehydron_rim": 1084,
+          "salt": 288,
+          "hydrophobe": 788,
+          "neighborhood": 594
+        },
+        "pooled_class_frac": {
+          "core": 0.1883289124668435,
+          "dehydron_rim": 0.3194812849985264,
+          "salt": 0.08488063660477453,
+          "hydrophobe": 0.2322428529325081,
+          "neighborhood": 0.17506631299734748
+        },
+        "per_structure": {
+          "1MBN:A": {
+            "n": 153,
+            "hist": [
+              25,
+              37,
+              31,
+              39,
+              21
+            ],
+            "max_class_frac": 0.2549019607843137
+          },
+          "1LYZ:A": {
+            "n": 129,
+            "hist": [
+              27,
+              46,
+              6,
+              25,
+              25
+            ],
+            "max_class_frac": 0.35658914728682173
+          },
+          "1BG1:A": {
+            "n": 558,
+            "hist": [
+              95,
+              201,
+              56,
+              115,
+              91
+            ],
+            "max_class_frac": 0.3602150537634409
+          },
+          "1F88:A": {
+            "n": 338,
+            "hist": [
+              88,
+              82,
+              8,
+              93,
+              67
+            ],
+            "max_class_frac": 0.27514792899408286
+          },
+          "2Z6H:A": {
+            "n": 533,
+            "hist": [
+              109,
+              135,
+              34,
+              147,
+              108
+            ],
+            "max_class_frac": 0.275797373358349
+          },
+          "1HHP:A": {
+            "n": 99,
+            "hist": [
+              19,
+              34,
+              8,
+              18,
+              20
+            ],
+            "max_class_frac": 0.3434343434343434
+          },
+          "1TEN:A": {
+            "n": 89,
+            "hist": [
+              14,
+              36,
+              8,
+              23,
+              8
+            ],
+            "max_class_frac": 0.4044943820224719
+          },
+          "1UBQ:A": {
+            "n": 76,
+            "hist": [
+              14,
+              17,
+              6,
+              16,
+              23
+            ],
+            "max_class_frac": 0.3026315789473684
+          },
+          "1TIM:A": {
+            "n": 247,
+            "hist": [
+              54,
+              78,
+              23,
+              58,
+              34
+            ],
+            "max_class_frac": 0.3157894736842105
+          },
+          "4OBE:A": {
+            "n": 169,
+            "hist": [
+              23,
+              57,
+              20,
+              48,
+              21
+            ],
+            "max_class_frac": 0.33727810650887574
+          },
+          "1IVO:A": {
+            "n": 511,
+            "hist": [
+              98,
+              192,
+              36,
+              94,
+              91
+            ],
+            "max_class_frac": 0.37573385518590996
+          },
+          "2SHP:A": {
+            "n": 491,
+            "hist": [
+              73,
+              169,
+              52,
+              112,
+              85
+            ],
+            "max_class_frac": 0.34419551934826886
+          }
+        },
+        "class1_vs_dehydron_label": {
+          "class1_nodes": 1084,
+          "dehydron_label_nodes": 1441,
+          "intersection": 1084,
+          "jaccard": 0.7522553782095767,
+          "class1_precision_vs_label": 1.0,
+          "class1_recall_of_label": 0.7522553782095767
+        },
+        "assigned_class_of_relation_incident_nodes": {
+          "R1_HBOND": {
+            "core": 639,
+            "dehydron_rim": 707,
+            "salt": 249,
+            "hydrophobe": 764,
+            "neighborhood": 594
+          },
+          "R2_DEHYDRON": {
+            "core": 8,
+            "dehydron_rim": 1084,
+            "salt": 139,
+            "hydrophobe": 165,
+            "neighborhood": 45
+          },
+          "R3_HYDROPHOBIC_PI": {
+            "core": 0,
+            "dehydron_rim": 25,
+            "salt": 2,
+            "hydrophobe": 788,
+            "neighborhood": 0
+          },
+          "R4_SALT_BRIDGE": {
+            "core": 0,
+            "dehydron_rim": 0,
+            "salt": 288,
+            "hydrophobe": 0,
+            "neighborhood": 0
+          }
+        },
+        "rule_meta": {
+          "argmax_tie_nodes": 0,
+          "classes_disabled": [],
+          "all_zero_count_nodes": 0
+        },
+        "gates": {
+          "G1": {
+            "value": 0.3194812849985264,
+            "threshold_le": 0.6,
+            "pass": true
+          },
+          "G2": {
+            "value": 5,
+            "threshold_ge": 4,
+            "pass": true
+          },
+          "G3": {
+            "value": 0.9521767694723153,
+            "threshold_ge": 0.5,
+            "pass": true
+          },
+          "G4": {
+            "value": 0.7522553782095767,
+            "threshold_le": 0.8,
+            "raw_pass": true,
+            "waived": false,
+            "pass": true
+          },
+          "G5": {
+            "value": 12,
+            "threshold_ge": 10,
+            "pass": true
+          },
+          "G6": {
+            "value": true,
+            "pass": true
+          }
+        },
+        "passes_all_hard_gates": true,
+        "passes_all_hard_gates_without_waiver": true,
+        "failed_gates": []
+      },
+      "gates": {
+        "G1": {
+          "value": 0.3194812849985264,
+          "threshold_le": 0.6,
+          "pass": true
+        },
+        "G2": {
+          "value": 5,
+          "threshold_ge": 4,
+          "pass": true
+        },
+        "G3": {
+          "value": 0.9521767694723153,
+          "threshold_ge": 0.5,
+          "pass": true
+        },
+        "G4": {
+          "value": 0.7522553782095767,
+          "threshold_le": 0.8,
+          "raw_pass": true,
+          "waived": false,
+          "pass": true
+        },
+        "G5": {
+          "value": 12,
+          "threshold_ge": 10,
+          "pass": true
+        },
+        "G6": {
+          "value": true,
+          "pass": true
+        }
+      },
+      "advances": true
+    },
+    "C2_exclusivity_order": {
+      "stage_1": {
+        "pooled_class_hist": {
+          "core": 1952,
+          "dehydron_rim": 1441,
+          "salt": 0,
+          "hydrophobe": 0,
+          "neighborhood": 0
+        },
+        "pooled_class_frac": {
+          "core": 0.5753020925434719,
+          "dehydron_rim": 0.42469790745652813,
+          "salt": 0.0,
+          "hydrophobe": 0.0,
+          "neighborhood": 0.0
+        },
+        "per_structure": {
+          "1MBN:A": {
+            "n": 153,
+            "hist": [
+              93,
+              60,
+              0,
+              0,
+              0
+            ],
+            "max_class_frac": 0.6078431372549019
+          },
+          "1LYZ:A": {
+            "n": 129,
+            "hist": [
+              54,
+              75,
+              0,
+              0,
+              0
+            ],
+            "max_class_frac": 0.5813953488372093
+          },
+          "1BG1:A": {
+            "n": 558,
+            "hist": [
+              287,
+              271,
+              0,
+              0,
+              0
+            ],
+            "max_class_frac": 0.514336917562724
+          },
+          "1F88:A": {
+            "n": 338,
+            "hist": [
+              250,
+              88,
+              0,
+              0,
+              0
+            ],
+            "max_class_frac": 0.7396449704142012
+          },
+          "2Z6H:A": {
+            "n": 533,
+            "hist": [
+              370,
+              163,
+              0,
+              0,
+              0
+            ],
+            "max_class_frac": 0.6941838649155723
+          },
+          "1HHP:A": {
+            "n": 99,
+            "hist": [
+              57,
+              42,
+              0,
+              0,
+              0
+            ],
+            "max_class_frac": 0.5757575757575758
+          },
+          "1TEN:A": {
+            "n": 89,
+            "hist": [
+              42,
+              47,
+              0,
+              0,
+              0
+            ],
+            "max_class_frac": 0.5280898876404494
+          },
+          "1UBQ:A": {
+            "n": 76,
+            "hist": [
+              51,
+              25,
+              0,
+              0,
+              0
+            ],
+            "max_class_frac": 0.6710526315789473
+          },
+          "1TIM:A": {
+            "n": 247,
+            "hist": [
+              152,
+              95,
+              0,
+              0,
+              0
+            ],
+            "max_class_frac": 0.6153846153846154
+          },
+          "4OBE:A": {
+            "n": 169,
+            "hist": [
+              90,
+              79,
+              0,
+              0,
+              0
+            ],
+            "max_class_frac": 0.5325443786982249
+          },
+          "1IVO:A": {
+            "n": 511,
+            "hist": [
+              262,
+              249,
+              0,
+              0,
+              0
+            ],
+            "max_class_frac": 0.512720156555773
+          },
+          "2SHP:A": {
+            "n": 491,
+            "hist": [
+              244,
+              247,
+              0,
+              0,
+              0
+            ],
+            "max_class_frac": 0.5030549898167006
+          }
+        },
+        "class1_vs_dehydron_label": {
+          "class1_nodes": 1441,
+          "dehydron_label_nodes": 1441,
+          "intersection": 1441,
+          "jaccard": 1.0,
+          "class1_precision_vs_label": 1.0,
+          "class1_recall_of_label": 1.0
+        },
+        "assigned_class_of_relation_incident_nodes": {
+          "R1_HBOND": {
+            "core": 1952,
+            "dehydron_rim": 1001,
+            "salt": 0,
+            "hydrophobe": 0,
+            "neighborhood": 0
+          },
+          "R2_DEHYDRON": {
+            "core": 0,
+            "dehydron_rim": 1441,
+            "salt": 0,
+            "hydrophobe": 0,
+            "neighborhood": 0
+          },
+          "R3_HYDROPHOBIC_PI": {
+            "core": 625,
+            "dehydron_rim": 190,
+            "salt": 0,
+            "hydrophobe": 0,
+            "neighborhood": 0
+          },
+          "R4_SALT_BRIDGE": {
+            "core": 149,
+            "dehydron_rim": 139,
+            "salt": 0,
+            "hydrophobe": 0,
+            "neighborhood": 0
+          }
+        },
+        "rule_meta": {
+          "fallback_nodes_no_R1_to_R5_edge": 0,
+          "fallback_class": "neighborhood"
+        },
+        "gates": {
+          "G1": {
+            "value": 0.5753020925434719,
+            "threshold_le": 0.6,
+            "pass": true
+          },
+          "G2": {
+            "value": 2,
+            "threshold_ge": 4,
+            "pass": false
+          },
+          "G3": {
+            "value": 0.4236032343550781,
+            "threshold_ge": 0.5,
+            "pass": false
+          },
+          "G4": {
+            "value": 1.0,
+            "threshold_le": 0.8,
+            "raw_pass": false,
+            "waived": true,
+            "pass": true
+          },
+          "G5": {
+            "value": 12,
+            "threshold_ge": 10,
+            "pass": true
+          },
+          "G6": {
+            "value": true,
+            "pass": true
+          }
+        },
+        "passes_all_hard_gates": false,
+        "passes_all_hard_gates_without_waiver": false,
+        "failed_gates": [
+          "G2",
+          "G3"
+        ],
+        "fallback_sensitivity_core": {
+          "failed_gates": [
+            "G2",
+            "G3"
+          ],
+          "passes_all_hard_gates": false,
+          "pooled_class_hist": {
+            "core": 1952,
+            "dehydron_rim": 1441,
+            "salt": 0,
+            "hydrophobe": 0,
+            "neighborhood": 0
+          },
+          "gate_values": {
+            "G1": 0.5753020925434719,
+            "G2": 2,
+            "G3": 0.4236032343550781,
+            "G5": 12
+          }
+        },
+        "fallback_choice_note": "prereg C2 definition is silent on nodes with no R1-R5 edge; measured with fallback=neighborhood (terminal class of the exclusivity chain); alternate fallback=core reported as sensitivity only"
+      },
+      "gates": {
+        "G1": {
+          "value": 0.5753020925434719,
+          "threshold_le": 0.6,
+          "pass": true
+        },
+        "G2": {
+          "value": 2,
+          "threshold_ge": 4,
+          "pass": false
+        },
+        "G3": {
+          "value": 0.4236032343550781,
+          "threshold_ge": 0.5,
+          "pass": false
+        },
+        "G4": {
+          "value": 1.0,
+          "threshold_le": 0.8,
+          "raw_pass": false,
+          "waived": true,
+          "pass": true
+        },
+        "G5": {
+          "value": 12,
+          "threshold_ge": 10,
+          "pass": true
+        },
+        "G6": {
+          "value": true,
+          "pass": true
+        }
+      },
+      "advances": false
+    },
+    "C0_status_quo": {
+      "stage_1": {
+        "pooled_class_hist": {
+          "core": 170,
+          "dehydron_rim": 85,
+          "salt": 0,
+          "hydrophobe": 0,
+          "neighborhood": 3138
+        },
+        "pooled_class_frac": {
+          "core": 0.050103153551429414,
+          "dehydron_rim": 0.025051576775714707,
+          "salt": 0.0,
+          "hydrophobe": 0.0,
+          "neighborhood": 0.9248452696728559
+        },
+        "per_structure": {
+          "1MBN:A": {
+            "n": 153,
+            "hist": [
+              8,
+              3,
+              0,
+              0,
+              142
+            ],
+            "max_class_frac": 0.9281045751633987
+          },
+          "1LYZ:A": {
+            "n": 129,
+            "hist": [
+              5,
+              4,
+              0,
+              0,
+              120
+            ],
+            "max_class_frac": 0.9302325581395349
+          },
+          "1BG1:A": {
+            "n": 558,
+            "hist": [
+              24,
+              17,
+              0,
+              0,
+              517
+            ],
+            "max_class_frac": 0.9265232974910395
+          },
+          "1F88:A": {
+            "n": 338,
+            "hist": [
+              20,
+              8,
+              0,
+              0,
+              310
+            ],
+            "max_class_frac": 0.9171597633136095
+          },
+          "2Z6H:A": {
+            "n": 533,
+            "hist": [
+              30,
+              8,
+              0,
+              0,
+              495
+            ],
+            "max_class_frac": 0.9287054409005628
+          },
+          "1HHP:A": {
+            "n": 99,
+            "hist": [
+              9,
+              6,
+              0,
+              0,
+              84
+            ],
+            "max_class_frac": 0.8484848484848485
+          },
+          "1TEN:A": {
+            "n": 89,
+            "hist": [
+              2,
+              4,
+              0,
+              0,
+              83
+            ],
+            "max_class_frac": 0.9325842696629213
+          },
+          "1UBQ:A": {
+            "n": 76,
+            "hist": [
+              8,
+              1,
+              0,
+              0,
+              67
+            ],
+            "max_class_frac": 0.881578947368421
+          },
+          "1TIM:A": {
+            "n": 247,
+            "hist": [
+              15,
+              3,
+              0,
+              0,
+              229
+            ],
+            "max_class_frac": 0.9271255060728745
+          },
+          "4OBE:A": {
+            "n": 169,
+            "hist": [
+              10,
+              5,
+              0,
+              0,
+              154
+            ],
+            "max_class_frac": 0.9112426035502958
+          },
+          "1IVO:A": {
+            "n": 511,
+            "hist": [
+              26,
+              18,
+              0,
+              0,
+              467
+            ],
+            "max_class_frac": 0.913894324853229
+          },
+          "2SHP:A": {
+            "n": 491,
+            "hist": [
+              13,
+              8,
+              0,
+              0,
+              470
+            ],
+            "max_class_frac": 0.9572301425661914
+          }
+        },
+        "class1_vs_dehydron_label": {
+          "class1_nodes": 85,
+          "dehydron_label_nodes": 1441,
+          "intersection": 85,
+          "jaccard": 0.05898681471200555,
+          "class1_precision_vs_label": 1.0,
+          "class1_recall_of_label": 0.05898681471200555
+        },
+        "assigned_class_of_relation_incident_nodes": {
+          "R1_HBOND": {
+            "core": 170,
+            "dehydron_rim": 0,
+            "salt": 0,
+            "hydrophobe": 0,
+            "neighborhood": 2783
+          },
+          "R2_DEHYDRON": {
+            "core": 81,
+            "dehydron_rim": 85,
+            "salt": 0,
+            "hydrophobe": 0,
+            "neighborhood": 1275
+          },
+          "R3_HYDROPHOBIC_PI": {
+            "core": 7,
+            "dehydron_rim": 0,
+            "salt": 0,
+            "hydrophobe": 0,
+            "neighborhood": 808
+          },
+          "R4_SALT_BRIDGE": {
+            "core": 19,
+            "dehydron_rim": 6,
+            "salt": 0,
+            "hydrophobe": 0,
+            "neighborhood": 263
+          }
+        },
+        "rule_meta": {
+          "argmax_tie_nodes": 277
+        },
+        "gates": {
+          "G1": {
+            "value": 0.9248452696728559,
+            "threshold_le": 0.6,
+            "pass": false
+          },
+          "G2": {
+            "value": 3,
+            "threshold_ge": 4,
+            "pass": false
+          },
+          "G3": {
+            "value": 0.19547822810297555,
+            "threshold_ge": 0.5,
+            "pass": false
+          },
+          "G4": {
+            "value": 0.05898681471200555,
+            "threshold_le": 0.8,
+            "raw_pass": true,
+            "waived": false,
+            "pass": true
+          },
+          "G5": {
+            "value": 1,
+            "threshold_ge": 10,
+            "pass": false
+          },
+          "G6": {
+            "value": true,
+            "pass": true
+          }
+        },
+        "reproduces_cached_sdrp_target_bitwise": true,
+        "passes_all_hard_gates": false,
+        "passes_all_hard_gates_without_waiver": false,
+        "failed_gates": [
+          "G1",
+          "G2",
+          "G3",
+          "G5"
+        ]
+      },
+      "gates": {
+        "G1": {
+          "value": 0.9248452696728559,
+          "threshold_le": 0.6,
+          "pass": false
+        },
+        "G2": {
+          "value": 3,
+          "threshold_ge": 4,
+          "pass": false
+        },
+        "G3": {
+          "value": 0.19547822810297555,
+          "threshold_ge": 0.5,
+          "pass": false
+        },
+        "G4": {
+          "value": 0.05898681471200555,
+          "threshold_le": 0.8,
+          "raw_pass": true,
+          "waived": false,
+          "pass": true
+        },
+        "G5": {
+          "value": 1,
+          "threshold_ge": 10,
+          "pass": false
+        },
+        "G6": {
+          "value": true,
+          "pass": true
+        }
+      },
+      "advances": false
+    }
+  },
+  "gates_stage_1": {
+    "C0_status_quo": {
+      "G1": {
+        "value": 0.9248452696728559,
+        "threshold_le": 0.6,
+        "pass": false
+      },
+      "G2": {
+        "value": 3,
+        "threshold_ge": 4,
+        "pass": false
+      },
+      "G3": {
+        "value": 0.19547822810297555,
+        "threshold_ge": 0.5,
+        "pass": false
+      },
+      "G4": {
+        "value": 0.05898681471200555,
+        "threshold_le": 0.8,
+        "raw_pass": true,
+        "waived": false,
+        "pass": true
+      },
+      "G5": {
+        "value": 1,
+        "threshold_ge": 10,
+        "pass": false
+      },
+      "G6": {
+        "value": true,
+        "pass": true
+      }
+    },
+    "C1_enrichment_normalized_argmax": {
+      "G1": {
+        "value": 0.3194812849985264,
+        "threshold_le": 0.6,
+        "pass": true
+      },
+      "G2": {
+        "value": 5,
+        "threshold_ge": 4,
+        "pass": true
+      },
+      "G3": {
+        "value": 0.9521767694723153,
+        "threshold_ge": 0.5,
+        "pass": true
+      },
+      "G4": {
+        "value": 0.7522553782095767,
+        "threshold_le": 0.8,
+        "raw_pass": true,
+        "waived": false,
+        "pass": true
+      },
+      "G5": {
+        "value": 12,
+        "threshold_ge": 10,
+        "pass": true
+      },
+      "G6": {
+        "value": true,
+        "pass": true
+      }
+    },
+    "C2_exclusivity_order": {
+      "G1": {
+        "value": 0.5753020925434719,
+        "threshold_le": 0.6,
+        "pass": true
+      },
+      "G2": {
+        "value": 2,
+        "threshold_ge": 4,
+        "pass": false
+      },
+      "G3": {
+        "value": 0.4236032343550781,
+        "threshold_ge": 0.5,
+        "pass": false
+      },
+      "G4": {
+        "value": 1.0,
+        "threshold_le": 0.8,
+        "raw_pass": false,
+        "waived": true,
+        "pass": true
+      },
+      "G5": {
+        "value": 12,
+        "threshold_ge": 10,
+        "pass": true
+      },
+      "G6": {
+        "value": true,
+        "pass": true
+      }
+    }
+  },
+  "gates_stage_2": {
+    "S1": {
+      "pass": null
+    },
+    "S2": {
+      "pass": null
+    },
+    "S3": {
+      "pass": null
+    }
+  },
+  "selected_candidate": null,
+  "mlflow_run_id": null,
+  "note": "DRAFT stamp. All candidate/gate fields are null until an approved Stage 1 run; no MLflow run exists for this card.",
+  "operator_decisions": {
+    "thresholds_G1_G6_S1_S3": "APPROVE as drafted (fixed before candidates)",
+    "C3": "DROP from Stage 1 scope \u2014 park; semantic remap needs separate card later",
+    "C2": "KEEP as contrast arm; G4 waiver PRE-AUTHORIZED for C2 only (expected class1==dehydron by construction). G4 still binds C0/C1.",
+    "Stage_1_execution": "APPROVE \u2014 offline measurement only, no loader/code change, no training, no promote",
+    "Stage_2": "NOT approved yet \u2014 requires Stage 1 result + separate approval for code+cache-key change"
+  },
+  "stage_1_scope": {
+    "measure": [
+      "C0_status_quo",
+      "C1_enrichment_normalized_argmax",
+      "C2_exclusivity_order"
+    ],
+    "exclude": [
+      "C3_edge_type_independent_context"
+    ],
+    "g4_waiver": "C2_only"
+  },
+  "approved_at": "2026-09-18T18:12:08Z",
+  "stage_1_results_file": "data/gates/tokyo_eye_equ_sdrp_target_wrap1_stage1_results.json",
+  "stage_1_executed_at_utc": "2026-09-18T18:15:49Z",
+  "stage_2_approved": false,
+  "stage_1_caveats": [
+    "C1 over-assigns rare relations toward incidence (salt 288/288, hydrophobe ~788/815)",
+    "C1 class-1 is a strict subset of dehydron_labels (precision 1.0, G4 margin thin)",
+    "C2 fails G2/G3 independently of G4 waiver"
+  ],
+  "amendment1": "data/gates/tokyo_eye_equ_sdrp_target_wrap1_amendment1.json",
+  "selected_candidate_under_g1_g6_only": "C1_enrichment_normalized_argmax",
+  "selection_status": "REVOKED_PENDING_AMENDMENT1_REMEASURE",
+  "note_amendment1": "C1 was selected under G1\u2013G6 only. Amendment1 adds post-hoc G7/G8; C1 is not Stage-2 eligible until (and unless) it passes G1\u2013G8 \u2014 expected fail."
+}

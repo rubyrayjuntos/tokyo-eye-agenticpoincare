@@ -2,7 +2,7 @@
 
 **Status:** OPEN — **v8 TODOs** (ported from closed v7 track; grades do not transfer)  
 **Date:** 2026-07-23  
-**Θ SSOT:** `HEALTHY_V8_SPINE_CKPT` — `checkpoints/v8/runs/tokyo_eye_v8_mode_c_moe_rebalance_s9/v8_best.pt`  
+**Θ SSOT:** `models:/TokyoEye@champion` (resolve via governance; never a hardcoded `.pt`). Compare-only Mode C S9 may sit at `checkpoints/tokyoeye/runs/eqf_mode_c_s9_20260823/tokyoeye_best.pt`. Historical `HEALTHY_V8_SPINE_CKPT` is not Θ.  
 **Machine stamp:** [`data/gates/tokyo_eye_v8_biology_roadmap.json`](../../../data/gates/tokyo_eye_v8_biology_roadmap.json)  
 **Metrics defs:** [`investigation-allele-epistasis-metrics.md`](investigation-allele-epistasis-metrics.md)  
 **v7 archaeology:** prior B0 PASS / B1 FAIL lived under `docs/specs/tokyo-eye-v7/` — **do not resume there**
@@ -13,7 +13,8 @@
 
 | Order | ID | Theme | Status on v8 |
 |-------|-----|--------|----------------|
-| **0** | **B0** | Prep (Θ lock, metric code, probe inventory, forward smoke on **v8**) | **TODO** — reset |
+| **0** | **B0** | Prep (Θ lock, metric code, probe inventory, forward smoke on **v8**) | Observation stamped 2026-08-24 |
+| **0.5** | **C1** | Topology curriculum 25×150 from `@champion` (frozen Equiformer) | Stamped 2026-08-24 — train finite, **hygiene Fail** (rim sat=1 at τ=0.90; eval MoE E2). Not B1. |
 | **1** | **B1** | Functional allostery / long-range teleconnections | **TODO** — re-prereg on v8 |
 | **2** | **B2** | Epistasis cascades | After B1 |
 | **3** | **B3′** | Directional topography (not free energy) | After B2 |
@@ -28,9 +29,9 @@
 
 | # | Task | Done when |
 |---|------|-----------|
-| B0.1 | Lock Θ: only `HEALTHY_V8_SPINE_CKPT` for biology probes | Stamp |
+| B0.1 | Lock Θ: only `models:/TokyoEye@champion` for biology probes | Stamp |
 | B0.2 | Naming: `AlleleSens` / `Epistasis` ≠ NIG ale/epi | Defs doc (copied) |
-| B0.3 | Forward smoke: v8 system → finite `z_hyp` on KRAS/Stage-A panel | Gate |
+| B0.3 | Forward smoke: v8 system → finite `z_hyp` on the B0 topology panel (`data/gates/tokyo_eye_v8_b0_topology_observation.json`) | Gate |
 | B0.4 | Inventory reusable Fix-1 / KRAS probes as **compare-only** | Table |
 | B0.5 | Draft B1 prereg for **v8** architecture (not Hyp-MP-only v7) | Open for review |
 

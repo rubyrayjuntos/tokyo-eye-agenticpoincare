@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_sdrp_target_wrap1_prereg",
+  "display_lineage": "Tokyo Eye EQU",
+  "status": "APPROVED_STAGE1_ONLY",
+  "approval_status": "APPROVED_STAGE1_ONLY",
+  "approver": "Ray Swan (via Cursor operator)",
+  "approved_at": "2026-09-18T18:12:08Z",
+  "drafted_by": "Claude Sonnet 5 (assistant) \u2014 draft for operator review",
+  "date_drafted": "2026-09-18",
+  "sibling_stamp": "data/gates/tokyo_eye_equ_sdrp_target_wrap1.json",
+  "predecessor_evidence": {
+    "wrap1_biology_rescore_stamp": "data/gates/tokyo_eye_equ_wrap1_biology_rescore.json",
+    "mlflow_run_id": "170ff7b27ef04205bff6c93d19eaf940",
+    "finding": "SDRP majority-collapse: pred all class 4, acc == majority (0.9248), macro-F1 0.3203; target hist [170,85,0,0,3138]",
+    "wrap19_numbers_cited": false
+  },
+  "constraints": {
+    "no_code_or_label_change_until_approved": true,
+    "no_promote": true,
+    "no_alias_moves": true,
+    "no_silent_retune": true,
+    "unchanged_by_this_card": [
+      "dehydron_labels / wrap SSOT (DEHYDRON_WRAP_MAX=1)",
+      "SDRP_LOSS_COEFF=0.1, lr, dehydron loss, all MoE/eps schedule and coefficients",
+      "num_sdrp_classes=5 (head shape)",
+      "graph construction R0-R5"
+    ],
+    "not_claims": [
+      "Stage-1 pass is NOT a biology pass",
+      "no CASF/affinity/cryptic-pocket implication"
+    ]
+  },
+  "problem_statement": {
+    "rule": "sdrp_heuristic_from_edges: argmax over per-node endpoint counts of relation groups (R2->rim, R0|R1->core, R4->salt, R3->hydrophobe, R5->neighborhood); the 'priority order' only breaks exact ties",
+    "diagnosis": [
+      "Raw-count argmax is dominated by relation prevalence, not node-level enrichment: R5 edges outnumber R2 by 12.8x, R3 by 22.6x, R4 by 78.0x pooled over Stage-A-12.",
+      "Classes salt (2) and hydrophobe (3) are empty although 288 R4-incident and 815 R3-incident nodes exist.",
+      "class 1 (dehydron_rim) has 85 nodes vs 1441 dehydron-label (R2-incident) nodes: a strict subset (precision 1.00) recovering only 5.9% of them; 1275 R2-incident nodes are assigned neighborhood.",
+      "core (0) mixes universal R0 backbone connectivity with wrapped H-bonds (R1).",
+      "Tie-break priority list only decides 277 of 3393 nodes (8.2%); the other nodes are decided by raw relation counts.",
+      "Target is a function of batch['edge_type'], which is also a model input (see wrap1 leakage_audit): any edge-type-derived target is leak-confounded and needs the blind-arm control."
+    ],
+    "cache_hazard": "Cached graphs store sdrp_target; graph_cache_hash does not include the SDRP rule. Changing the rule without a cache-key change would silently serve stale labels from pdb_cache/v8_graph_cache."
+  },
+  "pins_at_draft": {
+    "wrap": 1,
+    "sdrp_heuristic_from_edges_sha256": "501b5eeef24cb0b30340c808d753013291ce5651a1f6a79b4a977658c157428a",
+    "loader_py_sha256": "522add382d0c8930f3a3a409dcc58c1e4cabb7b54b55a116e9bcc921d9bf3589",
+    "manifest": "manifests/v8_stage_a_small_v1.json",
+    "manifest_sha256": "ed499fad1252820052d38e39d842f532550b57b0012e4eb6b3ccab90bd565eda",
+    "BIOPHYS_CACHE_VERSION": "v8_biophys_freeze_r19",
+    "graph_cache_hash_wrap1": "31a5affe14ba",
+    "graph_cache_hash_covers_sdrp_rule": false,
+    "SDRP_LOSS_COEFF": 0.1,
+    "num_sdrp_classes": 5
+  },
+  "candidates": {
+    "C0_status_quo": {
+      "definition": "current sdrp_heuristic_from_edges (reference arm; measured in sibling stamp)",
+      "leak_tier": "T0_edge_type_derived"
+    },
+    "C1_enrichment_normalized_argmax": {
+      "definition": "score_c(node)=count_c(node)/mean_over_nodes_in_same_structure(count_c); argmax over the 5 class groups (same relation->class map as C0); class disabled in a structure if its mean count is 0; ties -> existing priority order. Parameter-free, deterministic.",
+      "class_semantics": "unchanged ids 0-4",
+      "leak_tier": "T0_edge_type_derived",
+      "known_risk": "any node with a single rare-relation edge is pushed to that rare class (over-assignment)"
+    },
+    "C2_exclusivity_order": {
+      "definition": "node class = first relation present in descending exclusivity order R2 > R1 (R0 excluded from core) > R3 > R4 > R5, mirroring the graph layer's own edge exclusivity",
+      "class_semantics": "unchanged ids 0-4",
+      "leak_tier": "T0_edge_type_derived",
+      "expected_gate_interaction": "class 1 == dehydron label by construction, so G4 is expected to fail; listed so the operator can waive G4 via a signed amendment instead of the card silently excluding it"
+    },
+    "C3_edge_type_independent_context": {
+      "definition": "OPEN \u2014 structural-context target not derived from edge_type (e.g. burial tier x DSSP class). Changes class semantics from relation-mix to structural context; needs separate operator approval and a definition amendment before any measurement.",
+      "class_semantics": "REMAPPED (requires amendment)",
+      "leak_tier": "T1_independent_of_edge_type"
+    }
+  },
+  "stage_1_offline_measurement": {
+    "executes_only_after": "approval_status == APPROVED",
+    "no_training": true,
+    "inputs": "cached wrap=1 graphs of Stage-A-12 (enabled:true), read-only; candidate rule evaluated in /tmp script, not in loader.py",
+    "metrics": [
+      "pooled + per-structure class histogram",
+      "normalized entropy (pooled)",
+      "max class fraction (pooled, per-structure)",
+      "classes with pooled frac >= 0.02",
+      "Jaccard/precision/recall of class 1 vs dehydron_labels",
+      "argmax tie count",
+      "bit-for-bit determinism across two evaluations",
+      "assigned-class crosstab for R2/R3/R4-incident nodes"
+    ],
+    "hard_gates": {
+      "G1": "max pooled class fraction <= 0.60",
+      "G2": ">= 4 of 5 classes with pooled fraction >= 0.02",
+      "G3": "pooled normalized entropy H/ln5 >= 0.50",
+      "G4": "Jaccard(class==1, dehydron_labels==1) <= 0.80 (SDRP not a copy of the dehydron target)",
+      "G5": ">= 10 of 12 structures with max class fraction <= 0.85",
+      "G6": "deterministic (two evaluations identical)"
+    },
+    "thresholds": {
+      "G1_max_class_frac_pooled_le": 0.6,
+      "G2_min_classes_with_frac_ge_0p02_pooled": 4,
+      "G2_class_frac_floor": 0.02,
+      "G3_norm_entropy_pooled_ge": 0.5,
+      "G4_class1_vs_dehydron_label_jaccard_le": 0.8,
+      "G5_structures_with_max_class_frac_le_0p85_min": 10,
+      "G5_struct_max_class_frac": 0.85
+    },
+    "threshold_provenance": "fixed before any candidate is measured; chosen from generic non-degeneracy reasoning (status quo, measured, fails G1/G2/G3/G5 \u2014 see sibling stamp). Operator may amend before approval only.",
+    "selection_rule": "candidates passing all hard gates advance; if more than one passes, prefer lower leak tier, then simpler rule; if none passes, card closes NO_CANDIDATE and SDRP stays diagnostic-only"
+  },
+  "stage_2_training_read": {
+    "executes_only_after": "Stage 1 selects a candidate AND operator approves code change + cache-key change",
+    "protocol": "same harness/arms as tokyo_eye_equ_wrap1_biology_rescore (typed + type-blind + untrained-init control, in-sample, seed 0, 60 epochs, schedules unchanged)",
+    "reads_not_promote_gates": {
+      "S1": "typed eval SDRP macro-F1 (present classes) >= majority-only macro-F1 + 0.10",
+      "S2": "recall > 0 for >= 3 classes (typed arm)",
+      "S3": "blind-arm result reported beside typed; leak gap = typed - blind, no threshold"
+    },
+    "conditioning_caveat": "router remains the parked COLLAPSED_POST_FLOOR eps config (eval_moe_liveness 0/60 in wrap1 rescore); Stage 2 must log liveness and cannot attribute a failure to the label alone"
+  },
+  "implementation_constraints_post_approval": [
+    "change confined to sdrp_heuristic_from_edges (or a versioned SDRP_TARGET_RULE selector) in science/tokyo_eye/v8/loader.py",
+    "add the rule id to graph_cache_hash (or bump BIOPHYS_CACHE_VERSION) so stale cached sdrp_target cannot be served",
+    "class ids 0-4 keep meaning for C1/C2; record semantic change for consumers: scripts/stripe_membership_crosstab.py, governance/pyfunc_model.py (sdrp_logits), experiments/training/v8/run_affinity_s10.py (freezes sdrp_head)",
+    "scripts/ is not writable for the assistant: code lands via host agent from /tmp"
+  ],
+  "forbidden": [
+    "silent label rewrite",
+    "changing SDRP_LOSS_COEFF/lr/eps/MoE coefficients under this card",
+    "citing wrap=19 REVERT-era numbers",
+    "promote or alias moves",
+    "reading any result of this card as affinity/CASF/cryptic-pocket evidence"
+  ],
+  "operator_decisions_needed": [
+    "approve/amend thresholds G1-G6, S1-S3",
+    "keep or drop C3 (semantic change)",
+    "keep C2 with expected G4 failure, or pre-authorize a G4 waiver",
+    "approve Stage 1 execution"
+  ],
+  "operator_decisions": {
+    "thresholds_G1_G6_S1_S3": "APPROVE as drafted (fixed before candidates)",
+    "C3": "DROP from Stage 1 scope \u2014 park; semantic remap needs separate card later",
+    "C2": "KEEP as contrast arm; G4 waiver PRE-AUTHORIZED for C2 only (expected class1==dehydron by construction). G4 still binds C0/C1.",
+    "Stage_1_execution": "APPROVE \u2014 offline measurement only, no loader/code change, no training, no promote",
+    "Stage_2": "NOT approved yet \u2014 requires Stage 1 result + separate approval for code+cache-key change"
+  },
+  "stage_1_scope": {
+    "measure": [
+      "C0_status_quo",
+      "C1_enrichment_normalized_argmax",
+      "C2_exclusivity_order"
+    ],
+    "exclude": [
+      "C3_edge_type_independent_context"
+    ],
+    "g4_waiver": "C2_only"
+  },
+  "amendments": [
+    {
+      "id": "amendment1",
+      "path": "data/gates/tokyo_eye_equ_sdrp_target_wrap1_amendment1.json",
+      "approved_at": "2026-09-18T18:34:58Z",
+      "post_hoc": true
+    }
+  ],
+  "stage_2_approved": false
+}

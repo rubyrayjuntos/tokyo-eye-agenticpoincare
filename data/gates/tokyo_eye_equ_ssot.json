@@ -1,0 +1,25 @@
+{
+  "gate_id": "tokyo_eye_equ_ssot",
+  "date": "2026-09-15",
+  "status": "active",
+  "ssot": "mlflow",
+  "display_lineage": "Tokyo Eye EQU",
+  "naming_stem": "tokyo_eye_equ_<slug>",
+  "naming_convention_gate": "tokyo_eye_equ_naming_convention",
+  "tracking_uri": "http://localhost:5000",
+  "experiment": "tokyoeye/equiformer-v3-moe/geometric/hyperbolic-spine",
+  "experiment_id": "14",
+  "run_name": "tokyo_eye_equ_ssot",
+  "run_id": "f0e706526c2c481fa7c3112c89a5aeca",
+  "ui_hint": "http://localhost:5000/#/experiments/14/runs/f0e706526c2c481fa7c3112c89a5aeca",
+  "resolve": "Experiment tag tokyo_eye_equ_ssot_run_id \u2192 this run. gate_id == run_name == pointer basename.",
+  "repo_pointer_only": true,
+  "operator_policy": "correct_start_no_remediation",
+  "next_open": "tokyo_eye_equ_correct_start",
+  "pure_hyp_pass": false,
+  "related_runs": {
+    "tokyo_eye_equ_cold_boot": "f217ade3e6f0416b97fd7227465c5809",
+    "superseded_opaque_name": "84a3c26da0384fc59ce45f042a639312"
+  },
+  "governance_spec": "docs/superpowers/specs/2026-07-23-tokyoeye-mlflow-governance-design.md"
+}

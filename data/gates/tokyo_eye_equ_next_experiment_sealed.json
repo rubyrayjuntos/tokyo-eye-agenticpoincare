@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_next_experiment_sealed",
+  "status": "OPEN_FOR_SEALED_PREREG",
+  "date": "2026-09-18",
+  "display_lineage": "Tokyo Eye EQU",
+  "standing_rule": "Prose without a failing test always loses to a convenient default.",
+  "prerequisite_closed": {
+    "assembly_gate_enforced": true,
+    "architecture_ssot": "data/gates/tokyo_eye_equ_architecture_ssot.json",
+    "nonclaim": "data/gates/tokyo_eye_equ_nonclaim_disposition.json"
+  },
+  "allowed_next_cards": [
+    {
+      "id": "moe_eval_utilization_on_pool",
+      "frontend": "equiformer_pool",
+      "pointer": "data/gates/tokyo_eye_equ_moe_verify_on_pool.json",
+      "note": "Sealed §2.6 / eval-util remedies on pool only"
+    },
+    {
+      "id": "hyp_biology_non_leaking",
+      "frontend": "equiformer_pool",
+      "requires": [
+        "defect_B_addressed_or_non_leaking_target",
+        "biology_on_z_hyp",
+        "log_biology_grad_by_source"
+      ],
+      "note": "Hyperbolic biology after leakage and euc-skip paths are fixed"
+    }
+  ],
+  "forbidden_next": [
+    "another_cold_stub_diagnostic_as_trunk",
+    "wrap19_biology",
+    "silent_coeff_retune",
+    "c1_loader_change",
+    "sealed_moe_on_stub",
+    "read_se3_lite_pilot_S1S2_as_pool_biology"
+  ],
+  "se3_lite_pilot_policy": {
+    "permitted_when": [
+      "pre_registered_card",
+      "do_not_promote_true",
+      "not_claims_name_frontend",
+      "allow_off_path_frontend_explicit",
+      "purpose_cheap_signal_existence_before_pool_confirm"
+    ],
+    "forbidden_reading": "S1/S2 fail or pass on SE(3)-lite is not evidence about Equiformer-pool biology",
+    "example_pilot": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_B_result.json"
+  },
+  "status_note": "ENFORCED assembly gate is closed in-tree; next prereg may open only from allowed_next_cards. Claim-bearing biology must pass assembly third leg (non-leak + biology_grad log).",
+  "signed": "Ray Swan 2026-09-19"
+}

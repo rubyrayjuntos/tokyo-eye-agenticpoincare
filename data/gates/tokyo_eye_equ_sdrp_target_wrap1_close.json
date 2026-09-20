@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_sdrp_target_wrap1_close",
+  "display_lineage": "Tokyo Eye EQU",
+  "status": "SDRP_PARKED_DIAGNOSTIC_ONLY",
+  "date": "2026-09-18",
+  "decided_by": "operator (P: park SDRP; not C3)",
+  "recorded_by": "Claude Sonnet 5 (assistant)",
+  "trunk_step": "2 of 4 (supervision)",
+  "do_not_promote": true,
+  "promotion_eligible": false,
+  "basis": {
+    "remeasure": "data/gates/tokyo_eye_equ_sdrp_target_wrap1_amendment1_remeasure.json",
+    "remeasure_sha256": "67e58b473354706a2b234ccb6831a8e92122bf4f084d1f378118ac0a2e20551a",
+    "amendment": "data/gates/tokyo_eye_equ_sdrp_target_wrap1_amendment1.json",
+    "amendment_sha256": "81407131a896016c9361a8d12166d4b155becd6025f0b1a5bd73360a8e74af86",
+    "stage1_results": "data/gates/tokyo_eye_equ_sdrp_target_wrap1_stage1_results.json",
+    "stage1_results_sha256": "d5ed7a3a342869b00610ac0b97c44ef67be309025765f3ff0375b13f008cb5b9",
+    "outcome": "NO_CANDIDATE",
+    "candidate_failures": {
+      "C0_status_quo": ["G1", "G2", "G3", "G5"],
+      "C1_enrichment_normalized_argmax": ["G7", "G8"],
+      "C2_exclusivity_order": ["G2", "G3", "G8"]
+    },
+    "honesty": "G7/G8 were added post-hoc (amendment1). This close does not cite any candidate as selected or as a clean pre-registered pass."
+  },
+  "meaning_of_parked": [
+    "SDRP is diagnostic-only under wrap=1: the wrap=1 SDRP target hunt is closed with NO_CANDIDATE.",
+    "The SDRP loss is not a supervision signal for the trunk. Step 3 sets sdrp_coeff=0 explicitly (see tokyo_eye_equ_wrap1_dehydron_loso_prereg).",
+    "Dehydron under wrap=1 is the biology signal for steps 3-4.",
+    "Stage 1 G1-G6 results remain historical evidence only. C1 selection stays revoked."
+  ],
+  "not_done_by_this_stamp": [
+    "no Stage-2 SDRP, no C1, no C1-prime",
+    "no loader / cache-key / label change",
+    "no C3 prereg opened (C3 needs a new card with edge-type-independent target and thresholds fixed before any candidate is seen)",
+    "no promote, no alias move, no registry write",
+    "parent stamp tokyo_eye_equ_sdrp_target_wrap1.json left untouched (still DRAFT / STAGE1_COMPLETE); this stamp is the disposition record"
+  ],
+  "reopen_rule": "Only by a new signed card. Any future supervision must avoid the edge_type leak: sdrp_target and dehydron_labels are both functions of batch['edge_type'], which is also a model input (wrap1_biology_rescore leakage_audit).",
+  "next": "step 3 wrap=1 dehydron train - DRAFT card data/gates/tokyo_eye_equ_wrap1_dehydron_loso_prereg.json (not approved; no code, no train until approved)"
+}

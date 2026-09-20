@@ -1,0 +1,1744 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_grad_attribution_check",
+  "status": "DIAGNOSTIC_NO_TRAINING",
+  "date": "2026-09-20",
+  "display_lineage": "Tokyo Eye EQU",
+  "do_not_promote": true,
+  "purpose": "Separate 'excluded by config' from 'structurally disconnected' for zero-gradient components in G_fit / Arm B; validate the logger with positive controls.",
+  "script": "data/gates/tokyo_eye_equ_grad_attribution_check.py",
+  "script_sha256": "1ef760f3ea6878be9ab4149d16dcb0666551120b5b9fe239044fc6f7ef41876f",
+  "setup": "cold SE(3)-lite, epoch-0 tau ceiling, 2 train structures (1LYZ:A, 1BG1:A), init weights, seed 0; each loss term backpropagated alone; no optimizer step",
+  "logger_check": {
+    "ablated": {
+      "bucket_sum": 104.61294565920319,
+      "torch_global": 104.61294555664062
+    },
+    "live": {
+      "bucket_sum": 114.04953935139142,
+      "torch_global": 114.0495376586914
+    },
+    "read": "sum of per-bucket grad norms equals torch global grad norm exactly -> bucket logger drops no gradient"
+  },
+  "findings": {
+    "structural_regardless_of_config": [
+      "dehydron BCE and margin loss give NONE (not in autograd graph) to attn_layers, projector, moe, sdrp_head, evidential_head; only frontend + euc_skip + mechanism_head receive gradient (model.py: mechanism_score = mechanism_head(euc_skip(s)+2.0))",
+      "evidential_head has no loss term in run_epoch_mean_structures at all"
+    ],
+    "excluded_by_config": [
+      "attn_layers, projector, moe, sdrp_head are connected to SDRP CE (nonzero when backpropagated alone) but multiplied by sdrp_coeff=0.0 in G_fit -> exact zeros",
+      "moe_mode=ablated: gate frozen (requires_grad False) and balance loss is a constant (no graph)"
+    ],
+    "positive_controls_passed": [
+      "SDRP CE alone -> nonzero on attn_layers, projector, moe, sdrp_head",
+      "synthetic evidence loss -> nonzero on evidential_head",
+      "live-mode balance loss -> nonzero on moe (45.4), projector, attn_layers"
+    ],
+    "margin_vs_bce": "margin gradients ~2.4x BCE on euc_skip/mechanism_head at init. mechanism_pos/neg are label-derived (loader.mechanism_soft_targets: pos=0.35+0.55d, neg=0.45(1-d)+0.10d); hinge relu(pos+0.1-score) treats a raw logit on a probability scale, pushing negative-node logits up to >=0.45 against BCE. Observation only; not shown to cause the marginal fit."
+  },
+  "scope_limits": [
+    "applies to configs with sdrp_coeff=0 and/or moe ablated (G_fit, Arm B per its recorded result); says nothing about runs with SDRP/MoE live, which do send gradient into the spine (live/TOT_sdrp1 columns)",
+    "Arm B pins: model.py, moe.py, engine.py, weight map identical to current; run_v8_experiment.py differs (uncommitted, no copy of B's version) so B's loop details/coeffs are unverified",
+    "init-state gradients only"
+  ],
+  "full_table": {
+    "ablated": {
+      "table": {
+        "BCE_dehydron": {
+          "frontend.backbone": {
+            "g2": 50.80926961071158,
+            "none": 84,
+            "zero": 0,
+            "nz": 10,
+            "n": 94
+          },
+          "frontend.scalar_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.vector_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.seed_proj": {
+            "g2": 4.3656036292086355,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.radial_mlp": {
+            "g2": 0.000670539361919964,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          },
+          "frontend.ffn_down": {
+            "g2": 83.09246138826711,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.gate_down": {
+            "g2": 2.1864454311071313e-05,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_s": {
+            "g2": 213.2958876582561,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_v": {
+            "g2": 0.0,
+            "none": 2,
+            "zero": 0,
+            "nz": 0,
+            "n": 2
+          },
+          "frontend.rel_bias": {
+            "g2": 4.622173150892195e-07,
+            "none": 0,
+            "zero": 0,
+            "nz": 1,
+            "n": 1
+          },
+          "spine._log_c": {
+            "g2": 0.0,
+            "none": 1,
+            "zero": 0,
+            "nz": 0,
+            "n": 1
+          },
+          "spine.projector": {
+            "g2": 0.0,
+            "none": 7,
+            "zero": 0,
+            "nz": 0,
+            "n": 7
+          },
+          "spine.attn_layers": {
+            "g2": 0.0,
+            "none": 14,
+            "zero": 0,
+            "nz": 0,
+            "n": 14
+          },
+          "spine.moe": {
+            "g2": 0.0,
+            "none": 16,
+            "zero": 0,
+            "nz": 0,
+            "n": 16
+          },
+          "spine.euc_skip": {
+            "g2": 225.4141940078698,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "spine.sdrp_head": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "spine.evidential_head": {
+            "g2": 0.0,
+            "none": 2,
+            "zero": 0,
+            "nz": 0,
+            "n": 2
+          },
+          "spine.mechanism_head": {
+            "g2": 376.10673036053777,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          }
+        },
+        "margin": {
+          "frontend.backbone": {
+            "g2": 265.76897534301617,
+            "none": 84,
+            "zero": 0,
+            "nz": 10,
+            "n": 94
+          },
+          "frontend.scalar_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.vector_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.seed_proj": {
+            "g2": 22.688866621581838,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.radial_mlp": {
+            "g2": 0.006387802380004359,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          },
+          "frontend.ffn_down": {
+            "g2": 443.7480941787362,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.gate_down": {
+            "g2": 0.0001617571065253287,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_s": {
+            "g2": 1199.5238210596144,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_v": {
+            "g2": 0.0,
+            "none": 2,
+            "zero": 0,
+            "nz": 0,
+            "n": 2
+          },
+          "frontend.rel_bias": {
+            "g2": 4.539519977697637e-06,
+            "none": 0,
+            "zero": 0,
+            "nz": 1,
+            "n": 1
+          },
+          "spine._log_c": {
+            "g2": 0.0,
+            "none": 1,
+            "zero": 0,
+            "nz": 0,
+            "n": 1
+          },
+          "spine.projector": {
+            "g2": 0.0,
+            "none": 7,
+            "zero": 0,
+            "nz": 0,
+            "n": 7
+          },
+          "spine.attn_layers": {
+            "g2": 0.0,
+            "none": 14,
+            "zero": 0,
+            "nz": 0,
+            "n": 14
+          },
+          "spine.moe": {
+            "g2": 0.0,
+            "none": 16,
+            "zero": 0,
+            "nz": 0,
+            "n": 16
+          },
+          "spine.euc_skip": {
+            "g2": 1304.7567212283611,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "spine.sdrp_head": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "spine.evidential_head": {
+            "g2": 0.0,
+            "none": 2,
+            "zero": 0,
+            "nz": 0,
+            "n": 2
+          },
+          "spine.mechanism_head": {
+            "g2": 2239.8864295631647,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          }
+        },
+        "SDRP_CE": {
+          "frontend.backbone": {
+            "g2": 0.20719752450547202,
+            "none": 84,
+            "zero": 0,
+            "nz": 10,
+            "n": 94
+          },
+          "frontend.scalar_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.vector_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.seed_proj": {
+            "g2": 0.017593589343050553,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.radial_mlp": {
+            "g2": 1.6716036967956427e-05,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          },
+          "frontend.ffn_down": {
+            "g2": 0.33689601781497913,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.gate_down": {
+            "g2": 3.487168687144049e-07,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_s": {
+            "g2": 0.6753294007648947,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_v": {
+            "g2": 0.32435166517461766,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.rel_bias": {
+            "g2": 1.2306256458316511e-08,
+            "none": 0,
+            "zero": 0,
+            "nz": 1,
+            "n": 1
+          },
+          "spine._log_c": {
+            "g2": 0.0,
+            "none": 1,
+            "zero": 0,
+            "nz": 0,
+            "n": 1
+          },
+          "spine.projector": {
+            "g2": 0.17598230454416353,
+            "none": 0,
+            "zero": 0,
+            "nz": 7,
+            "n": 7
+          },
+          "spine.attn_layers": {
+            "g2": 0.3962092307352411,
+            "none": 0,
+            "zero": 0,
+            "nz": 14,
+            "n": 14
+          },
+          "spine.moe": {
+            "g2": 0.0036836526987258367,
+            "none": 13,
+            "zero": 0,
+            "nz": 3,
+            "n": 16
+          },
+          "spine.euc_skip": {
+            "g2": 0.48935992402766715,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "spine.sdrp_head": {
+            "g2": 3.427510520352371,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          },
+          "spine.evidential_head": {
+            "g2": 0.0,
+            "none": 2,
+            "zero": 0,
+            "nz": 0,
+            "n": 2
+          },
+          "spine.mechanism_head": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          }
+        },
+        "balance_composed": "CONSTANT (no graph)",
+        "evidence_SYNTHETIC": {
+          "frontend.backbone": {
+            "g2": 17090.370747763365,
+            "none": 84,
+            "zero": 0,
+            "nz": 10,
+            "n": 94
+          },
+          "frontend.scalar_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.vector_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.seed_proj": {
+            "g2": 1442.2301772534847,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.radial_mlp": {
+            "g2": 0.25321433904900914,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          },
+          "frontend.ffn_down": {
+            "g2": 27275.035404130816,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.gate_down": {
+            "g2": 0.007653902983292937,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_s": {
+            "g2": 81463.94209891558,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_v": {
+            "g2": 0.005353627749059342,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.rel_bias": {
+            "g2": 0.00018148668459616601,
+            "none": 0,
+            "zero": 0,
+            "nz": 1,
+            "n": 1
+          },
+          "spine._log_c": {
+            "g2": 0.0,
+            "none": 1,
+            "zero": 0,
+            "nz": 0,
+            "n": 1
+          },
+          "spine.projector": {
+            "g2": 2490.954015013404,
+            "none": 0,
+            "zero": 0,
+            "nz": 7,
+            "n": 7
+          },
+          "spine.attn_layers": {
+            "g2": 0.014751289120260361,
+            "none": 0,
+            "zero": 0,
+            "nz": 14,
+            "n": 14
+          },
+          "spine.moe": {
+            "g2": 0.00791469840623904,
+            "none": 13,
+            "zero": 0,
+            "nz": 3,
+            "n": 16
+          },
+          "spine.euc_skip": {
+            "g2": 81055.08583927155,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "spine.sdrp_head": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "spine.evidential_head": {
+            "g2": 70611.7423286438,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "spine.mechanism_head": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          }
+        },
+        "G_FIT_TOTAL(sdrp=0)": {
+          "frontend.backbone": {
+            "g2": 545.0178515586293,
+            "none": 84,
+            "zero": 0,
+            "nz": 10,
+            "n": 94
+          },
+          "frontend.scalar_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.vector_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.seed_proj": {
+            "g2": 46.2813127329573,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.radial_mlp": {
+            "g2": 0.010797784443639102,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          },
+          "frontend.ffn_down": {
+            "g2": 905.7215632549487,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.gate_down": {
+            "g2": 0.0002900020590459462,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_s": {
+            "g2": 2413.196866551414,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_v": {
+            "g2": 0.0,
+            "none": 0,
+            "zero": 2,
+            "nz": 0,
+            "n": 2
+          },
+          "frontend.rel_bias": {
+            "g2": 7.5124412433069665e-06,
+            "none": 0,
+            "zero": 0,
+            "nz": 1,
+            "n": 1
+          },
+          "spine._log_c": {
+            "g2": 0.0,
+            "none": 1,
+            "zero": 0,
+            "nz": 0,
+            "n": 1
+          },
+          "spine.projector": {
+            "g2": 0.0,
+            "none": 0,
+            "zero": 7,
+            "nz": 0,
+            "n": 7
+          },
+          "spine.attn_layers": {
+            "g2": 0.0,
+            "none": 0,
+            "zero": 14,
+            "nz": 0,
+            "n": 14
+          },
+          "spine.moe": {
+            "g2": 0.0,
+            "none": 13,
+            "zero": 3,
+            "nz": 0,
+            "n": 16
+          },
+          "spine.euc_skip": {
+            "g2": 2601.637150555849,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "spine.sdrp_head": {
+            "g2": 0.0,
+            "none": 0,
+            "zero": 4,
+            "nz": 0,
+            "n": 4
+          },
+          "spine.evidential_head": {
+            "g2": 0.0,
+            "none": 2,
+            "zero": 0,
+            "nz": 0,
+            "n": 2
+          },
+          "spine.mechanism_head": {
+            "g2": 4432.002559542656,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          }
+        },
+        "TOTAL_with_sdrp=1": {
+          "frontend.backbone": {
+            "g2": 541.3122002047007,
+            "none": 84,
+            "zero": 0,
+            "nz": 10,
+            "n": 94
+          },
+          "frontend.scalar_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.vector_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.seed_proj": {
+            "g2": 45.976354932878166,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.radial_mlp": {
+            "g2": 0.010646137546473255,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          },
+          "frontend.ffn_down": {
+            "g2": 899.4272649497725,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.gate_down": {
+            "g2": 0.00028733656472468283,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_s": {
+            "g2": 2410.696326525882,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_v": {
+            "g2": 0.32435166517461766,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.rel_bias": {
+            "g2": 7.4044896791747306e-06,
+            "none": 0,
+            "zero": 0,
+            "nz": 1,
+            "n": 1
+          },
+          "spine._log_c": {
+            "g2": 0.0,
+            "none": 1,
+            "zero": 0,
+            "nz": 0,
+            "n": 1
+          },
+          "spine.projector": {
+            "g2": 0.17598230454416353,
+            "none": 0,
+            "zero": 0,
+            "nz": 7,
+            "n": 7
+          },
+          "spine.attn_layers": {
+            "g2": 0.3962092307352411,
+            "none": 0,
+            "zero": 0,
+            "nz": 14,
+            "n": 14
+          },
+          "spine.moe": {
+            "g2": 0.0036836526987258367,
+            "none": 13,
+            "zero": 0,
+            "nz": 3,
+            "n": 16
+          },
+          "spine.euc_skip": {
+            "g2": 2595.9984056577086,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "spine.sdrp_head": {
+            "g2": 3.427510520352371,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          },
+          "spine.evidential_head": {
+            "g2": 0.0,
+            "none": 2,
+            "zero": 0,
+            "nz": 0,
+            "n": 2
+          },
+          "spine.mechanism_head": {
+            "g2": 4432.002559542656,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          }
+        }
+      },
+      "global_grad_norm": {
+        "BCE_dehydron": 30.8720703125,
+        "margin": 74.0025634765625,
+        "SDRP_CE": 2.4605143070220947,
+        "evidence_SYNTHETIC": 530.4994506835938,
+        "G_FIT_TOTAL(sdrp=0)": 104.61294555664062,
+        "TOTAL_with_sdrp=1": 104.54544830322266
+      },
+      "logger_check": {
+        "bucket_sum": 104.61294565920319,
+        "torch_global": 104.61294555664062
+      }
+    },
+    "live": {
+      "table": {
+        "BCE_dehydron": {
+          "frontend.backbone": {
+            "g2": 50.80926961071158,
+            "none": 84,
+            "zero": 0,
+            "nz": 10,
+            "n": 94
+          },
+          "frontend.scalar_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.vector_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.seed_proj": {
+            "g2": 4.3656036292086355,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.radial_mlp": {
+            "g2": 0.000670539361919964,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          },
+          "frontend.ffn_down": {
+            "g2": 83.09246138826711,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.gate_down": {
+            "g2": 2.1864454311071313e-05,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_s": {
+            "g2": 213.2958876582561,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_v": {
+            "g2": 0.0,
+            "none": 2,
+            "zero": 0,
+            "nz": 0,
+            "n": 2
+          },
+          "frontend.rel_bias": {
+            "g2": 4.622173150892195e-07,
+            "none": 0,
+            "zero": 0,
+            "nz": 1,
+            "n": 1
+          },
+          "spine._log_c": {
+            "g2": 0.0,
+            "none": 1,
+            "zero": 0,
+            "nz": 0,
+            "n": 1
+          },
+          "spine.projector": {
+            "g2": 0.0,
+            "none": 7,
+            "zero": 0,
+            "nz": 0,
+            "n": 7
+          },
+          "spine.attn_layers": {
+            "g2": 0.0,
+            "none": 14,
+            "zero": 0,
+            "nz": 0,
+            "n": 14
+          },
+          "spine.moe": {
+            "g2": 0.0,
+            "none": 16,
+            "zero": 0,
+            "nz": 0,
+            "n": 16
+          },
+          "spine.euc_skip": {
+            "g2": 225.4141940078698,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "spine.sdrp_head": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "spine.evidential_head": {
+            "g2": 0.0,
+            "none": 2,
+            "zero": 0,
+            "nz": 0,
+            "n": 2
+          },
+          "spine.mechanism_head": {
+            "g2": 376.10673036053777,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          }
+        },
+        "margin": {
+          "frontend.backbone": {
+            "g2": 265.76897534301617,
+            "none": 84,
+            "zero": 0,
+            "nz": 10,
+            "n": 94
+          },
+          "frontend.scalar_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.vector_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.seed_proj": {
+            "g2": 22.688866621581838,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.radial_mlp": {
+            "g2": 0.006387802380004359,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          },
+          "frontend.ffn_down": {
+            "g2": 443.7480941787362,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.gate_down": {
+            "g2": 0.0001617571065253287,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_s": {
+            "g2": 1199.5238210596144,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_v": {
+            "g2": 0.0,
+            "none": 2,
+            "zero": 0,
+            "nz": 0,
+            "n": 2
+          },
+          "frontend.rel_bias": {
+            "g2": 4.539519977697637e-06,
+            "none": 0,
+            "zero": 0,
+            "nz": 1,
+            "n": 1
+          },
+          "spine._log_c": {
+            "g2": 0.0,
+            "none": 1,
+            "zero": 0,
+            "nz": 0,
+            "n": 1
+          },
+          "spine.projector": {
+            "g2": 0.0,
+            "none": 7,
+            "zero": 0,
+            "nz": 0,
+            "n": 7
+          },
+          "spine.attn_layers": {
+            "g2": 0.0,
+            "none": 14,
+            "zero": 0,
+            "nz": 0,
+            "n": 14
+          },
+          "spine.moe": {
+            "g2": 0.0,
+            "none": 16,
+            "zero": 0,
+            "nz": 0,
+            "n": 16
+          },
+          "spine.euc_skip": {
+            "g2": 1304.7567212283611,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "spine.sdrp_head": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "spine.evidential_head": {
+            "g2": 0.0,
+            "none": 2,
+            "zero": 0,
+            "nz": 0,
+            "n": 2
+          },
+          "spine.mechanism_head": {
+            "g2": 2239.8864295631647,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          }
+        },
+        "SDRP_CE": {
+          "frontend.backbone": {
+            "g2": 0.20964570312069586,
+            "none": 84,
+            "zero": 0,
+            "nz": 10,
+            "n": 94
+          },
+          "frontend.scalar_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.vector_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.seed_proj": {
+            "g2": 0.017770006327737065,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.radial_mlp": {
+            "g2": 1.690916104513107e-05,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          },
+          "frontend.ffn_down": {
+            "g2": 0.3407929906438767,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.gate_down": {
+            "g2": 3.521643181514378e-07,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_s": {
+            "g2": 0.6775060393720196,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_v": {
+            "g2": 0.329133017690765,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.rel_bias": {
+            "g2": 1.2448797548358925e-08,
+            "none": 0,
+            "zero": 0,
+            "nz": 1,
+            "n": 1
+          },
+          "spine._log_c": {
+            "g2": 0.0,
+            "none": 1,
+            "zero": 0,
+            "nz": 0,
+            "n": 1
+          },
+          "spine.projector": {
+            "g2": 0.1830002214749129,
+            "none": 0,
+            "zero": 0,
+            "nz": 7,
+            "n": 7
+          },
+          "spine.attn_layers": {
+            "g2": 0.396273635149647,
+            "none": 0,
+            "zero": 0,
+            "nz": 14,
+            "n": 14
+          },
+          "spine.moe": {
+            "g2": 0.0013835046865139436,
+            "none": 0,
+            "zero": 0,
+            "nz": 16,
+            "n": 16
+          },
+          "spine.euc_skip": {
+            "g2": 0.4894464380122372,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "spine.sdrp_head": {
+            "g2": 3.4270002736702736,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          },
+          "spine.evidential_head": {
+            "g2": 0.0,
+            "none": 2,
+            "zero": 0,
+            "nz": 0,
+            "n": 2
+          },
+          "spine.mechanism_head": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          }
+        },
+        "balance_composed": {
+          "frontend.backbone": {
+            "g2": 0.04210325557982828,
+            "none": 84,
+            "zero": 0,
+            "nz": 10,
+            "n": 94
+          },
+          "frontend.scalar_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.vector_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.seed_proj": {
+            "g2": 0.004122054693254995,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.radial_mlp": {
+            "g2": 8.136823738402743e-07,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          },
+          "frontend.ffn_down": {
+            "g2": 0.06606881343952864,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.gate_down": {
+            "g2": 2.1828503449228265e-08,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_s": {
+            "g2": 0.21524827542293679,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_v": {
+            "g2": 5.585077353459367e-06,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.rel_bias": {
+            "g2": 5.499123933994099e-10,
+            "none": 0,
+            "zero": 0,
+            "nz": 1,
+            "n": 1
+          },
+          "spine._log_c": {
+            "g2": 0.0,
+            "none": 1,
+            "zero": 0,
+            "nz": 0,
+            "n": 1
+          },
+          "spine.projector": {
+            "g2": 0.35147104181535127,
+            "none": 0,
+            "zero": 0,
+            "nz": 7,
+            "n": 7
+          },
+          "spine.attn_layers": {
+            "g2": 4.1657846349992074e-06,
+            "none": 0,
+            "zero": 0,
+            "nz": 14,
+            "n": 14
+          },
+          "spine.moe": {
+            "g2": 2063.9336693286896,
+            "none": 12,
+            "zero": 0,
+            "nz": 4,
+            "n": 16
+          },
+          "spine.euc_skip": {
+            "g2": 0.0,
+            "none": 2,
+            "zero": 0,
+            "nz": 0,
+            "n": 2
+          },
+          "spine.sdrp_head": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "spine.evidential_head": {
+            "g2": 0.0,
+            "none": 2,
+            "zero": 0,
+            "nz": 0,
+            "n": 2
+          },
+          "spine.mechanism_head": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          }
+        },
+        "evidence_SYNTHETIC": {
+          "frontend.backbone": {
+            "g2": 17088.07499067892,
+            "none": 84,
+            "zero": 0,
+            "nz": 10,
+            "n": 94
+          },
+          "frontend.scalar_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.vector_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.seed_proj": {
+            "g2": 1442.0421795025468,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.radial_mlp": {
+            "g2": 0.2531852200409048,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          },
+          "frontend.ffn_down": {
+            "g2": 27271.283441506326,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.gate_down": {
+            "g2": 0.0076529539946932346,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_s": {
+            "g2": 81452.60609740019,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_v": {
+            "g2": 0.0054918562256460746,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.rel_bias": {
+            "g2": 0.00018146609363611788,
+            "none": 0,
+            "zero": 0,
+            "nz": 1,
+            "n": 1
+          },
+          "spine._log_c": {
+            "g2": 0.0,
+            "none": 1,
+            "zero": 0,
+            "nz": 0,
+            "n": 1
+          },
+          "spine.projector": {
+            "g2": 2490.826127202966,
+            "none": 0,
+            "zero": 0,
+            "nz": 7,
+            "n": 7
+          },
+          "spine.attn_layers": {
+            "g2": 0.014744113383666563,
+            "none": 0,
+            "zero": 0,
+            "nz": 14,
+            "n": 14
+          },
+          "spine.moe": {
+            "g2": 0.0029784415931872754,
+            "none": 0,
+            "zero": 0,
+            "nz": 16,
+            "n": 16
+          },
+          "spine.euc_skip": {
+            "g2": 81043.77312779427,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "spine.sdrp_head": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "spine.evidential_head": {
+            "g2": 70601.78862380981,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "spine.mechanism_head": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          }
+        },
+        "G_FIT_TOTAL(sdrp=0)": {
+          "frontend.backbone": {
+            "g2": 546.4180160321333,
+            "none": 84,
+            "zero": 0,
+            "nz": 10,
+            "n": 94
+          },
+          "frontend.scalar_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.vector_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.seed_proj": {
+            "g2": 46.361157584469765,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.radial_mlp": {
+            "g2": 0.010819616613616745,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          },
+          "frontend.ffn_down": {
+            "g2": 907.9521032059565,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.gate_down": {
+            "g2": 0.0002906804247686523,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_s": {
+            "g2": 2408.630171397701,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_v": {
+            "g2": 5.585077353459367e-06,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.rel_bias": {
+            "g2": 7.527410616603447e-06,
+            "none": 0,
+            "zero": 0,
+            "nz": 1,
+            "n": 1
+          },
+          "spine._log_c": {
+            "g2": 0.0,
+            "none": 1,
+            "zero": 0,
+            "nz": 0,
+            "n": 1
+          },
+          "spine.projector": {
+            "g2": 0.35147104181535127,
+            "none": 0,
+            "zero": 0,
+            "nz": 7,
+            "n": 7
+          },
+          "spine.attn_layers": {
+            "g2": 4.1657846349992074e-06,
+            "none": 0,
+            "zero": 0,
+            "nz": 14,
+            "n": 14
+          },
+          "spine.moe": {
+            "g2": 2063.9336693286896,
+            "none": 0,
+            "zero": 12,
+            "nz": 4,
+            "n": 16
+          },
+          "spine.euc_skip": {
+            "g2": 2601.637150555849,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "spine.sdrp_head": {
+            "g2": 0.0,
+            "none": 0,
+            "zero": 4,
+            "nz": 0,
+            "n": 4
+          },
+          "spine.evidential_head": {
+            "g2": 0.0,
+            "none": 2,
+            "zero": 0,
+            "nz": 0,
+            "n": 2
+          },
+          "spine.mechanism_head": {
+            "g2": 4432.002559542656,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          }
+        },
+        "TOTAL_with_sdrp=1": {
+          "frontend.backbone": {
+            "g2": 542.6436112988207,
+            "none": 84,
+            "zero": 0,
+            "nz": 10,
+            "n": 94
+          },
+          "frontend.scalar_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.vector_trunk": {
+            "g2": 0.0,
+            "none": 4,
+            "zero": 0,
+            "nz": 0,
+            "n": 4
+          },
+          "frontend.seed_proj": {
+            "g2": 46.052446158602834,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.radial_mlp": {
+            "g2": 0.010665474929737684,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          },
+          "frontend.ffn_down": {
+            "g2": 901.5523966494948,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.gate_down": {
+            "g2": 0.0002879829107769183,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_s": {
+            "g2": 2406.171869251877,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.out_v": {
+            "g2": 0.32878975929088483,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "frontend.rel_bias": {
+            "g2": 7.417709184665e-06,
+            "none": 0,
+            "zero": 0,
+            "nz": 1,
+            "n": 1
+          },
+          "spine._log_c": {
+            "g2": 0.0,
+            "none": 1,
+            "zero": 0,
+            "nz": 0,
+            "n": 1
+          },
+          "spine.projector": {
+            "g2": 0.22433248225411262,
+            "none": 0,
+            "zero": 0,
+            "nz": 7,
+            "n": 7
+          },
+          "spine.attn_layers": {
+            "g2": 0.39627510508627145,
+            "none": 0,
+            "zero": 0,
+            "nz": 14,
+            "n": 14
+          },
+          "spine.moe": {
+            "g2": 2064.033303412601,
+            "none": 0,
+            "zero": 0,
+            "nz": 16,
+            "n": 16
+          },
+          "spine.euc_skip": {
+            "g2": 2595.997917458415,
+            "none": 0,
+            "zero": 0,
+            "nz": 2,
+            "n": 2
+          },
+          "spine.sdrp_head": {
+            "g2": 3.4270002736702736,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          },
+          "spine.evidential_head": {
+            "g2": 0.0,
+            "none": 2,
+            "zero": 0,
+            "nz": 0,
+            "n": 2
+          },
+          "spine.mechanism_head": {
+            "g2": 4432.002559542656,
+            "none": 0,
+            "zero": 0,
+            "nz": 4,
+            "n": 4
+          }
+        }
+      },
+      "global_grad_norm": {
+        "BCE_dehydron": 30.8720703125,
+        "margin": 74.0025634765625,
+        "SDRP_CE": 2.4641366004943848,
+        "balance_composed": 45.438011169433594,
+        "evidence_SYNTHETIC": 530.4627075195312,
+        "G_FIT_TOTAL(sdrp=0)": 114.0495376586914,
+        "TOTAL_with_sdrp=1": 113.98614501953125
+      },
+      "logger_check": {
+        "bucket_sum": 114.04953935139142,
+        "torch_global": 114.0495376586914
+      }
+    }
+  }
+}

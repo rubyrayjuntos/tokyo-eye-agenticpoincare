@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_moe_eps_card_prereg",
+  "approval_status": "APPROVED",
+  "approver": "Ray Swan (via Cursor operator)",
+  "approved_at": "2026-09-18T18:57:02Z",
+  "source_draft_path": "data/gates/tokyo_eye_equ_moe_eps_card_prereg.json",
+  "note": "data/gates/ is chattr+i / DAC-blocked in this shell; landing approval here. Merge into the DRAFT file when host can chattr -i.",
+  "operator_decisions": {
+    "P1_hold_window": "KEEP every post-floor row (25 rows) \u2014 do not soften",
+    "seeds": "ALL 3 seeds (0,1,2) must pass P1 \u2014 any seed fail = R FAIL",
+    "R_gradient_aggregation": "MEAN over 12 structures (one optimizer step). Prefer mean over sum so loss/grad scale stays comparable to the single-structure baseline; do not multiply lr.",
+    "path": "A0 attribution sidecar + build A (moe_mode) in parallel + single-shot R; on R FAIL auto-fallback to A for step 3",
+    "implementation": "APPROVED \u2014 moe_mode + scripts/moe_eps_card_run.py written"
+  },
+  "recommended_default_accepted": "A0 + R (single shot, seeds 0/1/2) with pre-declared automatic fallback to A. Build the A flag in parallel because step 4 needs it either way.",
+  "execution_state": "IMPLEMENTATION_LANDED",
+  "next_command": "python3 scripts/moe_eps_card_run.py --arm A0 && python3 scripts/moe_eps_card_run.py --arm R --seeds 0 1 2"
+}

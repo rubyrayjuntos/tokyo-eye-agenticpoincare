@@ -2,18 +2,25 @@
 
 from __future__ import annotations
 
-import math
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from science.tokyo_eye.v8.attention import exp_map_zero, log_map_zero, project_to_ball
+from science.tokyo_eye.v8.attention import (
+    GyroOrthogonalMap,
+    einstein_midpoint,
+    exp_map_zero,
+    gyroscalar_mul,
+    mobius_add,
+    poincare_dist,
+    project_to_ball,
+    tau_relative_residual_step,
+)
 from science.tokyo_eye.v8.ligand_interface import LIGAND_FEAT_DIM, unique_r6_contacts
 
 
 class PocketGatedAffinityHead(nn.Module):
-    """Dehydron/mech/rim-gated tangent pool → FFN → scalar (−log K)."""
+    """Dehydron/mech/rim-gated Einstein pool → readout FFN → scalar (−log K)."""
 
     def __init__(
         self,
@@ -28,19 +35,15 @@ class PocketGatedAffinityHead(nn.Module):
         self.hidden_dim = int(hidden_dim)
         self.c = float(c)
         self.eps = float(eps)
-        self.h_inv = nn.Linear(hidden_dim, gate_hidden)
+        # Gate from manifold invariants only (no Linear on ball ambient coords).
         self.score = nn.Sequential(
-            nn.Linear(gate_hidden + 3, gate_hidden),
+            nn.Linear(3, gate_hidden),
             nn.SiLU(),
             nn.Linear(gate_hidden, 1),
         )
-        self.ffn = nn.Sequential(
-            nn.Linear(hidden_dim, ffn_hidden),
-            nn.SiLU(),
-            nn.Linear(ffn_hidden, ffn_hidden),
-            nn.SiLU(),
-            nn.Linear(ffn_hidden, 1),
-        )
+        self.prototype = nn.Parameter(0.05 * torch.randn(hidden_dim))
+        self.readout_scale = nn.Parameter(torch.ones(()))
+        self.readout_bias = nn.Parameter(torch.zeros(()))
 
     def pocket_weights(
         self,
@@ -56,8 +59,7 @@ class PocketGatedAffinityHead(nn.Module):
         r = torch.linalg.vector_norm(z_hyp, dim=-1, keepdim=True)
         mech = torch.sigmoid(mechanism_score).reshape(n, 1)
         dehyd = dehydron_labels.reshape(n, 1).to(dtype=z_hyp.dtype)
-        h = F.silu(self.h_inv(z_hyp))
-        feat = torch.cat([h, r, mech, dehyd], dim=-1)
+        feat = torch.cat([r, mech, dehyd], dim=-1)
         scores = self.score(feat)
         w = F.softmax(scores, dim=0)
         return w
@@ -73,9 +75,8 @@ class PocketGatedAffinityHead(nn.Module):
         w = self.pocket_weights(
             z, mechanism_score=mechanism_score, dehydron_labels=dehydron_labels
         )
-        u = log_map_zero(z, c=self.c, eps=self.eps)
-        t_pool = torch.sum(w * u, dim=0)
-        z_graph = exp_map_zero(t_pool.unsqueeze(0), c=self.c, eps=self.eps).squeeze(0)
+        # Einstein / Klein barycenter (pure-hyp); not tangent Euclidean mean.
+        z_graph = einstein_midpoint(z, w.squeeze(-1), c=self.c, eps=self.eps)
         return z_graph, w
 
     def forward(
@@ -90,8 +91,9 @@ class PocketGatedAffinityHead(nn.Module):
             mechanism_score=mechanism_score,
             dehydron_labels=dehydron_labels,
         )
-        tangent = log_map_zero(z_graph.unsqueeze(0), c=self.c, eps=self.eps).squeeze(0)
-        pred = self.ffn(tangent).squeeze(-1)
+        proto = exp_map_zero(self.prototype.unsqueeze(0), c=self.c, eps=self.eps)
+        d = poincare_dist(z_graph.unsqueeze(0), proto, c=self.c, eps=self.eps)
+        pred = (-self.readout_scale * d + self.readout_bias).squeeze(-1)
         return {
             "affinity_pred": pred,
             "z_graph": z_graph,
@@ -120,10 +122,9 @@ class JointPocketAffinityHead(nn.Module):
         self.c = float(c)
         self.eps = float(eps)
         self.lig_in = nn.Linear(self.ligand_feat_dim, self.hidden_dim)
-        self.W_q = nn.Linear(self.hidden_dim, self.attn_dim)
+        self.R_q = GyroOrthogonalMap(self.hidden_dim)
         self.W_k = nn.Linear(self.hidden_dim, self.attn_dim)
         self.W_v = nn.Linear(self.hidden_dim, self.attn_dim)
-        self.msg_proj = nn.Linear(self.attn_dim, self.hidden_dim)
         self.pocket = PocketGatedAffinityHead(
             hidden_dim,
             gate_hidden=gate_hidden,
@@ -131,6 +132,8 @@ class JointPocketAffinityHead(nn.Module):
             c=c,
             eps=eps,
         )
+        # Undamped z⊕msgs matches attn/MoE residual inflation class.
+        self.residual_logit = nn.Parameter(torch.tensor(-1.0986122886681098))
 
     def r6_messages(
         self,
@@ -140,7 +143,7 @@ class JointPocketAffinityHead(nn.Module):
     ) -> tuple[torch.Tensor, bool]:
         """Sparse res←lig messages; empty R6 short-circuits to zeros (no softmax)."""
         n = z_hyp.shape[0]
-        m = z_hyp.new_zeros(n, self.attn_dim)
+        m = z_hyp.new_zeros(n, self.hidden_dim)
         if (
             edge_index_r6 is None
             or edge_index_r6.numel() == 0
@@ -156,11 +159,11 @@ class JointPocketAffinityHead(nn.Module):
         res_idx = ei[0]
         lig_idx = ei[1]
 
+        z = project_to_ball(z_hyp, c=self.c, eps=self.eps)
+        q = self.R_q(z, c=self.c, eps=self.eps)
         ell = F.silu(self.lig_in(lig_feat))
-        q = self.W_q(z_hyp)
-        k = self.W_k(ell)
-        v = self.W_v(ell)
-        scale = 1.0 / math.sqrt(float(self.attn_dim))
+        k_ball = exp_map_zero(self.W_k(ell), c=self.c, eps=self.eps)
+        v_ball = exp_map_zero(self.W_v(ell), c=self.c, eps=self.eps)
 
         unique_res = torch.unique(res_idx)
         for ri in unique_res.tolist():
@@ -168,9 +171,14 @@ class JointPocketAffinityHead(nn.Module):
             neigh = lig_idx[mask]
             if neigh.numel() == 0:
                 continue
-            scores = (q[int(ri)] * k[neigh]).sum(dim=-1) * scale
-            alpha = F.softmax(scores, dim=0)
-            m[int(ri)] = (alpha.unsqueeze(-1) * v[neigh]).sum(dim=0)
+            d = poincare_dist(
+                q[int(ri)].unsqueeze(0).expand(neigh.numel(), -1),
+                k_ball[neigh],
+                c=self.c,
+                eps=self.eps,
+            )
+            alpha = F.softmax(-d, dim=0)
+            m[int(ri)] = einstein_midpoint(v_ball[neigh], alpha, c=self.c, eps=self.eps)
         return m, False
 
     def forward(
@@ -185,7 +193,13 @@ class JointPocketAffinityHead(nn.Module):
         if z_hyp.ndim != 2:
             raise ValueError("z_hyp must be [N, d]")
         msgs, r6_empty = self.r6_messages(z_hyp, lig_feat, edge_index_r6)
-        z_fuse = z_hyp + self.msg_proj(msgs)
+        z = project_to_ball(z_hyp, c=self.c, eps=self.eps)
+        r = torch.linalg.vector_norm(z, dim=-1)
+        step = tau_relative_residual_step(
+            self.residual_logit, tau_ceiling=0.70, radius=r
+        )
+        msgs_step = gyroscalar_mul(step, msgs, c=self.c, eps=self.eps)
+        z_fuse = mobius_add(z, msgs_step, c=self.c, eps=self.eps)
         out = self.pocket(
             z_fuse,
             mechanism_score=mechanism_score,

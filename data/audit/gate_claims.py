@@ -206,6 +206,23 @@ GATE_CLAIMS: tuple[GateClaim, ...] = (
         "tests/test_pipeline_job_id_gate.py",
         ("pipeline_job_id", "check_job_preconditions"),
     ),
+    GateClaim(
+        "tokyoeye_equ_assembly_gate",
+        "tests/v8/test_assembly_gate.py",
+        (
+            "assert_governed_frontend",
+            "assert_pool_frontend_dependencies",
+            "assert_claim_bearing_biology",
+            "detect_edge_type_label_leakage",
+            "test_harness_rejects_stub_without_allow_subprocess",
+            "test_forbid_se3_lite_alone_is_not_pool",
+            "test_assembly_gate_off_path_skips_pure_hyp_not_as_pass",
+            "test_claim_bearing_refuses_leaking_batch_structurally",
+            "test_claim_bearing_flag_alone_without_batch_refuses",
+            "test_dehydron_biology_grad_is_euc_skip_dominated",
+        ),
+        "TokyoEye EQU: Equiformer pool + pure_hyp + structural claim biology",
+    ),
 )
 
 

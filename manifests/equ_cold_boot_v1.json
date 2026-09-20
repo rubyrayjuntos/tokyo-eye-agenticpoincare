@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "description": "Tokyo Eye EQU cold boot \u2014 Stage-A small minus shock; B0-theme probe panel",
+  "spec": "docs/superpowers/specs/2026-09-15-tokyoeye-equ-cold-boot-design.md",
+  "plan": "docs/superpowers/plans/2026-09-15-tokyoeye-equ-cold-boot.md",
+  "frontend_bank_sha256": "59c6c23573a3b05b347662f473209d1bb1ccb5b85f6624a8f87072e7c397addf",
+  "shock_held_out": [
+    "1BG1",
+    "2Z6H",
+    "1IVO",
+    "2SHP"
+  ],
+  "proteins": [
+    {
+      "pdb_id": "1MBN",
+      "chain": "A",
+      "theme": "globin",
+      "gene": "MBN",
+      "role": "train",
+      "enabled": true
+    },
+    {
+      "pdb_id": "1LYZ",
+      "chain": "A",
+      "theme": "lysozyme_like",
+      "gene": "LYZ",
+      "role": "train",
+      "enabled": true
+    },
+    {
+      "pdb_id": "1F88",
+      "chain": "A",
+      "theme": "gpcr_7tm",
+      "gene": "RHO",
+      "role": "train",
+      "enabled": true
+    },
+    {
+      "pdb_id": "1HHP",
+      "chain": "A",
+      "theme": "aspartic_protease",
+      "gene": "HIVPR",
+      "role": "train",
+      "enabled": true
+    },
+    {
+      "pdb_id": "1TEN",
+      "chain": "A",
+      "theme": "ig_like",
+      "gene": "TENA",
+      "role": "train",
+      "enabled": true
+    },
+    {
+      "pdb_id": "1UBQ",
+      "chain": "A",
+      "theme": "ubiquitin_grasp",
+      "gene": "UBB",
+      "role": "train",
+      "enabled": true
+    },
+    {
+      "pdb_id": "1TIM",
+      "chain": "A",
+      "theme": "tim_barrel",
+      "gene": "TPIS",
+      "role": "train",
+      "enabled": true
+    },
+    {
+      "pdb_id": "4OBE",
+      "chain": "A",
+      "theme": "ploop_ntpase",
+      "gene": "KRAS",
+      "role": "train",
+      "enabled": true
+    },
+    {
+      "pdb_id": "1HNG",
+      "chain": "A",
+      "theme": "ig_like",
+      "gene": "CD2",
+      "role": "probe",
+      "enabled": true
+    },
+    {
+      "pdb_id": "1ALC",
+      "chain": "A",
+      "theme": "lysozyme_like",
+      "gene": "LALBA",
+      "role": "probe",
+      "enabled": true
+    },
+    {
+      "pdb_id": "1A5R",
+      "chain": "A",
+      "theme": "ubiquitin_grasp",
+      "gene": "SUMO1",
+      "role": "probe",
+      "enabled": true,
+      "nmr_model1": true
+    },
+    {
+      "pdb_id": "1NAL",
+      "chain": "1",
+      "theme": "tim_barrel",
+      "gene": "NANA",
+      "role": "probe",
+      "enabled": true,
+      "first_ca_polymer": true
+    },
+    {
+      "pdb_id": "2HHB",
+      "chain": "B",
+      "theme": "globin",
+      "gene": "HBB",
+      "role": "probe",
+      "enabled": true
+    },
+    {
+      "pdb_id": "1GKY",
+      "chain": "A",
+      "theme": "ploop_ntpase",
+      "gene": "GUK1",
+      "role": "probe",
+      "enabled": true
+    }
+  ]
+}

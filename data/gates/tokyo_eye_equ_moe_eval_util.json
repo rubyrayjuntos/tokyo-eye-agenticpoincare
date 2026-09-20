@@ -1,0 +1,27 @@
+{
+  "gate_id": "tokyo_eye_equ_moe_eval_util",
+  "display_lineage": "Tokyo Eye EQU",
+  "status": "APPROVED_LOCKED",
+  "approval_status": "APPROVED_LOCKED",
+  "execution_state": "SMOKE_B_EVAL_PROXY_MOVES_EVAL",
+  "approved_at": "2026-09-16",
+  "approver": "Bot (ahead of selection/spread_hold; Ray MoE collapse order)",
+  "design": "docs/superpowers/specs/2026-09-16-tokyoeye-equ-moe-eval-util-design.md",
+  "plan": "docs/superpowers/plans/2026-09-16-tokyoeye-equ-moe-eval-util.md",
+  "amendments": [
+    "eval_argmax_utilization_hard_gate",
+    "switch_style_soft_lb",
+    "train_gumbel_loads_not_sufficient",
+    "e0_e3_framing_aspirational_until_pass"
+  ],
+  "smoke": {
+    "A": "switch_T1_no_eval_move",
+    "B": "eval_proxy_T0.05_2ep_pass_not_sealed",
+    "artifacts": [
+      "data/local_objects/frontend_ablation/moe_switch_lb_smoke.json",
+      "data/local_objects/frontend_ablation/moe_eval_proxy_lb_smoke.json",
+      "data/local_objects/frontend_ablation/geometry_pre_vs_post_moe.json",
+      "data/local_objects/frontend_ablation/train_metric_masking_grep.json"
+    ]
+  }
+}

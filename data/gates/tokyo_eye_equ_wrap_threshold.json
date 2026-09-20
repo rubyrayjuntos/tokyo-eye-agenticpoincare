@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_wrap_threshold",
+  "status": "SIGNED_AMEND",
+  "date": "2026-09-17",
+  "display_lineage": "Tokyo Eye EQU",
+  "spec": "docs/superpowers/specs/2026-09-17-tokyoeye-equ-wrap-threshold-decision.md",
+  "author": "Ray Swan",
+  "independent_of": [
+    "tokyo_eye_v8_freeze_reconciliation_v1_section_2_6_epsilon_greedy",
+    "router_epsilon_greedy_implementation"
+  ],
+  "chosen": "A_AMEND_wrap_max",
+  "rejected": {
+    "B_KEEP_19_change_label_construction": "R2 typing IS dehydron label mechanism; separate label thr would hide SSOT",
+    "C_KEEP_19_fix_wrap_count_pipeline": "double-cone is deliberate Sprint-8 design; sphere-calibrated 19 is method mismatch not measurement bug"
+  },
+  "amended_constant": {
+    "name": "DEHYDRON_WRAP_MAX",
+    "from": 19,
+    "to": 1,
+    "rule": "wrap_count <= wrap_max -> R2 else R1"
+  },
+  "evidence": {
+    "artifact": "checkpoints/v8/runs/freeze_recon_wrap_threshold_amend/corpus_median_descend_search.json",
+    "manifest": "manifests/v6_corpus_stage_a_small_v1.json",
+    "n_structures": 12,
+    "procedure": "pooled_median_then_descend_until_max_per_struct_frac_lt_0.60",
+    "pooled_wrap": {
+      "n_hbonds": 3651,
+      "min": 0.0,
+      "max": 17.0,
+      "mean": 3.5814845247877294,
+      "p50": 3.0,
+      "p90": 8.0
+    },
+    "search_start_tau": 3,
+    "chosen_wrap_max": 1,
+    "chosen_summary": {
+      "max_dehydron_frac": 0.5813953280448914,
+      "min_dehydron_frac": 0.26035502552986145,
+      "mean_dehydron_frac": 0.42908933013677597,
+      "n_structs_ge_ceiling": 0,
+      "n_structs_lt_floor": 0
+    }
+  },
+  "forbidden_still": [
+    "silent_set_dehydron_wrap_max_retune",
+    "adopt_offline_1UBQ_thr2_without_corpus_search",
+    "fold_into_section_2_6_epsilon_greedy"
+  ],
+  "signed": "Ray Swan 2026-09-17",
+  "notes": "Option A AMEND: cone wrap counts max~17 so thr=19 saturates; Stage-A-12 median-then-descend converges to 1 with all 12 fracs in (0.26, 0.58).",
+  "why_not_offline_thr2": "Corpus search starts at pooled p50=3 and descends past the median; at \u03c4=2 max per-struct frac was still 0.736 (7/12 \u22650.60). Denser/larger Stage-A chains pull the stop to \u03c4=1 \u2014 one step below the 1UBQ-only diagnostic thr=2.",
+  "wrap19_label_saturation_caveat_id": "tokyo_eye_v8_wrap19_label_saturation_caveat_v1",
+  "wrap19_label_saturation_caveat_path": "checkpoints/v8/runs/freeze_recon_wrap_threshold_amend/WRAP19_LABEL_SATURATION_CAVEAT.json"
+}

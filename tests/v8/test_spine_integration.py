@@ -14,6 +14,13 @@ from science.tokyo_eye.v8.engine import (
 from science.tokyo_eye.v8.model import TokyoEyesHyperbolicV8
 
 
+def test_num_attn_layers_frozen_set() -> None:
+    with pytest.raises(ValueError, match="num_attn_layers"):
+        TokyoEyesHyperbolicV8(
+            scalar_dim=8, vector_dim=3, hidden_dim=8, num_attn_layers=1
+        )
+
+
 def test_curriculum_radius_opens() -> None:
     ctrl = CurriculumRadiusController(tau_start=0.70, tau_end=0.995, total_epochs=10)
     assert ctrl.tau_ceiling(0) == pytest.approx(0.70)

@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_nonclaim_disposition",
+  "status": "NONCLAIM",
+  "date": "2026-09-18",
+  "display_lineage": "Tokyo Eye EQU",
+  "doc": "docs/TOKYOEYE_ARCHITECTURE_SSOT.md",
+  "standing_rule": "Prose without a failing test always loses to a convenient default.",
+  "scope": "Overlapping dehydron/SDRP typed numbers from wrap=1 era runs remain non-claim for two independent reasons. Do not conflate.",
+  "defects": {
+    "A_labeling_calibration": {
+      "what": "Stage-A-12 wrap threshold median-descend to wrap_max=1 fixed how R2 edges are labeled relative to the corpus. Prior wrap=19 saturated labels.",
+      "status": "CLOSED",
+      "closed_by": "data/gates/tokyo_eye_equ_wrap_threshold.json",
+      "closed_status": "SIGNED_AMEND",
+      "note": "Calibration closed. Does NOT fix defect B."
+    },
+    "B_label_leakage": {
+      "what": "Binary dehydron target is still R2-incidence (loader.dehydron_labels_from_edges) while edge_type remains a model input. Typed runs remain leak-confounded. SDRP targets from edge-type histograms share this class.",
+      "status": "OPEN",
+      "code": "science/tokyo_eye/v8/loader.py:dehydron_labels_from_edges",
+      "note": "A future reader who sees only the wrap AMEND must not conclude dehydron numbers are corrected."
+    }
+  },
+  "additional_nonclaim_paths": [
+    {
+      "id": "euclidean_skip_dehydron",
+      "what": "mechanism_score = MechanismScoreHead(h_euc); dehydron BCE does not require hyperbolic backbone",
+      "code": "science/tokyo_eye/v8/model.py",
+      "status": "OPEN_WIRING"
+    },
+    {
+      "id": "non_pool_frontend",
+      "what": "SE(3)-lite / stub live_backbone is not the governed production frontend",
+      "status": "FORBIDDEN_ON_GOVERNED",
+      "enforced_by": "science/tokyo_eye/v8/assembly_gate.py"
+    }
+  ],
+  "claim_bearing_requires": [
+    "remove_leaking_channels_or_non_input_derived_target",
+    "biology_loss_depends_on_z_hyp",
+    "log_biology_grad_by_source_hyp_vs_euc_skip",
+    "equiformer_pool_frontend",
+    "assembly_gate_pass"
+  ],
+  "signed": "Ray Swan 2026-09-18"
+}

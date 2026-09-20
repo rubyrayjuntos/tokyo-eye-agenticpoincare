@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "gate": "tokyo_eye_equ_champion_disposition",
+  "status": "APPROVED",
+  "timestamp": "2026-09-15T21:55:12Z",
+  "spec": "docs/superpowers/specs/2026-09-15-tokyoeye-equ-champion-disposition-design.md",
+  "champion_version": "5",
+  "champion_sha256": "507d54bd6d8fb6c2b288eab6f2ca8daffd8561f43e51b41e30c16a4a4a5f2bd7",
+  "disposition": "lesson_only_non_trunk",
+  "continue_from_forbidden": true,
+  "destroy_evidence_forbidden": true,
+  "next": "docs/superpowers/specs/2026-09-15-tokyoeye-equ-cold-boot-design.md",
+  "plan": "docs/superpowers/plans/2026-09-15-tokyoeye-equ-cold-boot.md",
+  "mlflow_archaeology_run": "21ff1994be0d4013ab8d611992fda95b",
+  "biology_pass": false,
+  "affinity_pass": false
+}

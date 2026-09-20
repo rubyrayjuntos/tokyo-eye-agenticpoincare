@@ -1,5 +1,5 @@
-# MLflow server image with the in-app OpenAI Codex Assistant provider.
-# Codex runs as a subprocess of mlflow server, so it must be in this image.
+# MLflow server image with in-app Assistant providers (Codex + Claude Code).
+# Both CLIs run as subprocesses of mlflow server, so they must be in this image.
 FROM node:22-bookworm-slim AS node
 
 FROM tokyoeye-science:latest
@@ -9,11 +9,49 @@ USER root
 # Copy the official Node runtime rather than installing an unpinned distro package.
 COPY --from=node /usr/local/ /usr/local/
 
-RUN npm install --global @openai/codex@0.146.0 \
+COPY scripts/mlflow_assistant_localhost_gate.py /tmp/mlflow_assistant_localhost_gate.py
+
+RUN npm install --global @openai/codex@0.146.0 @anthropic-ai/claude-code \
     && codex --version \
-    && mkdir -p /home/appuser/.codex /home/appuser/.mlflow/assistant /workspace \
-    && chown -R appuser:appuser \
+    && claude --version \
+    && mkdir -p \
         /home/appuser/.codex \
+        /home/appuser/.claude \
+        /home/appuser/.mlflow/assistant \
+        /workspace \
+    && python - <<'PY'
+from pathlib import Path
+import mlflow
+
+api = Path(mlflow.__file__).resolve().parent / "server" / "assistant" / "api.py"
+text = api.read_text()
+needle = "dependencies=[Depends(_require_localhost)],"
+if "mlflow_assistant_localhost_gate" not in text:
+    gate = Path("/tmp/mlflow_assistant_localhost_gate.py").read_text()
+    (api.parent / "mlflow_assistant_localhost_gate.py").write_text(gate)
+    if needle not in text:
+        raise SystemExit(f"patch target missing in {api}")
+    text = text.replace(
+        needle,
+        "dependencies=[Depends(require_localhost_or_docker_private)],",
+        1,
+    )
+    text = text.replace(
+        "from mlflow.server.assistant.session import SessionManager, terminate_session_process\n",
+        "from mlflow.server.assistant.session import SessionManager, terminate_session_process\n"
+        "from mlflow.server.assistant.mlflow_assistant_localhost_gate import (\n"
+        "    require_localhost_or_docker_private,\n"
+        ")\n",
+        1,
+    )
+    api.write_text(text)
+    print(f"patched {api}")
+else:
+    print(f"already patched {api}")
+PY
+RUN chown -R appuser:appuser \
+        /home/appuser/.codex \
+        /home/appuser/.claude \
         /home/appuser/.mlflow \
         /workspace
 

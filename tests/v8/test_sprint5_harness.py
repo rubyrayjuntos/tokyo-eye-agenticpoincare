@@ -25,8 +25,56 @@ def test_weight_map_schema_loads() -> None:
     assert cfg["scalar_dim"] == 128
     assert cfg["vector_dim"] == 3
     assert cfg["lr_backbone"] == pytest.approx(1e-5)
-    assert cfg["lr_hyperbolic"] == pytest.approx(3e-4)
+    assert cfg["lr_hyperbolic"] == pytest.approx(1e-3)
     assert cfg["mlflow_experiment"] == "tokyoeye/equiformer-v3-moe/geometric/full-stack"
+
+
+def test_first_train_mlflow_contract_is_wired_not_just_documented() -> None:
+    """Do not log pytest as an MLflow run; do pin what the first train must carry."""
+    import json
+
+    from science.tokyo_eye.v8.freeze_reconciliation import (
+        ADDENDUM_ID,
+        CANONICAL_MLFLOW_EXPERIMENT,
+        HISTORICAL_MLFLOW_EXPERIMENTS,
+        PURE_HYP_PASS_VERSION,
+        freeze_reconciliation_mlflow_params,
+        resolve_v8_mlflow_experiment,
+    )
+    from science.tokyo_eye.v8.pure_hyp_pass import PURE_HYP_PASS_VERSION as SCANNER_VER
+
+    cfg = load_weight_map(DEFAULT_WEIGHT_MAP)
+    assert resolve_v8_mlflow_experiment(cfg=cfg) == CANONICAL_MLFLOW_EXPERIMENT
+    assert resolve_v8_mlflow_experiment() == CANONICAL_MLFLOW_EXPERIMENT
+    assert (
+        resolve_v8_mlflow_experiment(
+            taxonomy_domain="geometric", taxonomy_subsystem="full-stack"
+        )
+        == CANONICAL_MLFLOW_EXPERIMENT
+    )
+    with pytest.raises(ValueError, match="historical alias"):
+        resolve_v8_mlflow_experiment(
+            taxonomy_domain="geometric", taxonomy_subsystem="hyperbolic-spine"
+        )
+    fields = freeze_reconciliation_mlflow_params()
+    assert fields["addendum_id"] == ADDENDUM_ID
+    assert fields["pure_hyp_pass_version"] == SCANNER_VER == PURE_HYP_PASS_VERSION
+    assert fields["mlflow_experiment"] == CANONICAL_MLFLOW_EXPERIMENT
+    gate = json.loads(
+        (
+            Path(__file__).resolve().parents[2]
+            / "data/gates/tokyo_eye_v8_freeze_addendum.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert gate["addendum_id"] == ADDENDUM_ID
+    assert gate["pure_hyp_pass_version"] == PURE_HYP_PASS_VERSION
+    assert gate["mlflow_do_not_backfill_pytest"] is True
+    assert gate["mlflow_first_train_must_log"]["experiment"] == CANONICAL_MLFLOW_EXPERIMENT
+    assert "addendum_id" in gate["mlflow_first_train_must_log"]["params_and_tags"]
+    src = Path(__file__).resolve().parents[2] / "experiments/training/v8/run_v8_experiment.py"
+    text = src.read_text(encoding="utf-8")
+    assert "freeze_reconciliation_mlflow_params" in text
+    assert "set_experiment(exp)" in text
 
 
 def test_apply_weight_map_intersection(tmp_path: Path) -> None:
@@ -43,7 +91,7 @@ def test_apply_weight_map_intersection(tmp_path: Path) -> None:
 def test_param_groups_differential_lr() -> None:
     fe = StubEquiformerFrontend(scalar_dim=8, vector_dim=3)
     spine = TokyoEyesHyperbolicV8(
-        scalar_dim=8, vector_dim=3, hidden_dim=8, num_attn_layers=1, num_sdrp_classes=2
+        scalar_dim=8, vector_dim=3, hidden_dim=8, num_attn_layers=2, num_sdrp_classes=2
     )
     groups = build_param_groups(fe, spine, lr_backbone=1e-5, lr_hyperbolic=1e-3)
     assert len(groups) == 2
@@ -152,6 +200,9 @@ def test_run_v8_smoke_subprocess() -> None:
         str(root / "experiments/training/v8/run_v8_experiment.py"),
         "--smoke",
         "--no-mlflow",
+        "--frontend",
+        "stub",
+        "--allow-off-path-frontend",
         "--epochs",
         "1",
         "--out-dir",
@@ -163,4 +214,4 @@ def test_run_v8_smoke_subprocess() -> None:
         cmd, capture_output=True, text=True, check=False, env=env, cwd=str(root)
     )
     assert proc.returncode == 0, proc.stderr + proc.stdout
-    assert (root / "checkpoints/v8/runs/sprint5_unit_smoke/v8_last.pt").is_file()
+    assert (root / "checkpoints/v8/runs/sprint5_unit_smoke/tokyoeye_last.pt").is_file()

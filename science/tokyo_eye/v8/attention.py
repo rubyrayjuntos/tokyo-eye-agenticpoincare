@@ -1,12 +1,18 @@
-"""Sparse relation-aware Hyperbolic Graph Attention (TokyoEye-v8 Sprint 1 (science.tokyo_eye.v8)).
+"""Sparse relation-aware Hyperbolic Graph Attention (TokyoEye-v8 / EQU correct_start).
 
 FROZEN contract:
-``docs/superpowers/specs/2026-07-22-tokyo-eye-v8-equiformer-hyp-design.md`` §7.
+``docs/superpowers/specs/2026-07-22-tokyo-eye-v8-equiformer-hyp-design.md`` §7
++ pure-hyp amendment ``tokyo_eye_equ_pure_hyp_v1``.
 
 * Sparse ``edge_index`` / ``edge_type`` only — no dense ``N×N`` logit board.
 * Logits: ``(-d_H(Q_i, K_j) * γ_R + β_R) / sqrt(d_h)`` on each directed edge.
-* Segmented softmax + Einstein midpoint via Klein coordinates.
-* Option A isolates: self-transport ``exp₀(W_o(log₀(z)))`` — no empty barycenter.
+* Q/K/V/output via origin-centered **orthogonal gyro-maps** (ambient SO(d) on
+  Poincaré coords) — **not** ``exp₀(W · log₀(z))``.
+* Aggregation: Lorentz-weighted Einstein midpoint in Klein coordinates.
+* Residual mix: Möbius addition of self with a **gyroscalar-damped**
+  attended message (``self ⊕ (t ⊗ attended)``). Full-strength ``self ⊕
+  attended`` inflates every radius past ``τ`` within two layers.
+* Option A isolates: self gyro-map only — no empty barycenter.
 """
 
 from __future__ import annotations
@@ -22,14 +28,20 @@ from torch_geometric.utils import scatter, softmax
 NUM_RELATIONS_DEFAULT = 6
 
 
+def clamp_ball_radius(
+    x: torch.Tensor, *, max_r: float, eps: float = 1e-5
+) -> torch.Tensor:
+    """Radial clamp toward the origin; used by ``project_to_ball`` and τ-ceiling."""
+    x = torch.nan_to_num(x, nan=0.0, posinf=max_r, neginf=-max_r)
+    r = torch.linalg.vector_norm(x, dim=-1, keepdim=True).clamp_min(eps)
+    scale = torch.clamp(float(max_r) / r, max=1.0)
+    return x * scale
+
+
 def project_to_ball(x: torch.Tensor, *, c: float = 1.0, eps: float = 1e-5) -> torch.Tensor:
     """Clamp points strictly inside the open ball of radius ``1/sqrt(c)``."""
     max_r = (1.0 / math.sqrt(c)) - eps
-    # Replace non-finite coords before projecting (prevents NaN contagion).
-    x = torch.nan_to_num(x, nan=0.0, posinf=max_r, neginf=-max_r)
-    r = torch.linalg.vector_norm(x, dim=-1, keepdim=True).clamp_min(eps)
-    scale = torch.clamp(max_r / r, max=1.0)
-    return x * scale
+    return clamp_ball_radius(x, max_r=max_r, eps=eps)
 
 
 def poincare_dist(
@@ -38,11 +50,7 @@ def poincare_dist(
     c: float = 1.0,
     eps: float = 1e-5,
 ) -> torch.Tensor:
-    """Strict Poincaré geodesic distance with stable gradients near x≈y.
-
-    ``acosh`` has singular derivative at 1; we keep the argument strictly above
-    ``1+eps`` and never allow zero pairwise Euclidean separation.
-    """
+    """Strict Poincaré geodesic distance with stable gradients near x≈y."""
     x = project_to_ball(x, c=c, eps=eps)
     y = project_to_ball(y, c=c, eps=eps)
     sq_norm_x = torch.sum(x * x, dim=-1).clamp(max=1.0 / c - eps)
@@ -50,33 +58,33 @@ def poincare_dist(
     sq_dist = torch.sum((x - y) * (x - y), dim=-1).clamp_min(eps)
     denom = (1.0 - c * sq_norm_x) * (1.0 - c * sq_norm_y)
     arg = 1.0 + 2.0 * c * sq_dist / denom.clamp(min=eps)
-    # Keep acosh' = 1/sqrt(arg^2-1) finite
     arg = arg.clamp(min=1.0 + 1e-4, max=1.0e6)
     return torch.acosh(arg) / math.sqrt(c)
 
 
 def lorentz_factor(x: torch.Tensor, *, c: float = 1.0, eps: float = 1e-5) -> torch.Tensor:
-    """γ = 1 / sqrt(1 - c ||x||²) for Poincaré points."""
+    """γ = 1 / sqrt(1 - c ||x||²) for Poincaré (or Klein) points with ||·||² < 1/c."""
     sq = torch.sum(x * x, dim=-1, keepdim=True).clamp(max=1.0 / c - eps)
     return 1.0 / torch.sqrt((1.0 - c * sq).clamp(min=eps))
 
 
 def poincare_to_klein(x: torch.Tensor, *, c: float = 1.0, eps: float = 1e-5) -> torch.Tensor:
-    """V_K = γ V_H / (1 + γ)  (= V_H / (1 + sqrt(1 - c||V_H||²)))."""
+    """V_K = 2 V_H / (1 + c ||V_H||²) (plan §3.2)."""
     x = project_to_ball(x, c=c, eps=eps)
-    gamma = lorentz_factor(x, c=c, eps=eps)
-    return (gamma * x) / (1.0 + gamma)
+    sq = torch.sum(x * x, dim=-1, keepdim=True)
+    return (2.0 * x) / (1.0 + c * sq).clamp(min=eps)
 
 
 def klein_to_poincare(k: torch.Tensor, *, c: float = 1.0, eps: float = 1e-5) -> torch.Tensor:
-    """Inverse of ``poincare_to_klein``: V_H = 2 V_K / (1 + c ||V_K||²)."""
-    sq = torch.sum(k * k, dim=-1, keepdim=True)
-    x = (2.0 * k) / (1.0 + c * sq).clamp(min=eps)
+    """V_H = V_K / (1 + sqrt(1 - c ||V_K||²)) (plan §3.2)."""
+    sq = torch.sum(k * k, dim=-1, keepdim=True).clamp(max=1.0 / c - eps)
+    denom = 1.0 + torch.sqrt((1.0 - c * sq).clamp(min=eps))
+    x = k / denom.clamp(min=eps)
     return project_to_ball(x, c=c, eps=eps)
 
 
 def exp_map_zero(v: torch.Tensor, *, c: float = 1.0, eps: float = 1e-5) -> torch.Tensor:
-    """Exponential map at the origin of the Poincaré ball."""
+    """Exponential map at the origin of the Poincaré ball (lift / projector only)."""
     sqrt_c = math.sqrt(c)
     v_norm = torch.linalg.vector_norm(v, dim=-1, keepdim=True).clamp_min(eps)
     return project_to_ball(
@@ -87,23 +95,182 @@ def exp_map_zero(v: torch.Tensor, *, c: float = 1.0, eps: float = 1e-5) -> torch
 
 
 def log_map_zero(x: torch.Tensor, *, c: float = 1.0, eps: float = 1e-5) -> torch.Tensor:
-    """Logarithmic map at the origin of the Poincaré ball."""
+    """Logarithmic map at the origin (readout / diagnostics — not QKV geometry)."""
     x = project_to_ball(x, c=c, eps=eps)
     sqrt_c = math.sqrt(c)
     x_norm = torch.linalg.vector_norm(x, dim=-1, keepdim=True).clamp_min(eps)
-    # Stay well inside (-1,1) for atanh
     u = (sqrt_c * x_norm).clamp(max=1.0 - 1e-4)
     return (torch.atanh(u) / (sqrt_c * x_norm)) * x
 
 
-class HyperbolicGraphAttention(nn.Module):
-    """Relation-aware sparse hyp attention with Einstein midpoint aggregation.
+def mobius_add(
+    x: torch.Tensor,
+    y: torch.Tensor,
+    *,
+    c: float = 1.0,
+    eps: float = 1e-5,
+) -> torch.Tensor:
+    """Poincaré Möbius addition ⊕_c (on-manifold residual mix)."""
+    x = project_to_ball(x, c=c, eps=eps)
+    y = project_to_ball(y, c=c, eps=eps)
+    xy = torch.sum(x * y, dim=-1, keepdim=True)
+    x2 = torch.sum(x * x, dim=-1, keepdim=True)
+    y2 = torch.sum(y * y, dim=-1, keepdim=True)
+    num = (1.0 + 2.0 * c * xy + c * y2) * x + (1.0 - c * x2) * y
+    denom = 1.0 + 2.0 * c * xy + (c * c) * x2 * y2
+    return project_to_ball(num / denom.clamp(min=eps), c=c, eps=eps)
 
-    Aggregation index follows Sprint-1 blueprint: for directed edge ``(i→j)``
-    logits use ``(Q_i, K_j)`` and segmented softmax / scatter reduce on
-    ``edge_index[0]`` (source / query node). Bidirectional R0–R5 graphs from
-    Sprint 2 make this symmetric in practice.
+
+def gyroscalar_mul(
+    t: float | torch.Tensor,
+    x: torch.Tensor,
+    *,
+    c: float = 1.0,
+    eps: float = 1e-5,
+) -> torch.Tensor:
+    """Gyrovector scalar multiply ``t ⊗_c x`` (on-manifold; ``t=1`` is identity).
+
+    Full-strength ``self ⊕ attended`` stacks hyperbolic translations and drives
+    radii past ``τ`` within two layers; damp the message with ``t ∈ (0, 1)``
+    before Möbius residual mix.
     """
+    x = project_to_ball(x, c=c, eps=eps)
+    if not torch.is_tensor(t):
+        t = x.new_tensor(float(t))
+    else:
+        t = t.to(device=x.device, dtype=x.dtype)
+    while t.ndim < x.ndim:
+        t = t.unsqueeze(-1)
+    sqrt_c = math.sqrt(c)
+    r = torch.linalg.vector_norm(x, dim=-1, keepdim=True).clamp_min(eps)
+    u = (sqrt_c * r).clamp(max=1.0 - 1e-4)
+    new_r = torch.tanh(t * torch.atanh(u)) / sqrt_c
+    return project_to_ball(x * (new_r / r), c=c, eps=eps)
+
+
+# Curriculum-start / v3 dual-seal bar — absolute damp was calibrated here.
+RESIDUAL_TAU_REF = 0.70
+
+
+def tau_relative_residual_step(
+    residual_logit: torch.Tensor,
+    *,
+    tau_ceiling: float,
+    tau_ref: float = RESIDUAL_TAU_REF,
+    radius: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Learned gyroscalar step, scaled by curriculum headroom.
+
+    Fixed ``t≈0.25`` is calibrated at ``τ_ref=0.70``. As the curriculum ceiling
+    rises, the same absolute residual re-pins every node to the moving ``τ``
+    (attn + post-MoE). Two scalings:
+
+    1. ``τ_ref / τ`` (global) — shrink base strength above the calibration ref.
+    2. Per-node headroom ``(τ − r)_+/τ`` when ``radius`` is provided — nodes
+       already near the ceiling get almost no residual push.
+
+    Returns a scalar or ``[N, 1]`` tensor broadcastable for ``gyroscalar_mul``.
+    """
+    t = torch.sigmoid(residual_logit)
+    tau = max(float(tau_ceiling), 1e-3)
+    ref = max(float(tau_ref), 1e-3)
+    # Stronger than linear: mild (τ_ref/τ) was insufficient under training.
+    scale = min(1.0, (ref / tau) ** 2)
+    t = t * scale
+    if radius is None:
+        return t
+    r = radius.reshape(-1, 1).to(device=t.device, dtype=t.dtype)
+    headroom = ((tau - r) / tau).clamp(min=0.0, max=1.0)
+    return t * headroom
+
+
+def einstein_midpoint(
+    points: torch.Tensor,
+    weights: torch.Tensor,
+    *,
+    c: float = 1.0,
+    eps: float = 1e-5,
+) -> torch.Tensor:
+    """Weighted Einstein midpoint via Klein + Lorentz γ.
+
+    Args:
+        points: ``[N, d]`` Poincaré points (or already-indexed rows).
+        weights: ``[N]`` or ``[N, 1]`` non-negative weights (need not sum to 1).
+    """
+    if weights.ndim == 1:
+        weights = weights.unsqueeze(-1)
+    k = poincare_to_klein(points, c=c, eps=eps)
+    gamma = lorentz_factor(k, c=c, eps=eps)
+    w_g = weights * gamma
+    numer = torch.sum(w_g * k, dim=0, keepdim=True)
+    denom = torch.sum(w_g, dim=0, keepdim=True).clamp(min=eps)
+    bar_k = numer / denom
+    return klein_to_poincare(bar_k, c=c, eps=eps).squeeze(0)
+
+
+def sparse_einstein_klein_aggregate(
+    v: torch.Tensor,
+    attn: torch.Tensor,
+    src: torch.Tensor,
+    dst: torch.Tensor,
+    *,
+    n: int,
+    c: float = 1.0,
+    eps: float = 1e-5,
+) -> torch.Tensor:
+    """Sparse Einstein midpoint: Lorentz-weighted Klein mean over ``dst`` neighborhoods."""
+    v_k = poincare_to_klein(v, c=c, eps=eps)
+    gamma_k = lorentz_factor(v_k, c=c, eps=eps)
+    msg = attn.unsqueeze(-1) * gamma_k[src] * v_k[src]
+    wsum = scatter(
+        attn.unsqueeze(-1) * gamma_k[src], dst, dim=0, dim_size=n, reduce="sum"
+    )
+    agg_k = scatter(msg, dst, dim=0, dim_size=n, reduce="sum")
+    agg_k = agg_k / wsum.clamp(min=eps)
+    return klein_to_poincare(agg_k, c=c, eps=eps)
+
+
+class GyroOrthogonalMap(nn.Module):
+    """Origin-centered gyro-rotation: ambient orthogonal action on ball coords.
+
+    Not a renamed ``nn.Linear``. The live map is ``z ↦ z R`` after a **fresh**
+    QR of the raw Parameter into ``SO(d)`` on every forward (``R`` is not
+    cached). ``RᵀR = I``, ``det R = +1``. Radii from 0 are preserved.
+    """
+
+    def __init__(self, dim: int) -> None:
+        super().__init__()
+        if dim < 1:
+            raise ValueError("dim must be >= 1")
+        self.dim = int(dim)
+        # Near-identity free factor; QR yields the live SO(d) matrix.
+        eye = torch.eye(dim)
+        self.weight = nn.Parameter(eye.clone())
+        with torch.no_grad():
+            self.weight.add_(0.01 * torch.randn(dim, dim))
+
+    def rotation(self) -> torch.Tensor:
+        q, r = torch.linalg.qr(self.weight)
+        # Absorb sign of R diag so Q has consistent orientation
+        signs = torch.sign(torch.diagonal(r))
+        signs = torch.where(signs == 0, torch.ones_like(signs), signs)
+        q = q * signs.unsqueeze(0)
+        # Force det = +1 (SO(d), not O(d))
+        if self.dim >= 1:
+            det = torch.det(q)
+            if det < 0:
+                q = q.clone()
+                q[:, 0] = -q[:, 0]
+        return q
+
+    def forward(self, z: torch.Tensor, *, c: float, eps: float) -> torch.Tensor:
+        # Fresh QR from the raw Parameter every call — R is never cached.
+        r = self.rotation().to(dtype=z.dtype, device=z.device)
+        return project_to_ball(z @ r, c=c, eps=eps)
+
+
+class HyperbolicGraphAttention(nn.Module):
+    """Relation-aware sparse hyp attention with Einstein midpoint aggregation."""
 
     def __init__(
         self,
@@ -123,28 +290,24 @@ class HyperbolicGraphAttention(nn.Module):
         self.c = float(c)
         self.eps = float(eps)
 
-        self.W_q = nn.Linear(dim, dim, bias=False)
-        self.W_k = nn.Linear(dim, dim, bias=False)
-        self.W_v = nn.Linear(dim, dim, bias=False)
-        self.W_o = nn.Linear(dim, dim, bias=False)
+        self.R_q = GyroOrthogonalMap(dim)
+        self.R_k = GyroOrthogonalMap(dim)
+        self.R_v = GyroOrthogonalMap(dim)
+        self.R_o = GyroOrthogonalMap(dim)
 
         self.gamma = nn.Embedding(num_relations, 1)
         self.beta = nn.Embedding(num_relations, 1)
         nn.init.ones_(self.gamma.weight)
         nn.init.zeros_(self.beta.weight)
-        for lin in (self.W_q, self.W_k, self.W_v, self.W_o):
-            nn.init.xavier_uniform_(lin.weight, gain=0.1)
-
-    def _tangent_linear(self, z: torch.Tensor, lin: nn.Linear) -> torch.Tensor:
-        return exp_map_zero(lin(log_map_zero(z, c=self.c, eps=self.eps)), c=self.c, eps=self.eps)
+        # sigmoid(-1.0986) ≈ 0.25 — full-strength Möbius residual pins τ.
+        self.residual_logit = nn.Parameter(torch.tensor(-1.0986122886681098))
+        self.last_attn: torch.Tensor | None = None
+        self.last_edge_index: torch.Tensor | None = None
+        self.last_edge_type: torch.Tensor | None = None
 
     def _self_transport(self, z: torch.Tensor) -> torch.Tensor:
-        """Option A: ``exp₀(W_o(log₀(z)))``."""
-        return exp_map_zero(
-            self.W_o(log_map_zero(z, c=self.c, eps=self.eps)),
-            c=self.c,
-            eps=self.eps,
-        )
+        """Option A isolate / self path: on-manifold orthogonal gyro-map."""
+        return self.R_o(z, c=self.c, eps=self.eps)
 
     def forward(
         self,
@@ -152,6 +315,8 @@ class HyperbolicGraphAttention(nn.Module):
         edge_index: torch.Tensor,
         edge_type: torch.Tensor,
         edge_attr: Optional[torch.Tensor] = None,
+        *,
+        tau_ceiling: float = RESIDUAL_TAU_REF,
     ) -> torch.Tensor:
         """Sparse hyp attention.
 
@@ -160,8 +325,9 @@ class HyperbolicGraphAttention(nn.Module):
             edge_index: ``[2, E]`` directed sparse edges.
             edge_type: ``[E]`` relation ids in ``{0..num_relations-1}``.
             edge_attr: unused (Sprint-2 attrs reserved for later bias).
+            tau_ceiling: curriculum radius ceiling — scales residual damp.
         """
-        del edge_attr  # reserved
+        del edge_attr
         if z.ndim != 2:
             raise ValueError(f"z must be [N, d], got {tuple(z.shape)}")
         n, d = z.shape
@@ -188,54 +354,66 @@ class HyperbolicGraphAttention(nn.Module):
         dst = edge_index[1].long()
         rel = edge_type.long()
 
-        q = self._tangent_linear(z, self.W_q)
-        k = self._tangent_linear(z, self.W_k)
-        v = self._tangent_linear(z, self.W_v)
+        # On-manifold Q/K/V (plan §3.1): R ⊗_c z via ambient SO(d) at origin
+        q = self.R_q(z, c=self.c, eps=self.eps)
+        k = self.R_k(z, c=self.c, eps=self.eps)
+        v = self.R_v(z, c=self.c, eps=self.eps)
 
-        # Edge (i→j): distance between Q_i and K_j
         d_ij = poincare_dist(q[src], k[dst], c=self.c, eps=self.eps)
         gamma_r = self.gamma(rel).squeeze(-1)
         beta_r = self.beta(rel).squeeze(-1)
         logits = (-d_ij * gamma_r + beta_r) / math.sqrt(self.dim)
 
-        # Segmented softmax over each source node's sparse out-neighborhood
-        attn = softmax(logits, src, num_nodes=n)
+        # Freeze §7.1: segmented softmax over destination neighborhoods.
+        attn = softmax(logits, dst, num_nodes=n)
+        self.last_attn = attn
+        self.last_edge_index = edge_index
+        self.last_edge_type = edge_type
 
-        v_k = poincare_to_klein(v, c=self.c, eps=self.eps)
-        msg = attn.unsqueeze(-1) * v_k[dst]
-        agg_k = scatter(msg, src, dim=0, dim_size=n, reduce="sum")
-        agg_h = klein_to_poincare(agg_k, c=self.c, eps=self.eps)
-        attended = exp_map_zero(
-            self.W_o(log_map_zero(agg_h, c=self.c, eps=self.eps)),
-            c=self.c,
-            eps=self.eps,
+        # Einstein midpoint in Klein with Lorentz γ (plan §3.2)
+        agg_h = sparse_einstein_klein_aggregate(
+            v, attn, src, dst, n=n, c=self.c, eps=self.eps
         )
+        attended = self.R_o(agg_h, c=self.c, eps=self.eps)
 
-        # Option A: nodes with no outgoing edges never enter Einstein midpoint
         deg = scatter(
             torch.ones(e, device=z.device, dtype=z.dtype),
-            src,
+            dst,
             dim=0,
             dim_size=n,
             reduce="sum",
         )
         isolate = deg <= 0
-        # Tangent residual: keep node identity; pure replace→oversmooth collapses the board.
-        u_self = log_map_zero(self_out, c=self.c, eps=self.eps)
-        u_att = log_map_zero(attended, c=self.c, eps=self.eps)
-        mixed = exp_map_zero(u_self + u_att, c=self.c, eps=self.eps)
+        # On-manifold mix (forbidden: tangent residual then exp₀).
+        # τ-relative + headroom damp — fixed t re-pins to moving curriculum ceiling.
+        r_self = torch.linalg.vector_norm(self_out, dim=-1)
+        step = tau_relative_residual_step(
+            self.residual_logit,
+            tau_ceiling=float(tau_ceiling),
+            radius=r_self,
+        )
+        attended_step = gyroscalar_mul(step, attended, c=self.c, eps=self.eps)
+        mixed = mobius_add(self_out, attended_step, c=self.c, eps=self.eps)
         out = torch.where(isolate.unsqueeze(-1), self_out, mixed)
         return project_to_ball(out, c=self.c, eps=self.eps)
 
 
 __all__ = [
     "NUM_RELATIONS_DEFAULT",
+    "GyroOrthogonalMap",
     "HyperbolicGraphAttention",
+    "einstein_midpoint",
+    "sparse_einstein_klein_aggregate",
     "exp_map_zero",
     "klein_to_poincare",
     "log_map_zero",
     "lorentz_factor",
+    "mobius_add",
+    "gyroscalar_mul",
+    "tau_relative_residual_step",
+    "RESIDUAL_TAU_REF",
     "poincare_dist",
     "poincare_to_klein",
     "project_to_ball",
+    "clamp_ball_radius",
 ]

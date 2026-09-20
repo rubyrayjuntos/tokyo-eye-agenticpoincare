@@ -70,7 +70,7 @@ Do **not** invent a separate flat `{"pdb","chain"}` schema; accept the Stage A m
 
 | Proposed name (user draft) | Sprint 6 name | Definition |
 |----------------------------|---------------|------------|
-| `node_mechanism_labels` | `dehydron_labels` | Binary; R2 incidence (wrap ≤ 19 dehydron gate already in graph) |
+| `node_mechanism_labels` | `dehydron_labels` | Binary; R2 incidence (wrap ≤ 1 dehydron gate — addendum §2.7) |
 | `matrix_state_labels` | `sdrp_target` (heuristic) | 5-way soft class from local edge mix (rim / core / salt / hydrophobe / neighborhood) — **explicitly experimental**; primary gate metric remains `val_dehydron_auprc` |
 
 Primary success metric for A→B: **`val_dehydron_auprc` drops below 1.0** on 4OBE and stays finite / non-NaN.

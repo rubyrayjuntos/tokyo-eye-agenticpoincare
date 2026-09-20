@@ -1,0 +1,26 @@
+{
+  "gate_id": "tokyo_eye_equ_spread_hold",
+  "timestamp": "2026-09-16T13:17:06.231969+00:00",
+  "frontend_ckpt": "checkpoints/tokyoeye/pretrained/hf/checkpoint/mptrj_gradient.pt",
+  "frontend_bank_sha256": "59c6c23573a3b05b347662f473209d1bb1ccb5b85f6624a8f87072e7c397addf",
+  "frontend_mode": "equiformer_v3_pool",
+  "lift": "geoopt.manifolds.PoincareBall",
+  "forbid_se3_lite": true,
+  "spine_init": "checkpoints/tokyoeye/runs/eqf_equ_geoopt_restore_20260916/tokyoeye_best.pt",
+  "predecessor": "tokyo_eye_equ_geoopt_restore",
+  "predecessor_mlflow_run_id": "b0480b85e87f492f965f2993a9298dba",
+  "forbidden_spine_init": [
+    "eqf_equ_theme_restore",
+    "eqf_equ_theme_biology",
+    "eqf_equ_theme_signal"
+  ],
+  "wrap_max": 1,
+  "volume_coeff": 1.5,
+  "volume_sigma": 0.22,
+  "volume_lam": 1.25,
+  "volume_mu": 0.32,
+  "volume_lam_mean": 2.0,
+  "volume_lam_barrier": 0.5,
+  "biology_fail_bar": false,
+  "source_manifest": "manifests/equ_cold_boot_v1.json"
+}

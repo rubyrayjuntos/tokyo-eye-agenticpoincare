@@ -429,12 +429,27 @@ class TokyoEyeV8WithFrontend(nn.Module):
         edge_type: torch.Tensor,
         *,
         tau_ceiling: float = 0.995,
+        chem: torch.Tensor | None = None,
+        gate_chem: torch.Tensor | None = None,
     ) -> dict[str, Any]:
         s, v = self.frontend(x, edge_index=edge_index, edge_type=edge_type)
-        return self.spine(s, v, edge_index, edge_type, tau_ceiling=tau_ceiling)
+        return self.spine(
+            s,
+            v,
+            edge_index,
+            edge_type,
+            tau_ceiling=tau_ceiling,
+            chem=chem if chem is not None else gate_chem,
+        )
 
     def set_moe_temperature(self, tau: float) -> None:
         self.spine.set_moe_temperature(tau)
+
+    def set_moe_explore_epsilon(self, epsilon: float) -> None:
+        self.spine.set_moe_explore_epsilon(epsilon)
+
+    def set_moe_mode(self, mode: str) -> None:
+        self.spine.set_moe_mode(mode)
 
 
 __all__ = [

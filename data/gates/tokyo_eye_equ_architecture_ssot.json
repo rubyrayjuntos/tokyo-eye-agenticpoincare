@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_architecture_ssot",
+  "status": "PUBLISHED",
+  "date": "2026-09-18",
+  "display_lineage": "Tokyo Eye EQU",
+  "doc": "docs/TOKYOEYE_ARCHITECTURE_SSOT.md",
+  "freeze_addendum": "docs/superpowers/specs/2026-09-16-tokyo-eye-v8-freeze-addendum.md",
+  "role": "front_door",
+  "owns_numbers": false,
+  "numbers_owner": "freeze_addendum",
+  "standing_rule": "Prose without a failing test always loses to a convenient default.",
+  "cold_init": {
+    "default": "cold_random",
+    "reason": "no_LOOCV_cleared_protein_frontend_checkpoint_yet",
+    "not": "approved_checkpoint_exists_but_unloaded"
+  },
+  "assembly_gate": {
+    "specified": true,
+    "enforced": true,
+    "module": "science/tokyo_eye/v8/assembly_gate.py",
+    "tests": "tests/v8/test_assembly_gate.py",
+    "harness": "experiments/training/v8/run_v8_experiment.py",
+    "conditions": [
+      "frontend_equiformer_pool_only",
+      "live_forward_pure_hyp_pass",
+      "pool_deps_constructible",
+      "claim_bearing_non_leak_and_biology_grad_log"
+    ],
+    "pure_hyp_semantics": "pure_hyp_ok true only if checked and passed; skip under allow_off_path sets pure_hyp_checked=false"
+  },
+  "se3_lite_pilot_policy": "pre_registered_disclaimed_signal_existence_only_before_pool_confirm",
+  "forbidden": [
+    "se3_lite_stub_as_governed_frontend",
+    "affinity_champion_init_as_biology_model",
+    "hyperbolic_biology_claim_on_euc_skip_only",
+    "forbid_se3_lite_tag_alone_as_pool_proof"
+  ],
+  "signed": "Ray Swan 2026-09-19"
+}

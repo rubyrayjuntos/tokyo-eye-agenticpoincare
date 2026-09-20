@@ -1,0 +1,87 @@
+{
+  "gate_id": "tokyo_eye_equ_correct_start",
+  "pin_reconcile": "cold_boot_manifest_wins",
+  "timestamp": "2026-09-16T01:22:04.181424+00:00",
+  "frontend_ckpt": "checkpoints/tokyoeye/pretrained/hf/checkpoint/mptrj_gradient.pt",
+  "frontend_bank_sha256": "59c6c23573a3b05b347662f473209d1bb1ccb5b85f6624a8f87072e7c397addf",
+  "rejected_plan_ckpt": "checkpoints/v8/pretrained/equiformer_v3_baseline.pt",
+  "train_panel": [
+    {
+      "pdb_id": "1MBN",
+      "chain": "A"
+    },
+    {
+      "pdb_id": "1LYZ",
+      "chain": "A"
+    },
+    {
+      "pdb_id": "1F88",
+      "chain": "A"
+    },
+    {
+      "pdb_id": "1HHP",
+      "chain": "A"
+    },
+    {
+      "pdb_id": "1TEN",
+      "chain": "A"
+    },
+    {
+      "pdb_id": "1UBQ",
+      "chain": "A"
+    },
+    {
+      "pdb_id": "1TIM",
+      "chain": "A"
+    },
+    {
+      "pdb_id": "4OBE",
+      "chain": "A"
+    }
+  ],
+  "probe_panel": [
+    {
+      "pdb_id": "1HNG",
+      "chain": "A"
+    },
+    {
+      "pdb_id": "1ALC",
+      "chain": "A"
+    },
+    {
+      "pdb_id": "1A5R",
+      "chain": "A"
+    },
+    {
+      "pdb_id": "1NAL",
+      "chain": "1"
+    },
+    {
+      "pdb_id": "2HHB",
+      "chain": "B"
+    },
+    {
+      "pdb_id": "1GKY",
+      "chain": "A"
+    }
+  ],
+  "holdout_panel": [
+    {
+      "pdb_id": "1BG1",
+      "chain": "A"
+    },
+    {
+      "pdb_id": "2Z6H",
+      "chain": "A"
+    },
+    {
+      "pdb_id": "1IVO",
+      "chain": "A"
+    },
+    {
+      "pdb_id": "2SHP",
+      "chain": "A"
+    }
+  ],
+  "source_manifest": "manifests/equ_cold_boot_v1.json"
+}

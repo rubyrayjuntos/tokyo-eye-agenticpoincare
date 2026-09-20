@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_moe_eps_a0_attribution",
+  "status": "RECORDED",
+  "date": "2026-09-18",
+  "parent_stamp": "data/gates/tokyo_eye_equ_epsilon_decay_floor_hold_full_spine.json",
+  "parent_sha256": "416f318b7088822776eb589c6246d1cbc0edf98d35302f26510099e10738143d",
+  "card": "data/gates/tokyo_eye_equ_moe_eps_card_prereg.json",
+  "relabel": {
+    "from": "COLLAPSED_POST_FLOOR",
+    "to": "NEVER_LIVE",
+    "rationale": "eval_moe_liveness_pass is false on 38/38 rows. eval n_alive==1 and load==[1,0,0,0] on epochs 0-13 (pre-floor and floor row) and n_alive stays 1 through epoch 15. The gate's collapsed_at_epoch=13 / '0 epochs after floor' is just the first post-floor row; the router was never live in eval, so the stamp does not show that eps->0 caused a collapse."
+  },
+  "do_not_promote": true,
+  "diagnostic": true
+}

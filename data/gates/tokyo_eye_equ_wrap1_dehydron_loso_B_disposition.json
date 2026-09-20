@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_wrap1_dehydron_loso_B_disposition",
+  "status": "CLOSED_MARGINAL_LITE_G_FIT",
+  "date": "2026-09-20",
+  "display_lineage": "Tokyo Eye EQU",
+  "standing_rule": "Prose without a failing test always loses to a convenient default.",
+  "parent_result": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_B_result.json",
+  "do_not_promote": true,
+  "frontend": "cold SE(3)-lite",
+  "frontend_policy": "off_path_pilot_only — see docs/TOKYOEYE_ARCHITECTURE_SSOT.md § SE(3)-lite pilots; not governed pool biology",
+  "b_arm_summary": {
+    "S1": "FAIL all seeds 0/1/2 (mean lift never clears 1.3; CI LB never clears 1.1)",
+    "S2": "PASS only seed 2 (10/12); seeds 0/1 fail",
+    "roc_auc": "clusters ~0.5 on most structures",
+    "hbond_baseline": "model loses to hbond_incidence_baseline_auprc on several structures (e.g. 1LYZ, 1TEN)"
+  },
+  "g_fit_E200": {
+    "result": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_G_fit_result.json",
+    "verdict": "INCONCLUSIVE_UNDERFIT",
+    "per_fold": {"1MBN:A": 0.7561, "1LYZ:A": 0.7365, "1BG1:A": 0.7524}
+  },
+  "g_fit_E400": {
+    "result": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_G_fit_E400_result.json",
+    "close": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_G_fit_E400_close.json",
+    "locked_binary": "DECAY_UNSETTLED / g_fit_pass=false (1LYZ 0.7991 < 0.80 by 0.0009)",
+    "scientific_read": "MARGINAL",
+    "per_fold": {"1MBN:A": 0.8093, "1LYZ:A": 0.7991, "1BG1:A": 0.8238}
+  },
+  "active_branch": "CLOSED_MARGINAL_LITE_G_FIT",
+  "Arm_B_read": "Do not lean hard either way. Lite G_fit never gave a crisp binary to interpret B's S1/S2 fail as FAIL_NO_SIGNAL or as decisive underfit.",
+  "next_command_note": "Stop SE(3)-lite G_fit curve work. No third lite prereg. Next: Equiformer-pool typed G_fit (same folds/threshold) as capacity probe — see tokyo_eye_equ_wrap1_dehydron_loso_G_fit_E400_close.json. Do not promote.",
+  "not_claims": [
+    "not a biology pass",
+    "cold SE(3)-lite: nothing about EquiformerV3 pool",
+    "S1/S2 fail on SE(3)-lite is not evidence the intended architecture has no biology signal",
+    "locked 0.80 bar was not moved — MARGINAL is scientific read, not a silent clear",
+    "MARGINAL ≠ clean PLATEAU_BELOW capacity fail"
+  ],
+  "signed": "Ray Swan 2026-09-20"
+}

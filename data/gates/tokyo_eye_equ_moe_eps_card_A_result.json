@@ -1,0 +1,18 @@
+{
+  "pass": true,
+  "seeds": [
+    {
+      "seed": 0,
+      "pass": true,
+      "decay_floor_hold": "N/A_ABLATED",
+      "backbone_mode": "live_se3_lite",
+      "n_epochs": 38,
+      "final_eval_load": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  ]
+}

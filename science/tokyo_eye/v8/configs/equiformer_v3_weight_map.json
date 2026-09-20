@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "description": "TokyoEye EquiformerV3 weight-map contract — audited against mirror-physics/equiformer_v3 checkpoint/mptrj_gradient.pt (DDP module. prefix).",
-  "checkpoint_path_default": "checkpoints/tokyoeye/pretrained/equiformer_v3_baseline.pt",
+  "checkpoint_path_default": "checkpoints/v8/pretrained/equiformer_v3_baseline.pt",
   "checkpoint_source": "https://huggingface.co/mirror-physics/equiformer_v3/resolve/main/checkpoint/mptrj_gradient.pt",
   "mlflow_experiment": "tokyoeye/equiformer-v3-moe/geometric/full-stack",
   "scalar_dim": 128,
@@ -9,7 +9,7 @@
   "hidden_dim": 128,
   "num_backbone_blocks": 7,
   "lr_backbone": 1e-5,
-  "lr_hyperbolic": 3e-4,
+  "lr_hyperbolic": 1e-3,
   "freeze_backbone": false,
   "curvature_c": 1.0,
   "tau_start": 0.7,
@@ -19,9 +19,13 @@
   "gumbel_schedule": "exponential",
   "gumbel_exp_half_epochs": 12,
   "gumbel_exp_alpha": 0.1002,
+  "eps_start": 0.20,
+  "eps_end": 0.0,
+  "eps_half_epochs": 12,
   "cv_coeff": 10.0,
   "moe_quota_floor": 0.05,
   "moe_quota_coeff": 5.0,
+  "eval_proxy_quota_coeff": 140.0,
   "telemetry": {
     "oversmooth_entropy_floor": 0.20,
     "boundary_saturation_pct_ceiling": 40.0,
@@ -55,6 +59,7 @@
     "Sprint 7: live SE(3)-lite forward binds bank tensors into (s,v); --freeze-backbone restores stub trunks.",
     "No radial_fourier in MPtrj state dict — lite path uses a small trainable RBF on edge distance.",
     "Do not load old package-line checkpoint constants or v66 weights into this lineage.",
-    "Telemetry: if diag_manifold_entropy <= 0.20 and radius collapse, boost mechanism margin; if diag_boundary_saturation_pct > 40 keep grad clip at 1.0 and slow tau open."
+    "Telemetry: if diag_manifold_entropy <= 0.20 and radius collapse, boost mechanism margin; if diag_boundary_saturation_pct > 40 keep grad clip at 1.0 and slow tau open.",
+    "eval_proxy_quota_coeff=140 equalizes eval_proxy floor pressure vs Switch-LB at the gate (Jacobian ratio ~141:1 before coeffs; T=0.5 negative control ruled out retuning T). STE moe_quota_coeff stays 5."
   ]
 }

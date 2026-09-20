@@ -87,6 +87,61 @@ class GumbelTemperatureSchedule:
         return max(self.tau_end, self.tau_start * math.exp(-self.alpha * e))
 
 
+class EpsilonGreedySchedule:
+    """§2.6: decay train-time hard-override probability (mirrors Gumbel form).
+
+    ``eps_end=0`` uses a tiny ``eps_end_eff`` only to define α, then clamps to 0.
+    """
+
+    def __init__(
+        self,
+        eps_start: float = 0.20,
+        eps_end: float = 0.0,
+        *,
+        half_epochs: int = 12,
+        alpha: float | None = None,
+        eps_end_eff: float = 1e-3,
+    ) -> None:
+        if eps_start < 0.0 or eps_start > 1.0:
+            raise ValueError("eps_start must be in [0, 1]")
+        if eps_end < 0.0 or eps_end > 1.0:
+            raise ValueError("eps_end must be in [0, 1]")
+        if eps_end > eps_start:
+            raise ValueError("eps_end must be <= eps_start")
+        self.eps_start = float(eps_start)
+        self.eps_end = float(eps_end)
+        self.half_epochs = max(1, int(half_epochs))
+        self.eps_end_eff = float(eps_end_eff) if self.eps_end <= 0.0 else float(eps_end)
+        if self.eps_end_eff <= 0.0 or self.eps_end_eff > self.eps_start:
+            raise ValueError("eps_end_eff must be in (0, eps_start]")
+        if alpha is None:
+            self.alpha = float(
+                math.log(self.eps_start / self.eps_end_eff) / float(self.half_epochs)
+            )
+        else:
+            self.alpha = float(alpha)
+        if self.alpha < 0:
+            raise ValueError("alpha must be >= 0")
+        self._floor_epoch: int | None = None
+
+    def epsilon(self, epoch: int) -> float:
+        e = max(0, int(epoch))
+        if self.eps_start == 0.0:
+            return 0.0
+        raw = self.eps_start * math.exp(-self.alpha * e)
+        val = max(self.eps_end, raw)
+        if self.eps_end == 0.0 and raw < self.eps_end_eff:
+            val = 0.0
+        if val <= self.eps_end and self._floor_epoch is None:
+            self._floor_epoch = e
+        return float(val)
+
+    @property
+    def first_floor_epoch(self) -> int | None:
+        """Epoch when ε first hit ``eps_end`` (populated after ``epsilon`` calls)."""
+        return self._floor_epoch
+
+
 class PoincareDiagnosticsEngine:
     """Radius / saturation / radial-histogram entropy telemetry."""
 
@@ -134,6 +189,69 @@ class PoincareDiagnosticsEngine:
         }
 
 
+class TransparencyEngine:
+    """Freeze §9.2–§9.3: rim↔core flow and per-R message fractions."""
+
+    def __init__(
+        self,
+        *,
+        rim_radius: float = 0.90,
+        core_radius: float = 0.30,
+        eps: float = 1e-8,
+    ) -> None:
+        self.rim_radius = float(rim_radius)
+        self.core_radius = float(core_radius)
+        self.eps = float(eps)
+
+    @torch.no_grad()
+    def summarize(
+        self,
+        z: torch.Tensor,
+        edge_index: torch.Tensor,
+        edge_type: torch.Tensor,
+        *,
+        attn: torch.Tensor | None = None,
+        num_relations: int = 6,
+    ) -> dict[str, float]:
+        r = torch.linalg.vector_norm(z.detach(), dim=-1)
+        rim = r > self.rim_radius
+        core = r < self.core_radius
+        n_rel = int(num_relations)
+        out: dict[str, float] = {
+            "n_rim": float(rim.sum()),
+            "n_core": float(core.sum()),
+        }
+        if edge_index.numel() == 0:
+            for i in range(n_rel):
+                out[f"msg_frac_r{i}"] = 0.0
+            out["flow_rim_to_core"] = 0.0
+            out["flow_core_to_rim"] = 0.0
+            out["rim_r2_vs_r1"] = 0.0
+            return out
+        src = edge_index[0].long()
+        dst = edge_index[1].long()
+        et = edge_type.long()
+        e = int(src.numel())
+        w = attn.detach() if attn is not None and attn.numel() == e else torch.ones(
+            e, device=z.device, dtype=z.dtype
+        )
+        wsum = float(w.sum().clamp_min(self.eps))
+        for i in range(n_rel):
+            m = et == i
+            out[f"msg_frac_r{i}"] = float(w[m].sum() / wsum) if m.any() else 0.0
+        rim_src = rim[src]
+        core_dst = core[dst]
+        core_src = core[src]
+        rim_dst = rim[dst]
+        out["flow_rim_to_core"] = float((w[rim_src & core_dst]).sum() / wsum)
+        out["flow_core_to_rim"] = float((w[core_src & rim_dst]).sum() / wsum)
+        r1 = (et == 1) & rim[src]
+        r2 = (et == 2) & rim[src]
+        rim_h = float((w[r1].sum() + w[r2].sum()).clamp_min(self.eps))
+        out["rim_r2_vs_r1"] = float(w[r2].sum() / rim_h)
+        return out
+
+
 def train_v8_step(
     model: TokyoEyesHyperbolicV8,
     batch: Mapping[str, Any],
@@ -143,11 +261,16 @@ def train_v8_step(
     radius_controller: CurriculumRadiusController,
     gumbel_schedule: GumbelTemperatureSchedule,
     diagnostics: PoincareDiagnosticsEngine | None = None,
+    transparency: TransparencyEngine | None = None,
     max_grad_norm: float = 1.0,
     sdrp_coeff: float = 1.0,
     margin_coeff: float = 1.0,
     cv_coeff: float = 1.0,
     moe_quota_coeff: float = 5.0,
+    switch_lb_coeff: float = 1.0,
+    soft_quota_coeff: float = 5.0,
+    eval_proxy_lb_coeff: float = 1.0,
+    eval_proxy_quota_coeff: float = 140.0,
 ) -> dict[str, float]:
     """One curriculum train step: lift→attn→MoE losses + clip + telemetry."""
     model.train()
@@ -159,7 +282,17 @@ def train_v8_step(
     v = batch["v"]
     edge_index = batch["edge_index"]
     edge_type = batch["edge_type"]
-    out = model(s, v, edge_index, edge_type, tau_ceiling=tau_ceil)
+    chem = batch.get("gate_chem")
+    if chem is None:
+        chem = batch.get("chem")
+    out = model(
+        s,
+        v,
+        edge_index,
+        edge_type,
+        tau_ceiling=tau_ceil,
+        chem=chem,
+    )
 
     loss_sdrp = sdrp_cross_entropy(out["sdrp_logits"], batch["sdrp_target"])
     loss_margin = mechanism_margin_loss_v2(
@@ -173,9 +306,39 @@ def train_v8_step(
         loss_quota_raw = torch.zeros(
             (), device=loss_cv_raw.device, dtype=loss_cv_raw.dtype
         )
+    loss_switch_raw = out["moe_aux"].get("switch_lb_loss")
+    if loss_switch_raw is None:
+        loss_switch_raw = torch.zeros(
+            (), device=loss_cv_raw.device, dtype=loss_cv_raw.dtype
+        )
+    loss_soft_quota_raw = out["moe_aux"].get("soft_quota_loss")
+    if loss_soft_quota_raw is None:
+        loss_soft_quota_raw = torch.zeros(
+            (), device=loss_cv_raw.device, dtype=loss_cv_raw.dtype
+        )
+    loss_eval_proxy_raw = out["moe_aux"].get("eval_proxy_lb_loss")
+    if loss_eval_proxy_raw is None:
+        loss_eval_proxy_raw = torch.zeros(
+            (), device=loss_cv_raw.device, dtype=loss_cv_raw.dtype
+        )
+    loss_eval_proxy_quota_raw = out["moe_aux"].get("eval_proxy_quota_loss")
+    if loss_eval_proxy_quota_raw is None:
+        loss_eval_proxy_quota_raw = torch.zeros(
+            (), device=loss_cv_raw.device, dtype=loss_cv_raw.dtype
+        )
+    loss_majority_raw = out["moe_aux"].get("majority_hinge_loss")
+    if loss_majority_raw is None:
+        loss_majority_raw = torch.zeros(
+            (), device=loss_cv_raw.device, dtype=loss_cv_raw.dtype
+        )
     loss_balance = (
         loss_cv_raw * float(cv_coeff)
         + loss_quota_raw * float(moe_quota_coeff)
+        + loss_switch_raw * float(switch_lb_coeff)
+        + loss_soft_quota_raw * float(soft_quota_coeff)
+        + loss_eval_proxy_raw * float(eval_proxy_lb_coeff)
+        + loss_eval_proxy_quota_raw * float(eval_proxy_quota_coeff)
+        + loss_majority_raw
     )
     loss = (
         float(sdrp_coeff) * loss_sdrp
@@ -199,24 +362,55 @@ def train_v8_step(
         "loss_margin": float(loss_margin.detach()),
         "loss_cv": float(loss_balance.detach()),
         "moe_quota_loss": float(loss_quota_raw.detach()),
+        "moe_switch_lb_loss": float(loss_switch_raw.detach()),
+        "moe_soft_quota_loss": float(loss_soft_quota_raw.detach()),
+        "moe_eval_proxy_lb_loss": float(loss_eval_proxy_raw.detach()),
+        "moe_eval_proxy_quota_loss": float(loss_eval_proxy_quota_raw.detach()),
         "tau_ceiling": float(tau_ceil),
         "gumbel_temperature": float(gumbel_tau),
         "grad_norm": grad_norm,  # pre-clip total norm (PyTorch convention)
         "max_grad_norm": float(max_grad_norm),
+        "moe_majority_hinge_loss": float(loss_majority_raw.detach()),
         "moe_load_min": float(load.min().detach()),
     }
     for i, v_load in enumerate(load.detach().tolist()):
         metrics[f"moe_load_e{i}"] = float(v_load)
+    soft_load = out["moe_aux"].get("soft_load")
+    if soft_load is not None:
+        for i, v_load in enumerate(soft_load.detach().tolist()):
+            metrics[f"moe_soft_load_e{i}"] = float(v_load)
     if diagnostics is not None:
+        for tag, tensor in (
+            ("pre_moe_lift", out["z_lift"]),
+            ("pre_moe_attn", out["z_attn"]),
+            ("post_moe", out["z_hyp"]),
+        ):
+            diag = diagnostics.summarize(tensor)
+            for k, val in diag.items():
+                metrics[f"diag_{tag}_{k}"] = (
+                    float(val) if not isinstance(val, bool) else float(val)
+                )
+        # Back-compat aliases on deployed (post-MoE) embedding.
         diag = diagnostics.summarize(out["z_hyp"])
         for k, val in diag.items():
             metrics[f"diag_{k}"] = float(val) if not isinstance(val, bool) else float(val)
+    if transparency is not None:
+        attn = None
+        last = model.attn_layers[-1]
+        attn = getattr(last, "last_attn", None)
+        tele = transparency.summarize(
+            out["z_hyp"], edge_index, edge_type, attn=attn
+        )
+        for k, val in tele.items():
+            metrics[f"trans_{k}"] = float(val)
     return metrics
 
 
 __all__ = [
     "CurriculumRadiusController",
     "GumbelTemperatureSchedule",
+    "EpsilonGreedySchedule",
     "PoincareDiagnosticsEngine",
+    "TransparencyEngine",
     "train_v8_step",
 ]

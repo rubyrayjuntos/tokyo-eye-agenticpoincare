@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_experiment_charter",
+  "status": "ACTIVE",
+  "date": "2026-09-15",
+  "display_lineage": "Tokyo Eye EQU",
+  "experiment": "tokyoeye/equiformer-v3-moe/geometric/hyperbolic-spine",
+  "naming": "tokyo_eye_equ_<slug>",
+  "purpose": "Own pure hyperbolic geometry for Tokyo Eye EQU after the Euclidean\u2192hyp lift: spine health, manifold honesty, and sealed geometry gates. Not affinity. Not biology Pass. Not champion promote.",
+  "goals": [
+    "Keep post-lift representation on-manifold (Einstein/Klein OK; tangent Linear/pool/mix as geometry substitute forbidden).",
+    "Earn geometry trunk only via pre-registered cards + sealed gates \u2014 never Pearson/MoE waive.",
+    "Hold operator SSOT here: law, ladder, next open card, Pass/Fail.",
+    "Correct start under amended freeze after Fail \u2014 no remediation theater."
+  ],
+  "non_goals": [
+    "Affinity / ligand ladder (chemical domain).",
+    "Biology teleconnections / basin Pass (biologic domain).",
+    "Moving models:/TokyoEye@champion.",
+    "Continuing from tangent-shortcut or rim-collapsed lesson weights as trunk."
+  ],
+  "primary_metrics": [
+    {
+      "id": "pure_hyp_pass",
+      "kind": "gate",
+      "pass_when": true,
+      "blocks_trunk": true,
+      "note": "No live post-lift tangent geometry substitutes"
+    },
+    {
+      "id": "mean_probe_boundary_saturation",
+      "kind": "metric",
+      "pass_when": "< 0.50",
+      "blocks_trunk": true,
+      "note": "Cold-boot sealed Fail ~0.915"
+    },
+    {
+      "id": "mean_probe_radius_spread",
+      "kind": "metric",
+      "pass_when": ">= 0.05 with non-degenerate per-probe volume",
+      "blocks_trunk": true,
+      "note": "Rim collapse = Fail even if mean looks soft"
+    },
+    {
+      "id": "n_probe_moe_spread",
+      "kind": "metric",
+      "pass_when": "6/6 (or locked probe count) with moe_load_min > 0.05",
+      "blocks_trunk": false,
+      "note": "Necessary not sufficient"
+    },
+    {
+      "id": "probe_finite_h2",
+      "kind": "gate",
+      "pass_when": true,
+      "blocks_trunk": true,
+      "note": "Finite H\u00b2 on probes + home"
+    }
+  ],
+  "trunk_open_requires": [
+    "pure_hyp_pass=true",
+    "hygiene_pass=true (sat + spread + finite + MoE floors per card)",
+    "pre_registered_card_for_the_run",
+    "no_init_from_lesson_only_or_fail_sealed_theta"
+  ],
+  "ssot_run_id": "f0e706526c2c481fa7c3112c89a5aeca",
+  "ssot_gate_id": "tokyo_eye_equ_ssot",
+  "next_open": "tokyo_eye_equ_correct_start"
+}

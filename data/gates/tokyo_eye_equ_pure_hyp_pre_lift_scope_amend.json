@@ -1,0 +1,16 @@
+{
+  "gate_id": "tokyo_eye_equ_pure_hyp_pre_lift_scope_amend",
+  "display_lineage": "Tokyo Eye EQU",
+  "status": "APPROVED",
+  "amendment": "Widen _is_pre_lift_linear / _is_pre_lift_scope to match trailing .projector (and .frontend) module names, not only middle .projector. segments.",
+  "trigger_evidence": "data/gates/tokyo_eye_equ_pure_hyp_full_spine_scan.json",
+  "root_cause": "spine.projector missed; pre-exp0 tangent mix at projector.py:53 false-positived as euclidean_mix_on_ball",
+  "code": "science/tokyo_eye/v8/pure_hyp_pass.py::_is_pre_lift_linear",
+  "tests": [
+    "tests/v8/test_pure_hyp_pass.py::test_pre_lift_scope_matches_trailing_projector",
+    "tests/v8/test_pure_hyp_pass.py::test_nested_radial_projector_passes_scan"
+  ],
+  "next": "Re-run scripts/verify_pure_hyp_pass_full_spine.py; leave prior FAIL stamp as historical FP evidence; write sibling or update with post_amend status.",
+  "do_not_promote": true,
+  "note": "Tracer-semantics amend only. Does not waive scan_forward forced-eval caveat or epsilon decay-floor COLLAPSED_POST_FLOOR."
+}

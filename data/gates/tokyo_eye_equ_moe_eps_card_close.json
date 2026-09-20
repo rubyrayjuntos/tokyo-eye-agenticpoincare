@@ -1,0 +1,16 @@
+{
+  "gate_id": "tokyo_eye_equ_moe_eps_card_close",
+  "card": "tokyo_eye_equ_moe_eps_card_prereg",
+  "status": "STEP1_CLOSED",
+  "R": "FAIL_NEVER_LIVE_all_seeds",
+  "A": "PASS_ablated",
+  "moe_on_for_step3": false,
+  "moe_mode_for_step3": "ablated",
+  "evidence": {
+    "R": "data/gates/tokyo_eye_equ_moe_eps_card_R_result.json",
+    "A": "data/gates/tokyo_eye_equ_moe_eps_card_A_result.json",
+    "A0": "data/gates/tokyo_eye_equ_moe_eps_a0_attribution.json"
+  },
+  "next": "step 2 supervision (park SDRP or fresh C3); then step 3 wrap=1 dehydron with moe_mode=ablated",
+  "do_not_promote": true
+}

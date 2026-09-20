@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_wrap1_dehydron_loso_prereg",
+  "approval_status": "APPROVED",
+  "status": "APPROVED",
+  "approver": "Ray Swan (via Cursor operator)",
+  "approved_at": "2026-09-18T21:07:49Z",
+  "source_draft": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_prereg.json",
+  "do_not_promote": true,
+  "promote_eligible": false,
+  "operator_decisions": {
+    "epochs_E": 200,
+    "thresholds": "KEEP as drafted \u2014 G_fit train AUPRC>=0.80 every T fold; S1 mean lift>=1.30 with 95% bootstrap CI LB>1.10; S2 lift>1 on >=10/12",
+    "seeds_B": "REQUIRE seeds 0,1,2. PASS_SIGNAL only if ALL three seeds pass S1 and S2 (and G_finite). Any seed fail on S1/S2 => FAIL_NO_SIGNAL for that seed; card FAIL unless all seeds PASS_SIGNAL. G_fit is on T arm (separate).",
+    "T_typed_folds": "3 folds only (sanity), pinned: 1MBN:A, 1LYZ:A, 1BG1:A (first three in card structure list). G_fit must pass on all three. Not claim-bearing.",
+    "homology_group_rule": "KEEP >=30% sequence identity held out together; record pairwise identities before folds freeze.",
+    "pretrained_bank": "OUT OF SCOPE \u2014 cold SE(3)-lite only; pretrained arm needs separate card."
+  },
+  "execution_state": "APPROVED_AWAITING_IMPLEMENTATION",
+  "next_command": "python3 scripts/wrap1_dehydron_loso.py --arm B --seeds 0 1 2",
+  "code_authorized": "Write scripts/wrap1_dehydron_loso.py (or /tmp fallback). No edits to moe.py/model.py/engine.py/loader/loss/weight map. Stamps to data/gates/ then /tmp."
+}

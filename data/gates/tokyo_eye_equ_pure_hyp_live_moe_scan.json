@@ -1,0 +1,40 @@
+{
+  "gate_id": "tokyo_eye_equ_pure_hyp_live_moe_scan",
+  "display_lineage": "Tokyo Eye EQU",
+  "status": "PASS",
+  "scope": "isolated TopologyAwareHardMoE forward (not full spine)",
+  "hidden_dim": 128,
+  "gate_hidden": 16,
+  "num_experts": 4,
+  "cases": [
+    {
+      "mode": "eval",
+      "explore_epsilon": 0.0,
+      "seed": 0,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "mode": "train",
+      "explore_epsilon": 0.0,
+      "seed": 1,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "mode": "train",
+      "explore_epsilon": 0.2,
+      "seed": 2,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "mode": "train",
+      "explore_epsilon": 1.0,
+      "seed": 3,
+      "pure_hyp_pass": true,
+      "violations": []
+    }
+  ],
+  "note": "Necessary, not sufficient: real sign-off requires this scan wrapping the full TokyoEyesHyperbolicV8 forward on real Stage-A-12 batches (freeze addendum \u00a73 step 4)."
+}

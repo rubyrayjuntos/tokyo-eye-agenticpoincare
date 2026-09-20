@@ -6,46 +6,79 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from science.tokyo_eye.v8.attention import log_map_zero
+from science.tokyo_eye.v8.attention import (
+    GyroOrthogonalMap,
+    exp_map_zero,
+    gyroscalar_mul,
+    mobius_add,
+    poincare_dist,
+    project_to_ball,
+    tau_relative_residual_step,
+)
 
 
 class DualSpaceSDRPHead(nn.Module):
-    """Dual-space cross-attention → per-node SDRP state logits.
+    """Class logits from Poincaré distances to learned prototypes.
 
-    Queries from hyperbolic logmap₀(z); keys/values from Euclidean hidden ``h``.
+    Euclidean skip is lifted via ``exp₀`` (allowed: Linear on Euclidean ``h``).
+    Hyperbolic queries stay on-manifold via gyro maps + Möbius mix.
     """
 
     def __init__(self, dim: int, num_classes: int, *, c: float = 1.0) -> None:
         super().__init__()
         self.c = float(c)
-        self.q = nn.Linear(dim, dim, bias=False)
-        self.k = nn.Linear(dim, dim, bias=False)
-        self.v = nn.Linear(dim, dim, bias=False)
-        self.out = nn.Linear(dim, num_classes)
+        self.num_classes = int(num_classes)
+        self.R_z = GyroOrthogonalMap(dim)
+        self.euc_to_tangent = nn.Linear(dim, dim, bias=False)
+        self.prototypes = nn.Parameter(0.05 * torch.randn(num_classes, dim))
+        # Undamped q⊕he is the same residual-inflation class as attn/MoE.
+        self.residual_logit = nn.Parameter(torch.tensor(-1.0986122886681098))
 
-    def forward(self, z_hyp: torch.Tensor, h_euc: torch.Tensor) -> torch.Tensor:
-        q = self.q(log_map_zero(z_hyp, c=self.c))
-        k = self.k(h_euc)
-        v = self.v(h_euc)
-        # Node-wise dual fusion (not dense N×N board): gated residual mix
-        attn = torch.sigmoid((q * k).sum(dim=-1, keepdim=True) / (q.shape[-1] ** 0.5))
-        fused = attn * v + (1.0 - attn) * q
-        return self.out(fused)
+    def forward(
+        self,
+        z_hyp: torch.Tensor,
+        h_euc: torch.Tensor,
+        *,
+        tau_ceiling: float = 0.70,
+    ) -> torch.Tensor:
+        z = project_to_ball(z_hyp, c=self.c)
+        q = self.R_z(z, c=self.c, eps=1e-5)
+        he = exp_map_zero(self.euc_to_tangent(h_euc), c=self.c)
+        r = torch.linalg.vector_norm(q, dim=-1)
+        step = tau_relative_residual_step(
+            self.residual_logit, tau_ceiling=float(tau_ceiling), radius=r
+        )
+        he_step = gyroscalar_mul(step, he, c=self.c, eps=1e-5)
+        fused = mobius_add(q, he_step, c=self.c)
+        proto = exp_map_zero(self.prototypes.to(dtype=fused.dtype), c=self.c)
+        n, d = fused.shape
+        k = proto.shape[0]
+        fused_rep = fused.unsqueeze(1).expand(n, k, d).reshape(n * k, d)
+        proto_rep = proto.unsqueeze(0).expand(n, k, d).reshape(n * k, d)
+        dist = poincare_dist(fused_rep, proto_rep, c=self.c)
+        return -dist.view(n, k)
 
 
 class EvidentialHead(nn.Module):
-    """Deep evidential regression-style 4-tuple ``(γ, ν, α, β)`` per node."""
+    """Deep evidential 4-tuple ``(γ, ν, α, β)`` with radius vacuity."""
 
     def __init__(self, dim: int) -> None:
         super().__init__()
         self.net = nn.Linear(dim, 4)
 
-    def forward(self, h: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, h: torch.Tensor, *, radius: torch.Tensor | None = None
+    ) -> torch.Tensor:
         raw = self.net(h)
         gamma = raw[..., 0]
         nu = F.softplus(raw[..., 1]) + 1e-4
         alpha = F.softplus(raw[..., 2]) + 1.0
         beta = F.softplus(raw[..., 3]) + 1e-4
+        if radius is not None:
+            r = radius.reshape_as(nu)
+            # High Poincaré radius → more epistemic pressure (vacuity).
+            nu = nu / (1.0 + r)
+            beta = beta * (1.0 + r)
         return torch.stack([gamma, nu, alpha, beta], dim=-1)
 
 
@@ -67,12 +100,7 @@ def mechanism_margin_loss_v2(
     *,
     margin: float = 0.1,
 ) -> torch.Tensor:
-    """Stabilized L1-hinge: ``mean(relu(margin - (score_pos - score_neg)))``.
-
-    ``pos`` / ``neg`` are target mechanism strengths; we form a pairwise gap
-    proxy ``score - neg`` vs ``pos - score`` style hinge on ``score`` ranking.
-    """
-    # Encourage score to sit above midpoint toward positives
+    """Stabilized L1-hinge: ``mean(relu(margin - (score_pos - score_neg)))``."""
     target_gap = (pos - neg).detach()
     pred_gap = score - neg
     return F.relu(margin + target_gap * 0.0 - (pred_gap - target_gap)).abs().mean()

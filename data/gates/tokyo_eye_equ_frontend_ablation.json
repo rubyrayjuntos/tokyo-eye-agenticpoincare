@@ -1,0 +1,96 @@
+{
+  "gate_id": "tokyo_eye_equ_frontend_ablation",
+  "display_lineage": "Tokyo Eye EQU",
+  "status": "APPROVED_LOCKED",
+  "approval_status": "APPROVED_LOCKED",
+  "execution_state": "STAGE0_LOOCV_COMPLETE",
+  "approved_at": "2026-09-16",
+  "approver": "Bot (ahead of spread_hold; MPtrj honesty)",
+  "design": "docs/superpowers/specs/2026-09-16-tokyoeye-equ-frontend-ablation-design.md",
+  "plan": "docs/superpowers/plans/2026-09-16-tokyoeye-equ-frontend-ablation.md",
+  "amendments": [
+    "stage0_no_train_separability",
+    "stage1_mptrj_vs_random_vs_none",
+    "honest_mptrj_not_biomolecular",
+    "stage0_framing_pretrain_inert_not_arch_fail",
+    "stage0_arm4_candidate_gearnet_mc_edge",
+    "stage0_loocv_l2_control",
+    "stage0_arm4_gearnet_no_pivot"
+  ],
+  "stage0": {
+    "completed_at": "2026-09-16T14:04:53.042926+00:00",
+    "artifact": "data/local_objects/frontend_ablation/stage0_separability.json",
+    "summary": {
+      "mptrj_agg_auc": 0.7408063407087252,
+      "mptrj_mean_pdb_auc": 0.7572755470209088,
+      "random_agg_auc": 0.7469249588664325,
+      "random_mean_pdb_auc": 0.7457324438566708,
+      "ca_agg_auc": 0.5598700609022371,
+      "ca_mean_pdb_auc": 0.6105102189352503,
+      "n_pos": 947,
+      "n_neg": 1376,
+      "n_structures": 14
+    },
+    "finding": "Equiformer local geometry separates R2 dehydron vs R1-wrapped residues (AUC~0.74) well above CA coords (~0.56). MPtrj frozen \u2248 random-init same arch (agg AUC 0.741 vs 0.747). MPtrj pretrain does not uniquely encode dehydron/wrapping beyond architectural inductive bias. Do not claim biomolecular-physics-informed frontend."
+  },
+  "stage0_arm4_candidate": {
+    "name": "GearNet-Edge Multiview Contrast",
+    "file": "mc_gearnet_edge.pth",
+    "zenodo_doi": "10.5281/zenodo.7723075",
+    "native_feature_dim": 3072,
+    "equivariant_sv": false,
+    "dehydron_pretrained": false,
+    "drop_in_projector": false,
+    "status": "PROBED_NO_PIVOT",
+    "pinned_at": "2026-09-16T14:16:57.284884+00:00"
+  },
+  "stage0_loocv": {
+    "completed_at": "2026-09-16T14:29:40.493570+00:00",
+    "artifact": "data/local_objects/frontend_ablation/stage0_separability_loocv.json",
+    "method": "leave_one_PDB_out L2 logistic C=1.0 + StandardScaler on train fold; legacy in-sample mean-diff also reported",
+    "gearnet": "mc_gearnet_edge.pth Zenodo 10.5281/zenodo.7723075; 2 PDBs RDKit-failed (1LYZ,1TIM) so GearNet n_structures may be 12",
+    "summary_rows": [
+      {
+        "arm": "mptrj_frozen",
+        "dim": 131,
+        "n_structures": 14,
+        "n_pos": 947,
+        "n_neg": 1376,
+        "in_sample": 0.7408055732914222,
+        "loocv_mean": 0.7651745302580915,
+        "loocv_pooled": 0.7662316433781096
+      },
+      {
+        "arm": "random_frozen",
+        "dim": 131,
+        "n_structures": 14,
+        "n_pos": 947,
+        "n_neg": 1376,
+        "in_sample": 0.7463279082046119,
+        "loocv_mean": 0.7689124891019521,
+        "loocv_pooled": 0.7581607156012868
+      },
+      {
+        "arm": "ca_coords",
+        "dim": 3,
+        "n_structures": 14,
+        "n_pos": 947,
+        "n_neg": 1376,
+        "in_sample": 0.5598700609022371,
+        "loocv_mean": 0.563786504162855,
+        "loocv_pooled": 0.5198469462930675
+      },
+      {
+        "arm": "gearnet_mc_edge",
+        "dim": 3072,
+        "n_structures": 12,
+        "n_pos": 777,
+        "n_neg": 1170,
+        "in_sample": 0.813949113949114,
+        "loocv_mean": 0.7391451346000669,
+        "loocv_pooled": 0.7397430397430398
+      }
+    ],
+    "finding": "GearNet in-sample AUC ~0.81 looks better than Equiformer ~0.74, but under LOOCV+L2 GearNet pooled ~0.74 ties/slightly trails MPtrj/random (~0.76). Does NOT clear a CA-sized margin over current frontend. Dimensionality inflation confirmed as risk. No adapter-card pivot justified. Downstream ceiling hypothesis strengthened."
+  }
+}

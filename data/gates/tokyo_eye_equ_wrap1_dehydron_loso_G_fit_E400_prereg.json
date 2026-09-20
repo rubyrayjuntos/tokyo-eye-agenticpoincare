@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_wrap1_dehydron_loso_G_fit_E400_prereg",
+  "status": "READY_TO_RUN",
+  "date": "2026-09-20",
+  "display_lineage": "Tokyo Eye EQU",
+  "standing_rule": "Prose without a failing test always loses to a convenient default.",
+  "do_not_promote": true,
+  "purpose": "Harness-scope epoch-budget extension of typed G_fit on cold SE(3)-lite. Not a coefficient retune. Not biology. Not pool. Resolves whether E=200 INCONCLUSIVE_UNDERFIT was budget-limited or approaching a geometric ceiling below 0.80.",
+  "parent_g_fit_result": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_G_fit_result.json",
+  "parent_disposition": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_B_disposition.json",
+  "prior_run": {
+    "epochs": 200,
+    "verdict": "INCONCLUSIVE_UNDERFIT",
+    "per_fold_train_auprc": {
+      "1MBN:A": 0.7561,
+      "1LYZ:A": 0.7365,
+      "1BG1:A": 0.7524
+    },
+    "curve_field": "curve_every_10 (loss_total + train_pooled_auprc)"
+  },
+  "geometric_prior": {
+    "estimator": "realized_100ep_blocks",
+    "formula": "rem_inf = g2 * r12 / (1 - r12); ceiling = A@199 + rem_inf; r12 = g(100→199)/g(0→100)",
+    "per_fold": {
+      "1BG1:A": {"r12": 0.2, "ceiling": 0.7648},
+      "1LYZ:A": {"r12": 0.291, "ceiling": 0.7615},
+      "1MBN:A": {"r12": 0.356, "ceiling": 0.7973}
+    },
+    "binding_ceiling": 0.7615,
+    "constant_r_is_assumption": true,
+    "constant_r_caveat": "r12 differs across folds (0.20, 0.29, 0.36) and is estimated from exactly two blocks each. If r is still increasing, the 0.76 binding ceiling is too pessimistic and the discarded linear/integral estimates may be closer. E=400 supplies a third (and fourth) block — that is the test of the assumption, not a footnote.",
+    "discarded_as_optimistic": [
+      "linear extrapolation of late fitted slopes (50–220 ep to threshold)",
+      "continuous half-life integral of late dA/10ep slopes"
+    ],
+    "pre_registered_expectation": "PLATEAU_BELOW more likely than CLEARS_0_80. A clear would be a surprise relative to this prior."
+  },
+  "pins": {
+    "arm": "T_typed_G_fit_only",
+    "frontend": "cold SE(3)-lite (same as E=200 G_fit)",
+    "moe_mode": "ablated",
+    "sdrp_coeff": 0.0,
+    "epochs": 400,
+    "device": "cuda",
+    "seed": 0,
+    "folds": ["1MBN:A", "1LYZ:A", "1BG1:A"],
+    "g_fit_threshold": 0.8,
+    "metric": "last-epoch train-fold pooled dehydron AUPRC (typed inputs)",
+    "wrap_max": 1,
+    "classification": "harness_epoch_budget — not silent_coeff_retune"
+  },
+  "script": "scripts/wrap1_dehydron_loso_g_fit.py",
+  "exact_command": "python3 scripts/wrap1_dehydron_loso_g_fit.py --device cuda --seed 0 --epochs 400",
+  "smoke_command": "python3 scripts/wrap1_dehydron_loso_g_fit.py --smoke --device cuda --no-mlflow",
+  "device_note": "CUDA required. E=200 used cpu only because the sealed packet pinned it and tokyoeye_mlflow had no GPU reservation; that was convenience, not a science constraint. Script falls back to cpu only if CUDA unavailable — treat fallback as a STOP and fix GPU passthrough before accepting results.",
+  "outputs": {
+    "per_fold": "data/gates/wrap1_dehydron_loso/T_seed0_hold_*_G_fit_E400.json",
+    "result_stamp": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_G_fit_E400_result.json",
+    "updates_disposition": true
+  },
+  "block_definitions": {
+    "B1": {"epochs": [0, 100], "gain": "A@100 - A@0"},
+    "B2": {"epochs": [100, 200], "gain": "A@200 - A@100 (use stamped curve point nearest 199/200)"},
+    "B3": {"epochs": [200, 300], "gain": "A@300 - A@200"},
+    "B4": {"epochs": [300, 400], "gain": "A@400 - A@300"},
+    "ratios": {
+      "r12": "g2/g1 (known from E=200)",
+      "r23": "g3/g2",
+      "r34": "g4/g3"
+    },
+    "note": "Use curve_every_10 points; if exact endpoint missing, nearest logged epoch ≤ target."
+  },
+  "read_order_mandatory": [
+    "1_r_trajectory — test constant-r assumption BEFORE threshold or plateau labels",
+    "2_auprc_vs_0.80",
+    "3_plateau_test — only if not CLEARS_0_80",
+    "4_named_outcome — pick exactly one of outcomes below; no improvised fourth label"
+  ],
+  "r_trajectory_test": {
+    "purpose": "Validate or falsify the constant-r assumption that produced the 0.76 ceiling.",
+    "drift_tolerance_abs": 0.1,
+    "per_fold_r_climbing_if": "r23 > r12 + 0.10 OR (g3 > 0 AND r34 > r23 + 0.10)",
+    "per_fold_r_stable_if": "not r_climbing",
+    "card_R_CLIMBING_if": "any fold r_climbing",
+    "card_R_STABLE_if": "no fold r_climbing",
+    "if_R_CLIMBING": "Geometric ceiling prior was too pessimistic. Recompute ceiling with three+ blocks before any capacity/pool read. Distinct finding from AUPRC vs 0.80."
+  },
+  "plateau_test": {
+    "purpose": "Numeric definition of plateau — escalation must not be a post-hoc judgment call.",
+    "applies_when": "not CLEARS_0_80",
+    "per_fold_plateau_if": [
+      "if g3 > 0: g4 <= 0.50 * g3",
+      "if g3 <= 0: g4 <= 0.005"
+    ],
+    "fraction_rationale": "Prior r12 band was 0.20–0.36. Fraction 0.50 is a noise-tolerant upper bound for 'decay holding' on 100-ep blocks; tighter than 'still gaining at similar or increasing rate.'",
+    "card_plateau_confirmed_if": "every fold with A@400 < 0.80 satisfies per_fold_plateau_if"
+  },
+  "outcomes": {
+    "CLEARS_0_80": {
+      "if": "all three folds A@400 >= 0.80 AND G_finite",
+      "means": "Typed fit reachable on this lite rig given more budget. Arm B S1/S2 failure becomes interpretable → FAIL_NO_SIGNAL branch.",
+      "next": "Stamp FAIL_NO_SIGNAL path on disposition. Do not escalate to pool for capacity. Do not retune.",
+      "prior_odds": "surprise relative to geometric prior"
+    },
+    "PLATEAU_BELOW": {
+      "if": "G_finite AND not CLEARS_0_80 AND card R_STABLE AND plateau_confirmed",
+      "means": "Constant-r held; remaining gain exhausted below threshold. SE(3)-lite harness is capacity-limited for typed dehydron fit.",
+      "next": "Escalate to Equiformer-pool G_fit as capacity probe (harness frontend change, not coeff retune). Do not keep extending lite epochs.",
+      "prior_odds": "preferred expectation under geometric prior"
+    },
+    "DECAY_UNSETTLED": {
+      "if": "G_finite AND not CLEARS_0_80 AND (card R_CLIMBING OR not plateau_confirmed)",
+      "means": "Still below 0.80 but decay model failed or gains not yet decaying — neither 'on track to clear with more lite epochs' as a free pass nor 'capacity-limited, escalate to pool'.",
+      "next": "STOP. Do not auto-escalate to pool. Do not silently bump epochs again. Re-estimate ceiling from ≥3 blocks; new pre-reg required for any further lite extend or pool step.",
+      "prior_odds": "the outcome the binary gate previously could not name"
+    },
+    "ABORT_NONFINITE": {
+      "if": "any non-finite loss/grad",
+      "next": "Stop; do not interpret AUPRC."
+    }
+  },
+  "forbidden": [
+    "promote",
+    "alias_move",
+    "silent_coeff_retune",
+    "treat_as_biology",
+    "skip_r_trajectory_before_plateau_label",
+    "escalate_to_pool_under_DECAY_UNSETTLED",
+    "improvise_fourth_outcome_after_seeing_numbers",
+    "read_linear_extrapolation_as_arrival_time"
+  ],
+  "signed": "Ray Swan 2026-09-20"
+}

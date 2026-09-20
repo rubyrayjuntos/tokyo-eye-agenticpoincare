@@ -29,7 +29,7 @@ DSSP_FQQ = DSSP_ENERGY_SCALE * DSSP_Q_NH * DSSP_Q_CO  # ≈27.888
 AMIDE_H_BOND_LENGTH_A = 1.01
 WRAP_CONE_HALF_ANGLE_DEG = 45.0
 WRAP_CONE_COS = float(np.cos(np.deg2rad(WRAP_CONE_HALF_ANGLE_DEG)))  # ≈0.7071
-BIOPHYS_CACHE_VERSION = "v8_biophys_s8"
+BIOPHYS_CACHE_VERSION = "v8_biophys_freeze_r19"
 
 POLAR_SIDECHAINS = frozenset(
     {"ARG", "ASN", "ASP", "GLN", "GLU", "HIS", "LYS", "SER", "THR", "TYR", "TRP"}
@@ -412,9 +412,11 @@ def parse_residue_records_from_pdb_chain(
 
     parser = PDBParser(QUIET=True)
     structure = parser.get_structure("v8", str(pdb_path))
+    # NMR / multi-MODEL PDBs: only model 0 — else duplicate residue_index blows the graph.
+    model = next(structure.get_models())
     residues_raw = [
         r
-        for r in structure.get_residues()
+        for r in model.get_residues()
         if r.get_id()[0] == " " and r.parent.id == chain_id
     ]
     records: list[ResidueRecord] = []

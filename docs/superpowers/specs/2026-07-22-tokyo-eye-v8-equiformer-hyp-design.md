@@ -1,10 +1,14 @@
 # Tokyo Eye Next (v8) — Equiformer → Typed Sparse Hyp Stack
 
-**Status:** FROZEN (signed off 2026-07-22)  
+**Status:** FROZEN (signed off 2026-07-22) · **AMENDED 2026-09-15** (`tokyo_eye_equ_pure_hyp_v1`) · **RECONCILIATION ADDENDUM SIGNED 2026-09-16** (`tokyo_eye_v8_freeze_reconciliation_v1`)  
 **Date:** 2026-07-22  
 **Authoring context:** Clean-break modernization after v7 opacity / Cα-only MP / soft MoE / parked uncertainty  
 **Supersedes for new work:** piecemeal continues on sealed/cold Hyp-MP funnel (parked archaeology)  
 **Does not overwrite:** `HEALTHY_V7_CKPT`, Fix-1 champions  
+
+**Amendment (2026-09-15):** Pure hyperbolic after lift — Einstein/Klein barycenters OK; tangent Linear/pool/mix as geometry substitute **forbidden**. Spec: [`2026-09-15-tokyoeye-equ-pure-hyp-freeze-amendment.md`](2026-09-15-tokyoeye-equ-pure-hyp-freeze-amendment.md) · Gate: `data/gates/tokyo_eye_equ_pure_hyp_freeze_amendment.json`. Without this, “pure hyp” is a lie relative to the code path.
+
+**Reconciliation addendum (2026-09-16, SIGNED Ray Swan):** Rebuild against these clauses, not a blank-page redesign. Dispositions (REVERT / AMEND / KEEP) and this week’s earned additions (eval-mode MoE gate, dual pre/post-MoE geometry seals, MPtrj-inert frontend default, trunk-wide `pure_hyp_pass`): [`2026-09-16-tokyo-eye-v8-freeze-addendum.md`](2026-09-16-tokyo-eye-v8-freeze-addendum.md) · Gate: `data/gates/tokyo_eye_v8_freeze_addendum.json`. Signed: Option B lift REVERT; `lr_hyperbolic=1e-3` REVERT; MLflow canonical `tokyoeye/equiformer-v3-moe/geometric/full-stack` AMEND.
 
 **Related:** user PDF *TokyoEyesHyperbolicV6* (ideas source; not code SSOT) · prior R0–R5 lock-in chat · E0–E3 MoE guild theory  
 
@@ -40,7 +44,7 @@
 | Working name | **TokyoEye-v8** (marketing name “HyperbolicV6” deferred; avoid colliding with frozen v6.x) |
 | Module home | `science/tokyo_eye/v8/` (isolated package; do **not** mix with v7 `TokyoEye.py` / v66) |
 | Checkpoints | `checkpoints/v8/` |
-| MLflow | experiment `tokyo-eyes-v8` |
+| MLflow | experiment `tokyoeye/equiformer-v3-moe/geometric/full-stack` (historical aliases: `tokyo-eyes-v8`, `tokyoeye/equiformer-v3-moe/geometric/hyperbolic-spine`) |
 | Compare-only | `HEALTHY_V7_CKPT`, cold/angfill parks |
 | Promote | Explicit gate + human promote only |
 
@@ -71,7 +75,7 @@ PDB / all-atom batch
 |---|------|------|------------|
 | **0** | Covalent / peptide | Backbone conduit | Δseq = ±1 |
 | **1** | Stable H-bond | Sheltered contacts | Geometry + DSSP-style energy ≤ −0.5 kcal/mol |
-| **2** | Dehydron | Underwrapped sticky H-bonds | ≤ 19 wrapping non-polar carbons in 6.5 Å sphere |
+| **2** | Dehydron | Underwrapped sticky H-bonds | ≤ **1** wrapping non-polar carbons in double-cone (45° / 6.5Å; addendum §2.7 — AMEND from classical sphere-calibrated 19) |
 | **3** | Hydrophobic / π–π | Packing / aromatic | Non-polar centroid ≤ 5.0 Å or planar face alignment |
 | **4** | Salt bridge | Charged links | Asp/Glu O … Lys/Arg/His N ≤ 4.0 Å |
 | **5** | Local neighborhood | Residual spatial envelope | Cβ–Cβ ≤ 8.0 Å **only if** not claimed by R1–R4 |
@@ -112,6 +116,7 @@ Residues with **no Layer-B neighbors** still retain R0 if sequence-adjacent to s
 - Silent replacement of R1–R4 by R5-only graphs  
 - Cα-contact as sole MP ontology  
 - Collapsing R0 into R1–R5 for ±1 pairs (single primary type)  
+- **(AMENDMENT 2026-09-15)** Post-lift tangent Linear / pool / mix as geometry substitute — see §6.1  
 
 ---
 
@@ -121,6 +126,22 @@ Residues with **no Layer-B neighbors** still retain R0 if sequence-adjacent to s
 - **Projector:** RadialAngularProjector — Option B lift `v_lifted = σ(radial) · angular` scaled into curriculum ball radius, then `expmap₀`.  
 - **Curvature:** Prefer **learned `c`** with contract passthrough (platform rule); if MVP pins `c`, document pin and migrate to learned before promote.  
 - **Curriculum:** `CurriculumRadiusController` opens `τ_ceiling` from interior (~0.70) → near-boundary (~0.995) so early training cannot park mass on the rim.
+
+### 6.1 Pure hyperbolic after lift (AMENDMENT 2026-09-15 — LOCKED)
+
+**Invariant:** After the single Euclidean → hyperbolic lift, the pipeline **stays in pure hyperbolic geometry** through hyperbolic graph storage / on-manifold heads.
+
+| Allowed | Forbidden (post-lift) |
+|---------|------------------------|
+| Einstein / Klein (or equivalent valid hyp) barycenters | `exp₀(W · log₀(z))` as Linear on ball points (Q/K/V, output, FFN) |
+| Poincaré / hyp distances for logits | Tangent mean/sum pool then `exp₀` as the graph representation |
+| Single lift `expmap₀` / `project_to_ball` at the Euc→H boundary | Tangent residual / mix as the primary message path |
+| Read-only `log₀` / radius for **diagnostics** | Vendor / third-party layers that leave the manifold silently |
+| | Claiming “pure hyp” while any forbidden pattern remains live |
+
+**Gate:** EQU geometry trunk promotion requires `pure_hyp_pass=true` (see amendment + MLflow EQU SSOT run). Pearson / MoE alone **cannot** waive this. After a Fail boot: **correct start** under this amended freeze — not remediation/patch-continue of a tangent spine.
+
+**Known at amendment time (Fail until remediated):** `attention.py` `_tangent_linear` / `W_o(log₀)` / tangent residual; `affinity_head.py` tangent pool.
 
 ---
 
@@ -146,6 +167,8 @@ For each directed edge `(i→j)` with type R:
 \]
 
 `γ_R`, `β_R` from learned relation embedding / scalars. Aggregation via **Einstein midpoint / Klein** (or equivalent valid hyp barycenter) — not Euclidean `matmul` on ball points.
+
+**Pure-hyp (amendment):** Q/K/V and output maps must **not** be implemented as `exp₀(W · log₀(z))` tangent Linears. That pattern is a **forbidden** geometry substitute even when aggregation claims Einstein/Klein. Live `_tangent_linear` means **out of pure-hyp Pass**; next train must be a **correct start**, not a patch of this path.
 
 ### 7.3 Depth
 
@@ -225,11 +248,11 @@ Multi-task details (margin labels, SDRP matrix CE, etc.) are **sprint-fillable**
 ### MVP (must stand as one complete spine)
 
 1. EquiformerV3 → projector → ball  
-2. **Full R0–R5 loader** (dual-layer R0 + Layer B exclusivity, wrap ≤19, bidirectional)  
+2. **Full R0–R5 loader** (dual-layer R0 + Layer B exclusivity, wrap ≤1, bidirectional)  
 3. Sparse relation-aware HyperbolicGraphAttention (segmented softmax; `γ_R`, `β_R`)  
 4. E0–E3 MoE with train-time `hard=True` Gumbel  
 5. Poincaré + rim↔core + per-R telemetry  
-6. Train loop + MLflow `tokyo-eyes-v8`  
+6. Train loop + MLflow `tokyoeye/equiformer-v3-moe/geometric/full-stack`  
 
 ### Frozen sprint order (dependency)
 
@@ -243,7 +266,7 @@ Multi-task details (margin labels, SDRP matrix CE, etc.) are **sprint-fillable**
 
 **Lineage isolation:** All v8 code lives under `science/tokyo_eye/v8/` and `tests/v8/` / `experiments/training/v8/` / `checkpoints/v8/`. No imports from `biology_graph`, v7 model, or v66 trainers. Shared platform only (torch/PyG/Bio.PDB/MLflow/container).
 
-**Sprint 2 note:** H-bond candidacy uses atom-validated donor N → acceptor O (v8-vendored wrap SSOT) + seq/spatial gates; DSSP `E ≤ −0.5` energy filter is a deferred harden (geometry wrap gate is live at ≤19 / 6.5 Å).
+**Sprint 2 note:** H-bond candidacy uses atom-validated donor N → acceptor O (v8-vendored wrap SSOT) + seq/spatial gates; DSSP `E ≤ −0.5` energy filter is **baseline** (addendum §1.4 #21 — upgrade, keep). Geometry wrap gate is ≤**1** under the double-cone counter (addendum §2.7 AMEND; classical Fernández 19 was sphere-calibrated).
 
 **Sprint 1 note:** Softmax/scatter index follows the Sprint-1 blueprint (`edge_index[0]` with logits on `(Q_i, K_j)`). Bidirectional R0–R5 emit makes neighborhoods symmetric.
 
@@ -261,6 +284,8 @@ Later fill-ins: uncertainty head, viewer edge-color, optional Normalizer persist
 - Piecemeal graph growth (chemistry “later”)  
 - Rewriting PDB/CIF download or ingest for the model swap  
 - New Postgres SSOT bypassing `data/normalizer`  
+- **(AMENDMENT 2026-09-15)** Calling the trunk “pure hyp” while `exp₀(W·log₀(z))` / tangent pool remain live geometry substitutes  
+- Waiving `pure_hyp_pass` for Pearson / MoE / rim sat alone  
 
 ---
 
@@ -270,7 +295,8 @@ Later fill-ins: uncertainty head, viewer edge-color, optional Normalizer persist
 |------|--------|
 | Graph contract | Dual-layer R0 + R1–R5; exclusivity tests green; ±1+Hbond emits both R0 and R1 |
 | Geometry | Single lift SSOT; disc health without J-collapse under curriculum |
-| Attention | Sparse segmented softmax only; no dense N×N materialization |
+| Pure hyp (amendment) | `pure_hyp_pass=true` — no post-lift tangent Linear/pool/mix as geometry substitute; Einstein/Klein OK |
+| Attention | Sparse segmented softmax only; no dense N×N materialization; Q/K/V not tangent-Linear |
 | MoE | Train `hard=True`; no soft mush / 100% single-expert monopoly on Stage-A |
 | Ontology | Rim/core correlates with R2 vs R1 (sealed-style dehydron-rim story) |
 | Transparency | Rim↔core flow + per-R message fractions logged every run |
@@ -286,6 +312,8 @@ Later fill-ins: uncertainty head, viewer edge-color, optional Normalizer persist
 - Equiformer dependency pin + GPU memory budget for Stage-A proteins.  
 - Unit-test: sequence-adjacent H-bond pair → `edge_type` multiset contains both `0` and `1` for that directed pair family.  
 - Unit-test: Gumbel path asserts `hard=True` in train mode (STE one-hot forward, soft grads).  
+- **(AMENDMENT 2026-09-15)** CI / static gate: forbid `_tangent_linear` / tangent-pool patterns in EQU trunk forward after remediation card lands; until then stamp `pure_hyp_pass=false`.  
+- Do not “fix” purity by renaming tangent ops or claiming Einstein while Q/K/V stay Euclidean in log₀.  
 
 ---
 
@@ -295,7 +323,11 @@ Later fill-ins: uncertainty head, viewer edge-color, optional Normalizer persist
 **Date:** 2026-07-22  
 **Freeze amendments locked in this revision:** dual-layer R0 coexistence; sparse segmented softmax (no dense −∞ board); train-time Gumbel `hard=True`; model-only / no ingest rewrite.
 
-By this freeze: Path A Equiformer spine, **R0–R5 unalterable graph contract**, E0–E3 post-hyp MoE, first-class diagnostics, v8 isolation from sealed v7.
+**Amendment 2026-09-15 (`tokyo_eye_equ_pure_hyp_v1`):** Pure hyperbolic after lift — Einstein/Klein barycenters allowed; post-lift tangent Linear/pool/mix as geometry substitute **forbidden**. Geometry trunk promotion requires `pure_hyp_pass=true`. Spec + gate stamp under `2026-09-15-tokyoeye-equ-pure-hyp-freeze-amendment`.
+
+**Amendment 2026-09-16 (`tokyo_eye_v8_freeze_reconciliation_v1`):** Signed REVERT Option B lift; REVERT `lr_hyperbolic=1e-3`; AMEND MLflow canonical experiment to `tokyoeye/equiformer-v3-moe/geometric/full-stack`. Full dispositions: [`2026-09-16-tokyo-eye-v8-freeze-addendum.md`](2026-09-16-tokyo-eye-v8-freeze-addendum.md).
+
+By this freeze: Path A Equiformer spine, **R0–R5 unalterable graph contract**, E0–E3 post-hyp MoE, first-class diagnostics, v8 isolation from sealed v7, and (as of amendment) **auditable pure-hyp** — not marketing.
 
 **Equiformer checkpoint convention (Sprint 5):**  
 `checkpoints/v8/pretrained/equiformer_v3_baseline.pt` + JSON weight map  

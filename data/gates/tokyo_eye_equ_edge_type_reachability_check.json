@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_edge_type_reachability_check",
+  "status": "DIAGNOSTIC_NO_TRAINING",
+  "date": "2026-09-20",
+  "display_lineage": "Tokyo Eye EQU",
+  "do_not_promote": true,
+  "purpose": "Does edge_type reach mechanism_score? Code-level check; no harness training run. Tests whether 'typed G_fit' was typed.",
+  "script": "data/gates/tokyo_eye_equ_edge_type_reachability_check.py",
+  "script_sha256": "99bc9cae8c51592d871a81977d5286602dd05f8e1e1992fd842793306d4eb91c",
+  "scope_limits": [
+    "lite results are INIT-STATE only; trained-state sensitivity not measured (frontend lr 1e-5 x 400 steps may add some, untested)",
+    "pool frontend could not be constructed in this container (ase missing); pool conclusion is static code reading, not an empirical shuffle test"
+  ],
+  "lite_init_state": {
+    "shuffle_edge_type_mean_abs_diff_over_score_std": [
+      0.002906079994245358,
+      0.0029848020980586215,
+      0.002990887143731963
+    ],
+    "shuffle_spearman_vs_true": [
+      0.9999463900392693,
+      0.9999430394167236,
+      0.9999396887941779
+    ],
+    "r2_to_r5_mean_abs_diff_over_std_at_positive_nodes": 0.0016967270372919992,
+    "ridge_on_frozen_init_features": {
+      "true_type": {
+        "train": 0.6505971770732903,
+        "heldout": 0.5066124633872184
+      },
+      "shuffled_type_s0": {
+        "train": 0.6490096899891262,
+        "heldout": 0.5086952498655424
+      },
+      "shuffled_type_s1": {
+        "train": 0.6490281210472263,
+        "heldout": 0.509113793384111
+      },
+      "all_R5_type": {
+        "train": 0.6489218156052134,
+        "heldout": 0.5086313443465096
+      }
+    },
+    "read": "edge_type perturbation moves mechanism_score by ~0.3% of its std (Spearman 0.99995); true vs shuffled vs constant type differ by <=0.002 AUPRC in a closed-form readout. Typed channel carries no usable signal at init; the ~0.65 train AUPRC is geometry from CA coords."
+  },
+  "pool_static": {
+    "evidence": "science/tokyo_eye/v8/equiformer_pool_frontend.py:213 `del edge_index, edge_type`; inputs built by ca_coords_to_eqf_data(x) from CA coords with a single atomic number for all nodes",
+    "mechanism_path": "mechanism_score = mechanism_head(euc_skip(s)+2.0), s from frontend only (model.py forward)",
+    "read": "edge_type is structurally unreachable on the pool mechanism path. 'Typed G_fit on pool' is coordinate-only by construction, so the 0.80 given-the-answer bar does not apply to it."
+  },
+  "pool_construction_here": {
+    "constructed": false,
+    "error": "ImportError: EquiformerV3_OC unavailable under science/third_party. ModuleNotFoundError: No module named 'ase'",
+    "traceback_tail": [
+      "    frontend = EquiformerPoolFrontend(",
+      "  File \"/workspace/science/tokyo_eye/v8/equiformer_pool_frontend.py\", line 82, in __init__",
+      "    self._backbone = self._build_backbone(",
+      "  File \"/workspace/science/tokyo_eye/v8/equiformer_pool_frontend.py\", line 105, in _build_backbone",
+      "    raise ImportError(",
+      "ImportError: EquiformerV3_OC unavailable under science/third_party. ModuleNotFoundError: No module named 'ase'"
+    ]
+  },
+  "not_claims": [
+    "not a biology result",
+    "not evidence about trained-lite sensitivity",
+    "not a capacity result for any frontend"
+  ],
+  "script_revision_note": "2026-09-20: renamed result key AUPRC_true_type_at_init -> AUPRC_true_type and added explicit model_state field (key was reused for post-training entries). No logic change; numbers in this stamp unaffected."
+}

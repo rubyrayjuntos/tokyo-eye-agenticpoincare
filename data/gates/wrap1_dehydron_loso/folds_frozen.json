@@ -1,0 +1,428 @@
+{
+  "identity_threshold": 0.3,
+  "identity_method": "Sequence identity = matches / alignment length (gaps count against it), Biopython global PairwiseAligner (BLOSUM62, open -10, extend -0.5), sequences from CA-complete residues of the PDB chain; mmseqs not used. The card fixes the 30% threshold but not the metric; the first-draft metric (matches / shorter length) merged all 12 chains into one group and was replaced before any training; the alternatives are recorded in folds_frozen.json.",
+  "seq_len": {
+    "1MBN:A": 153,
+    "1LYZ:A": 129,
+    "1BG1:A": 558,
+    "1F88:A": 338,
+    "2Z6H:A": 533,
+    "1HHP:A": 99,
+    "1TEN:A": 89,
+    "1UBQ:A": 76,
+    "1TIM:A": 247,
+    "4OBE:A": 169,
+    "1IVO:A": 511,
+    "2SHP:A": 491
+  },
+  "n_graph_nodes": {
+    "1MBN:A": 153,
+    "1LYZ:A": 129,
+    "1BG1:A": 558,
+    "1F88:A": 338,
+    "2Z6H:A": 533,
+    "1HHP:A": 99,
+    "1TEN:A": 89,
+    "1UBQ:A": 76,
+    "1TIM:A": 247,
+    "4OBE:A": 169,
+    "1IVO:A": 511,
+    "2SHP:A": 491
+  },
+  "seq_len_equals_graph_nodes": {
+    "1MBN:A": true,
+    "1LYZ:A": true,
+    "1BG1:A": true,
+    "1F88:A": true,
+    "2Z6H:A": true,
+    "1HHP:A": true,
+    "1TEN:A": true,
+    "1UBQ:A": true,
+    "1TIM:A": true,
+    "4OBE:A": true,
+    "1IVO:A": true,
+    "2SHP:A": true
+  },
+  "pairwise_identity": {
+    "1MBN:A|1LYZ:A": 0.11475409836065574,
+    "1MBN:A|1BG1:A": 0.08602150537634409,
+    "1MBN:A|1F88:A": 0.12921348314606743,
+    "1MBN:A|2Z6H:A": 0.1037037037037037,
+    "1MBN:A|1HHP:A": 0.13125,
+    "1MBN:A|1TEN:A": 0.15337423312883436,
+    "1MBN:A|1UBQ:A": 0.11764705882352941,
+    "1MBN:A|1TIM:A": 0.12962962962962962,
+    "1MBN:A|4OBE:A": 0.17647058823529413,
+    "1MBN:A|1IVO:A": 0.09197651663405088,
+    "1MBN:A|2SHP:A": 0.1,
+    "1LYZ:A|1BG1:A": 0.0766488413547237,
+    "1LYZ:A|1F88:A": 0.09169054441260745,
+    "1LYZ:A|2Z6H:A": 0.08007448789571694,
+    "1LYZ:A|1HHP:A": 0.125,
+    "1LYZ:A|1TEN:A": 0.1678832116788321,
+    "1LYZ:A|1UBQ:A": 0.1111111111111111,
+    "1LYZ:A|1TIM:A": 0.12941176470588237,
+    "1LYZ:A|4OBE:A": 0.13368983957219252,
+    "1LYZ:A|1IVO:A": 0.09784735812133072,
+    "1LYZ:A|2SHP:A": 0.0841683366733467,
+    "1BG1:A|1F88:A": 0.13758389261744966,
+    "1BG1:A|2Z6H:A": 0.17593984962406015,
+    "1BG1:A|1HHP:A": 0.07815275310834814,
+    "1BG1:A|1TEN:A": 0.06451612903225806,
+    "1BG1:A|1UBQ:A": 0.053763440860215055,
+    "1BG1:A|1TIM:A": 0.1195079086115993,
+    "1BG1:A|4OBE:A": 0.09557522123893805,
+    "1BG1:A|1IVO:A": 0.15428571428571428,
+    "1BG1:A|2SHP:A": 0.17492260061919504,
+    "1F88:A|2Z6H:A": 0.14464285714285716,
+    "1F88:A|1HHP:A": 0.10059171597633136,
+    "1F88:A|1TEN:A": 0.07988165680473373,
+    "1F88:A|1UBQ:A": 0.05813953488372093,
+    "1F88:A|1TIM:A": 0.15544041450777202,
+    "1F88:A|4OBE:A": 0.1404494382022472,
+    "1F88:A|1IVO:A": 0.1431159420289855,
+    "1F88:A|2SHP:A": 0.15939278937381404,
+    "2Z6H:A|1HHP:A": 0.06941838649155722,
+    "2Z6H:A|1TEN:A": 0.0600375234521576,
+    "2Z6H:A|1UBQ:A": 0.05065666041275797,
+    "2Z6H:A|1TIM:A": 0.1195079086115993,
+    "2Z6H:A|4OBE:A": 0.08518518518518518,
+    "2Z6H:A|1IVO:A": 0.1750380517503805,
+    "2Z6H:A|2SHP:A": 0.178743961352657,
+    "1HHP:A|1TEN:A": 0.16666666666666666,
+    "1HHP:A|1UBQ:A": 0.1509433962264151,
+    "1HHP:A|1TIM:A": 0.11673151750972763,
+    "1HHP:A|4OBE:A": 0.13872832369942195,
+    "1HHP:A|1IVO:A": 0.06769825918762089,
+    "1HHP:A|2SHP:A": 0.07926829268292683,
+    "1TEN:A|1UBQ:A": 0.19148936170212766,
+    "1TEN:A|1TIM:A": 0.10121457489878542,
+    "1TEN:A|4OBE:A": 0.16470588235294117,
+    "1TEN:A|1IVO:A": 0.05405405405405406,
+    "1TEN:A|2SHP:A": 0.07128309572301425,
+    "1UBQ:A|1TIM:A": 0.096,
+    "1UBQ:A|4OBE:A": 0.12849162011173185,
+    "1UBQ:A|1IVO:A": 0.06262230919765166,
+    "1UBQ:A|2SHP:A": 0.059063136456211814,
+    "1TIM:A|4OBE:A": 0.1510791366906475,
+    "1TIM:A|1IVO:A": 0.1434108527131783,
+    "1TIM:A|2SHP:A": 0.12781954887218044,
+    "4OBE:A|1IVO:A": 0.1049618320610687,
+    "4OBE:A|2SHP:A": 0.103515625,
+    "1IVO:A|2SHP:A": 0.1620745542949757
+  },
+  "reported_alternatives_not_used_for_grouping": {
+    "max_matches_over_shorter_len": 0.4444444444444444,
+    "n_pairs_ge_threshold_matches_over_shorter_len": 30,
+    "max_matches_over_ungapped_cols": 0.46808510638297873,
+    "n_pairs_ge_threshold_matches_over_ungapped_cols": 38,
+    "why_rejected": "gapped partial alignments inflate these (76-res ubiquitin vs 511-res EGFR = 0.42); they merge all 12 chains into one group, leaving no training set",
+    "per_pair": {
+      "1MBN:A|1LYZ:A": {
+        "alt_matches_over_shorter_len": 0.16279069767441862,
+        "alt_matches_over_ungapped_cols": 0.21212121212121213
+      },
+      "1MBN:A|1BG1:A": {
+        "alt_matches_over_shorter_len": 0.3137254901960784,
+        "alt_matches_over_ungapped_cols": 0.3137254901960784
+      },
+      "1MBN:A|1F88:A": {
+        "alt_matches_over_shorter_len": 0.3006535947712418,
+        "alt_matches_over_ungapped_cols": 0.34074074074074073
+      },
+      "1MBN:A|2Z6H:A": {
+        "alt_matches_over_shorter_len": 0.3660130718954248,
+        "alt_matches_over_ungapped_cols": 0.3835616438356164
+      },
+      "1MBN:A|1HHP:A": {
+        "alt_matches_over_shorter_len": 0.21212121212121213,
+        "alt_matches_over_ungapped_cols": 0.22826086956521738
+      },
+      "1MBN:A|1TEN:A": {
+        "alt_matches_over_shorter_len": 0.2808988764044944,
+        "alt_matches_over_ungapped_cols": 0.31645569620253167
+      },
+      "1MBN:A|1UBQ:A": {
+        "alt_matches_over_shorter_len": 0.23684210526315788,
+        "alt_matches_over_ungapped_cols": 0.23684210526315788
+      },
+      "1MBN:A|1TIM:A": {
+        "alt_matches_over_shorter_len": 0.22875816993464052,
+        "alt_matches_over_ungapped_cols": 0.2692307692307692
+      },
+      "1MBN:A|4OBE:A": {
+        "alt_matches_over_shorter_len": 0.23529411764705882,
+        "alt_matches_over_ungapped_cols": 0.3050847457627119
+      },
+      "1MBN:A|1IVO:A": {
+        "alt_matches_over_shorter_len": 0.30718954248366015,
+        "alt_matches_over_ungapped_cols": 0.30718954248366015
+      },
+      "1MBN:A|2SHP:A": {
+        "alt_matches_over_shorter_len": 0.32679738562091504,
+        "alt_matches_over_ungapped_cols": 0.3472222222222222
+      },
+      "1LYZ:A|1BG1:A": {
+        "alt_matches_over_shorter_len": 0.3333333333333333,
+        "alt_matches_over_ungapped_cols": 0.3412698412698413
+      },
+      "1LYZ:A|1F88:A": {
+        "alt_matches_over_shorter_len": 0.24806201550387597,
+        "alt_matches_over_ungapped_cols": 0.2711864406779661
+      },
+      "1LYZ:A|2Z6H:A": {
+        "alt_matches_over_shorter_len": 0.3333333333333333,
+        "alt_matches_over_ungapped_cols": 0.344
+      },
+      "1LYZ:A|1HHP:A": {
+        "alt_matches_over_shorter_len": 0.1919191919191919,
+        "alt_matches_over_ungapped_cols": 0.25
+      },
+      "1LYZ:A|1TEN:A": {
+        "alt_matches_over_shorter_len": 0.25842696629213485,
+        "alt_matches_over_ungapped_cols": 0.2839506172839506
+      },
+      "1LYZ:A|1UBQ:A": {
+        "alt_matches_over_shorter_len": 0.19736842105263158,
+        "alt_matches_over_ungapped_cols": 0.21428571428571427
+      },
+      "1LYZ:A|1TIM:A": {
+        "alt_matches_over_shorter_len": 0.2558139534883721,
+        "alt_matches_over_ungapped_cols": 0.2727272727272727
+      },
+      "1LYZ:A|4OBE:A": {
+        "alt_matches_over_shorter_len": 0.1937984496124031,
+        "alt_matches_over_ungapped_cols": 0.22522522522522523
+      },
+      "1LYZ:A|1IVO:A": {
+        "alt_matches_over_shorter_len": 0.3875968992248062,
+        "alt_matches_over_ungapped_cols": 0.3875968992248062
+      },
+      "1LYZ:A|2SHP:A": {
+        "alt_matches_over_shorter_len": 0.32558139534883723,
+        "alt_matches_over_ungapped_cols": 0.34710743801652894
+      },
+      "1BG1:A|1F88:A": {
+        "alt_matches_over_shorter_len": 0.24260355029585798,
+        "alt_matches_over_ungapped_cols": 0.2733333333333333
+      },
+      "1BG1:A|2Z6H:A": {
+        "alt_matches_over_shorter_len": 0.21951219512195122,
+        "alt_matches_over_ungapped_cols": 0.2746478873239437
+      },
+      "1BG1:A|1HHP:A": {
+        "alt_matches_over_shorter_len": 0.4444444444444444,
+        "alt_matches_over_ungapped_cols": 0.46808510638297873
+      },
+      "1BG1:A|1TEN:A": {
+        "alt_matches_over_shorter_len": 0.4044943820224719,
+        "alt_matches_over_ungapped_cols": 0.4044943820224719
+      },
+      "1BG1:A|1UBQ:A": {
+        "alt_matches_over_shorter_len": 0.39473684210526316,
+        "alt_matches_over_ungapped_cols": 0.39473684210526316
+      },
+      "1BG1:A|1TIM:A": {
+        "alt_matches_over_shorter_len": 0.27530364372469635,
+        "alt_matches_over_ungapped_cols": 0.288135593220339
+      },
+      "1BG1:A|4OBE:A": {
+        "alt_matches_over_shorter_len": 0.31952662721893493,
+        "alt_matches_over_ungapped_cols": 0.3333333333333333
+      },
+      "1BG1:A|1IVO:A": {
+        "alt_matches_over_shorter_len": 0.21135029354207435,
+        "alt_matches_over_ungapped_cols": 0.2926829268292683
+      },
+      "1BG1:A|2SHP:A": {
+        "alt_matches_over_shorter_len": 0.23014256619144602,
+        "alt_matches_over_ungapped_cols": 0.2803970223325062
+      },
+      "1F88:A|2Z6H:A": {
+        "alt_matches_over_shorter_len": 0.23964497041420119,
+        "alt_matches_over_ungapped_cols": 0.2604501607717042
+      },
+      "1F88:A|1HHP:A": {
+        "alt_matches_over_shorter_len": 0.3434343434343434,
+        "alt_matches_over_ungapped_cols": 0.3434343434343434
+      },
+      "1F88:A|1TEN:A": {
+        "alt_matches_over_shorter_len": 0.30337078651685395,
+        "alt_matches_over_ungapped_cols": 0.30337078651685395
+      },
+      "1F88:A|1UBQ:A": {
+        "alt_matches_over_shorter_len": 0.2631578947368421,
+        "alt_matches_over_ungapped_cols": 0.2857142857142857
+      },
+      "1F88:A|1TIM:A": {
+        "alt_matches_over_shorter_len": 0.242914979757085,
+        "alt_matches_over_ungapped_cols": 0.3015075376884422
+      },
+      "1F88:A|4OBE:A": {
+        "alt_matches_over_shorter_len": 0.2958579881656805,
+        "alt_matches_over_ungapped_cols": 0.33112582781456956
+      },
+      "1F88:A|1IVO:A": {
+        "alt_matches_over_shorter_len": 0.23372781065088757,
+        "alt_matches_over_ungapped_cols": 0.265993265993266
+      },
+      "1F88:A|2SHP:A": {
+        "alt_matches_over_shorter_len": 0.2485207100591716,
+        "alt_matches_over_ungapped_cols": 0.2781456953642384
+      },
+      "2Z6H:A|1HHP:A": {
+        "alt_matches_over_shorter_len": 0.37373737373737376,
+        "alt_matches_over_ungapped_cols": 0.37373737373737376
+      },
+      "2Z6H:A|1TEN:A": {
+        "alt_matches_over_shorter_len": 0.3595505617977528,
+        "alt_matches_over_ungapped_cols": 0.3595505617977528
+      },
+      "2Z6H:A|1UBQ:A": {
+        "alt_matches_over_shorter_len": 0.35526315789473684,
+        "alt_matches_over_ungapped_cols": 0.35526315789473684
+      },
+      "2Z6H:A|1TIM:A": {
+        "alt_matches_over_shorter_len": 0.27530364372469635,
+        "alt_matches_over_ungapped_cols": 0.3222748815165877
+      },
+      "2Z6H:A|4OBE:A": {
+        "alt_matches_over_shorter_len": 0.27218934911242604,
+        "alt_matches_over_ungapped_cols": 0.2839506172839506
+      },
+      "2Z6H:A|1IVO:A": {
+        "alt_matches_over_shorter_len": 0.22504892367906065,
+        "alt_matches_over_ungapped_cols": 0.2971576227390181
+      },
+      "2Z6H:A|2SHP:A": {
+        "alt_matches_over_shorter_len": 0.22606924643584522,
+        "alt_matches_over_ungapped_cols": 0.27543424317617865
+      },
+      "1HHP:A|1TEN:A": {
+        "alt_matches_over_shorter_len": 0.21348314606741572,
+        "alt_matches_over_ungapped_cols": 0.25675675675675674
+      },
+      "1HHP:A|1UBQ:A": {
+        "alt_matches_over_shorter_len": 0.21052631578947367,
+        "alt_matches_over_ungapped_cols": 0.2318840579710145
+      },
+      "1HHP:A|1TIM:A": {
+        "alt_matches_over_shorter_len": 0.30303030303030304,
+        "alt_matches_over_ungapped_cols": 0.33707865168539325
+      },
+      "1HHP:A|4OBE:A": {
+        "alt_matches_over_shorter_len": 0.24242424242424243,
+        "alt_matches_over_ungapped_cols": 0.25263157894736843
+      },
+      "1HHP:A|1IVO:A": {
+        "alt_matches_over_shorter_len": 0.35353535353535354,
+        "alt_matches_over_ungapped_cols": 0.3763440860215054
+      },
+      "1HHP:A|2SHP:A": {
+        "alt_matches_over_shorter_len": 0.3939393939393939,
+        "alt_matches_over_ungapped_cols": 0.3979591836734694
+      },
+      "1TEN:A|1UBQ:A": {
+        "alt_matches_over_shorter_len": 0.23684210526315788,
+        "alt_matches_over_ungapped_cols": 0.2535211267605634
+      },
+      "1TEN:A|1TIM:A": {
+        "alt_matches_over_shorter_len": 0.2808988764044944,
+        "alt_matches_over_ungapped_cols": 0.2808988764044944
+      },
+      "1TEN:A|4OBE:A": {
+        "alt_matches_over_shorter_len": 0.3146067415730337,
+        "alt_matches_over_ungapped_cols": 0.3181818181818182
+      },
+      "1TEN:A|1IVO:A": {
+        "alt_matches_over_shorter_len": 0.3146067415730337,
+        "alt_matches_over_ungapped_cols": 0.34146341463414637
+      },
+      "1TEN:A|2SHP:A": {
+        "alt_matches_over_shorter_len": 0.39325842696629215,
+        "alt_matches_over_ungapped_cols": 0.39325842696629215
+      },
+      "1UBQ:A|1TIM:A": {
+        "alt_matches_over_shorter_len": 0.3157894736842105,
+        "alt_matches_over_ungapped_cols": 0.3287671232876712
+      },
+      "1UBQ:A|4OBE:A": {
+        "alt_matches_over_shorter_len": 0.3026315789473684,
+        "alt_matches_over_ungapped_cols": 0.3484848484848485
+      },
+      "1UBQ:A|1IVO:A": {
+        "alt_matches_over_shorter_len": 0.42105263157894735,
+        "alt_matches_over_ungapped_cols": 0.42105263157894735
+      },
+      "1UBQ:A|2SHP:A": {
+        "alt_matches_over_shorter_len": 0.3815789473684211,
+        "alt_matches_over_ungapped_cols": 0.3815789473684211
+      },
+      "1TIM:A|4OBE:A": {
+        "alt_matches_over_shorter_len": 0.2485207100591716,
+        "alt_matches_over_ungapped_cols": 0.30434782608695654
+      },
+      "1TIM:A|1IVO:A": {
+        "alt_matches_over_shorter_len": 0.29959514170040485,
+        "alt_matches_over_ungapped_cols": 0.30578512396694213
+      },
+      "1TIM:A|2SHP:A": {
+        "alt_matches_over_shorter_len": 0.27530364372469635,
+        "alt_matches_over_ungapped_cols": 0.3300970873786408
+      },
+      "4OBE:A|1IVO:A": {
+        "alt_matches_over_shorter_len": 0.3254437869822485,
+        "alt_matches_over_ungapped_cols": 0.3525641025641026
+      },
+      "4OBE:A|2SHP:A": {
+        "alt_matches_over_shorter_len": 0.3136094674556213,
+        "alt_matches_over_ungapped_cols": 0.3581081081081081
+      },
+      "1IVO:A|2SHP:A": {
+        "alt_matches_over_shorter_len": 0.20366598778004075,
+        "alt_matches_over_ungapped_cols": 0.2597402597402597
+      }
+    }
+  },
+  "max_pairwise_identity": 0.19148936170212766,
+  "pairs_at_or_above_threshold": {},
+  "folds": [
+    [
+      "1MBN:A"
+    ],
+    [
+      "1LYZ:A"
+    ],
+    [
+      "1BG1:A"
+    ],
+    [
+      "1F88:A"
+    ],
+    [
+      "2Z6H:A"
+    ],
+    [
+      "1HHP:A"
+    ],
+    [
+      "1TEN:A"
+    ],
+    [
+      "1UBQ:A"
+    ],
+    [
+      "1TIM:A"
+    ],
+    [
+      "4OBE:A"
+    ],
+    [
+      "1IVO:A"
+    ],
+    [
+      "2SHP:A"
+    ]
+  ],
+  "n_folds": 12
+}

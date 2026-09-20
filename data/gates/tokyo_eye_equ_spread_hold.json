@@ -1,0 +1,21 @@
+{
+  "gate_id": "tokyo_eye_equ_spread_hold",
+  "display_lineage": "Tokyo Eye EQU",
+  "status": "APPROVED_LOCKED",
+  "approval_status": "APPROVED_LOCKED",
+  "execution_state": "IMPLEMENTING",
+  "approved_at": "2026-09-16",
+  "approver": "Bot (Ray sit-back; after theme_restore Fail on spread)",
+  "design": "docs/superpowers/specs/2026-09-16-tokyoeye-equ-spread-hold-design.md",
+  "plan": "docs/superpowers/plans/2026-09-16-tokyoeye-equ-spread-hold.md",
+  "predecessor": "tokyo_eye_equ_geoopt_restore",
+  "context_failed": "tokyo_eye_equ_theme_restore",
+  "amendments": [
+    "spread_hold_primary",
+    "biology_auprc_telemetry_only",
+    "spine_init=geoopt_restore_qualified",
+    "forbid_theme_restore_fail_theta",
+    "equiformer_v3_pool",
+    "geoopt_poincareball_lift"
+  ]
+}

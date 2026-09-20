@@ -1,0 +1,12 @@
+{
+  "gate_id": "tokyo_eye_equ_frontend_ablation",
+  "timestamp": "2026-09-16T14:03:37.410218+00:00",
+  "frontend_ckpt": "checkpoints/tokyoeye/pretrained/hf/checkpoint/mptrj_gradient.pt",
+  "frontend_bank_sha256": "59c6c23573a3b05b347662f473209d1bb1ccb5b85f6624a8f87072e7c397addf",
+  "frontend_origin": "MPtrj_gradient_MaterialsProject_periodic_inorganic_DFT",
+  "wrap_max": 1,
+  "stage0_pos": "incident_R2_dehydron",
+  "stage0_neg": "incident_R1_hbond_and_not_R2",
+  "stage0_score": "projection_onto_mean_diff",
+  "source_manifest": "manifests/equ_cold_boot_v1.json"
+}

@@ -1,9 +1,11 @@
 # Enforcement Matrix — Non-Negotiable Rules
 
+> **Standing rule (TokyoEye training):** Prose without a failing test always loses to a convenient default.
+
 **Repository:** tokyo-eye-agenticpoincare
 **Companion to:** `DEVELOPER_ONBOARDING.md` (replaces the prose checklist in *Non-negotiable rules* with an enforced/manual split)
 **Purpose:** Make the gap between *stated* contract and *enforced* contract visible. A rule with no executable gate is a suggestion.
-**Last updated:** June 29, 2026
+**Last updated:** September 18, 2026
 
 ---
 
@@ -87,6 +89,18 @@ CI: `tests/test_enforcement_matrix_gate_claims.py` + `scripts/lint_gate_claims.p
 | Hyperbolic artifacts declare `curvature.source` | **GATED** | `validate_geometric_contract()` via `test_geometric_contract_valid` — §0 confirmed. |
 | `hyperbolic_jobs` ⇒ `requires_hyperbolic: true` + `geometric_space: hyperbolic` | **GATED** | `test_hyperbolic_jobs_authoritative` — §0 confirmed. |
 | Malformed hyperbolic coords (NaN/Inf/out-of-ball) **not silently coerced to origin** | **GATED** | `tests/test_embedding_projection_gate.py` — `parse_embedding_projection_xy()` raises; hydration quarantines bad rows. Module: `science/dtie/common/embedding_projection.py`. |
+
+## TokyoEye training assembly (EQU)
+
+> Front door: [`docs/TOKYOEYE_ARCHITECTURE_SSOT.md`](TOKYOEYE_ARCHITECTURE_SSOT.md). Numbers: freeze addendum. Maxim: prose without a failing test always loses to a convenient default.
+
+| Rule | Status | Enforced by / Backlog |
+|---|---|---|
+| Governed harness uses Equiformer pool — not SE(3)-lite / stub | **GATED** | `science/tokyo_eye/v8/assembly_gate.py` + `tests/v8/test_assembly_gate.py` + `run_v8_experiment.py` (default `--frontend equiformer_pool`; stub requires `--allow-off-path-frontend`) |
+| Live-forward `pure_hyp_pass` on governed entry | **GATED** | Same assembly gate (`scan_forward` tracer); skip sets `pure_hyp_checked=false` / `pure_hyp_ok=false` |
+| Pool constructibility deps present (ase / torch-scatter / torch-cluster / lmdb / e3nn) | **GATED** | `assert_pool_frontend_dependencies()` — explicit missing-deps message |
+| Claim-bearing biology: no edge_type leakage + biology_grad logged | **GATED** | `detect_edge_type_label_leakage` + `assert_claim_bearing_biology` via `--claim-bearing-biology`; CLI non-leak flag cannot waive a still-leaking batch (`test_claim_bearing_refuses_leaking_batch_structurally`) |
+| Dehydron/SDRP typed scores non-claim until leakage fixed | **GATED (stamp + gate)** | `data/gates/tokyo_eye_equ_nonclaim_disposition.json` + claim-bearing third leg refuses leaking stack |
 
 ## MD validation gate
 
@@ -175,6 +189,7 @@ Ordered by *integrity/defensibility risk*, not effort. Each is one property test
 | **P-meta** | §0 claim freshness | `tests/test_enforcement_matrix_gate_claims.py`, `scripts/lint_gate_claims.py` |
 | **P5** | Readiness probe integrity | `tests/test_readiness_probe_gate.py` |
 | **P6** | Science container integration | `tests/test_science_container_integration.py`, `tests/test_pipeline_job_id_gate.py` |
+| **P7** | TokyoEye EQU assembly | `tests/v8/test_assembly_gate.py`, `science/tokyo_eye/v8/assembly_gate.py` |
 
 **Remaining MANUAL rows:** canonical IDs via `keys.py`, normalization_audit property test, advisory compute→audit lint.
 

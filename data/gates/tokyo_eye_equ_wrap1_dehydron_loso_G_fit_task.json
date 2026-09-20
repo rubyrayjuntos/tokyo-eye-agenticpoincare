@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_wrap1_dehydron_loso_G_fit_task",
+  "status": "READY_TO_RUN",
+  "date": "2026-09-20",
+  "display_lineage": "Tokyo Eye EQU",
+  "standing_rule": "Prose without a failing test always loses to a convenient default.",
+  "do_not_promote": true,
+  "purpose": "Resolve PENDING_G_FIT only. Typed train AUPRC on 3 pinned folds. Stamp FAIL_NO_SIGNAL or INCONCLUSIVE_UNDERFIT. No T science card. No new model version.",
+  "parent_disposition": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_B_disposition.json",
+  "parent_b_result": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_B_result.json",
+  "card_approved": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_prereg.APPROVED.json",
+  "folds_frozen": "data/gates/wrap1_dehydron_loso/folds_frozen.json",
+  "script": "scripts/wrap1_dehydron_loso_g_fit.py",
+  "exact_command": "python3 scripts/wrap1_dehydron_loso_g_fit.py --device cpu --seed 0",
+  "smoke_command": "python3 scripts/wrap1_dehydron_loso_g_fit.py --smoke --device cpu --no-mlflow",
+  "pins": {
+    "arm": "T_typed_G_fit_only",
+    "frontend": "cold SE(3)-lite (same pilot as B; --allow-off-path not via harness — build_system direct)",
+    "moe_mode": "ablated",
+    "sdrp_coeff": 0.0,
+    "epochs": 200,
+    "seed": 0,
+    "folds": ["1MBN:A", "1LYZ:A", "1BG1:A"],
+    "g_fit_threshold": 0.80,
+    "metric": "last-epoch train-fold pooled dehydron AUPRC (typed inputs)",
+    "wrap_max": 1
+  },
+  "outputs": {
+    "per_fold": "data/gates/wrap1_dehydron_loso/T_seed0_hold_*_G_fit.json",
+    "result_stamp": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_G_fit_result.json",
+    "updates_disposition": true
+  },
+  "verdict_rule": {
+    "ABORT_NONFINITE": "any non-finite loss/grad",
+    "FAIL_NO_SIGNAL": "G_finite and G_fit pass (all 3 folds train AUPRC >= 0.80) — B already failed S1/S2",
+    "INCONCLUSIVE_UNDERFIT": "G_finite and G_fit fail"
+  },
+  "forbidden": [
+    "promote",
+    "alias_move",
+    "silent_retune",
+    "bundle_T_science_questions",
+    "new_model_version",
+    "treat_G_fit_pass_as_biology_validation",
+    "re_run_arm_B"
+  ],
+  "assistant_first_message": "Read /workspace/CLAUDE.md and data/gates/tokyo_eye_equ_wrap1_dehydron_loso_G_fit_task.json. Run ONLY the exact_command (CPU). Smoke first if unsure. Stamp G_fit result + update disposition. Do not promote. Do not open other cards.",
+  "signed": "Ray Swan 2026-09-20"
+}

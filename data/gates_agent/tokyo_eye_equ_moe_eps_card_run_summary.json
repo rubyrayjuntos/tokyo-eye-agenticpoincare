@@ -1,0 +1,20 @@
+{
+  "card": "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/data/gates/tokyo_eye_equ_moe_eps_card_prereg.json",
+  "operator_decisions_applied": {
+    "P1_hold_window": "every post-floor row (25)",
+    "seeds": "all must pass",
+    "grad_aggregation": "mean_over_12"
+  },
+  "code_sha256": {
+    "moe.py": "92317a490d0c8fff90d2611ba7bdb02f441ed3364733c0e86249bb4e1b139423",
+    "model.py": "28e243bd8ed821c4830f77a3a3f8d42130bdccc1f6c6ef92da0767b9ba420159",
+    "run_v8_experiment.py": "8c7e2be2e73bc8ca5d11f2eaa5becc3e2c1b6e5984f62db4f90a9a7efd676ae1",
+    "moe_eps_card_run.py": "5ef17f078a75130f22b167707edbad3b03f5b50b156f2c606adcf359cd57d5bd"
+  },
+  "arms": {
+    "A0": {
+      "status": "RECORDED",
+      "path": "/home/rswan/Documents/tokyo-eyes-consolidation/tokyo-eye-agenticpoincare/data/gates/tokyo_eye_equ_moe_eps_a0_attribution.json"
+    }
+  }
+}

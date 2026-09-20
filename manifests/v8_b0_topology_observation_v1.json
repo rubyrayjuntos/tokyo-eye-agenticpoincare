@@ -1,0 +1,145 @@
+{
+  "version": "1.0",
+  "description": "TokyoEye B0 topology-observation panel — 6 themes × 3 proteins. Frozen-weight forward on models:/TokyoEye@champion. Not a train corpus.",
+  "spec": "docs/superpowers/specs/2026-08-24-tokyoeye-b0-topology-observation-design.md",
+  "held_out": [
+    {"pdb_id": "1BG1", "gene": "STAT3", "reason": "too_large"},
+    {"pdb_id": "2Z6H", "gene": "CTNNB1", "reason": "too_large"},
+    {"pdb_id": "1IVO", "gene": "EGFR", "reason": "ec_domain_shock"},
+    {"pdb_id": "2SHP", "gene": "PTPN11", "reason": "too_large"}
+  ],
+  "proteins": [
+    {
+      "pdb_id": "1TEN",
+      "chain": "A",
+      "theme": "ig_like",
+      "gene": "TENA",
+      "enabled": true
+    },
+    {
+      "pdb_id": "1FNA",
+      "chain": "A",
+      "theme": "ig_like",
+      "gene": "FN1",
+      "enabled": true
+    },
+    {
+      "pdb_id": "1HNG",
+      "chain": "A",
+      "theme": "ig_like",
+      "gene": "CD2",
+      "enabled": true,
+      "fallback_pdb_id": "1CD2",
+      "fallback_chain": "A"
+    },
+    {
+      "pdb_id": "1LYZ",
+      "chain": "A",
+      "theme": "lysozyme_like",
+      "gene": "LYZ",
+      "enabled": true
+    },
+    {
+      "pdb_id": "1ALC",
+      "chain": "A",
+      "theme": "lysozyme_like",
+      "gene": "LALBA",
+      "enabled": true
+    },
+    {
+      "pdb_id": "1GHL",
+      "chain": "A",
+      "theme": "lysozyme_like",
+      "gene": "LYZ_avian",
+      "enabled": true,
+      "first_ca_polymer": true
+    },
+    {
+      "pdb_id": "1UBQ",
+      "chain": "A",
+      "theme": "ubiquitin_grasp",
+      "gene": "UBB",
+      "enabled": true
+    },
+    {
+      "pdb_id": "1PGB",
+      "chain": "A",
+      "theme": "ubiquitin_grasp",
+      "gene": "PGB1",
+      "enabled": true,
+      "grasp_cousin": true
+    },
+    {
+      "pdb_id": "1A5R",
+      "chain": "A",
+      "theme": "ubiquitin_grasp",
+      "gene": "SUMO1",
+      "enabled": true,
+      "nmr_model1": true
+    },
+    {
+      "pdb_id": "1TIM",
+      "chain": "A",
+      "theme": "tim_barrel",
+      "gene": "TIM",
+      "enabled": true
+    },
+    {
+      "pdb_id": "1HTI",
+      "chain": "A",
+      "theme": "tim_barrel",
+      "gene": "TPI1",
+      "enabled": true
+    },
+    {
+      "pdb_id": "1NAL",
+      "chain": "A",
+      "theme": "tim_barrel",
+      "gene": "NANA",
+      "enabled": true,
+      "first_ca_polymer": true
+    },
+    {
+      "pdb_id": "1MBN",
+      "chain": "A",
+      "theme": "globin",
+      "gene": "MB",
+      "enabled": true
+    },
+    {
+      "pdb_id": "2HHB",
+      "chain": "B",
+      "theme": "globin",
+      "gene": "HBB",
+      "enabled": true
+    },
+    {
+      "pdb_id": "1ASH",
+      "chain": "A",
+      "theme": "globin",
+      "gene": "AHB1",
+      "enabled": true
+    },
+    {
+      "pdb_id": "4OBE",
+      "chain": "A",
+      "theme": "ploop_ntpase",
+      "gene": "KRAS",
+      "enabled": true
+    },
+    {
+      "pdb_id": "1AKE",
+      "chain": "A",
+      "theme": "ploop_ntpase",
+      "gene": "ADK",
+      "enabled": true
+    },
+    {
+      "pdb_id": "1GKY",
+      "chain": "A",
+      "theme": "ploop_ntpase",
+      "gene": "GUK1",
+      "enabled": true
+    }
+  ]
+}

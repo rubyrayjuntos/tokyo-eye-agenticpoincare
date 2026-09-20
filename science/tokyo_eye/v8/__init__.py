@@ -9,6 +9,7 @@ Shared platform only: torch / numpy / PyG / Bio.PDB / MLflow / science container
 from science.tokyo_eye.v8.attention import HyperbolicGraphAttention
 from science.tokyo_eye.v8.engine import (
     CurriculumRadiusController,
+    EpsilonGreedySchedule,
     GumbelTemperatureSchedule,
     PoincareDiagnosticsEngine,
     train_v8_step,
@@ -28,6 +29,7 @@ from science.tokyo_eye.v8.r0_r5_graph import (
 
 __all__ = [
     "CurriculumRadiusController",
+    "EpsilonGreedySchedule",
     "GumbelTemperatureSchedule",
     "HyperbolicGraphAttention",
     "PoincareDiagnosticsEngine",

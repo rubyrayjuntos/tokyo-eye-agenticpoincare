@@ -1,0 +1,1773 @@
+{
+  "gate_id": "tokyo_eye_equ_moe_eps_card_R_result",
+  "card": "tokyo_eye_equ_moe_eps_card_prereg (APPROVED)",
+  "status": "R_FAIL",
+  "pass": false,
+  "fallback_to_A": true,
+  "diagnostic": true,
+  "do_not_promote": true,
+  "note": "All 3 seeds NEVER_LIVE: pooled eval liveness fails on last pre-floor row and on 0/25 post-floor rows. Runner crashed writing its own stamp (PermissionError on data/gates_agent); this stamp was assembled from the per-seed MLflow artifacts. A second, unintended invocation of the same command ran 19:06-19:14 UTC (run ids in mlflow_run_id_duplicate_invocation); it also gave NEVER_LIVE on all seeds.",
+  "seeds": [
+    {
+      "seed": 0,
+      "verdict": "NEVER_LIVE",
+      "floor_epoch": 13,
+      "post_floor_hold_epochs_observed": 25,
+      "final_eval_load": [
+        0.023872679099440575,
+        0.35956379771232605,
+        0.0,
+        0.6165634989738464
+      ],
+      "epoch_log": [
+        {
+          "epoch": 0,
+          "eps_t": 0.2,
+          "loss_total": 18.240697741508484,
+          "eval_moe_load": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 1,
+          "eps_t": 0.12861081668351443,
+          "loss_total": 16.271976232528687,
+          "eval_moe_load": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 2,
+          "eps_t": 0.08270371084000276,
+          "loss_total": 16.683151364326477,
+          "eval_moe_load": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 3,
+          "eps_t": 0.05318295896944989,
+          "loss_total": 15.837363839149475,
+          "eval_moe_load": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 4,
+          "eps_t": 0.03419951893353395,
+          "loss_total": 15.043997049331665,
+          "eval_moe_load": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 5,
+          "eps_t": 0.02199214030112558,
+          "loss_total": 14.785500407218933,
+          "eval_moe_load": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 6,
+          "eps_t": 0.014142135623730954,
+          "loss_total": 14.026624321937561,
+          "eval_moe_load": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 7,
+          "eps_t": 0.0090941580610853,
+          "loss_total": 13.868574500083923,
+          "eval_moe_load": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 8,
+          "eps_t": 0.005848035476425734,
+          "loss_total": 12.914032578468323,
+          "eval_moe_load": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 9,
+          "eps_t": 0.0037606030930863957,
+          "loss_total": 12.51416152715683,
+          "eval_moe_load": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 10,
+          "eps_t": 0.002418271175121959,
+          "loss_total": 12.552837371826172,
+          "eval_moe_load": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 11,
+          "eps_t": 0.0015550791539731853,
+          "loss_total": 11.910585403442383,
+          "eval_moe_load": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 12,
+          "eps_t": 0.0010000000000000005,
+          "loss_total": 11.207486152648926,
+          "eval_moe_load": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 13,
+          "eps_t": 0.0,
+          "loss_total": 10.765901923179626,
+          "eval_moe_load": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 14,
+          "eps_t": 0.0,
+          "loss_total": 9.927166640758514,
+          "eval_moe_load": [
+            0.9994105696678162,
+            0.0005894488422200084,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.0035869642194069277,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 15,
+          "eps_t": 0.0,
+          "loss_total": 9.670174539089203,
+          "eval_moe_load": [
+            0.9610963463783264,
+            0.038903623819351196,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.11862130355888167,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 16,
+          "eps_t": 0.0,
+          "loss_total": 8.89523458480835,
+          "eval_moe_load": [
+            0.7754200100898743,
+            0.22458001971244812,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.38422136680440033,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 17,
+          "eps_t": 0.0,
+          "loss_total": 8.888313114643097,
+          "eval_moe_load": [
+            0.5785440802574158,
+            0.4214559495449066,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.4910628369305064,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 18,
+          "eps_t": 0.0,
+          "loss_total": 8.620024681091309,
+          "eval_moe_load": [
+            0.4712643623352051,
+            0.5287356376647949,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.498808075612113,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 19,
+          "eps_t": 0.0,
+          "loss_total": 8.075973749160767,
+          "eval_moe_load": [
+            0.36339521408081055,
+            0.6366047859191895,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.47273266802757197,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 20,
+          "eps_t": 0.0,
+          "loss_total": 7.931450963020325,
+          "eval_moe_load": [
+            0.35366931557655334,
+            0.6463306546211243,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.4686512617486212,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 21,
+          "eps_t": 0.0,
+          "loss_total": 7.9358280301094055,
+          "eval_moe_load": [
+            0.2596522271633148,
+            0.7403478026390076,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.41311053954404503,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 22,
+          "eps_t": 0.0,
+          "loss_total": 8.143304109573364,
+          "eval_moe_load": [
+            0.25641027092933655,
+            0.7435897588729858,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.41064048171669065,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 23,
+          "eps_t": 0.0,
+          "loss_total": 7.8550697565078735,
+          "eval_moe_load": [
+            0.25641027092933655,
+            0.7435897588729858,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.41064048171669065,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 24,
+          "eps_t": 0.0,
+          "loss_total": 7.620661556720734,
+          "eval_moe_load": [
+            0.20159150660037994,
+            0.7435897588729858,
+            0.0,
+            0.05481874570250511
+          ],
+          "eval_moe_n_alive": 3.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.506623870176236,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 25,
+          "eps_t": 0.0,
+          "loss_total": 7.114285826683044,
+          "eval_moe_load": [
+            0.07633362710475922,
+            0.6622458100318909,
+            0.0,
+            0.2614205777645111
+          ],
+          "eval_moe_n_alive": 3.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.5915274053409331,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 26,
+          "eps_t": 0.0,
+          "loss_total": 7.436585068702698,
+          "eval_moe_load": [
+            0.05128205195069313,
+            0.6236369013786316,
+            0.0,
+            0.3250810503959656
+          ],
+          "eval_moe_n_alive": 3.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.5857987062363557,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 27,
+          "eps_t": 0.0,
+          "loss_total": 6.647521287202835,
+          "eval_moe_load": [
+            0.020925434306263924,
+            0.5340406894683838,
+            0.0,
+            0.4450339078903198
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.5599175960516268,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 28,
+          "eps_t": 0.0,
+          "loss_total": 6.953522652387619,
+          "eval_moe_load": [
+            0.01679929345846176,
+            0.44857057929039,
+            0.0,
+            0.5346301198005676
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.5504155115957939,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 29,
+          "eps_t": 0.0,
+          "loss_total": 6.726803928613663,
+          "eval_moe_load": [
+            0.01385204866528511,
+            0.35956379771232605,
+            0.0,
+            0.6265841722488403
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.5193505863400839,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 30,
+          "eps_t": 0.0,
+          "loss_total": 6.462139397859573,
+          "eval_moe_load": [
+            0.013557324185967445,
+            0.27969348430633545,
+            0.0,
+            0.7067492008209229
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.4760550288769397,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 31,
+          "eps_t": 0.0,
+          "loss_total": 6.413484156131744,
+          "eval_moe_load": [
+            0.013557324185967445,
+            0.2558208107948303,
+            0.0,
+            0.730621874332428
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.4590475785417911,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 32,
+          "eps_t": 0.0,
+          "loss_total": 6.087210327386856,
+          "eval_moe_load": [
+            0.013557324185967445,
+            0.2378426194190979,
+            0.0,
+            0.7486000657081604
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.4448131334734917,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 33,
+          "eps_t": 0.0,
+          "loss_total": 5.850337624549866,
+          "eval_moe_load": [
+            0.013557324185967445,
+            0.23725317418575287,
+            0.0,
+            0.7491894960403442
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.444324917723355,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 34,
+          "eps_t": 0.0,
+          "loss_total": 5.588772743940353,
+          "eval_moe_load": [
+            0.014146773144602776,
+            0.2534630000591278,
+            0.0,
+            0.7323902249336243
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.45893940145439843,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 35,
+          "eps_t": 0.0,
+          "loss_total": 5.572185844182968,
+          "eval_moe_load": [
+            0.016504568979144096,
+            0.2575891613960266,
+            0.0,
+            0.725906252861023
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.46863109678280757,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 36,
+          "eps_t": 0.0,
+          "loss_total": 5.5110944211483,
+          "eval_moe_load": [
+            0.019451811909675598,
+            0.3197759985923767,
+            0.0,
+            0.6607722043991089
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.5157725732802085,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 37,
+          "eps_t": 0.0,
+          "loss_total": 4.888528078794479,
+          "eval_moe_load": [
+            0.023872679099440575,
+            0.35956379771232605,
+            0.0,
+            0.6165634989738464
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.5447011300469009,
+          "eval_moe_liveness_pass": false
+        }
+      ],
+      "mlflow_run_id": "586ae52cf1d1488aa7f4e4bbba5e820a",
+      "mlflow_run_id_duplicate_invocation": "248c7167633d406aa850b0ba2e47375e",
+      "duplicate_verdict": "NEVER_LIVE"
+    },
+    {
+      "seed": 1,
+      "verdict": "NEVER_LIVE",
+      "floor_epoch": 13,
+      "post_floor_hold_epochs_observed": 25,
+      "final_eval_load": [
+        0.5275567173957825,
+        0.0,
+        0.44179192185401917,
+        0.030651340261101723
+      ],
+      "epoch_log": [
+        {
+          "epoch": 0,
+          "eps_t": 0.2,
+          "loss_total": 9.53700077533722,
+          "eval_moe_load": [
+            0.0,
+            1.0,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 1,
+          "eps_t": 0.12861081668351443,
+          "loss_total": 9.64838981628418,
+          "eval_moe_load": [
+            0.0,
+            1.0,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 2,
+          "eps_t": 0.08270371084000276,
+          "loss_total": 9.391674518585205,
+          "eval_moe_load": [
+            0.0,
+            1.0,
+            0.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 3,
+          "eps_t": 0.05318295896944989,
+          "loss_total": 8.944419205188751,
+          "eval_moe_load": [
+            0.0,
+            0.9888004660606384,
+            0.0,
+            0.011199528351426125
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.04432216221457808,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 4,
+          "eps_t": 0.03419951893353395,
+          "loss_total": 8.275073826313019,
+          "eval_moe_load": [
+            0.0,
+            0.9749484062194824,
+            0.0,
+            0.025051577016711235
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.08446674222716824,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 5,
+          "eps_t": 0.02199214030112558,
+          "loss_total": 8.158086121082306,
+          "eval_moe_load": [
+            0.0,
+            0.9269083142280579,
+            0.0,
+            0.07309165596961975
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.18867831814977432,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 6,
+          "eps_t": 0.014142135623730954,
+          "loss_total": 8.651013672351837,
+          "eval_moe_load": [
+            0.0,
+            0.8597111701965332,
+            0.0,
+            0.1402888298034668
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.2924973651696174,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 7,
+          "eps_t": 0.0090941580610853,
+          "loss_total": 7.726738274097443,
+          "eval_moe_load": [
+            0.0,
+            0.8146183490753174,
+            0.0,
+            0.1853816658258438
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.34585483211498425,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 8,
+          "eps_t": 0.005848035476425734,
+          "loss_total": 7.667796075344086,
+          "eval_moe_load": [
+            0.0,
+            0.7512525916099548,
+            0.0,
+            0.24874742329120636
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.4046434036854418,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 9,
+          "eps_t": 0.0037606030930863957,
+          "loss_total": 7.297504812479019,
+          "eval_moe_load": [
+            0.0,
+            0.6928971409797668,
+            0.0,
+            0.30710285902023315
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.44490041466880464,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 10,
+          "eps_t": 0.002418271175121959,
+          "loss_total": 7.3992785811424255,
+          "eval_moe_load": [
+            0.0,
+            0.6448570489883423,
+            0.0,
+            0.3551429510116577
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.4692887154440442,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 11,
+          "eps_t": 0.0015550791539731853,
+          "loss_total": 7.099720865488052,
+          "eval_moe_load": [
+            0.0,
+            0.6404361724853516,
+            0.0,
+            0.35956379771232605
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.471160273646396,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 12,
+          "eps_t": 0.0010000000000000005,
+          "loss_total": 6.870937615633011,
+          "eval_moe_load": [
+            0.0,
+            0.5369879007339478,
+            0.0,
+            0.46301206946372986
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.4980244366634566,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 13,
+          "eps_t": 0.0,
+          "loss_total": 6.5703244805336,
+          "eval_moe_load": [
+            0.0,
+            0.5343353748321533,
+            0.0,
+            0.4656645953655243
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.49829784608266575,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 14,
+          "eps_t": 0.0,
+          "loss_total": 6.761286556720734,
+          "eval_moe_load": [
+            0.0,
+            0.5343353748321533,
+            0.0,
+            0.4656645953655243
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.49829784608266575,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 15,
+          "eps_t": 0.0,
+          "loss_total": 6.59465292096138,
+          "eval_moe_load": [
+            0.0,
+            0.5272620320320129,
+            0.0,
+            0.47273799777030945
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.49892717359783545,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 16,
+          "eps_t": 0.0,
+          "loss_total": 5.951421469449997,
+          "eval_moe_load": [
+            0.0,
+            0.48659002780914307,
+            0.0,
+            0.5134099721908569
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.4997405225494284,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 17,
+          "eps_t": 0.0,
+          "loss_total": 6.165863811969757,
+          "eval_moe_load": [
+            0.0,
+            0.4441497325897217,
+            0.0,
+            0.5558502674102783
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.495490444285644,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 18,
+          "eps_t": 0.0,
+          "loss_total": 6.428220450878143,
+          "eval_moe_load": [
+            0.0,
+            0.4441497325897217,
+            0.0,
+            0.5558502674102783
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.495490444285644,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 19,
+          "eps_t": 0.0,
+          "loss_total": 5.84525665640831,
+          "eval_moe_load": [
+            0.0,
+            0.4441497325897217,
+            0.0,
+            0.5558502674102783
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.495490444285644,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 20,
+          "eps_t": 0.0,
+          "loss_total": 5.605499893426895,
+          "eval_moe_load": [
+            0.0,
+            0.4441497325897217,
+            0.0,
+            0.5558502674102783
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.495490444285644,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 21,
+          "eps_t": 0.0,
+          "loss_total": 5.467559367418289,
+          "eval_moe_load": [
+            0.0,
+            0.4441497325897217,
+            0.0,
+            0.5558502674102783
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.495490444285644,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 22,
+          "eps_t": 0.0,
+          "loss_total": 5.3298245668411255,
+          "eval_moe_load": [
+            0.0,
+            0.4426760971546173,
+            0.0,
+            0.5573238730430603
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.4952488086611817,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 23,
+          "eps_t": 0.0,
+          "loss_total": 5.247211396694183,
+          "eval_moe_load": [
+            0.0,
+            0.42617154121398926,
+            0.0,
+            0.5738284587860107
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.49210754554317254,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 24,
+          "eps_t": 0.0,
+          "loss_total": 4.725389003753662,
+          "eval_moe_load": [
+            0.0,
+            0.4252873659133911,
+            0.0,
+            0.5747126340866089
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.4919166448007148,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 25,
+          "eps_t": 0.0,
+          "loss_total": 5.076845347881317,
+          "eval_moe_load": [
+            0.0002947244211100042,
+            0.42057177424430847,
+            0.0,
+            0.5791335105895996
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.4926844183498291,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 26,
+          "eps_t": 0.0,
+          "loss_total": 4.5805531442165375,
+          "eval_moe_load": [
+            0.0002947244211100042,
+            0.42057177424430847,
+            0.0,
+            0.5791335105895996
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.4926844183498291,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 27,
+          "eps_t": 0.0,
+          "loss_total": 4.352721810340881,
+          "eval_moe_load": [
+            0.0005894488422200084,
+            0.38491010665893555,
+            0.01738874241709709,
+            0.597111701965332
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0005894488422200084,
+          "eval_moe_entropy_norm": 0.541179312318195,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 28,
+          "eps_t": 0.0,
+          "loss_total": 4.301105707883835,
+          "eval_moe_load": [
+            0.001768346643075347,
+            0.38491010665893555,
+            0.017978189513087273,
+            0.5953433513641357
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.001768346643075347,
+          "eval_moe_entropy_norm": 0.5480082274360045,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 29,
+          "eps_t": 0.0,
+          "loss_total": 4.395318537950516,
+          "eval_moe_load": [
+            0.001768346643075347,
+            0.38491010665893555,
+            0.020925434306263924,
+            0.592396080493927
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.001768346643075347,
+          "eval_moe_entropy_norm": 0.555278450035928,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 30,
+          "eps_t": 0.0,
+          "loss_total": 4.858324408531189,
+          "eval_moe_load": [
+            0.001768346643075347,
+            0.38343650102615356,
+            0.02239905670285225,
+            0.592396080493927
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.001768346643075347,
+          "eval_moe_entropy_norm": 0.5583353126680263,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 31,
+          "eps_t": 0.0,
+          "loss_total": 4.056640416383743,
+          "eval_moe_load": [
+            0.004715590737760067,
+            0.11435308307409286,
+            0.24078986048698425,
+            0.640141487121582
+          ],
+          "eval_moe_n_alive": 3.0,
+          "eval_moe_load_min": 0.004715590737760067,
+          "eval_moe_entropy_norm": 0.6503818892623339,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 32,
+          "eps_t": 0.0,
+          "loss_total": 3.965338349342346,
+          "eval_moe_load": [
+            0.019157087430357933,
+            0.0,
+            0.4364868700504303,
+            0.5443560481071472
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.5544747321127834,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 33,
+          "eps_t": 0.0,
+          "loss_total": 4.022779762744904,
+          "eval_moe_load": [
+            0.05717654153704643,
+            0.0,
+            0.4364868700504303,
+            0.5063365697860718
+          ],
+          "eval_moe_n_alive": 3.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.6276102684008674,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 34,
+          "eps_t": 0.0,
+          "loss_total": 3.907060608267784,
+          "eval_moe_load": [
+            0.2732095420360565,
+            0.0,
+            0.43913939595222473,
+            0.28765103220939636
+          ],
+          "eval_moe_n_alive": 3.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.774939120271167,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 35,
+          "eps_t": 0.0,
+          "loss_total": 3.996516615152359,
+          "eval_moe_load": [
+            0.3704686164855957,
+            0.0,
+            0.43913939595222473,
+            0.19039198756217957
+          ],
+          "eval_moe_n_alive": 3.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.7538460500821215,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 36,
+          "eps_t": 0.0,
+          "loss_total": 4.061699986457825,
+          "eval_moe_load": [
+            0.47863247990608215,
+            0.0,
+            0.44179192185401917,
+            0.07957559823989868
+          ],
+          "eval_moe_n_alive": 3.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.6600212158735552,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 37,
+          "eps_t": 0.0,
+          "loss_total": 3.8628464937210083,
+          "eval_moe_load": [
+            0.5275567173957825,
+            0.0,
+            0.44179192185401917,
+            0.030651340261101723
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.5807578087482413,
+          "eval_moe_liveness_pass": false
+        }
+      ],
+      "mlflow_run_id": "3e0a64ca5c1745ce8fb1c0ad48233c1b",
+      "mlflow_run_id_duplicate_invocation": "abdcb2bddc5a475ca931b47033727e00",
+      "duplicate_verdict": "NEVER_LIVE"
+    },
+    {
+      "seed": 2,
+      "verdict": "NEVER_LIVE",
+      "floor_epoch": 13,
+      "post_floor_hold_epochs_observed": 25,
+      "final_eval_load": [
+        0.7733569145202637,
+        0.11612142622470856,
+        0.11052165925502777,
+        0.0
+      ],
+      "epoch_log": [
+        {
+          "epoch": 0,
+          "eps_t": 0.2,
+          "loss_total": 17.67142426967621,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 1,
+          "eps_t": 0.12861081668351443,
+          "loss_total": 18.020750164985657,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 2,
+          "eps_t": 0.08270371084000276,
+          "loss_total": 18.9172580242157,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 3,
+          "eps_t": 0.05318295896944989,
+          "loss_total": 19.058870315551758,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 4,
+          "eps_t": 0.03419951893353395,
+          "loss_total": 17.774520874023438,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 5,
+          "eps_t": 0.02199214030112558,
+          "loss_total": 18.346614360809326,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 6,
+          "eps_t": 0.014142135623730954,
+          "loss_total": 17.72581112384796,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 7,
+          "eps_t": 0.0090941580610853,
+          "loss_total": 17.2024587392807,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 8,
+          "eps_t": 0.005848035476425734,
+          "loss_total": 16.784454822540283,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 9,
+          "eps_t": 0.0037606030930863957,
+          "loss_total": 16.552897691726685,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 10,
+          "eps_t": 0.002418271175121959,
+          "loss_total": 15.728026866912842,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 11,
+          "eps_t": 0.0015550791539731853,
+          "loss_total": 15.838750123977661,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 12,
+          "eps_t": 0.0010000000000000005,
+          "loss_total": 15.510536074638367,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 13,
+          "eps_t": 0.0,
+          "loss_total": 14.99618148803711,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 14,
+          "eps_t": 0.0,
+          "loss_total": 14.601285576820374,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 15,
+          "eps_t": 0.0,
+          "loss_total": 13.960703611373901,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 16,
+          "eps_t": 0.0,
+          "loss_total": 13.476150631904602,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 17,
+          "eps_t": 0.0,
+          "loss_total": 13.184188961982727,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 18,
+          "eps_t": 0.0,
+          "loss_total": 12.600150287151337,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 19,
+          "eps_t": 0.0,
+          "loss_total": 12.729089975357056,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 20,
+          "eps_t": 0.0,
+          "loss_total": 11.954740524291992,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 21,
+          "eps_t": 0.0,
+          "loss_total": 11.487681031227112,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 22,
+          "eps_t": 0.0,
+          "loss_total": 10.717263460159302,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 23,
+          "eps_t": 0.0,
+          "loss_total": 10.38812255859375,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 24,
+          "eps_t": 0.0,
+          "loss_total": 10.334309160709381,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 25,
+          "eps_t": 0.0,
+          "loss_total": 9.477719724178314,
+          "eval_moe_load": [
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 5.979470363300325e-11,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 26,
+          "eps_t": 0.0,
+          "loss_total": 9.01501727104187,
+          "eval_moe_load": [
+            0.0,
+            0.0002947244211100042,
+            0.9997052550315857,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.0019408971060712432,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 27,
+          "eps_t": 0.0,
+          "loss_total": 8.590280055999756,
+          "eval_moe_load": [
+            0.0,
+            0.007073386572301388,
+            0.9929265975952148,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.030348249364504514,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 28,
+          "eps_t": 0.0,
+          "loss_total": 8.615041494369507,
+          "eval_moe_load": [
+            0.0,
+            0.008547008968889713,
+            0.9914529919624329,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.03549947103591844,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 29,
+          "eps_t": 0.0,
+          "loss_total": 7.738633513450623,
+          "eval_moe_load": [
+            0.0,
+            0.02416740357875824,
+            0.9758325815200806,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.08211980248000028,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 30,
+          "eps_t": 0.0,
+          "loss_total": 7.573284685611725,
+          "eval_moe_load": [
+            0.01267315074801445,
+            0.025641025975346565,
+            0.961685836315155,
+            0.0
+          ],
+          "eval_moe_n_alive": 1.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.13479664808457759,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 31,
+          "eps_t": 0.0,
+          "loss_total": 7.23544704914093,
+          "eval_moe_load": [
+            0.06867079436779022,
+            0.03183024004101753,
+            0.8994989395141602,
+            0.0
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.28055529835249976,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 32,
+          "eps_t": 0.0,
+          "loss_total": 7.077350199222565,
+          "eval_moe_load": [
+            0.17300324141979218,
+            0.03743000328540802,
+            0.7895667552947998,
+            0.0
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.4422180872546228,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 33,
+          "eps_t": 0.0,
+          "loss_total": 6.570404648780823,
+          "eval_moe_load": [
+            0.35573238134384155,
+            0.04155614599585533,
+            0.6027114391326904,
+            0.0
+          ],
+          "eval_moe_n_alive": 2.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.5806974428377885,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 34,
+          "eps_t": 0.0,
+          "loss_total": 6.2429327964782715,
+          "eval_moe_load": [
+            0.5750073790550232,
+            0.05422929674386978,
+            0.3707633316516876,
+            0.0
+          ],
+          "eval_moe_n_alive": 3.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.608899888852538,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 35,
+          "eps_t": 0.0,
+          "loss_total": 6.723140567541122,
+          "eval_moe_load": [
+            0.7406424880027771,
+            0.05776599049568176,
+            0.20159150660037994,
+            0.0
+          ],
+          "eval_moe_n_alive": 3.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.5121069780553814,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 36,
+          "eps_t": 0.0,
+          "loss_total": 5.925599426031113,
+          "eval_moe_load": [
+            0.7763041853904724,
+            0.09283819794654846,
+            0.1308576464653015,
+            0.0
+          ],
+          "eval_moe_n_alive": 3.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.49293538403310067,
+          "eval_moe_liveness_pass": false
+        },
+        {
+          "epoch": 37,
+          "eps_t": 0.0,
+          "loss_total": 6.266195446252823,
+          "eval_moe_load": [
+            0.7733569145202637,
+            0.11612142622470856,
+            0.11052165925502777,
+            0.0
+          ],
+          "eval_moe_n_alive": 3.0,
+          "eval_moe_load_min": 0.0,
+          "eval_moe_entropy_norm": 0.499328323130973,
+          "eval_moe_liveness_pass": false
+        }
+      ],
+      "mlflow_run_id": "a467dcd2b8324aebaeda6523329c878e",
+      "mlflow_run_id_duplicate_invocation": "dfc30ab76bad45d2a6b6f3dec105fd31",
+      "duplicate_verdict": "NEVER_LIVE"
+    }
+  ]
+}

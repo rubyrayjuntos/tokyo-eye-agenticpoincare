@@ -1,0 +1,13 @@
+{
+  "gate_id": "tokyo_eye_equ_correct_start",
+  "check": "pure_hyp_static_preflight",
+  "timestamp": "2026-09-16T01:22:19.432077+00:00",
+  "pure_hyp_pass": true,
+  "findings": {
+    "/app/science/tokyo_eye/v8/attention.py": [],
+    "/app/science/tokyo_eye/v8/affinity_head.py": []
+  },
+  "missing": [],
+  "verdict": "PASS",
+  "note": "Pass: no post-lift tangent geometry substitutes in attention/affinity."
+}

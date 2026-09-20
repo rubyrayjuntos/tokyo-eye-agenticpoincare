@@ -1,0 +1,44 @@
+{
+  "version": "1.0",
+  "description": "C1 topology curriculum — 25 train + 6 holdout. Init models:/TokyoEye@champion. Equiformer frozen. Not a B1 or affinity card.",
+  "spec": "docs/superpowers/specs/2026-08-24-tokyoeye-c1-topology-curriculum-design.md",
+  "shock_held_out": ["1BG1", "2Z6H", "1IVO", "2SHP"],
+  "proteins": [
+    {"pdb_id": "1TEN", "chain": "A", "theme": "ig_like", "gene": "TENA", "role": "train", "enabled": true},
+    {"pdb_id": "1FNA", "chain": "A", "theme": "ig_like", "gene": "FN1", "role": "train", "enabled": true},
+    {"pdb_id": "1WIT", "chain": "A", "theme": "ig_like", "gene": "TTN", "role": "train", "enabled": true},
+    {"pdb_id": "2RHE", "chain": "A", "theme": "ig_like", "gene": "IGL", "role": "train", "enabled": true},
+    {"pdb_id": "1HNG", "chain": "A", "theme": "ig_like", "gene": "CD2", "role": "holdout", "enabled": true},
+
+    {"pdb_id": "1LYZ", "chain": "A", "theme": "lysozyme_like", "gene": "LYZ", "role": "train", "enabled": true},
+    {"pdb_id": "1GHL", "chain": "A", "theme": "lysozyme_like", "gene": "LYZ_avian", "role": "train", "enabled": true, "first_ca_polymer": true},
+    {"pdb_id": "1LZ1", "chain": "A", "theme": "lysozyme_like", "gene": "LYZ", "role": "train", "enabled": true},
+    {"pdb_id": "153L", "chain": "A", "theme": "lysozyme_like", "gene": "LYG", "role": "train", "enabled": true},
+    {"pdb_id": "1ALC", "chain": "A", "theme": "lysozyme_like", "gene": "LALBA", "role": "holdout", "enabled": true},
+
+    {"pdb_id": "1UBQ", "chain": "A", "theme": "ubiquitin_grasp", "gene": "UBB", "role": "train", "enabled": true},
+    {"pdb_id": "1PGB", "chain": "A", "theme": "ubiquitin_grasp", "gene": "PGB1", "role": "train", "enabled": true, "grasp_cousin": true},
+    {"pdb_id": "1NDD", "chain": "A", "theme": "ubiquitin_grasp", "gene": "NEDD8", "role": "train", "enabled": true},
+    {"pdb_id": "1WM3", "chain": "A", "theme": "ubiquitin_grasp", "gene": "SUMO2", "role": "train", "enabled": true},
+    {"pdb_id": "1A5R", "chain": "A", "theme": "ubiquitin_grasp", "gene": "SUMO1", "role": "holdout", "enabled": true, "nmr_model1": true},
+
+    {"pdb_id": "1TIM", "chain": "A", "theme": "tim_barrel", "gene": "TIM", "role": "train", "enabled": true},
+    {"pdb_id": "1HTI", "chain": "A", "theme": "tim_barrel", "gene": "TPI1", "role": "train", "enabled": true},
+    {"pdb_id": "1YPI", "chain": "A", "theme": "tim_barrel", "gene": "TPI1", "role": "train", "enabled": true},
+    {"pdb_id": "1BTM", "chain": "A", "theme": "tim_barrel", "gene": "TPI", "role": "train", "enabled": true},
+    {"pdb_id": "1MXS", "chain": "A", "theme": "tim_barrel", "gene": "EDA", "role": "train", "enabled": true},
+    {"pdb_id": "1NAL", "chain": "1", "theme": "tim_barrel", "gene": "NANA", "role": "holdout", "enabled": true, "first_ca_polymer": true},
+
+    {"pdb_id": "1MBN", "chain": "A", "theme": "globin", "gene": "MB", "role": "train", "enabled": true},
+    {"pdb_id": "1ASH", "chain": "A", "theme": "globin", "gene": "AHB1", "role": "train", "enabled": true},
+    {"pdb_id": "1HHO", "chain": "A", "theme": "globin", "gene": "HBA", "role": "train", "enabled": true},
+    {"pdb_id": "1ECA", "chain": "A", "theme": "globin", "gene": "CHB", "role": "train", "enabled": true},
+    {"pdb_id": "2HHB", "chain": "B", "theme": "globin", "gene": "HBB", "role": "holdout", "enabled": true},
+
+    {"pdb_id": "4OBE", "chain": "A", "theme": "ploop_ntpase", "gene": "KRAS", "role": "train", "enabled": true},
+    {"pdb_id": "1AKE", "chain": "A", "theme": "ploop_ntpase", "gene": "ADK", "role": "train", "enabled": true},
+    {"pdb_id": "1TEV", "chain": "A", "theme": "ploop_ntpase", "gene": "CMPK1", "role": "train", "enabled": true},
+    {"pdb_id": "1WE2", "chain": "A", "theme": "ploop_ntpase", "gene": "AROK", "role": "train", "enabled": true},
+    {"pdb_id": "1GKY", "chain": "A", "theme": "ploop_ntpase", "gene": "GUK1", "role": "holdout", "enabled": true}
+  ]
+}

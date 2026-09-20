@@ -1,0 +1,768 @@
+{
+  "gate_id": "tokyo_eye_equ_epsilon_decay_floor_hold_full_spine",
+  "display_lineage": "Tokyo Eye EQU",
+  "status": "COLLAPSED_POST_FLOOR",
+  "execution_state": "DIAGNOSTIC_COMPLETE",
+  "scope": "full spine (TokyoEyesHyperbolicV8 + stub-but-live SE(3)-lite frontend, cold random-init), real 12-structure Stage-A-12 manifest round-robin (manifests/v8_stage_a_small_v1.json)",
+  "addendum_clause": "freeze_reconciliation_addendum_2.6_check_3",
+  "manifest": "manifests/v8_stage_a_small_v1.json",
+  "structures": [
+    "1MBN:A",
+    "1LYZ:A",
+    "1BG1:A",
+    "1F88:A",
+    "2Z6H:A",
+    "1HHP:A",
+    "1TEN:A",
+    "1UBQ:A",
+    "1TIM:A",
+    "4OBE:A",
+    "1IVO:A",
+    "2SHP:A"
+  ],
+  "dehydron_wrap_max": 1,
+  "floor_epoch": 13,
+  "post_floor_hold_epochs_observed": 25,
+  "collapsed_at_epoch": 13,
+  "final_eval_load": [
+    0.0,
+    0.21705426275730133,
+    0.0,
+    0.7829457521438599
+  ],
+  "gates": {
+    "decay_floor_hold": {
+      "pass": false,
+      "detail": "eval-mode utilization collapsed at epoch 13, 0 epochs after eps reached floor"
+    }
+  },
+  "note": "Full-spine, real-corpus reproduction of the isolated-router decay-floor-hold diagnostic. diagnostic=true / do_not_promote=true on the MLflow run \u2014 this does NOT flip the wrap-threshold or any train/promote gate; it satisfies the addendum \u00a72.6/\u00a72.7 evidence standard for the decay-floor check specifically. Does not overwrite tokyo_eye_equ_epsilon_decay_floor_hold.json (isolated-router scope).",
+  "mlflow_experiment": "tokyoeye/equiformer-v3-moe/geometric/full-stack",
+  "mlflow_run_name": "tokyo_eye_equ_epsilon_decay_floor_hold_full_spine",
+  "epoch_log": [
+    {
+      "epoch": 0,
+      "pdb_id": "1MBN",
+      "chain": "A",
+      "num_nodes": 153.0,
+      "eps_t": 0.2,
+      "loss_total": 16.252151489257812,
+      "val_dehydron_auprc": 0.34923869371414185,
+      "eval_moe_load": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 1.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 5.979470363300325e-11,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 1,
+      "pdb_id": "1LYZ",
+      "chain": "A",
+      "num_nodes": 129.0,
+      "eps_t": 0.12861081668351443,
+      "loss_total": 14.484285354614258,
+      "val_dehydron_auprc": 0.6912702322006226,
+      "eval_moe_load": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 1.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 5.979470363300325e-11,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 2,
+      "pdb_id": "1BG1",
+      "chain": "A",
+      "num_nodes": 558.0,
+      "eps_t": 0.08270371084000276,
+      "loss_total": 18.03424072265625,
+      "val_dehydron_auprc": 0.4949381351470947,
+      "eval_moe_load": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 1.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 5.979470363300325e-11,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 3,
+      "pdb_id": "1F88",
+      "chain": "A",
+      "num_nodes": 338.0,
+      "eps_t": 0.05318295896944989,
+      "loss_total": 16.654085159301758,
+      "val_dehydron_auprc": 0.20541399717330933,
+      "eval_moe_load": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 1.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 5.979470363300325e-11,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 4,
+      "pdb_id": "2Z6H",
+      "chain": "A",
+      "num_nodes": 533.0,
+      "eps_t": 0.03419951893353395,
+      "loss_total": 17.007667541503906,
+      "val_dehydron_auprc": 0.3552412986755371,
+      "eval_moe_load": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 1.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 5.979470363300325e-11,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 5,
+      "pdb_id": "1HHP",
+      "chain": "A",
+      "num_nodes": 99.0,
+      "eps_t": 0.02199214030112558,
+      "loss_total": 14.026222229003906,
+      "val_dehydron_auprc": 0.4993792176246643,
+      "eval_moe_load": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 1.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 5.979470363300325e-11,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 6,
+      "pdb_id": "1TEN",
+      "chain": "A",
+      "num_nodes": 89.0,
+      "eps_t": 0.014142135623730954,
+      "loss_total": 14.215011596679688,
+      "val_dehydron_auprc": 0.6757386922836304,
+      "eval_moe_load": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 1.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 5.979470363300325e-11,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 7,
+      "pdb_id": "1UBQ",
+      "chain": "A",
+      "num_nodes": 76.0,
+      "eps_t": 0.0090941580610853,
+      "loss_total": 14.10761547088623,
+      "val_dehydron_auprc": 0.35233181715011597,
+      "eval_moe_load": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 1.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 5.979470363300325e-11,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 8,
+      "pdb_id": "1TIM",
+      "chain": "A",
+      "num_nodes": 247.0,
+      "eps_t": 0.005848035476425734,
+      "loss_total": 13.3168306350708,
+      "val_dehydron_auprc": 0.49576228857040405,
+      "eval_moe_load": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 1.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 5.979470363300325e-11,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 9,
+      "pdb_id": "4OBE",
+      "chain": "A",
+      "num_nodes": 169.0,
+      "eps_t": 0.0037606030930863957,
+      "loss_total": 12.941606521606445,
+      "val_dehydron_auprc": 0.6286925077438354,
+      "eval_moe_load": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 1.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 5.979470363300325e-11,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 10,
+      "pdb_id": "1IVO",
+      "chain": "A",
+      "num_nodes": 511.0,
+      "eps_t": 0.002418271175121959,
+      "loss_total": 13.798866271972656,
+      "val_dehydron_auprc": 0.5785213708877563,
+      "eval_moe_load": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 1.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 5.979470363300325e-11,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 11,
+      "pdb_id": "2SHP",
+      "chain": "A",
+      "num_nodes": 491.0,
+      "eps_t": 0.0015550791539731853,
+      "loss_total": 12.130962371826172,
+      "val_dehydron_auprc": 0.5358214378356934,
+      "eval_moe_load": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 1.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 5.979470363300325e-11,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 12,
+      "pdb_id": "1MBN",
+      "chain": "A",
+      "num_nodes": 153.0,
+      "eps_t": 0.0010000000000000005,
+      "loss_total": 10.570239067077637,
+      "val_dehydron_auprc": 0.512370228767395,
+      "eval_moe_load": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 1.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 5.979470363300325e-11,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 13,
+      "pdb_id": "1LYZ",
+      "chain": "A",
+      "num_nodes": 129.0,
+      "eps_t": 0.0,
+      "loss_total": 12.652609825134277,
+      "val_dehydron_auprc": 0.7193987369537354,
+      "eval_moe_load": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 1.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 5.979470363300325e-11,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 14,
+      "pdb_id": "1BG1",
+      "chain": "A",
+      "num_nodes": 558.0,
+      "eps_t": 0.0,
+      "loss_total": 11.37739372253418,
+      "val_dehydron_auprc": 0.5248992443084717,
+      "eval_moe_load": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 1.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 5.979470363300325e-11,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 15,
+      "pdb_id": "1F88",
+      "chain": "A",
+      "num_nodes": 338.0,
+      "eps_t": 0.0,
+      "loss_total": 10.432632446289062,
+      "val_dehydron_auprc": 0.44943714141845703,
+      "eval_moe_load": [
+        0.9556213021278381,
+        0.044378697872161865,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 1.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.1310100738137841,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 16,
+      "pdb_id": "2Z6H",
+      "chain": "A",
+      "num_nodes": 533.0,
+      "eps_t": 0.0,
+      "loss_total": 11.15400505065918,
+      "val_dehydron_auprc": 0.3012833297252655,
+      "eval_moe_load": [
+        0.7504690289497375,
+        0.24953095614910126,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 2.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.40526692678614495,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 17,
+      "pdb_id": "1HHP",
+      "chain": "A",
+      "num_nodes": 99.0,
+      "eps_t": 0.0,
+      "loss_total": 7.98670768737793,
+      "val_dehydron_auprc": 0.4698493480682373,
+      "eval_moe_load": [
+        0.808080792427063,
+        0.19191919267177582,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 2.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.35273452511046105,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 18,
+      "pdb_id": "1TEN",
+      "chain": "A",
+      "num_nodes": 89.0,
+      "eps_t": 0.0,
+      "loss_total": 8.159111022949219,
+      "val_dehydron_auprc": 0.6067452430725098,
+      "eval_moe_load": [
+        0.6516854166984558,
+        0.3483146131038666,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 2.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.46627686927080925,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 19,
+      "pdb_id": "1UBQ",
+      "chain": "A",
+      "num_nodes": 76.0,
+      "eps_t": 0.0,
+      "loss_total": 9.37353515625,
+      "val_dehydron_auprc": 0.29938727617263794,
+      "eval_moe_load": [
+        0.5131579041481018,
+        0.4868420958518982,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 2.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.4997501965735394,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 20,
+      "pdb_id": "1TIM",
+      "chain": "A",
+      "num_nodes": 247.0,
+      "eps_t": 0.0,
+      "loss_total": 8.299688339233398,
+      "val_dehydron_auprc": 0.5001591444015503,
+      "eval_moe_load": [
+        0.2834008038043976,
+        0.71659916639328,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 2.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.4300217225903732,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 21,
+      "pdb_id": "4OBE",
+      "chain": "A",
+      "num_nodes": 169.0,
+      "eps_t": 0.0,
+      "loss_total": 9.962929725646973,
+      "val_dehydron_auprc": 0.5882827043533325,
+      "eval_moe_load": [
+        0.26035502552986145,
+        0.7396449446678162,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 2.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.4136408480479805,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 22,
+      "pdb_id": "1IVO",
+      "chain": "A",
+      "num_nodes": 511.0,
+      "eps_t": 0.0,
+      "loss_total": 8.024641036987305,
+      "val_dehydron_auprc": 0.5177080035209656,
+      "eval_moe_load": [
+        0.2876712381839752,
+        0.7123287916183472,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 2.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.43284696758742197,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 23,
+      "pdb_id": "2SHP",
+      "chain": "A",
+      "num_nodes": 491.0,
+      "eps_t": 0.0,
+      "loss_total": 8.900362968444824,
+      "val_dehydron_auprc": 0.5586958527565002,
+      "eval_moe_load": [
+        0.2342158854007721,
+        0.7657840847969055,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 2.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.39264421713040637,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 24,
+      "pdb_id": "1MBN",
+      "chain": "A",
+      "num_nodes": 153.0,
+      "eps_t": 0.0,
+      "loss_total": 8.387384414672852,
+      "val_dehydron_auprc": 0.49831515550613403,
+      "eval_moe_load": [
+        0.22875817120075226,
+        0.7712418437004089,
+        0.0,
+        0.0
+      ],
+      "eval_moe_n_alive": 2.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.3879201116851813,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 25,
+      "pdb_id": "1LYZ",
+      "chain": "A",
+      "num_nodes": 129.0,
+      "eps_t": 0.0,
+      "loss_total": 7.9733500480651855,
+      "val_dehydron_auprc": 0.6999869346618652,
+      "eval_moe_load": [
+        0.10077519714832306,
+        0.7441860437393188,
+        0.0,
+        0.1550387591123581
+      ],
+      "eval_moe_n_alive": 3.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.5339056070695916,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 26,
+      "pdb_id": "1BG1",
+      "chain": "A",
+      "num_nodes": 558.0,
+      "eps_t": 0.0,
+      "loss_total": 7.640071392059326,
+      "val_dehydron_auprc": 0.48802077770233154,
+      "eval_moe_load": [
+        0.08960573375225067,
+        0.7455196976661682,
+        0.0,
+        0.16487455368041992
+      ],
+      "eval_moe_n_alive": 3.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.5282403265675197,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 27,
+      "pdb_id": "1F88",
+      "chain": "A",
+      "num_nodes": 338.0,
+      "eps_t": 0.0,
+      "loss_total": 6.739419460296631,
+      "val_dehydron_auprc": 0.3771090507507324,
+      "eval_moe_load": [
+        0.047337278723716736,
+        0.6834319233894348,
+        0.0,
+        0.26923078298568726
+      ],
+      "eval_moe_n_alive": 2.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.546647801672017,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 28,
+      "pdb_id": "2Z6H",
+      "chain": "A",
+      "num_nodes": 533.0,
+      "eps_t": 0.0,
+      "loss_total": 7.527174472808838,
+      "val_dehydron_auprc": 0.33229997754096985,
+      "eval_moe_load": [
+        0.009380863048136234,
+        0.6772983074188232,
+        0.0,
+        0.3133208155632019
+      ],
+      "eval_moe_n_alive": 2.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.4842567095139362,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 29,
+      "pdb_id": "1HHP",
+      "chain": "A",
+      "num_nodes": 99.0,
+      "eps_t": 0.0,
+      "loss_total": 6.415559768676758,
+      "val_dehydron_auprc": 0.37825945019721985,
+      "eval_moe_load": [
+        0.04040404036641121,
+        0.39393940567970276,
+        0.0,
+        0.5656565427780151
+      ],
+      "eval_moe_n_alive": 2.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.5907260091835751,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 30,
+      "pdb_id": "1TEN",
+      "chain": "A",
+      "num_nodes": 89.0,
+      "eps_t": 0.0,
+      "loss_total": 7.058697700500488,
+      "val_dehydron_auprc": 0.6785775423049927,
+      "eval_moe_load": [
+        0.0,
+        0.30337077379226685,
+        0.0,
+        0.6966292262077332
+      ],
+      "eval_moe_n_alive": 2.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.44268618103460866,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 31,
+      "pdb_id": "1UBQ",
+      "chain": "A",
+      "num_nodes": 76.0,
+      "eps_t": 0.0,
+      "loss_total": 5.422281265258789,
+      "val_dehydron_auprc": 0.3425125181674957,
+      "eval_moe_load": [
+        0.02631578966975212,
+        0.17105263471603394,
+        0.0,
+        0.8026315569877625
+      ],
+      "eval_moe_n_alive": 2.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.4142223643862104,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 32,
+      "pdb_id": "1TIM",
+      "chain": "A",
+      "num_nodes": 247.0,
+      "eps_t": 0.0,
+      "loss_total": 7.658726692199707,
+      "val_dehydron_auprc": 0.48218047618865967,
+      "eval_moe_load": [
+        0.012145749293267727,
+        0.36032387614250183,
+        0.0,
+        0.6275303363800049
+      ],
+      "eval_moe_n_alive": 2.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.5148831220056088,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 33,
+      "pdb_id": "4OBE",
+      "chain": "A",
+      "num_nodes": 169.0,
+      "eps_t": 0.0,
+      "loss_total": 7.724178314208984,
+      "val_dehydron_auprc": 0.6258096694946289,
+      "eval_moe_load": [
+        0.011834319680929184,
+        0.2958579957485199,
+        0.0,
+        0.692307710647583
+      ],
+      "eval_moe_n_alive": 2.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.481429400725077,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 34,
+      "pdb_id": "1IVO",
+      "chain": "A",
+      "num_nodes": 511.0,
+      "eps_t": 0.0,
+      "loss_total": 8.639582633972168,
+      "val_dehydron_auprc": 0.5772581100463867,
+      "eval_moe_load": [
+        0.00978473573923111,
+        0.2309197634458542,
+        0.0,
+        0.7592955231666565
+      ],
+      "eval_moe_n_alive": 2.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.42762329553710315,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 35,
+      "pdb_id": "2SHP",
+      "chain": "A",
+      "num_nodes": 491.0,
+      "eps_t": 0.0,
+      "loss_total": 6.744277000427246,
+      "val_dehydron_auprc": 0.5379948616027832,
+      "eval_moe_load": [
+        0.006109979469329119,
+        0.2545824944972992,
+        0.0,
+        0.7393075227737427
+      ],
+      "eval_moe_n_alive": 2.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.4347930372732601,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 36,
+      "pdb_id": "1MBN",
+      "chain": "A",
+      "num_nodes": 153.0,
+      "eps_t": 0.0,
+      "loss_total": 5.753851413726807,
+      "val_dehydron_auprc": 0.5963010191917419,
+      "eval_moe_load": [
+        0.013071895577013493,
+        0.1895424872636795,
+        0.0,
+        0.7973856329917908
+      ],
+      "eval_moe_n_alive": 2.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.398525937798589,
+      "eval_moe_liveness_pass": false
+    },
+    {
+      "epoch": 37,
+      "pdb_id": "1LYZ",
+      "chain": "A",
+      "num_nodes": 129.0,
+      "eps_t": 0.0,
+      "loss_total": 5.535261154174805,
+      "val_dehydron_auprc": 0.742488443851471,
+      "eval_moe_load": [
+        0.0,
+        0.21705426275730133,
+        0.0,
+        0.7829457521438599
+      ],
+      "eval_moe_n_alive": 2.0,
+      "eval_moe_load_min": 0.0,
+      "eval_moe_entropy_norm": 0.3773760273434334,
+      "eval_moe_liveness_pass": false
+    }
+  ],
+  "mlflow_run_id": "ea3133c7d9894306b67d1fa1f8e0f701",
+  "mlflow_ui": "http://localhost:5000/#/experiments/11/runs/ea3133c7d9894306b67d1fa1f8e0f701"
+}

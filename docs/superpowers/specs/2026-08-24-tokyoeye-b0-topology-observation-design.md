@@ -1,9 +1,9 @@
 # Tokyo Eye B0 — Topology observation on champion
 
-**Status:** DRAFT for review — not an implementation license until this spec is approved  
+**Status:** APPROVED 2026-08-24 — execute frozen-weight observation; still not a 25×150 train license  
 **Date:** 2026-08-24  
 **Amends:** [`docs/specs/tokyo-eye-v8/biology-roadmap.md`](../../specs/tokyo-eye-v8/biology-roadmap.md) B0 (Θ lock + forward smoke)  
-**Does not open:** B1 teleconnections, Sprint 10.2, pathway / resistance inference, 25×150 train
+**Does not open:** B1 teleconnections, Sprint 10.2, pathway / resistance inference
 
 ---
 
@@ -98,7 +98,7 @@ Do not threshold rhyme into a gate on this card.
 
 ## 5. Out of this card
 
-- Training (including 25 proteins × 150 epochs). That is a **later** spec, init from this champion, after B0 is stamped.
+- Training (including 25 proteins × 150 epochs). That is **C1**: [`2026-08-24-tokyoeye-c1-topology-curriculum-design.md`](2026-08-24-tokyoeye-c1-topology-curriculum-design.md), init from this champion, after B0 is stamped.
 - B1 AlleleSens / conduit vs scramble (needs its own v8 prereg).
 - MSA/conservation or GO as inputs or losses.
 - Side-chain chemistry train (parked chem track).

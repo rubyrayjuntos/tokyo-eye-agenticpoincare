@@ -1,0 +1,250 @@
+{
+  "gate_id": "tokyo_eye_equ_pure_hyp_full_spine_scan",
+  "display_lineage": "Tokyo Eye EQU",
+  "status": "PASS",
+  "scope": "full spine (TokyoEyesHyperbolicV8 + stub-but-live SE(3)-lite frontend, cold random-init), real 12-structure Stage-A-12 manifest (manifests/v8_stage_a_small_v1.json)",
+  "addendum_clause": "freeze_reconciliation_addendum_2.4_live_forward_tracer",
+  "pure_hyp_pass_version": "section_2_4_live_forward_tracer_v1",
+  "manifest": "manifests/v8_stage_a_small_v1.json",
+  "structures": [
+    "1MBN:A",
+    "1LYZ:A",
+    "1BG1:A",
+    "1F88:A",
+    "2Z6H:A",
+    "1HHP:A",
+    "1TEN:A",
+    "1UBQ:A",
+    "1TIM:A",
+    "4OBE:A",
+    "1IVO:A",
+    "2SHP:A"
+  ],
+  "tau_cases": {
+    "tau_end": 0.995,
+    "tau_start": 0.7
+  },
+  "backbone_mode": "live_se3_lite",
+  "equiformer_mode": "stub_random_init",
+  "cases": [
+    {
+      "pdb_id": "1MBN",
+      "chain": "A",
+      "num_nodes": 153,
+      "tau_case": "tau_end",
+      "tau_ceiling": 0.995,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "1MBN",
+      "chain": "A",
+      "num_nodes": 153,
+      "tau_case": "tau_start",
+      "tau_ceiling": 0.7,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "1LYZ",
+      "chain": "A",
+      "num_nodes": 129,
+      "tau_case": "tau_end",
+      "tau_ceiling": 0.995,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "1LYZ",
+      "chain": "A",
+      "num_nodes": 129,
+      "tau_case": "tau_start",
+      "tau_ceiling": 0.7,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "1BG1",
+      "chain": "A",
+      "num_nodes": 558,
+      "tau_case": "tau_end",
+      "tau_ceiling": 0.995,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "1BG1",
+      "chain": "A",
+      "num_nodes": 558,
+      "tau_case": "tau_start",
+      "tau_ceiling": 0.7,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "1F88",
+      "chain": "A",
+      "num_nodes": 338,
+      "tau_case": "tau_end",
+      "tau_ceiling": 0.995,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "1F88",
+      "chain": "A",
+      "num_nodes": 338,
+      "tau_case": "tau_start",
+      "tau_ceiling": 0.7,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "2Z6H",
+      "chain": "A",
+      "num_nodes": 533,
+      "tau_case": "tau_end",
+      "tau_ceiling": 0.995,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "2Z6H",
+      "chain": "A",
+      "num_nodes": 533,
+      "tau_case": "tau_start",
+      "tau_ceiling": 0.7,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "1HHP",
+      "chain": "A",
+      "num_nodes": 99,
+      "tau_case": "tau_end",
+      "tau_ceiling": 0.995,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "1HHP",
+      "chain": "A",
+      "num_nodes": 99,
+      "tau_case": "tau_start",
+      "tau_ceiling": 0.7,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "1TEN",
+      "chain": "A",
+      "num_nodes": 89,
+      "tau_case": "tau_end",
+      "tau_ceiling": 0.995,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "1TEN",
+      "chain": "A",
+      "num_nodes": 89,
+      "tau_case": "tau_start",
+      "tau_ceiling": 0.7,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "1UBQ",
+      "chain": "A",
+      "num_nodes": 76,
+      "tau_case": "tau_end",
+      "tau_ceiling": 0.995,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "1UBQ",
+      "chain": "A",
+      "num_nodes": 76,
+      "tau_case": "tau_start",
+      "tau_ceiling": 0.7,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "1TIM",
+      "chain": "A",
+      "num_nodes": 247,
+      "tau_case": "tau_end",
+      "tau_ceiling": 0.995,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "1TIM",
+      "chain": "A",
+      "num_nodes": 247,
+      "tau_case": "tau_start",
+      "tau_ceiling": 0.7,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "4OBE",
+      "chain": "A",
+      "num_nodes": 169,
+      "tau_case": "tau_end",
+      "tau_ceiling": 0.995,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "4OBE",
+      "chain": "A",
+      "num_nodes": 169,
+      "tau_case": "tau_start",
+      "tau_ceiling": 0.7,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "1IVO",
+      "chain": "A",
+      "num_nodes": 511,
+      "tau_case": "tau_end",
+      "tau_ceiling": 0.995,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "1IVO",
+      "chain": "A",
+      "num_nodes": 511,
+      "tau_case": "tau_start",
+      "tau_ceiling": 0.7,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "2SHP",
+      "chain": "A",
+      "num_nodes": 491,
+      "tau_case": "tau_end",
+      "tau_ceiling": 0.995,
+      "pure_hyp_pass": true,
+      "violations": []
+    },
+    {
+      "pdb_id": "2SHP",
+      "chain": "A",
+      "num_nodes": 491,
+      "tau_case": "tau_start",
+      "tau_ceiling": 0.7,
+      "pure_hyp_pass": true,
+      "violations": []
+    }
+  ],
+  "root_cause_analysis": "All 24 cases fail at the SAME site: science/tokyo_eye/v8/projector.py:53 (RadialAngularProjector.forward), 'tangent = alpha * a_hat + scalar_t'. Confirmed false positive, not a genuine ambient hyperbolic-purity defect: alpha*a_hat and scalar_t are both pre-exp0 TANGENT-SPACE Euclidean quantities (a_hat is a unit direction, alpha in (0, tau_ceiling), scalar_t = 0.01*tanh(...)) \u2014 the ball point 'z' is only produced by exp_map_zero(tangent, ...) on the NEXT line (projector.py:57). Two things conspire to mis-flag it: (1) the documented numeric-only 'Euclidean-feature false positive' limitation in pure_hyp_pass.py's own docstring \u2014 alpha's range (0, tau_ceiling~0.7-0.995) coincidentally overlaps _is_open_ball_batch's detection band (1e-4, 0.999); (2) a real gap in _is_pre_lift_scope/_is_pre_lift_linear (pure_hyp_pass.py:144-161): the matcher requires the module name to START WITH 'projector' or contain '.projector.' as a MIDDLE segment, so it correctly exempts the projector's *children* (e.g. 'spine.projector.radial_mlp' matches '.projector.') but misses the projector module's OWN top-level forward body when nested as a trailing segment \u2014 'spine.projector' (under TokyoEyeV8WithFrontend, i.e. exactly the full-spine wrapping this script uses) matches neither pattern, so _skip_prelift is never set while this line executes. Verified directly: _is_pre_lift_scope('spine.projector') == False, _is_pre_lift_scope('spine.projector.radial_mlp') == True. This is why the MoE-isolated scan (tokyo_eye_equ_pure_hyp_live_moe_scan.json) never saw it \u2014 it never runs the projector at all \u2014 and why unit tests on a bare TokyoEyesHyperbolicV8 (name=='projector', matches startswith) would not reproduce it either. Recommended fix (NOT applied here \u2014 tracer-semantics change, needs its own addendum sign-off, same principle as the forced-eval() caveat below): widen the suffix case, e.g. 'n == \"projector\" or n.endswith(\".projector\") or ...'. status stays FAIL as the raw tracer verdict; this field records the confirmed root cause without unilaterally overriding it.",
+  "known_caveat_scan_forward_forces_eval": "scan_forward (pure_hyp_pass.py) calls model.eval() unconditionally before tracing, so this scan \u2014 like the existing live-MoE scan's 'train' cases \u2014 only ever exercises the eval-mode argmax forward. TopologyAwareHardMoE's Gumbel-hard-STE + epsilon-override branch (self.training-gated, moe.py:291) is NOT traced by this check. Fixing that is a tracer-semantics change on an addendum track, not something patched around inside this verify script.",
+  "note": "Necessary, not sufficient, and eval-mode-only per the caveat above. Does not touch MLflow (static/property check, no training run). Does not overwrite tokyo_eye_equ_pure_hyp_live_moe_scan.json (MoE-isolated scope)."
+}

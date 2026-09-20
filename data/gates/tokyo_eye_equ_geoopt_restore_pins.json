@@ -1,0 +1,12 @@
+{
+  "gate_id": "tokyo_eye_equ_geoopt_restore",
+  "timestamp": "2026-09-16T05:30:57.618240+00:00",
+  "frontend_ckpt": "checkpoints/tokyoeye/pretrained/hf/checkpoint/mptrj_gradient.pt",
+  "frontend_bank_sha256": "59c6c23573a3b05b347662f473209d1bb1ccb5b85f6624a8f87072e7c397addf",
+  "equiformer_vendor": "vendor/equiformer_v3",
+  "equiformer_cut": "after_forward_blocks_before_energy_block",
+  "lift": "geoopt.manifolds.PoincareBall",
+  "forbid_se3_lite": true,
+  "wrap_max": 1,
+  "source_manifest": "manifests/equ_cold_boot_v1.json"
+}

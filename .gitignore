@@ -130,3 +130,21 @@ rcsbapi_local/viewer/
 rcsbapi_local/.gitignore
 rcsbapi_local/RESIDUE_ID_KEY_STRATEGY.md
 .worktrees/
+
+# Local regenerable caches (not machine-truth gates)
+pdb_cache/
+data/graph_cache/
+
+# Full FairChem / Equiformer clone (nested .git); runtime uses science/third_party/
+vendor/
+
+# Scratch / editor / backup noise
+.cursor/
+*.bak_*
+**/.wtest
+**/_wtest
+data/gates/.wtest
+data/gates/_wtest
+
+# Equiformer Wigner matrices required at import (otherwise covered by *.pt)
+!science/third_party/**/Jd.pt

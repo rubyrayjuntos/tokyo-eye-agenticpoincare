@@ -1,0 +1,28 @@
+{
+  "gate_id": "tokyo_eye_equ_moe_eps_card_A_result",
+  "card": "tokyo_eye_equ_moe_eps_card_prereg (APPROVED)",
+  "status": "A_PASS",
+  "pass": true,
+  "moe_mode": "ablated",
+  "moe_claim": "none",
+  "decay_floor_hold": "N/A_ABLATED",
+  "diagnostic": true,
+  "do_not_promote": true,
+  "note": "Arm A after R NEVER_LIVE fallback. Load [1,0,0,0] by construction \u2014 not MoE evidence. Step 3 uses moe_mode=ablated.",
+  "seeds": [
+    {
+      "seed": 0,
+      "pass": true,
+      "decay_floor_hold": "N/A_ABLATED",
+      "backbone_mode": "live_se3_lite",
+      "n_epochs": 38,
+      "final_eval_load": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "recorded_at": "2026-09-18T20:22:58Z"
+}
