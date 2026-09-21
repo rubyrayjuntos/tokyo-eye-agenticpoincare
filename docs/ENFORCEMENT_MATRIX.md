@@ -101,6 +101,7 @@ CI: `tests/test_enforcement_matrix_gate_claims.py` + `scripts/lint_gate_claims.p
 | Pool constructibility deps present (ase / torch-scatter / torch-cluster / lmdb / e3nn) | **GATED** | `assert_pool_frontend_dependencies()` — explicit missing-deps message |
 | Claim-bearing biology: no edge_type leakage + biology_grad logged | **GATED** | `detect_edge_type_label_leakage` + `assert_claim_bearing_biology` via `--claim-bearing-biology`; CLI non-leak flag cannot waive a still-leaking batch (`test_claim_bearing_refuses_leaking_batch_structurally`) |
 | Dehydron/SDRP typed scores non-claim until leakage fixed | **GATED (stamp + gate)** | `data/gates/tokyo_eye_equ_nonclaim_disposition.json` + claim-bearing third leg refuses leaking stack |
+| EQU agenda SSOT: DONE needs evidence; blocks/blocked_by resolve + mutual | **GATED** | `data/gates/tokyo_eye_equ_agenda.json` + `tests/v8/test_equ_agenda.py` |
 
 ## MD validation gate
 

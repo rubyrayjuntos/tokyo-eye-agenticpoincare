@@ -9,17 +9,18 @@
   "rules": [
     "Every open follow-up that can block or shape a sealed card gets an agenda id here before it ages in chat.",
     "Statuses: OPEN | BLOCKED | IN_FLIGHT | DONE | WONT_DO | SUPERSEDED.",
-    "Closing an item requires evidence_path (gate stamp or commit) — prose alone never closes.",
-    "Lessons are permanent; agenda items can close. Do not delete lessons — only add.",
+    "Closing an item requires evidence_path (gate stamp or commit) \u2014 prose alone never closes.",
+    "Lessons are permanent; agenda items can close. Do not delete lessons \u2014 only add.",
     "next_experiment_sealed.json may summarize; this file owns the item list and lessons.",
-    "Do not open a sealed card that silently assumes a CLOSED lesson is still unknown."
+    "Do not open a sealed card that silently assumes a CLOSED lesson is still unknown.",
+    "blocks/blocked_by must be mutual and reference real item or closed ids; CI: tests/v8/test_equ_agenda.py"
   ],
   "lessons": [
     {
       "id": "L-orphan-pins-b-era",
       "date": "2026-09-20",
       "title": "Commit-then-pin or pins go UNVERIFIED_PIN_UNRECOVERABLE",
-      "statement": "B-era harness 8c7e2be2… and script 34b75807… were dual-orphaned — treat that provenance chain as an unverifiable class, not a one-file accident.",
+      "statement": "B-era harness 8c7e2be2\u2026 and script 34b75807\u2026 were dual-orphaned \u2014 treat that provenance chain as an unverifiable class, not a one-file accident.",
       "evidence": [
         "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_B_disposition.json"
       ]
@@ -28,7 +29,7 @@
       "id": "L-bar-reuse-without-reachability",
       "date": "2026-09-21",
       "title": "Never reuse a numeric bar from a prior card without re-deriving reachability for the new target",
-      "statement": "z_hyp G_fit inherited Arm B dehydron S1-shaped lift≥1.30 without checking SDRP majority geometry. With maj≈0.85–0.96, max lift at acc=1 is ≈1.04–1.18 — bar 1.30 was STRUCTURALLY_UNREACHABLE by construction. Locked-card binary still stands; scientific read must not treat the miss as architecture incapacity.",
+      "statement": "z_hyp G_fit inherited Arm B dehydron S1-shaped lift\u22651.30 without checking SDRP majority geometry. With maj\u22480.85\u20130.96, max lift at acc=1 is \u22481.04\u20131.18 \u2014 bar 1.30 was STRUCTURALLY_UNREACHABLE by construction. Locked-card binary still stands; scientific read must not treat the miss as architecture incapacity.",
       "evidence": [
         "data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_result.json"
       ],
@@ -38,7 +39,7 @@
       "id": "L-wiring-capacity-separation",
       "date": "2026-09-21",
       "title": "Separate wiring gates from capacity bars before reading either",
-      "statement": "Dehydron INSTR spine 0/0 made capacity unreadable. z_hyp SDRP-live cleared G_grad_spine at 12-fold scale then failed locked capacity under cold-lite/400/MoE-ablated — first trustworthy separation on this line.",
+      "statement": "Dehydron INSTR spine 0/0 made capacity unreadable. z_hyp SDRP-live cleared G_grad_spine at 12-fold scale then failed locked capacity under cold-lite/400/MoE-ablated \u2014 first trustworthy separation on this line.",
       "evidence": [
         "data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_result.json",
         "data/gates/tokyo_eye_equ_grad_attribution_check.json"
@@ -63,11 +64,17 @@
       "title": "Reachable capacity bars and/or less majority-dominated target",
       "opened": "2026-09-21",
       "blocked_by": [],
-      "blocks": ["future_capacity_G_fit_claims"],
-      "note": "Prerequisite for any future capacity claim. Prefer checking whether less-R5-dominated graph construction (wrap / R5 demotion levers) can improve label geometry before inventing a wholly new target — may also inform typed-path work but see A-typed-path (not the same root cause).",
-      "related_lessons": ["L-bar-reuse-without-reachability"],
-      "evidence": ["data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_result.json"],
-      "next": "sealed diagnostic or redesign prereg — do not extend z_hyp card"
+      "blocks": [
+        "A-pool-frontend"
+      ],
+      "note": "Prerequisite for any future capacity claim. Prefer checking whether less-R5-dominated graph construction (wrap / R5 demotion levers) can improve label geometry before inventing a wholly new target \u2014 may also inform typed-path work but see A-typed-path (not the same root cause).",
+      "related_lessons": [
+        "L-bar-reuse-without-reachability"
+      ],
+      "evidence": [
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_result.json"
+      ],
+      "next": "sealed diagnostic or redesign prereg \u2014 do not extend z_hyp card"
     },
     {
       "id": "A-typed-path-utilization",
@@ -77,17 +84,22 @@
       "title": "Typed-path near-dark: frontend.rel_bias and attn gamma/beta",
       "opened": "2026-09-21",
       "blocked_by": [],
-      "note": "Spine NZ overall; typed params specifically near-dark. Probe 2026-09-21: NOT init-scale (rel_bias mean|w| > seed_proj); NOT rescued by uniform edge_type and/or uniform labels alone — R5 dominance explains unsatisfiable lift bars (A-reachable) but is NOT sufficient alone for typed-param silence. Likely architectural dilution / path utilization; keep as separate item until a sealed diagnostic merges them with evidence.",
+      "note": "Spine NZ overall; typed params specifically near-dark. Probe 2026-09-21: NOT init-scale (rel_bias mean|w| > seed_proj); NOT rescued by uniform edge_type and/or uniform labels alone \u2014 R5 dominance explains unsatisfiable lift bars (A-reachable) but is NOT sufficient alone for typed-param silence. Likely architectural dilution / path utilization; keep as separate item until a sealed diagnostic merges them with evidence.",
       "probe_2026_09_21": {
         "rel_bias_vs_seed_proj_mean_abs_init_ratio": 2.73,
-        "rel_bias_grad_over_weight_vs_seed_proj": "~1000× smaller",
+        "rel_bias_grad_over_weight_vs_seed_proj": "~1000\u00d7 smaller",
         "uniform_edge_type_rescues_rel_bias": false,
         "uniform_labels_rescues_rel_bias": false,
         "unified_R5_root_cause_with_label_ceiling": "NOT_SUPPORTED_AS_SOLE_CAUSE"
       },
-      "related_lessons": ["L-wiring-capacity-separation"],
-      "evidence": ["data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_result.json"],
-      "next": "sealed typed-path diagnostic card"
+      "related_lessons": [
+        "L-wiring-capacity-separation"
+      ],
+      "evidence": [
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_result.json"
+      ],
+      "next": "sealed typed-path diagnostic card",
+      "blocks": []
     },
     {
       "id": "A-r5-graph-lever-joint-check",
@@ -97,10 +109,14 @@
       "title": "Before splitting A-reachable vs A-typed-path into two cards, check R5/wrap levers",
       "opened": "2026-09-21",
       "blocked_by": [],
-      "depends_on_read": ["A-reachable-bars-or-less-skewed-target", "A-typed-path-utilization"],
-      "note": "Operator ask: less-R5-dominated construction might fix label ceiling; typed-path probe says it alone does not restore rel_bias grad. Still worth one design check — if a governed wrap/R5 change improves label reachability, do that first; typed-path may still need its own card.",
+      "depends_on_read": [
+        "A-reachable-bars-or-less-skewed-target",
+        "A-typed-path-utilization"
+      ],
+      "note": "Operator ask: less-R5-dominated construction might fix label ceiling; typed-path probe says it alone does not restore rel_bias grad. Still worth one design check \u2014 if a governed wrap/R5 change improves label reachability, do that first; typed-path may still need its own card.",
       "evidence": [],
-      "next": "short design note or micro-diagnostic — not a train card"
+      "next": "short design note or micro-diagnostic \u2014 not a train card",
+      "blocks": []
     },
     {
       "id": "A-pool-frontend",
@@ -109,10 +125,15 @@
       "kind": "harness_or_biology",
       "title": "Equiformer-pool frontend capacity or biology (separate sealed card)",
       "opened": "2026-09-21",
-      "blocked_by": ["A-reachable-bars-or-less-skewed-target"],
+      "blocked_by": [
+        "A-reachable-bars-or-less-skewed-target"
+      ],
       "note": "Lite result is not pool evidence. Capacity on pool still needs reachable bars.",
-      "evidence": ["data/gates/tokyo_eye_equ_next_experiment_sealed.json"],
-      "next": "sealed prereg when bars/target ready"
+      "evidence": [
+        "data/gates/tokyo_eye_equ_next_experiment_sealed.json"
+      ],
+      "next": "sealed prereg when bars/target ready",
+      "blocks": []
     },
     {
       "id": "A-moe-verify-on-pool",
@@ -124,8 +145,11 @@
       "blocked_by": [],
       "pointer": "data/gates/tokyo_eye_equ_moe_verify_on_pool.json",
       "note": "Already in allowed_next_cards.",
-      "evidence": ["data/gates/tokyo_eye_equ_next_experiment_sealed.json"],
-      "next": "run when operator seals"
+      "evidence": [
+        "data/gates/tokyo_eye_equ_next_experiment_sealed.json"
+      ],
+      "next": "run when operator seals",
+      "blocks": []
     },
     {
       "id": "A-freeze-16-learned-c",
@@ -135,12 +159,13 @@
       "title": "Freeze addendum #16: learned c or signed pin AMEND",
       "opened": "2026-09-16",
       "blocked_by": [],
-      "note": "_log_c is Parameter but detached in forward; z_hyp card correctly expected_to_move=false. Separate card — do not fold into capacity G_fit.",
+      "note": "_log_c is Parameter but detached in forward; z_hyp card correctly expected_to_move=false. Separate card \u2014 do not fold into capacity G_fit.",
       "evidence": [
         "docs/superpowers/specs/2026-09-16-tokyo-eye-v8-freeze-addendum.md",
         "data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_prereg.json"
       ],
-      "next": "signed AMEND pin OR wire Tensor c through graph"
+      "next": "signed AMEND pin OR wire Tensor c through graph",
+      "blocks": []
     },
     {
       "id": "A-hyp-biology-non-leaking",
@@ -149,7 +174,9 @@
       "kind": "sealed_card",
       "title": "Hyperbolic biology with non-leaking target on z_hyp",
       "opened": "2026-09-18",
-      "blocked_by": ["defect_B_open"],
+      "blocked_by": [
+        "A-defect-B-leakage"
+      ],
       "requires": [
         "defect_B_addressed_or_non_leaking_target",
         "biology_on_z_hyp",
@@ -157,21 +184,28 @@
         "claim_bearing_biology"
       ],
       "note": "Trunk claim-bearing path. Defect B still OPEN.",
-      "evidence": ["data/gates/tokyo_eye_equ_next_experiment_sealed.json"],
-      "next": "sealed prereg after leakage disposition"
+      "evidence": [
+        "data/gates/tokyo_eye_equ_next_experiment_sealed.json"
+      ],
+      "next": "sealed prereg after leakage disposition",
+      "blocks": []
     },
     {
       "id": "A-defect-B-leakage",
       "status": "OPEN",
       "priority": 1,
       "kind": "defect",
-      "title": "Defect B: edge_type → dehydron/SDRP label leakage",
+      "title": "Defect B: edge_type \u2192 dehydron/SDRP label leakage",
       "opened": "2026-09-17",
       "blocked_by": [],
-      "blocks": ["A-hyp-biology-non-leaking"],
+      "blocks": [
+        "A-hyp-biology-non-leaking"
+      ],
       "note": "Intentional leak OK for harness G_fit; claim-bearing biology refused while leaking.",
-      "evidence": ["data/gates/tokyo_eye_equ_nonclaim_disposition.json"],
-      "next": "non-leaking target design — not another leaking lite pilot as trunk"
+      "evidence": [
+        "data/gates/tokyo_eye_equ_nonclaim_disposition.json"
+      ],
+      "next": "non-leaking target design \u2014 not another leaking lite pilot as trunk"
     }
   ],
   "closed_this_period": [
@@ -188,5 +222,5 @@
       "do_not_reopen_as": "800-step extension or silent bar nudge"
     }
   ],
-  "signed": "Ray Swan / Cursor agent 2026-09-21 — agenda SSOT opened"
+  "signed": "Ray Swan / Cursor agent 2026-09-21 \u2014 agenda SSOT opened"
 }
