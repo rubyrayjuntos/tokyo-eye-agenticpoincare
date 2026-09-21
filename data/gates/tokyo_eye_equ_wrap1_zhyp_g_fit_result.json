@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_wrap1_zhyp_g_fit_result",
+  "status": "INCONCLUSIVE_UNDERFIT",
+  "date": "2026-09-21",
+  "display_lineage": "Tokyo Eye EQU",
+  "do_not_promote": true,
+  "card": "data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_prereg.json",
+  "seed": 0,
+  "steps": 400,
+  "folds": [
+    "1MBN:A",
+    "1LYZ:A",
+    "1BG1:A",
+    "1F88:A",
+    "2Z6H:A",
+    "1HHP:A",
+    "1TEN:A",
+    "1UBQ:A",
+    "1TIM:A",
+    "4OBE:A",
+    "1IVO:A",
+    "2SHP:A"
+  ],
+  "frontend": "cold SE(3)-lite",
+  "moe_mode": "ablated",
+  "sdrp_coeff": 0.1,
+  "dehydron_coeff": 0.0,
+  "margin_coeff": 0.0,
+  "scoring": {
+    "verdict": "INCONCLUSIVE_UNDERFIT",
+    "G_finite": true,
+    "G_grad_spine": true,
+    "G_fit_train": false
+  },
+  "per_fold_summary": {
+    "1MBN:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_lift": 1.0173032782238574,
+      "train_min_lift": 0.992263074769734,
+      "heldout_lift": 0.9859154984145097,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "1LYZ:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_lift": 1.0331355948538026,
+      "train_min_lift": 0.9980657771662079,
+      "heldout_lift": 0.9583333417773247,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "1BG1:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_lift": 1.0201262620134206,
+      "train_min_lift": 1.0000000007740864,
+      "heldout_lift": 0.9555125404833825,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "1F88:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_lift": 1.021728464868776,
+      "train_min_lift": 0.9999999680917319,
+      "heldout_lift": 0.8612903287333826,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "2Z6H:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_lift": 1.0207372805349877,
+      "train_min_lift": 1.0000000707646635,
+      "heldout_lift": 0.947474747354334,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "1HHP:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_lift": 1.0198690094230682,
+      "train_min_lift": 0.9999999684106912,
+      "heldout_lift": 0.8214285607848848,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "1TEN:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_lift": 1.0295922014968095,
+      "train_min_lift": 0.9941972660142171,
+      "heldout_lift": 0.9759036374379354,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "1UBQ:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_lift": 1.0201259101050306,
+      "train_min_lift": 0.9999999680917319,
+      "heldout_lift": 0.9850746553335618,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "1TIM:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_lift": 1.0276165076832784,
+      "train_min_lift": 0.9941972660142171,
+      "heldout_lift": 0.951965103503398,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "4OBE:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_lift": 1.0162696698352476,
+      "train_min_lift": 0.9999999680917319,
+      "heldout_lift": 1.0000000007740864,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "1IVO:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_lift": 1.0202720015230826,
+      "train_min_lift": 0.9956331927182893,
+      "heldout_lift": 0.9999999680917319,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "2SHP:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_lift": 1.0254247628138278,
+      "train_min_lift": 0.9999999680917319,
+      "heldout_lift": 0.9659575003258726,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    }
+  },
+  "script_sha256": "969d1b4068e93b5707c331f3e0bea59916c399a33393e674f50c80b1b43f5ab1",
+  "prereg_sha256": "99788128349453f221fa2301a5609c0a1645102c057d73366ffe9aa426296f2b",
+  "folds_frozen_sha256": "bea720b0d67ae86b4ef0850091094948e05aceff9cf9d6214d602721b3bc3a0e",
+  "git_commit": "0193f329e978da653c5eb16dd374c6f95ff8eb58",
+  "not_claims": [
+    "PASS_SIGNAL is not a biology seal",
+    "intentional SDRP leak does not close defect B (edge_type \u2192 label leakage)",
+    "not a MoE-on vs ablated comparison (moe_verify_on_pool remains separate)",
+    "not learned-curvature training (_log_c detached in forward; freeze item #16 separate)",
+    "not permission to treat prior dehydron lite G_fit CLOSED_MARGINAL as pool capacity",
+    "SE(3)-lite result is not Equiformer-pool biology evidence"
+  ],
+  "signed": "auto from wrap1_zhyp_g_fit.py"
+}

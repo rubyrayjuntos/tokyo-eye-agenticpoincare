@@ -1,0 +1,887 @@
+{
+  "arm": "zhyp_g_fit",
+  "seed": 0,
+  "heldout": [
+    "1MBN:A"
+  ],
+  "train": [
+    "1LYZ:A",
+    "1BG1:A",
+    "1F88:A",
+    "2Z6H:A",
+    "1HHP:A",
+    "1TEN:A",
+    "1UBQ:A",
+    "1TIM:A",
+    "4OBE:A",
+    "1IVO:A",
+    "2SHP:A"
+  ],
+  "steps": 400,
+  "finite": true,
+  "G_grad_spine": true,
+  "step0_grad": {
+    "ok": true,
+    "statuses": {
+      "attn_layers": "NZ",
+      "projector": "NZ",
+      "moe": "NZ",
+      "sdrp_head": "NZ"
+    },
+    "_log_c_status": "NONE",
+    "grad_l2": {
+      "attn_layers": 0.062294121463683204,
+      "projector": 0.03995604694814282,
+      "moe": 0.006416610088134083,
+      "sdrp_head": 0.1897506329652681
+    }
+  },
+  "abort": null,
+  "moe_mode": "ablated",
+  "sdrp_coeff": 0.1,
+  "dehydron_coeff": 0.0,
+  "margin_coeff": 0.0,
+  "tau_eval": 0.995,
+  "frontend": "cold SE(3)-lite",
+  "c_init": 1.000100016593933,
+  "c_final": 1.000100016593933,
+  "c_drift": 0.0,
+  "lr_frontend": 1e-05,
+  "lr_hyperbolic": 0.001,
+  "clip_active_fraction": 0.0,
+  "train_per_structure": {
+    "1LYZ:A": {
+      "n": 129.0,
+      "sdrp_top1_acc": 0.961240291595459,
+      "majority_rate": 0.9302325581395349,
+      "lift": 1.0333333134651184,
+      "macro_f1": 0.6228269085411943
+    },
+    "1BG1:A": {
+      "n": 558.0,
+      "sdrp_top1_acc": 0.9193548560142517,
+      "majority_rate": 0.9265232974910395,
+      "lift": 0.992263074769734,
+      "macro_f1": 0.3590904906563564
+    },
+    "1F88:A": {
+      "n": 338.0,
+      "sdrp_top1_acc": 0.9289941191673279,
+      "majority_rate": 0.9171597633136095,
+      "lift": 1.0129032654146994,
+      "macro_f1": 0.4280767236910316
+    },
+    "2Z6H:A": {
+      "n": 533.0,
+      "sdrp_top1_acc": 0.9287054538726807,
+      "majority_rate": 0.9287054409005628,
+      "lift": 1.0000000139679572,
+      "macro_f1": 0.321011673151751
+    },
+    "1HHP:A": {
+      "n": 99.0,
+      "sdrp_top1_acc": 0.8888888955116272,
+      "majority_rate": 0.8484848484848485,
+      "lift": 1.0476190554244178,
+      "macro_f1": 0.5179773671393783
+    },
+    "1TEN:A": {
+      "n": 89.0,
+      "sdrp_top1_acc": 0.9438202381134033,
+      "majority_rate": 0.9325842696629213,
+      "lift": 1.0120482071336494,
+      "macro_f1": 0.5458089668615984
+    },
+    "1UBQ:A": {
+      "n": 76.0,
+      "sdrp_top1_acc": 0.9342105388641357,
+      "majority_rate": 0.881578947368421,
+      "lift": 1.0597015067712585,
+      "macro_f1": 0.5435651478816946
+    },
+    "1TIM:A": {
+      "n": 247.0,
+      "sdrp_top1_acc": 0.9271255135536194,
+      "majority_rate": 0.9271255060728745,
+      "lift": 1.000000008068751,
+      "macro_f1": 0.32072829131652664
+    },
+    "4OBE:A": {
+      "n": 169.0,
+      "sdrp_top1_acc": 0.9408284425735474,
+      "majority_rate": 0.9112426035502958,
+      "lift": 1.0324675765904514,
+      "macro_f1": 0.5450733752620546
+    },
+    "1IVO:A": {
+      "n": 511.0,
+      "sdrp_top1_acc": 0.9138942956924438,
+      "majority_rate": 0.913894324853229,
+      "lift": 0.9999999680917319,
+      "macro_f1": 0.31833674164962505
+    },
+    "2SHP:A": {
+      "n": 491.0,
+      "sdrp_top1_acc": 0.9572302103042603,
+      "majority_rate": 0.9572301425661914,
+      "lift": 1.0000000707646635,
+      "macro_f1": 0.3260492542490461
+    }
+  },
+  "train_macro_lift": 1.0173032782238574,
+  "train_min_lift": 0.992263074769734,
+  "g_fit_train_pass_fold": false,
+  "heldout_metrics": {
+    "1MBN:A": {
+      "n": 153.0,
+      "sdrp_top1_acc": 0.915032684803009,
+      "majority_rate": 0.9281045751633987,
+      "lift": 0.9859154984145097,
+      "macro_f1": 0.31854379977246877
+    }
+  },
+  "edge_type_shuffle": {
+    "mech_score_abs_delta_mean": 0.0008768790285103023,
+    "sdrp_logits_abs_delta_mean": 0.0009117279550991952
+  },
+  "curve_every_10": [
+    {
+      "step": 0,
+      "loss_total": 0.1646858574822545,
+      "preclip_norm": 0.22452576192521057,
+      "postclip_norm": 0.22452576192521057,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.04080946154041926,
+        "attn_layers": 0.05329059373647292,
+        "moe": 0.0066769700977093865,
+        "euc_skip": 0.08998177844392222,
+        "sdrp_head": 0.18618389548823625,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 10,
+      "loss_total": 0.07122015347704291,
+      "preclip_norm": 0.14608883201057543,
+      "postclip_norm": 0.14608883201057543,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.036840122388370214,
+        "attn_layers": 0.019935785165498234,
+        "moe": 0.002748990348286515,
+        "euc_skip": 0.020675158599428336,
+        "sdrp_head": 0.08652467571677347,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 20,
+      "loss_total": 0.0590869914740324,
+      "preclip_norm": 0.05936008144599457,
+      "postclip_norm": 0.05936008144599457,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.010803246269815376,
+        "attn_layers": 0.009956348519127517,
+        "moe": 0.0015286241084878384,
+        "euc_skip": 0.008792684376024573,
+        "sdrp_head": 0.06502377282646052,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 30,
+      "loss_total": 0.05191245395690203,
+      "preclip_norm": 0.04462893604982054,
+      "postclip_norm": 0.04462893604982054,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.00741748467527404,
+        "attn_layers": 0.006256271500147478,
+        "moe": 0.0009433389914045813,
+        "euc_skip": 0.004421401321495036,
+        "sdrp_head": 0.04856578373118075,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 40,
+      "loss_total": 0.047020641854032874,
+      "preclip_norm": 0.03287136839697785,
+      "postclip_norm": 0.03287136839697785,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.003844863042714105,
+        "attn_layers": 0.00487877619875356,
+        "moe": 0.000727311124594489,
+        "euc_skip": 0.0029038907924631187,
+        "sdrp_head": 0.03673060028666846,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 50,
+      "loss_total": 0.043823792366310954,
+      "preclip_norm": 0.024730162244173612,
+      "postclip_norm": 0.024730162244173612,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0034312410405578898,
+        "attn_layers": 0.0044963425206779924,
+        "moe": 0.0006570954351475175,
+        "euc_skip": 0.0024698800703422306,
+        "sdrp_head": 0.029091674568679178,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 60,
+      "loss_total": 0.04169671074487269,
+      "preclip_norm": 0.01877544568917901,
+      "postclip_norm": 0.01877544568917901,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.004120953250148854,
+        "attn_layers": 0.004127939080061236,
+        "moe": 0.0005949263361391788,
+        "euc_skip": 0.002095732246362131,
+        "sdrp_head": 0.023532431401363477,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 70,
+      "loss_total": 0.04022554541006684,
+      "preclip_norm": 0.014795034022681343,
+      "postclip_norm": 0.014795034022681343,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.007818635548161434,
+        "attn_layers": 0.004555097646727222,
+        "moe": 0.0006555989844845792,
+        "euc_skip": 0.0021928827886114758,
+        "sdrp_head": 0.020894254421149033,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 80,
+      "loss_total": 0.03911685664206743,
+      "preclip_norm": 0.012276449852386342,
+      "postclip_norm": 0.012276449852386342,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.008193725807665003,
+        "attn_layers": 0.004572655884139596,
+        "moe": 0.0006493915995629011,
+        "euc_skip": 0.002182259457521209,
+        "sdrp_head": 0.018579776017248494,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 90,
+      "loss_total": 0.03820488718338311,
+      "preclip_norm": 0.01035378362137373,
+      "postclip_norm": 0.01035378362137373,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0059701455828087896,
+        "attn_layers": 0.004539663463465234,
+        "moe": 0.0006337528512368363,
+        "euc_skip": 0.0022493560964616825,
+        "sdrp_head": 0.016649418343912727,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 100,
+      "loss_total": 0.037452485179528594,
+      "preclip_norm": 0.008484852777632819,
+      "postclip_norm": 0.008484852777632819,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.005232116268515015,
+        "attn_layers": 0.004673125146324029,
+        "moe": 0.0006376787148378777,
+        "euc_skip": 0.0021819130752717885,
+        "sdrp_head": 0.015643341877072826,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 110,
+      "loss_total": 0.0368449492380023,
+      "preclip_norm": 0.007389880367765051,
+      "postclip_norm": 0.007389880367765051,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.005836139857542547,
+        "attn_layers": 0.004708679386035108,
+        "moe": 0.0006402552064563307,
+        "euc_skip": 0.002397632161259767,
+        "sdrp_head": 0.015139666579590887,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 120,
+      "loss_total": 0.036323687294498086,
+      "preclip_norm": 0.006796293582107621,
+      "postclip_norm": 0.006796293582107621,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.006377615763607326,
+        "attn_layers": 0.00451745116908005,
+        "moe": 0.0006098687711958022,
+        "euc_skip": 0.0022511037135761088,
+        "sdrp_head": 0.01451121880136323,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 130,
+      "loss_total": 0.03589245770126581,
+      "preclip_norm": 0.006520540008373918,
+      "postclip_norm": 0.006520540008373918,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0035920013669657413,
+        "attn_layers": 0.004392163299712004,
+        "moe": 0.0005841207607189386,
+        "euc_skip": 0.002024006457310932,
+        "sdrp_head": 0.013937625398353734,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 140,
+      "loss_total": 0.03549472242593765,
+      "preclip_norm": 0.007095911297844876,
+      "postclip_norm": 0.007095911297844876,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0033117439469234093,
+        "attn_layers": 0.0040825429655377225,
+        "moe": 0.0005486272873053474,
+        "euc_skip": 0.0020583104663283065,
+        "sdrp_head": 0.01319437385105967,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 150,
+      "loss_total": 0.03514946764335036,
+      "preclip_norm": 0.00640079570700317,
+      "postclip_norm": 0.00640079570700317,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0031883409196941164,
+        "attn_layers": 0.003978907174081028,
+        "moe": 0.0005479358880119323,
+        "euc_skip": 0.0023212804162492536,
+        "sdrp_head": 0.01307351401263496,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 160,
+      "loss_total": 0.03484515007585287,
+      "preclip_norm": 0.006296795961018635,
+      "postclip_norm": 0.006296795961018635,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0023266594487751312,
+        "attn_layers": 0.003558841416295333,
+        "moe": 0.0005150471812029253,
+        "euc_skip": 0.0020990937223974953,
+        "sdrp_head": 0.012234049918027656,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 170,
+      "loss_total": 0.03456116747111082,
+      "preclip_norm": 0.0062859360621540005,
+      "postclip_norm": 0.0062859360621540005,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0020995772400567913,
+        "attn_layers": 0.003136415487303096,
+        "moe": 0.0004991537509204724,
+        "euc_skip": 0.0019040881742740383,
+        "sdrp_head": 0.011472612029441656,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 180,
+      "loss_total": 0.03428441076539457,
+      "preclip_norm": 0.00621108284807863,
+      "postclip_norm": 0.00621108284807863,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0018551175964542869,
+        "attn_layers": 0.002882361362578442,
+        "moe": 0.0005165729364614932,
+        "euc_skip": 0.0018555150905362747,
+        "sdrp_head": 0.011010558446554533,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 190,
+      "loss_total": 0.03402368840761483,
+      "preclip_norm": 0.006775166260229244,
+      "postclip_norm": 0.006775166260229244,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0016993161710942197,
+        "attn_layers": 0.0027025995002069184,
+        "moe": 0.000531391937089179,
+        "euc_skip": 0.0018608438578183698,
+        "sdrp_head": 0.010725782701672838,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 200,
+      "loss_total": 0.03378132125362754,
+      "preclip_norm": 0.011688815065107277,
+      "postclip_norm": 0.011688815065107277,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.001519174906483793,
+        "attn_layers": 0.002565892194990933,
+        "moe": 0.0005175699863642012,
+        "euc_skip": 0.0019253671260596017,
+        "sdrp_head": 0.01055973232201761,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 210,
+      "loss_total": 0.03355052834376693,
+      "preclip_norm": 0.009679373682983593,
+      "postclip_norm": 0.009679373682983593,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0015561972738802464,
+        "attn_layers": 0.0024176538670311206,
+        "moe": 0.0004826010961543016,
+        "euc_skip": 0.0019279579068558386,
+        "sdrp_head": 0.01039887946138999,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 220,
+      "loss_total": 0.03332475945353508,
+      "preclip_norm": 0.006608331886522488,
+      "postclip_norm": 0.006608331886522488,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0017830439829414413,
+        "attn_layers": 0.0023232275180265476,
+        "moe": 0.00045583906617068176,
+        "euc_skip": 0.0020146685741438608,
+        "sdrp_head": 0.010321084487422286,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 230,
+      "loss_total": 0.0331049186643213,
+      "preclip_norm": 0.008159986123786286,
+      "postclip_norm": 0.008159986123786286,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.001407451895891029,
+        "attn_layers": 0.002221423960209093,
+        "moe": 0.0004258715267871676,
+        "euc_skip": 0.002078991258002993,
+        "sdrp_head": 0.010259463592282733,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 240,
+      "loss_total": 0.03289623465389013,
+      "preclip_norm": 0.010181329610448082,
+      "postclip_norm": 0.010181329610448082,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0011331695077167107,
+        "attn_layers": 0.002192328063531613,
+        "moe": 0.00041252251710517,
+        "euc_skip": 0.0021903738636838968,
+        "sdrp_head": 0.010304033797458345,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 250,
+      "loss_total": 0.03269780077971518,
+      "preclip_norm": 0.010432380461074241,
+      "postclip_norm": 0.010432380461074241,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0010629812518118875,
+        "attn_layers": 0.0021869441143659027,
+        "moe": 0.0003967057087601499,
+        "euc_skip": 0.0024194227231808837,
+        "sdrp_head": 0.010336398324958924,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 260,
+      "loss_total": 0.03250240418128669,
+      "preclip_norm": 0.00853081569946929,
+      "postclip_norm": 0.00853081569946929,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0010335057097413441,
+        "attn_layers": 0.0021699230531401765,
+        "moe": 0.00037538061700980954,
+        "euc_skip": 0.002671894549917738,
+        "sdrp_head": 0.010354513406148218,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 270,
+      "loss_total": 0.032304618740454316,
+      "preclip_norm": 0.007066531043509969,
+      "postclip_norm": 0.007066531043509969,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0009522190224688947,
+        "attn_layers": 0.002175217438510333,
+        "moe": 0.00035929432547063885,
+        "euc_skip": 0.003019524581899817,
+        "sdrp_head": 0.01046380923758066,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 280,
+      "loss_total": 0.0320970225147903,
+      "preclip_norm": 0.0075158806377907455,
+      "postclip_norm": 0.0075158806377907455,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0009125208502794989,
+        "attn_layers": 0.0021647713802914648,
+        "moe": 0.000344266769162728,
+        "euc_skip": 0.003476170178674136,
+        "sdrp_head": 0.010632022569033117,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 290,
+      "loss_total": 0.031871607759967446,
+      "preclip_norm": 0.005967895758128343,
+      "postclip_norm": 0.005967895758128343,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0008557266035947776,
+        "attn_layers": 0.0021203621661525446,
+        "moe": 0.00032517807790865974,
+        "euc_skip": 0.003997405437350307,
+        "sdrp_head": 0.010803839858185857,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 300,
+      "loss_total": 0.03162352344952524,
+      "preclip_norm": 0.00654215550097126,
+      "postclip_norm": 0.00654215550097126,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0009246176621670331,
+        "attn_layers": 0.0020449876307639826,
+        "moe": 0.00030052375072151205,
+        "euc_skip": 0.004537170839477078,
+        "sdrp_head": 0.010953377989126238,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 310,
+      "loss_total": 0.031353407772257924,
+      "preclip_norm": 0.007144937834021693,
+      "postclip_norm": 0.007144937834021693,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0007464605756793715,
+        "attn_layers": 0.0019321784898760454,
+        "moe": 0.00027041887110841617,
+        "euc_skip": 0.004913438206884566,
+        "sdrp_head": 0.011031689524142152,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 320,
+      "loss_total": 0.031067869160324335,
+      "preclip_norm": 0.006949883046921015,
+      "postclip_norm": 0.006949883046921015,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0007795313076107363,
+        "attn_layers": 0.0018015122692702946,
+        "moe": 0.0002394171094652047,
+        "euc_skip": 0.004994188390084843,
+        "sdrp_head": 0.01107244990210141,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 330,
+      "loss_total": 0.030767968855798244,
+      "preclip_norm": 0.007028877990351779,
+      "postclip_norm": 0.007028877990351779,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0006095540552958806,
+        "attn_layers": 0.0016790930161990002,
+        "moe": 0.00021102431563485813,
+        "euc_skip": 0.004653648211691021,
+        "sdrp_head": 0.011079357145890893,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 340,
+      "loss_total": 0.03044542227871716,
+      "preclip_norm": 0.011483992574428795,
+      "postclip_norm": 0.011483992574428795,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0005429102991474324,
+        "attn_layers": 0.0015662272953671562,
+        "moe": 0.00019034555556263642,
+        "euc_skip": 0.004204539807066774,
+        "sdrp_head": 0.011094226762471146,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 350,
+      "loss_total": 0.03008588112425059,
+      "preclip_norm": 0.010454283073282276,
+      "postclip_norm": 0.010454283073282276,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0004967576275948742,
+        "attn_layers": 0.0014806338041883614,
+        "moe": 0.00017719422059124477,
+        "euc_skip": 0.0037483500348746046,
+        "sdrp_head": 0.011293557529934854,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 360,
+      "loss_total": 0.02967902400996536,
+      "preclip_norm": 0.011376288442996728,
+      "postclip_norm": 0.011376288442996728,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0004903183941627743,
+        "attn_layers": 0.0014206745648179036,
+        "moe": 0.00016993215470460205,
+        "euc_skip": 0.0033433150294869653,
+        "sdrp_head": 0.011771793174088791,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 370,
+      "loss_total": 0.02921469823922962,
+      "preclip_norm": 0.010760593728327413,
+      "postclip_norm": 0.010760593728327413,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0004612323318901894,
+        "attn_layers": 0.001396314133554154,
+        "moe": 0.00017055291121022753,
+        "euc_skip": 0.0035353370552407073,
+        "sdrp_head": 0.012323326996873071,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 380,
+      "loss_total": 0.028673244873061776,
+      "preclip_norm": 0.010023240051493977,
+      "postclip_norm": 0.010023240051493977,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0004978684752612662,
+        "attn_layers": 0.001428487202051991,
+        "moe": 0.00018611186166864733,
+        "euc_skip": 0.00491610921604545,
+        "sdrp_head": 0.013079772293039735,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 390,
+      "loss_total": 0.028040230157785118,
+      "preclip_norm": 0.01810432400887121,
+      "postclip_norm": 0.01810432400887121,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0005134410151326741,
+        "attn_layers": 0.0015939314112225888,
+        "moe": 0.00022550231034051938,
+        "euc_skip": 0.005657983206322769,
+        "sdrp_head": 0.013758773996007546,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    },
+    {
+      "step": 399,
+      "loss_total": 0.027443869621492922,
+      "preclip_norm": 0.08286408235951366,
+      "postclip_norm": 0.08286408235951366,
+      "clip_active": 0.0,
+      "c": 1.000100016593933,
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0004772931484499398,
+        "attn_layers": 0.0016044307814652675,
+        "moe": 0.00026446257476172647,
+        "euc_skip": 0.006641025995826001,
+        "sdrp_head": 0.013774355908680876,
+        "evidential_head": 0.0,
+        "mechanism_head": 0.0
+      }
+    }
+  ]
+}

@@ -2,9 +2,9 @@
   "schema_version": 1,
   "gate_id": "tokyo_eye_equ_wrap1_zhyp_g_fit_prereg",
   "display_lineage": "Tokyo Eye EQU",
-  "status": "READY_TO_RUN",
+  "status": "COMPLETED_INCONCLUSIVE_UNDERFIT",
   "approval_status": "DECISIONS_APPROVED",
-  "execution_state": "READY_TO_RUN",
+  "execution_state": "COMPLETED",
   "date_drafted": "2026-09-20",
   "date_decisions_locked": "2026-09-20",
   "date_decisions_signed": "2026-09-20",
@@ -379,5 +379,9 @@
   "signed_decisions": "Ray Swan 2026-09-20 \u2014 six locks APPROVED. Card not SEALED / not READY_TO_RUN until all three seal blockers clear together.",
   "signed_draft": "Ray Swan 2026-09-20 \u2014 decisions LOCKED then SIGNED; seal pending (all-together rule); fixture blockers 1+2 cleared 2026-09-20",
   "date_sealed": "2026-09-20",
-  "signed_seal": "Ray Swan 2026-09-20 \u2014 operator go-ahead; commit-then-pin verified against land commit"
+  "signed_seal": "Ray Swan 2026-09-20 \u2014 operator go-ahead; commit-then-pin verified against land commit",
+  "date_completed": "2026-09-21",
+  "result": "data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_result.json",
+  "card_verdict": "INCONCLUSIVE_UNDERFIT",
+  "completion_note": "G_finite+G_grad_spine PASS (spine reconnect worked). G_fit_train FAIL: all 12 folds train_macro_lift\u22481.02 (bar 1.30), min\u22480.99\u20131.00 (bar 1.10). Held-out lifts\u22480.82\u20131.00. clip_active_fraction=0; _log_c drift=0. Loss fell but lift stayed near majority."
 }
