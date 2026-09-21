@@ -67,29 +67,6 @@
   ],
   "items": [
     {
-      "id": "A-reachable-bars-or-less-skewed-target",
-      "status": "IN_FLIGHT",
-      "priority": 1,
-      "kind": "prerequisite",
-      "title": "Reachable capacity bars and/or less majority-dominated target",
-      "opened": "2026-09-21",
-      "blocked_by": [],
-      "blocks": [
-        "A-pool-frontend"
-      ],
-      "note": "Prerequisite for any future capacity claim. A-r5-graph-lever-joint-check DONE: wrap (frozen, R1\u2194R2 only) and dropping R5 both leave lift\u22651.30 structurally unreachable (max-lift macro mean ~1.16; 0/12 at drop-R5). GENERALIZATION (carry forward): salt/hydrophobe stay nearly empty even with R5 fully removed \u2014 the SDRP argmax is dominated by R0/R1 edge counts on these graphs, not by R5 crowding minority classes. That forecloses further \"adjust some other edge threshold / demote another relation\" proposals as a path to rescuing the inherited lift bar; design around a non-argmax target or a reachable metric instead. Next is that redesign \u2014 not a wrap/R5 (or other edge-threshold) rebuild.",
-      "related_lessons": [
-        "L-bar-reuse-without-reachability"
-      ],
-      "evidence": [
-        "data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_result.json",
-        "data/gates/tokyo_eye_equ_r5_lever_joint_check.json"
-      ],
-      "next": "operator lock M1 vs M2 in data/gates/tokyo_eye_equ_reachable_bars_design.json \u2014 then sealed capacity prereg",
-      "design_constraint": "SDRP argmax minority emptiness is R0/R1 count geometry, not R5-specific; graph edge-threshold levers are exhausted for unlocking lift\u22651.30 on these 12 folds",
-      "design_draft": "data/gates/tokyo_eye_equ_reachable_bars_design.json"
-    },
-    {
       "id": "A-typed-path-utilization",
       "status": "OPEN",
       "priority": 1,
@@ -237,6 +214,32 @@
       "blocks": [],
       "closed": "2026-09-21",
       "result": "NO \u2014 wrap/R5 levers do not make lift\u22651.30 reachable; do not merge with typed-path"
+    },
+    {
+      "id": "A-reachable-bars-or-less-skewed-target",
+      "status": "DONE",
+      "priority": 1,
+      "kind": "prerequisite",
+      "title": "Reachable capacity bars and/or less majority-dominated target",
+      "opened": "2026-09-21",
+      "blocked_by": [],
+      "blocks": [
+        "A-pool-frontend"
+      ],
+      "note": "Prerequisite for any future capacity claim. A-r5-graph-lever-joint-check DONE: wrap (frozen, R1\u2194R2 only) and dropping R5 both leave lift\u22651.30 structurally unreachable (max-lift macro mean ~1.16; 0/12 at drop-R5). GENERALIZATION (carry forward): salt/hydrophobe stay nearly empty even with R5 fully removed \u2014 the SDRP argmax is dominated by R0/R1 edge counts on these graphs, not by R5 crowding minority classes. That forecloses further \"adjust some other edge threshold / demote another relation\" proposals as a path to rescuing the inherited lift bar; design around a non-argmax target or a reachable metric instead. Next is that redesign \u2014 not a wrap/R5 (or other edge-threshold) rebuild.",
+      "related_lessons": [
+        "L-bar-reuse-without-reachability"
+      ],
+      "evidence": [
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_result.json",
+        "data/gates/tokyo_eye_equ_r5_lever_joint_check.json",
+        "data/gates/tokyo_eye_equ_reachable_bars_design.json"
+      ],
+      "next": "next sealed capacity prereg inherits M2 bars; do not reopen metric choice without new card",
+      "design_constraint": "SDRP argmax minority emptiness is R0/R1 count geometry, not R5-specific; graph edge-threshold levers are exhausted for unlocking lift\u22651.30 on these 12 folds",
+      "design_draft": "data/gates/tokyo_eye_equ_reachable_bars_design.json",
+      "closed": "2026-09-21",
+      "result": "M2 macro-F1 locked; bar 0.40 mean+min; stretch 0.50; reachability PASS"
     }
   ],
   "signed": "Ray Swan / Cursor agent 2026-09-21 \u2014 agenda SSOT opened"

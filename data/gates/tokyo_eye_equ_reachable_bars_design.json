@@ -2,7 +2,7 @@
   "schema_version": 1,
   "gate_id": "tokyo_eye_equ_reachable_bars_design",
   "agenda_id": "A-reachable-bars-or-less-skewed-target",
-  "status": "DRAFT_AWAITING_OPERATOR_LOCK",
+  "status": "OPERATOR_LOCKED",
   "date_drafted": "2026-09-21",
   "display_lineage": "Tokyo Eye EQU",
   "kind": "design_options_not_a_train",
@@ -15,31 +15,35 @@
     "data/gates/tokyo_eye_equ_agenda.json"
   ],
   "constraint_locked_by_prior_checks": {
-    "inherited_lift_1_30": "STRUCTURALLY_UNREACHABLE on SDRP argmax (max lift ≈1.04–1.18)",
-    "graph_edge_threshold_levers": "EXHAUSTED for rescuing that bar — wrap frozen; drop-R5 still unreachable; salt/hydrophobe empty even without R5",
+    "inherited_lift_1_30": "STRUCTURALLY_UNREACHABLE on SDRP argmax (max lift \u22481.04\u20131.18)",
+    "graph_edge_threshold_levers": "EXHAUSTED for rescuing that bar \u2014 wrap frozen; drop-R5 still unreachable; salt/hydrophobe empty even without R5",
     "root_geometry": "SDRP argmax is dominated by R0/R1 edge counts on these 12 folds, not by R5 crowding minority classes",
     "forbid": [
-      "another wrap/R5/edge-threshold card to unlock lift≥1.30",
+      "another wrap/R5/edge-threshold card to unlock lift\u22651.30",
       "silent post-hoc bar nudge on the completed z_hyp card",
-      "inventing C1′ / Stage-2 SDRP as trunk biology (SDRP remains PARKED_DIAGNOSTIC_ONLY for biology)"
+      "inventing C1\u2032 / Stage-2 SDRP as trunk biology (SDRP remains PARKED_DIAGNOSTIC_ONLY for biology)"
     ]
   },
-  "question": "For the next harness capacity card that uses a spine-reaching loss, which reachable pass/fail definition do we lock — before any train?",
+  "question": "For the next harness capacity card that uses a spine-reaching loss, which reachable pass/fail definition do we lock \u2014 before any train?",
   "options": {
     "M1_scaled_lift_bars": {
       "keep": "same SDRP argmax labels + lift=acc/majority_rate",
-      "change": "per-structure bar = 1 + α·(max_lift−1) with α locked pre-train; max_lift=1/majority_rate computed from frozen folds",
-      "why_reachable": "by construction bar ≤ max_lift for α∈(0,1]",
+      "change": "per-structure bar = 1 + \u03b1\u00b7(max_lift\u22121) with \u03b1 locked pre-train; max_lift=1/majority_rate computed from frozen folds",
+      "why_reachable": "by construction bar \u2264 max_lift for \u03b1\u2208(0,1]",
       "baselines_on_12_folds": {
         "macro_mean_max_lift": 1.0916,
-        "proposed_alpha_candidates": [0.25, 0.5, 0.75],
+        "proposed_alpha_candidates": [
+          0.25,
+          0.5,
+          0.75
+        ],
         "macro_mean_bar_if_alpha_0_50": 1.0458,
         "macro_mean_bar_if_alpha_0_75": 1.0687
       },
       "suggested_lock_if_chosen": {
         "alpha": 0.5,
-        "G_fit_train": "macro-mean over 11 train structures of lift ≥ per-structure bar(α) AND min train lift ≥ that structure's bar(α)",
-        "note": "S1/S2 held-out shapes must be re-derived the same way — do not inherit 1.30/1.10"
+        "G_fit_train": "macro-mean over 11 train structures of lift \u2265 per-structure bar(\u03b1) AND min train lift \u2265 that structure's bar(\u03b1)",
+        "note": "S1/S2 held-out shapes must be re-derived the same way \u2014 do not inherit 1.30/1.10"
       },
       "pros": [
         "minimal change to metric semantics already in z_hyp stamps",
@@ -47,52 +51,106 @@
       ],
       "cons": [
         "still majority-basin friendly; lift can pass while macro-F1 stays weak",
-        "α choice is a judgment — must be locked before seeing train results"
-      ]
+        "\u03b1 choice is a judgment \u2014 must be locked before seeing train results"
+      ],
+      "status": "REJECTED"
     },
     "M2_macro_f1_capacity": {
       "keep": "same SDRP argmax labels + DualSpaceSDRPHead CE",
       "change": "primary bar = macro-F1 over classes present in that structure (same definition as z_hyp runner logged)",
       "baselines_on_12_folds": {
         "majority_classifier_macro_f1_mean": 0.3188,
-        "majority_classifier_macro_f1_range": [0.306, 0.326],
+        "majority_classifier_macro_f1_range": [
+          0.306,
+          0.326
+        ],
         "perfect_macro_f1": 1.0,
-        "present_classes_always": [0, 1, 4]
+        "present_classes_always": [
+          0,
+          1,
+          4
+        ]
       },
       "suggested_lock_if_chosen": {
-        "G_fit_train": "macro-mean over 11 train structures of macro-F1 ≥ 0.50 AND min train-structure macro-F1 ≥ 0.40",
-        "rationale_for_numbers": "DRAFT — ~halfway from majority (~0.32) toward 1.0 on the low end; operator must accept or replace BEFORE train",
-        "S1_S2": "re-derive on held-out macro-F1; do not use lift 1.30/1.10"
+        "status": "SUPERSEDED_BY_operator_lock",
+        "see": "operator_lock"
       },
       "pros": [
         "directly pressures minority classes (0 and 1) that lift can ignore",
         "ceiling 1.0 is always theoretically reachable"
       ],
       "cons": [
-        "0.50/0.40 are draft judgments — must be signed before run",
+        "0.50/0.40 are draft judgments \u2014 must be signed before run",
         "empty classes 2/3 remain absent; macro-F1 is only over present classes"
       ]
     },
     "T_non_argmax_or_new_target": {
-      "status": "NOT_FOR_THIS_LOCK — separate sealed card if pursued",
+      "status": "NOT_FOR_THIS_LOCK \u2014 separate sealed card if pursued",
       "why_deferred": [
         "wrap1 SDRP target hunt closed SDRP_PARKED_DIAGNOSTIC_ONLY with NO_CANDIDATE",
-        "hard stop: do not invent C1′ to beat post-hoc G7/G8",
+        "hard stop: do not invent C1\u2032 to beat post-hoc G7/G8",
         "any new supervision needs its own prereg; biology path must also address defect B leakage"
       ],
-      "allowed_later": "edge-type-independent biology target (A-hyp-biology) or a new harness probe with pre-registered reachable bars — not a silent rewrite of sdrp_heuristic_from_edges"
+      "allowed_later": "edge-type-independent biology target (A-hyp-biology) or a new harness probe with pre-registered reachable bars \u2014 not a silent rewrite of sdrp_heuristic_from_edges"
     }
   },
   "recommendation": {
     "prefer": "M2_macro_f1_capacity for the next harness capacity card if the goal is to detect minority-sensitive fit; M1_scaled_lift_bars if the goal is continuity with the z_hyp lift language at minimal change",
     "do_not": "mix M1 and M2 bars post-hoc; pick one primary metric family",
-    "typed_path": "A-typed-path-utilization remains a separate card — metric redesign does not close rel_bias/gamma/beta darkness"
+    "typed_path": "A-typed-path-utilization remains a separate card \u2014 metric redesign does not close rel_bias/gamma/beta darkness",
+    "status": "SUPERSEDED \u2014 operator locked M2"
   },
   "operator_lock_required": [
     "Choose M1 or M2 (or reject both and open T as a new card)",
-    "If M1: lock α ∈ {0.25,0.5,0.75} or a written custom α with reachability proof",
+    "If M1: lock \u03b1 \u2208 {0.25,0.5,0.75} or a written custom \u03b1 with reachability proof",
     "If M2: lock train macro-F1 thresholds (replace 0.50/0.40 drafts or sign them)",
     "Explicitly reaffirm: no graph edge-threshold card for this problem"
   ],
-  "signed_draft": "Cursor agent 2026-09-21 — design options for A-reachable; awaiting operator lock"
+  "signed_draft": "Cursor agent 2026-09-21 \u2014 design options for A-reachable; awaiting operator lock",
+  "date_locked": "2026-09-21",
+  "operator_lock": {
+    "choice": "M2_macro_f1_capacity",
+    "rejected": "M1_scaled_lift_bars",
+    "reject_m1_reason": "Scaled lift still measures beat-majority; with maj 85\u201396% that is cheap for a majority-sharpening model. M1 papers over class imbalance rather than testing minority-sensitive fit (operator 2026-09-21).",
+    "locked_by": "Ray Swan",
+    "primary_bar": 0.4,
+    "stretch_goal_not_pass_fail": 0.5,
+    "G_fit_train": {
+      "metric": "macro-F1 over classes present in that structure (same as z_hyp runner)",
+      "bar_macro_mean": 0.4,
+      "bar_min_structure": 0.4,
+      "why_both": "Prior z_hyp SDRP-live run already clears train macro-mean F1\u22650.40 on all 12 folds (means 0.41\u20130.50) while every fold min stays ~0.31\u20130.33 (majority floor). Mean-only 0.40 would be vacuous against that run; min\u22650.40 forces minority recall on every train structure."
+    },
+    "S1_S2_held_out_to_rederive_in_next_prereg": "Do not inherit lift 1.30/1.10. Next sealed capacity prereg must set held-out macro-F1 bars with the same reachability discipline; draft placeholder only below.",
+    "held_out_draft_placeholder_not_locked": {
+      "note": "NOT locked \u2014 for next prereg only",
+      "S1_shape_suggestion": "mean held-out macro-F1 \u2265 0.40 with bootstrap CI discipline TBD",
+      "S2_shape_suggestion": "macro-F1 > majority_baseline on \u226510/12 held-out structures",
+      "prior_zhyp_heldout_all_below_0_40": true
+    },
+    "no_graph_edge_threshold_card": true,
+    "typed_path_remains_separate": true
+  },
+  "reachability_check_macro_f1": {
+    "date": "2026-09-21",
+    "folds": 12,
+    "majority_classifier_macro_f1": {
+      "mean": 0.3188,
+      "max": 0.326,
+      "all_strictly_below_0_40": true
+    },
+    "perfect_classifier_macro_f1": {
+      "all_structures": 1.0,
+      "all_strictly_above_0_40": true
+    },
+    "partial_oracles": {
+      "perfect_except_rim_mean": 0.6617,
+      "perfect_except_core_mean": 0.6568,
+      "read": "0.40 sits well below partial minority mastery (~0.66); not a near-ceiling trap"
+    },
+    "prevalence_random_macro_f1_mean": 0.3295,
+    "verdict": "REACHABLE \u2014 0.40 is above majority/random baselines and below perfect/partial-oracle ceilings on all 12 folds",
+    "contrast_to_lift_1_30": "lift\u22651.30 was above theoretical max (~1.09); macro-F1 0.40 is inside (maj\u22480.32, perfect=1.0)"
+  },
+  "signed_lock": "Ray Swan 2026-09-21 \u2014 M2 macro-F1; bar 0.40 mean+min; 0.50 stretch only; reachability check recorded"
 }
