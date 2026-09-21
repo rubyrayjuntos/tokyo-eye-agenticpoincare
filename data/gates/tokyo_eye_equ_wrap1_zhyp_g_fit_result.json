@@ -212,6 +212,16 @@
         "attn_layers_bucket_L2_step0": 0.0625,
         "sdrp_head_L2_step0": 0.184,
         "read": "Spine is live, but typed relation parameters specifically are near-dark: frontend.rel_bias ~1000\u00d7 smaller than seed_proj; HyperbolicGraphAttention gamma/beta effectively zero vs non-typed attn params. Low shuffle sensitivity is consistent with a second, narrower wiring/utilization gap on the typed path \u2014 not foldable into a pure capacity story."
+      },
+      "init_vs_bottleneck_probe_2026_09_21": {
+        "rel_bias_init_mean_abs": 0.795,
+        "seed_proj_init_mean_abs": 0.291,
+        "init_scale_explains_tiny_grad": false,
+        "uniform_edge_type_rescues": false,
+        "uniform_labels_rescues": false,
+        "both_uniform_rescues": false,
+        "unified_R5_root_with_label_ceiling": "NOT_SUPPORTED_AS_SOLE_CAUSE",
+        "read": "rel_bias weights are larger than seed_proj at init; relative grad/weight is ~1000\u00d7 smaller. Artificial uniform edge_type and/or labels do not restore rel_bias grad. R5 dominance explains unsatisfiable lift bars; typed-param silence appears architectural (dilution/utilization), not solely R5 variance. Keep A-reachable and A-typed-path as separate agenda items; run A-r5-graph-lever-joint-check before splitting into two train cards."
       }
     },
     "loss_vs_lift": "Loss keeps falling while lift stays ~1.0: CE sharpens inside the majority basin. Extending steps without a new card would deepen that basin, not buy minority-sensitive lift.",
@@ -222,7 +232,9 @@
       "moe_on_vs_ablated_identical_wiring (moe_verify_on_pool)",
       "freeze_item_16_learned_c_or_signed_pin",
       "hyp_biology_non_leaking_on_z_hyp"
-    ]
+    ],
+    "process_lesson": "L-bar-reuse-without-reachability",
+    "agenda_ssot": "data/gates/tokyo_eye_equ_agenda.json"
   },
   "amendment_signed": "Ray Swan / Cursor agent 2026-09-21 \u2014 scoping + label ceiling + typed-path probe"
 }

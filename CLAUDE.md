@@ -9,11 +9,11 @@ This file overrides dated design specs as your working instructions.
 
 ## Control plane (read these first)
 
-0. **Fresh stitch (2026-09-20):** [`docs/history/session-handoff-2026-09-20-equ-gfit-marginal.md`](docs/history/session-handoff-2026-09-20-equ-gfit-marginal.md) — lite dehydron G_fit CLOSED_MARGINAL; next sealed card = **z_hyp SDRP-live G_fit** (`tokyo_eye_equ_wrap1_zhyp_g_fit_prereg.json`)
+0. **Fresh stitch (2026-09-21):** Agenda SSOT [`data/gates/tokyo_eye_equ_agenda.json`](data/gates/tokyo_eye_equ_agenda.json) — open items + lessons. z_hyp G_fit **DONE** `INCONCLUSIVE_UNDERFIT` (scoped). Prior handoff: [`docs/history/session-handoff-2026-09-20-equ-gfit-marginal.md`](docs/history/session-handoff-2026-09-20-equ-gfit-marginal.md)
 1. **[`docs/TOKYOEYE_ARCHITECTURE_SSOT.md`](docs/TOKYOEYE_ARCHITECTURE_SSOT.md)** — front door (intended stack; no numeric pins)
 2. **[`docs/superpowers/specs/2026-09-16-tokyo-eye-v8-freeze-addendum.md`](docs/superpowers/specs/2026-09-16-tokyo-eye-v8-freeze-addendum.md)** — sole owner of numbers / signed §2.x
 3. `docs/PROJECT_HUB.md` — stitch only; not machine truth
-4. Gate JSON under `data/gates/tokyo_eye_equ_*.json` and `data/gates/tokyoeye_mlflow_ssot.json`
+4. Gate JSON under `data/gates/tokyo_eye_equ_*.json` and `data/gates/tokyoeye_mlflow_ssot.json` — **agenda** = `tokyo_eye_equ_agenda.json`
 5. Code under `science/tokyo_eye/`
 6. Live MLflow at `http://localhost:5000` (in-container `http://127.0.0.1:5000`)
 7. Harness: `experiments/training/v8/run_v8_experiment.py` + `science/tokyo_eye/v8/assembly_gate.py`

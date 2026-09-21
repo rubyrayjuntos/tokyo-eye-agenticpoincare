@@ -59,14 +59,27 @@
       "read as architecture ceiling or FAIL_NO_SIGNAL",
       "another cold dehydron lite epoch prereg"
     ],
-    "open_agenda": [
+    "open_agenda": "SEE open_agenda_ids + data/gates/tokyo_eye_equ_agenda.json",
+    "note": "Wiring/capacity separation is closed for this configuration. Trunk sealed biology cards remain claim-bearing non-leak on pool; harness follow-ups above need their own sealed preregs.",
+    "open_agenda_ids": [
+      "A-reachable-bars-or-less-skewed-target",
+      "A-typed-path-utilization",
+      "A-r5-graph-lever-joint-check",
+      "A-pool-frontend",
+      "A-moe-verify-on-pool",
+      "A-freeze-16-learned-c",
+      "A-hyp-biology-non-leaking",
+      "A-defect-B-leakage"
+    ],
+    "open_agenda_note": "Strings retired \u2014 see tokyo_eye_equ_agenda.json items by id.",
+    "open_agenda_legacy_strings": [
       "less_majority_dominated_target_or_reachable_bars (prerequisite for future capacity claims)",
       "typed_path_rel_bias_gamma_beta_utilization (second gap; diagnostic card)",
       "equiformer_pool_frontend_capacity_or_biology (separate sealed card)",
       "moe_on_vs_ablated_identical_wiring (moe_verify_on_pool)",
       "freeze_item_16_learned_c_or_signed_pin",
       "hyp_biology_non_leaking_on_z_hyp"
-    ],
-    "note": "Wiring/capacity separation is closed for this configuration. Trunk sealed biology cards remain claim-bearing non-leak on pool; harness follow-ups above need their own sealed preregs."
-  }
+    ]
+  },
+  "agenda_ssot": "data/gates/tokyo_eye_equ_agenda.json"
 }
