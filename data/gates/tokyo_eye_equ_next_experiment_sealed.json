@@ -62,16 +62,19 @@
     "open_agenda": "SEE open_agenda_ids + data/gates/tokyo_eye_equ_agenda.json",
     "note": "Wiring/capacity separation is closed for this configuration. Trunk sealed biology cards remain claim-bearing non-leak on pool; harness follow-ups above need their own sealed preregs.",
     "open_agenda_ids": [
-      "A-reachable-bars-or-less-skewed-target",
       "A-typed-path-utilization",
-      "A-r5-graph-lever-joint-check",
       "A-pool-frontend",
       "A-moe-verify-on-pool",
       "A-freeze-16-learned-c",
       "A-hyp-biology-non-leaking",
       "A-defect-B-leakage"
     ],
-    "open_agenda_note": "Strings retired \u2014 see tokyo_eye_equ_agenda.json items by id.",
+    "closed_since": [
+      "A-reachable-bars-or-less-skewed-target",
+      "A-r5-graph-lever-joint-check"
+    ],
+    "in_flight_capacity_card": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_prereg.json",
+    "open_agenda_note": "Strings retired \u2014 see tokyo_eye_equ_agenda.json items by id. M2 capacity card inherits locked bars; does not reopen A-reachable.",
     "open_agenda_legacy_strings": [
       "less_majority_dominated_target_or_reachable_bars (prerequisite for future capacity claims)",
       "typed_path_rel_bias_gamma_beta_utilization (second gap; diagnostic card)",

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """wrap=1 z_hyp G_fit — SDRP-live sole loss on cold SE(3)-lite (12-fold LOSO).
 
-Card: data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_prereg.json
+Cards:
+  * lift (legacy): data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_prereg.json
+  * m2:           data/gates/tokyo_eye_equ_wrap1_zhyp_m2_prereg.json
 
 Harness/capacity probe with intentional SDRP leak. Not biology seal.
 Not defect-B close. Not learned-curvature training (_log_c detached).
@@ -10,8 +12,8 @@ Protocol (card-locked):
   * Cold SE(3)-lite + allow_off_path; moe ablated; pool FORBIDDEN
   * sdrp_coeff=0.1, dehydron_coeff=0, margin_coeff=0 — zero-coeff terms OMITTED
     from the loss graph (not multiplied by 0.0)
-  * 400 optimizer steps; mean over 11 train structures; last-step only
-  * Bars: G_finite, G_grad_spine, G_fit_train, S1, S2 (see prereg)
+  * 400 optimizer steps; last-step only
+  * Bars: G_finite, G_grad_spine, G_fit_train, S1, S2 (see active prereg)
 """
 from __future__ import annotations
 
@@ -20,6 +22,7 @@ import hashlib
 import json
 import math
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -65,9 +68,6 @@ MANIFEST = REPO_ROOT / "manifests" / "v8_stage_a_small_v1.json"
 PDB_DIR = REPO_ROOT / "pdb_cache"
 GRAPH_CACHE = PDB_DIR / "v8_graph_cache"
 FOLDS_FROZEN = REPO_ROOT / "data" / "gates" / "wrap1_dehydron_loso" / "folds_frozen.json"
-OUT_DIR = REPO_ROOT / "data" / "gates" / "wrap1_zhyp_g_fit"
-PREREG = REPO_ROOT / "data" / "gates" / "tokyo_eye_equ_wrap1_zhyp_g_fit_prereg.json"
-RESULT_PATH = REPO_ROOT / "data" / "gates" / "tokyo_eye_equ_wrap1_zhyp_g_fit_result.json"
 
 STEPS = 400
 SEED = 0
@@ -76,12 +76,57 @@ MAX_GRAD_NORM = 1.0
 LOG_EVERY = 10
 BOOTSTRAP_DRAWS = 10000
 BOOTSTRAP_SEED = 0
-G_FIT_TRAIN_MACRO_MIN = 1.30
-G_FIT_TRAIN_MIN_STRUCT = 1.10
-S1_MEAN_MIN = 1.30
-S1_CI_LB_MIN = 1.10
-S2_MIN_ABOVE = 10
 S2_OF_N = 12
+
+
+@dataclass(frozen=True)
+class CardPaths:
+    card: str
+    metric_family: str
+    prereg: Path
+    result: Path
+    out_dir: Path
+    gate_id: str
+    # Train G_fit bars (metric depends on family)
+    g_fit_train_macro_min: float
+    g_fit_train_min_struct: float
+    # Held-out S1/S2
+    s1_mean_min: float
+    s1_ci_lb_min: float | None  # None = no CI gate (M2)
+    s2_min_above: int
+    s2_threshold: float  # lift>1.0 or macro_f1>=0.40
+
+
+CARDS: dict[str, CardPaths] = {
+    "lift": CardPaths(
+        card="lift",
+        metric_family="lift",
+        prereg=REPO_ROOT / "data" / "gates" / "tokyo_eye_equ_wrap1_zhyp_g_fit_prereg.json",
+        result=REPO_ROOT / "data" / "gates" / "tokyo_eye_equ_wrap1_zhyp_g_fit_result.json",
+        out_dir=REPO_ROOT / "data" / "gates" / "wrap1_zhyp_g_fit",
+        gate_id="tokyo_eye_equ_wrap1_zhyp_g_fit_result",
+        g_fit_train_macro_min=1.30,
+        g_fit_train_min_struct=1.10,
+        s1_mean_min=1.30,
+        s1_ci_lb_min=1.10,
+        s2_min_above=10,
+        s2_threshold=1.0,  # count lift > 1.0
+    ),
+    "m2": CardPaths(
+        card="m2",
+        metric_family="M2_macro_f1",
+        prereg=REPO_ROOT / "data" / "gates" / "tokyo_eye_equ_wrap1_zhyp_m2_prereg.json",
+        result=REPO_ROOT / "data" / "gates" / "tokyo_eye_equ_wrap1_zhyp_m2_result.json",
+        out_dir=REPO_ROOT / "data" / "gates" / "wrap1_zhyp_m2",
+        gate_id="tokyo_eye_equ_wrap1_zhyp_m2_result",
+        g_fit_train_macro_min=0.40,
+        g_fit_train_min_struct=0.40,
+        s1_mean_min=0.40,
+        s1_ci_lb_min=None,
+        s2_min_above=10,
+        s2_threshold=0.40,  # count macro_f1 >= 0.40
+    ),
+}
 
 
 def _sha256(path: Path) -> str:
@@ -345,6 +390,7 @@ def run_one_fold(
     steps: int,
     seed: int,
     no_mlflow: bool,
+    card: CardPaths,
 ) -> dict[str, Any]:
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -589,12 +635,27 @@ def run_one_fold(
     train_lifts = [float(v["lift"]) for v in train_per.values() if math.isfinite(v["lift"])]
     macro_lift = float(np.mean(train_lifts)) if train_lifts else float("nan")
     min_lift = float(np.min(train_lifts)) if train_lifts else float("nan")
+    train_f1s = [
+        float(v["macro_f1"]) for v in train_per.values() if math.isfinite(v["macro_f1"])
+    ]
+    macro_f1_mean = float(np.mean(train_f1s)) if train_f1s else float("nan")
+    min_f1 = float(np.min(train_f1s)) if train_f1s else float("nan")
+
+    if card.metric_family == "M2_macro_f1":
+        train_macro = macro_f1_mean
+        train_min = min_f1
+    else:
+        train_macro = macro_lift
+        train_min = min_lift
+
     g_fit_train = bool(
         finite
         and step0["ok"]
         and not abort_wiring_c
-        and macro_lift >= G_FIT_TRAIN_MACRO_MIN
-        and min_lift >= G_FIT_TRAIN_MIN_STRUCT
+        and math.isfinite(train_macro)
+        and math.isfinite(train_min)
+        and train_macro >= card.g_fit_train_macro_min
+        and train_min >= card.g_fit_train_min_struct
     )
     clip_frac = (
         float(clip_active_count) / float(clip_logged) if clip_logged else float("nan")
@@ -602,6 +663,8 @@ def run_one_fold(
 
     return {
         "arm": "zhyp_g_fit",
+        "card": card.card,
+        "metric_family": card.metric_family,
         "seed": seed,
         "heldout": [hold],
         "train": train_tags,
@@ -625,6 +688,10 @@ def run_one_fold(
         "train_per_structure": train_per,
         "train_macro_lift": macro_lift,
         "train_min_lift": min_lift,
+        "train_macro_f1": macro_f1_mean,
+        "train_min_f1": min_f1,
+        "train_score_macro": train_macro,
+        "train_score_min": train_min,
         "g_fit_train_pass_fold": g_fit_train,
         "heldout_metrics": {hold: held},
         "edge_type_shuffle": shuffle,
@@ -632,7 +699,7 @@ def run_one_fold(
     }
 
 
-def _score_card(fold_results: list[dict[str, Any]]) -> dict[str, Any]:
+def _score_card(fold_results: list[dict[str, Any]], card: CardPaths) -> dict[str, Any]:
     finite_all = all(r["finite"] for r in fold_results)
     spine_all = all(r.get("G_grad_spine") for r in fold_results)
     c_ok = all(abs(float(r.get("c_drift", 0.0))) <= 1e-5 for r in fold_results)
@@ -648,10 +715,7 @@ def _score_card(fold_results: list[dict[str, Any]]) -> dict[str, Any]:
             "c_ok": c_ok,
         }
 
-    # G_fit_train: macro-mean over 11 train structures, then across folds we
-    # need each fold to clear — card says macro-mean over the 11 train
-    # structures of lift >= 1.30 AND min train-structure lift >= 1.10.
-    # Apply per fold; all folds must pass for G_fit_train.
+    # G_fit_train: per-fold mean+min over 11 train structures; all folds must pass.
     g_fit_all = all(r.get("g_fit_train_pass_fold") for r in fold_results)
     if not g_fit_all:
         return {
@@ -659,19 +723,55 @@ def _score_card(fold_results: list[dict[str, Any]]) -> dict[str, Any]:
             "G_finite": True,
             "G_grad_spine": True,
             "G_fit_train": False,
+            "metric_family": card.metric_family,
         }
 
-    held_lifts = []
+    held_scores: list[float] = []
     for r in fold_results:
         hold = r["heldout"][0]
-        held_lifts.append(float(r["heldout_metrics"][hold]["lift"]))
+        m = r["heldout_metrics"][hold]
+        if card.metric_family == "M2_macro_f1":
+            held_scores.append(float(m["macro_f1"]))
+        else:
+            held_scores.append(float(m["lift"]))
 
-    mean_lift = float(np.mean(held_lifts))
-    ci_lb = _bootstrap_ci_lb(held_lifts, draws=BOOTSTRAP_DRAWS, seed=BOOTSTRAP_SEED)
-    n_above = int(sum(1 for x in held_lifts if x > 1.0))
-    s1 = bool(mean_lift >= S1_MEAN_MIN and ci_lb > S1_CI_LB_MIN)
-    s2 = bool(n_above >= S2_MIN_ABOVE)
+    mean_held = float(np.mean(held_scores))
+    ci_lb = _bootstrap_ci_lb(held_scores, draws=BOOTSTRAP_DRAWS, seed=BOOTSTRAP_SEED)
+    if card.metric_family == "M2_macro_f1":
+        n_above = int(sum(1 for x in held_scores if x >= card.s2_threshold))
+        s1 = bool(mean_held >= card.s1_mean_min)
+        s1_payload = {
+            "pass": s1,
+            "mean_macro_f1": mean_held,
+            "bar_mean": card.s1_mean_min,
+            "ci95_lb_diagnostic": ci_lb,
+        }
+        s2_payload = {
+            "pass": bool(n_above >= card.s2_min_above),
+            "n_macro_f1_ge_bar": n_above,
+            "of_n": S2_OF_N,
+            "bar_n": card.s2_min_above,
+            "threshold": card.s2_threshold,
+        }
+    else:
+        n_above = int(sum(1 for x in held_scores if x > card.s2_threshold))
+        assert card.s1_ci_lb_min is not None
+        s1 = bool(mean_held >= card.s1_mean_min and ci_lb > card.s1_ci_lb_min)
+        s1_payload = {
+            "pass": s1,
+            "mean_lift": mean_held,
+            "ci95_lb": ci_lb,
+            "bar_mean": card.s1_mean_min,
+            "bar_ci_lb": card.s1_ci_lb_min,
+        }
+        s2_payload = {
+            "pass": bool(n_above >= card.s2_min_above),
+            "n_lift_gt_1": n_above,
+            "of_n": S2_OF_N,
+            "bar": card.s2_min_above,
+        }
 
+    s2 = bool(s2_payload["pass"])
     if s1 and s2:
         verdict = "PASS_SIGNAL"
     else:
@@ -682,25 +782,21 @@ def _score_card(fold_results: list[dict[str, Any]]) -> dict[str, Any]:
         "G_finite": True,
         "G_grad_spine": True,
         "G_fit_train": True,
-        "S1": {
-            "pass": s1,
-            "mean_lift": mean_lift,
-            "ci95_lb": ci_lb,
-            "bar_mean": S1_MEAN_MIN,
-            "bar_ci_lb": S1_CI_LB_MIN,
-        },
-        "S2": {
-            "pass": s2,
-            "n_lift_gt_1": n_above,
-            "of_n": S2_OF_N,
-            "bar": S2_MIN_ABOVE,
-        },
-        "held_lifts": held_lifts,
+        "metric_family": card.metric_family,
+        "S1": s1_payload,
+        "S2": s2_payload,
+        "held_scores": held_scores,
     }
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description="wrap1 z_hyp G_fit (SDRP-live)")
+    p.add_argument(
+        "--card",
+        choices=sorted(CARDS.keys()),
+        default="lift",
+        help="Active prereg/scoring family (default: lift for completed card)",
+    )
     p.add_argument("--device", default="cuda")
     p.add_argument("--steps", type=int, default=STEPS)
     p.add_argument("--seed", type=int, default=SEED)
@@ -716,15 +812,16 @@ def main() -> int:
         help="Allow full run before READY_TO_RUN (operator override only)",
     )
     args = p.parse_args()
+    card = CARDS[args.card]
 
     if get_dehydron_wrap_max() != 1:
         raise SystemExit(f"wrap_max must be 1, got {get_dehydron_wrap_max()}")
     if not FOLDS_FROZEN.is_file():
         raise SystemExit(f"missing {FOLDS_FROZEN}")
-    if not PREREG.is_file():
-        raise SystemExit(f"missing {PREREG}")
+    if not card.prereg.is_file():
+        raise SystemExit(f"missing {card.prereg}")
 
-    prereg = json.loads(PREREG.read_text())
+    prereg = json.loads(card.prereg.read_text())
     status = str(prereg.get("status", ""))
     if not args.smoke and not args.allow_unsealed and status != "READY_TO_RUN":
         raise SystemExit(
@@ -749,9 +846,10 @@ def main() -> int:
             "No extensions without a new signed card."
         )
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    card.out_dir.mkdir(parents=True, exist_ok=True)
     print(
-        f"[zhyp_g_fit] device={device} steps={steps} seed={args.seed} "
+        f"[zhyp_g_fit] card={card.card} metric={card.metric_family} "
+        f"device={device} steps={steps} seed={args.seed} "
         f"folds={len(folds)} sdrp_coeff={SDRP_COEFF}"
     )
 
@@ -763,10 +861,11 @@ def main() -> int:
             steps=steps,
             seed=int(args.seed),
             no_mlflow=bool(args.no_mlflow or args.smoke),
+            card=card,
         )
         fold_results.append(row)
         hold_key = hold.replace(":", "")
-        out = OUT_DIR / f"zhyp_seed{args.seed}_hold_{hold_key}.json"
+        out = card.out_dir / f"zhyp_seed{args.seed}_hold_{hold_key}.json"
         if not args.smoke:
             out.write_text(json.dumps(row, indent=2) + "\n")
             print(f"[zhyp_g_fit] wrote {out}")
@@ -776,20 +875,31 @@ def main() -> int:
 
     if args.smoke:
         print("[zhyp_g_fit] smoke done — no stamps")
-        print(json.dumps({r["heldout"][0]: r.get("abort") or r.get("train_macro_lift") for r in fold_results}, indent=2))
+        key = (
+            "train_macro_f1"
+            if card.metric_family == "M2_macro_f1"
+            else "train_macro_lift"
+        )
+        print(
+            json.dumps(
+                {r["heldout"][0]: r.get("abort") or r.get(key) for r in fold_results},
+                indent=2,
+            )
+        )
         return 0
 
-    scored = _score_card(fold_results)
+    scored = _score_card(fold_results, card)
     verdict = scored["verdict"]
 
     stamp: dict[str, Any] = {
         "schema_version": 1,
-        "gate_id": "tokyo_eye_equ_wrap1_zhyp_g_fit_result",
+        "gate_id": card.gate_id,
         "status": verdict,
         "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "display_lineage": "Tokyo Eye EQU",
         "do_not_promote": True,
-        "card": str(PREREG.relative_to(REPO_ROOT)),
+        "card": str(card.prereg.relative_to(REPO_ROOT)),
+        "metric_family": card.metric_family,
         "seed": int(args.seed),
         "steps": STEPS,
         "folds": [r["heldout"][0] for r in fold_results],
@@ -805,23 +915,31 @@ def main() -> int:
                 "G_grad_spine": r.get("G_grad_spine"),
                 "train_macro_lift": r.get("train_macro_lift"),
                 "train_min_lift": r.get("train_min_lift"),
+                "train_macro_f1": r.get("train_macro_f1"),
+                "train_min_f1": r.get("train_min_f1"),
+                "train_score_macro": r.get("train_score_macro"),
+                "train_score_min": r.get("train_score_min"),
+                "g_fit_train_pass_fold": r.get("g_fit_train_pass_fold"),
                 "heldout_lift": r.get("heldout_metrics", {})
                 .get(r["heldout"][0], {})
                 .get("lift"),
+                "heldout_macro_f1": r.get("heldout_metrics", {})
+                .get(r["heldout"][0], {})
+                .get("macro_f1"),
                 "c_drift": r.get("c_drift"),
                 "clip_active_fraction": r.get("clip_active_fraction"),
             }
             for r in fold_results
         },
         "script_sha256": _sha256(Path(__file__)),
-        "prereg_sha256": _sha256(PREREG),
+        "prereg_sha256": _sha256(card.prereg),
         "folds_frozen_sha256": _sha256(FOLDS_FROZEN),
         "git_commit": prereg.get("pins", {}).get("git_commit"),
         "not_claims": prereg.get("not_claims", []),
         "signed": "auto from wrap1_zhyp_g_fit.py",
     }
-    RESULT_PATH.write_text(json.dumps(stamp, indent=2) + "\n")
-    print(f"[zhyp_g_fit] RESULT={verdict} wrote {RESULT_PATH}")
+    card.result.write_text(json.dumps(stamp, indent=2) + "\n")
+    print(f"[zhyp_g_fit] RESULT={verdict} wrote {card.result}")
     return 0
 
 

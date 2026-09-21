@@ -236,11 +236,12 @@
         "data/gates/tokyo_eye_equ_r5_lever_joint_check.json",
         "data/gates/tokyo_eye_equ_reachable_bars_design.json"
       ],
-      "next": "Next sealed capacity prereg: inherit M2 train bars (0.40 mean+min); lock held-out S1/S2 only after citing held_out_reachability_for_next_prereg in tokyo_eye_equ_reachable_bars_design.json (do not transfer train ceilings).",
+      "next": "Capacity card in flight: data/gates/tokyo_eye_equ_wrap1_zhyp_m2_prereg.json (S1 mean\u22650.40; S2 \u226510/12 at \u22650.40; train mean+min 0.40).",
       "design_constraint": "SDRP argmax minority emptiness is R0/R1 count geometry, not R5-specific; graph edge-threshold levers are exhausted for unlocking lift\u22651.30 on these 12 folds",
       "design_draft": "data/gates/tokyo_eye_equ_reachable_bars_design.json",
       "closed": "2026-09-21",
-      "result": "M2 macro-F1 locked; bar 0.40 mean+min; stretch 0.50; reachability PASS"
+      "result": "M2 macro-F1 locked; bar 0.40 mean+min; stretch 0.50; reachability PASS",
+      "follow_on_card": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_prereg.json"
     }
   ],
   "signed": "Ray Swan / Cursor agent 2026-09-21 \u2014 agenda SSOT opened"
