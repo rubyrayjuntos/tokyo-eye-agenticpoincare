@@ -2,9 +2,9 @@
   "schema_version": 1,
   "gate_id": "tokyo_eye_equ_wrap1_zhyp_m2_prereg",
   "display_lineage": "Tokyo Eye EQU",
-  "status": "DECISIONS_APPROVED_AWAITING_SEAL",
+  "status": "READY_TO_RUN",
   "approval_status": "DECISIONS_APPROVED",
-  "execution_state": "NOT_STARTED",
+  "execution_state": "READY",
   "date_drafted": "2026-09-21",
   "date_decisions_locked": "2026-09-21",
   "date_decisions_signed": "2026-09-21",
@@ -17,7 +17,7 @@
   "agenda_ids": [
     "A-reachable-bars-or-less-skewed-target"
   ],
-  "question": "With SDRP-live (sole loss) through DualSpaceSDRPHead on cold SE(3)-lite — wiring already known to light the spine — does the stack clear reachable macro-F1 train + held-out capacity bars in a fixed 400-step budget?",
+  "question": "With SDRP-live (sole loss) through DualSpaceSDRPHead on cold SE(3)-lite \u2014 wiring already known to light the spine \u2014 does the stack clear reachable macro-F1 train + held-out capacity bars in a fixed 400-step budget?",
   "metric_family": "M2_macro_f1",
   "parent_cards": {
     "wiring_capacity_separation": "data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_result.json",
@@ -25,7 +25,7 @@
     "r5_lever_check": "data/gates/tokyo_eye_equ_r5_lever_joint_check.json"
   },
   "why_this_card": {
-    "prior_zhyp": "INCONCLUSIVE_UNDERFIT under structurally unreachable lift≥1.30; G_grad_spine PASS",
+    "prior_zhyp": "INCONCLUSIVE_UNDERFIT under structurally unreachable lift\u22651.30; G_grad_spine PASS",
     "bars_redesign": "M2 macro-F1 locked; train 0.40 mean+min; held-out S1/S2 locked here against held_out_reachability table",
     "not_a_biology_seal": true,
     "intentional_leak": true
@@ -38,7 +38,7 @@
     "forbid_lift_bars": "Do not score G_fit_train / S1 / S2 on lift; lift logged diagnostic-only"
   },
   "design": {
-    "purpose_class": "harness_capacity_G_fit_M2 — intentional leak; not biology; not defect-B close",
+    "purpose_class": "harness_capacity_G_fit_M2 \u2014 intentional leak; not biology; not defect-B close",
     "frontend": {
       "mode": "cold SE(3)-lite",
       "allow_off_path_frontend": true,
@@ -51,50 +51,68 @@
       "margin_coeff": 0.0
     },
     "structures": [
-      "1MBN:A", "1LYZ:A", "1BG1:A", "1F88:A", "2Z6H:A", "1HHP:A",
-      "1TEN:A", "1UBQ:A", "1TIM:A", "4OBE:A", "1IVO:A", "2SHP:A"
+      "1MBN:A",
+      "1LYZ:A",
+      "1BG1:A",
+      "1F88:A",
+      "2Z6H:A",
+      "1HHP:A",
+      "1TEN:A",
+      "1UBQ:A",
+      "1TIM:A",
+      "4OBE:A",
+      "1IVO:A",
+      "2SHP:A"
     ],
     "protocol": {
-      "split": "LOSO 12 folds — folds_frozen.json",
+      "split": "LOSO 12 folds \u2014 folds_frozen.json",
       "optimizer_steps": 400,
-      "model_selection": "NONE — last step only",
+      "model_selection": "NONE \u2014 last step only",
       "device": "cuda",
       "device_stop": "If CUDA unavailable: STOP. No CPU fallback.",
       "seed": 0
     }
   },
   "pass_fail_bars": {
-    "status": "LOCKED before train — train from M2 lock; held-out from held_out_reachability table",
+    "status": "LOCKED before train \u2014 train from M2 lock; held-out from held_out_reachability table",
     "G_finite": "no non-finite loss or gradient in any fold",
     "G_grad_spine": {
       "when": "fixture (already landed) AND step-0 of each fold",
-      "require_nonzero": ["attn_layers", "projector", "moe", "sdrp_head"],
+      "require_nonzero": [
+        "attn_layers",
+        "projector",
+        "moe",
+        "sdrp_head"
+      ],
       "fail": "ABORT_WIRING"
     },
     "G_fit_train": {
       "metric": "per-structure train macro-F1 at last step",
-      "bar": "macro-mean over the 11 train structures ≥ 0.40 AND min train-structure macro-F1 ≥ 0.40",
+      "bar": "macro-mean over the 11 train structures \u2265 0.40 AND min train-structure macro-F1 \u2265 0.40",
       "stretch_not_pass_fail": 0.5,
       "fail": "INCONCLUSIVE_UNDERFIT",
       "reachability": "data/gates/tokyo_eye_equ_reachable_bars_design.json#reachability_check_macro_f1",
-      "why_mean_and_min": "Prior z_hyp run clears mean≥0.40 with mins at majority floor (~0.32); mean-only would be vacuous"
+      "why_mean_and_min": "Prior z_hyp run clears mean\u22650.40 with mins at majority floor (~0.32); mean-only would be vacuous"
     },
     "S1_mean_macro_f1": {
-      "bar": "mean over the 12 held-out structures of macro-F1 ≥ 0.40",
+      "bar": "mean over the 12 held-out structures of macro-F1 \u2265 0.40",
       "reachability_cited": {
         "source": "data/gates/tokyo_eye_equ_reachable_bars_design.json#held_out_reachability_for_next_prereg",
         "majority_mean": 0.3188,
-        "majority_mean_bootstrap_ci95": [0.3157, 0.3213],
+        "majority_mean_bootstrap_ci95": [
+          0.3157,
+          0.3213
+        ],
         "perfect_mean": 1.0,
-        "verdict": "REACHABLE — majority mean < 0.40 < perfect; prior z_hyp held-out mean 0.3234 would FAIL (not vacuous)"
+        "verdict": "REACHABLE \u2014 majority mean < 0.40 < perfect; prior z_hyp held-out mean 0.3234 would FAIL (not vacuous)"
       }
     },
     "S2_consistency": {
-      "bar": "macro-F1 ≥ 0.40 on ≥ 10 of 12 held-out structures",
+      "bar": "macro-F1 \u2265 0.40 on \u2265 10 of 12 held-out structures",
       "reachability_cited": {
         "majority_clears_per_structure": 0,
         "perfect_clears_per_structure": 12,
-        "verdict": "REACHABLE — majority clears 0/12; perfect 12/12; prior z_hyp held-out cleared 0/12"
+        "verdict": "REACHABLE \u2014 majority clears 0/12; perfect 12/12; prior z_hyp held-out cleared 0/12"
       }
     },
     "verdict_table": {
@@ -102,11 +120,11 @@
       "ABORT_WIRING": "G_grad_spine fails or unexpected _log_c drift",
       "INCONCLUSIVE_UNDERFIT": "G_finite and G_grad_spine pass; G_fit_train fails",
       "FAIL_NO_SIGNAL": "G_finite and G_grad_spine and G_fit_train pass; S1 or S2 fails",
-      "PASS_SIGNAL": "all gates — capacity probe only; see not_claims"
+      "PASS_SIGNAL": "all gates \u2014 capacity probe only; see not_claims"
     }
   },
   "seal_preconditions": {
-    "status": "REQUIRED before READY_TO_RUN",
+    "status": "CLEARED \u2014 READY_TO_RUN",
     "blocking_in_dependency_order": [
       {
         "id": 1,
@@ -124,19 +142,19 @@
         "id": 3,
         "name": "commit_then_pin",
         "require": "Commit runner M2 mode + this prereg; pins.git_commit; verify sha256",
-        "status": "OPEN"
+        "status": "CLEARED"
       }
     ]
   },
   "pins": {
-    "git_commit": "FILL_AT_SEAL",
+    "git_commit": "ea567340a8a5b68fd7eca39f8a5a2e4796576d4c",
     "files": {
-      "scripts/wrap1_zhyp_g_fit.py": "FILL_AT_SEAL",
-      "science/tokyo_eye/v8/grad_reachability.py": "FILL_AT_SEAL",
-      "tests/v8/test_grad_reachability_zhyp_g_fit.py": "FILL_AT_SEAL",
-      "experiments/training/v8/run_v8_experiment.py": "FILL_AT_SEAL",
-      "science/tokyo_eye/v8/model.py": "FILL_AT_SEAL",
-      "data/gates/tokyo_eye_equ_reachable_bars_design.json": "FILL_AT_SEAL"
+      "scripts/wrap1_zhyp_g_fit.py": "a506598045160ff88f9f1c5d42e8f33008c6edf1d4ecb5ff7303f2da20d07b0b",
+      "science/tokyo_eye/v8/grad_reachability.py": "27cc2c99618f9b55ea2e34ad9897b8f8248d8e7638043078653e83e04ee29498",
+      "tests/v8/test_grad_reachability_zhyp_g_fit.py": "935db3ea153d5f0493c361def447aef3538f862240572076ba73f75ba3f3b305",
+      "experiments/training/v8/run_v8_experiment.py": "c1df1048bc817dac30afd1658a3b0c5c14eab3478fc8e6ea2dcd823d3b15f2c6",
+      "science/tokyo_eye/v8/model.py": "28e243bd8ed821c4830f77a3a3f8d42130bdccc1f6c6ef92da0767b9ba420159",
+      "data/gates/tokyo_eye_equ_reachable_bars_design.json": "e221c03a7a3bb9e93920e5dfc552060c7e91c1e10230e808e715ca0ef5ec1efb"
     },
     "metric_family": "M2_macro_f1",
     "G_fit_train_macro_f1_mean_min": 0.4,
@@ -177,6 +195,8 @@
     "SE(3)-lite result is not Equiformer-pool biology evidence",
     "does not close A-typed-path-utilization"
   ],
-  "signed_decisions": "Ray Swan 2026-09-21 — M2 train bars + held-out S1/S2 locked against reachability tables; seal pending commit-then-pin",
-  "signed_draft": "Cursor agent 2026-09-21 — capacity prereg after reachable-bars chain"
+  "signed_decisions": "Ray Swan 2026-09-21 \u2014 M2 train bars + held-out S1/S2 locked against reachability tables; seal pending commit-then-pin",
+  "signed_draft": "Cursor agent 2026-09-21 \u2014 capacity prereg after reachable-bars chain",
+  "date_sealed": "2026-09-21",
+  "signed_seal": "Cursor agent 2026-09-21 \u2014 commit-then-pin on ea567340a8a5b68fd7eca39f8a5a2e4796576d4c; M2 bars locked"
 }
