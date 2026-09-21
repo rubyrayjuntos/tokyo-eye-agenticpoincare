@@ -2,23 +2,31 @@
   "schema_version": 1,
   "gate_id": "tokyo_eye_equ_grad_telemetry_next_card_design",
   "display_lineage": "Tokyo Eye EQU",
-  "status": "DESIGN_LOCKED_AWAITING_NEXT_PREREG",
+  "status": "DECISION_1_LANDED — B/B2 still unsigned for next prereg",
   "date": "2026-09-21",
+  "date_decision_1_landed": "2026-09-21",
   "parent_evidence": [
     "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_midrun_grad_notes.json",
     "data/gates/wrap1_zhyp_m2/",
-    "science/tokyo_eye/v8/grad_reachability.py"
+    "science/tokyo_eye/v8/grad_reachability.py",
+    "scripts/wrap1_zhyp_g_fit.py",
+    "tests/v8/test_wrap1_zhyp_logger_align.py"
   ],
   "do_not_promote": true,
-  "applies_to": "Next sealed card in the wrap1 z_hyp / SDRP-live harness family (not the in-flight M2 card).",
+  "applies_to": "Next sealed card in the wrap1 z_hyp / SDRP-live harness family. Decision 1 (logger align) is already in the runner; B/B2 numeric bars still need operator sign before READY_TO_RUN.",
   "standing_rule": "Prose without a failing test always loses to a convenient default.",
   "decisions": {
     "1_grad_logger_alignment": {
-      "status": "REQUIRED — not optional footnote",
-      "problem": "Current every-10-step bucket_grad_l2 is a second SDRP backward on train_batches[0] only, while the Adam step averages 11 train structures. Projector sawtooth is primarily a measurement property, not a model property.",
-      "requirement": "On the next card, spine/euc_skip/dark bucket_grad_l2 logged at step 0 and every LOG_EVERY must come from the same multi-structure backward used for the training step (mean over the 11 train structures' SDRP loss, or equivalently the backward that produced the clipped grads before optimizer.step). No separate single-structure probe for the standing heatmap/curves.",
+      "status": "DONE — landed in wrap1_zhyp_g_fit.py 2026-09-21",
+      "problem": "Prior every-10-step bucket_grad_l2 was a second SDRP backward on train_batches[0] only, while the Adam step averages 11 train structures. Projector sawtooth was primarily a measurement property, not a model property.",
+      "requirement": "spine/euc_skip/dark bucket_grad_l2 logged at step 0 and every LOG_EVERY must come from the same multi-structure backward used for the training step (mean over the 11 train structures' SDRP loss, or equivalently the backward that produced the clipped grads before optimizer.step). No separate single-structure probe for the standing heatmap/curves.",
       "why": "Otherwise every future step-0 heatmap requires mentally discounting projector variance — re-litigating this finding. Fix once in the runner.",
-      "acceptance_test": "A unit or smoke assert that logged bucket_grad_l2 for step k equals bucket_grad_stats after the train backward at step k (within float tol), not after an extra hold[0]-only backward.",
+      "acceptance_test": "tests/v8/test_wrap1_zhyp_logger_align.py — logged bucket_grad_l2 equals multi-structure train backward (within float tol); source forbids hold[0] probe.",
+      "landed_in": [
+        "scripts/wrap1_zhyp_g_fit.py::run_step_sdrp_only",
+        "scripts/wrap1_zhyp_g_fit.py::_step0_spine_ok",
+        "tests/v8/test_wrap1_zhyp_logger_align.py"
+      ],
       "does_not_change": "G_grad_spine membership gate (A) semantics; only the telemetry source."
     },
     "2_G_grad_spine_split_A_and_B": {
@@ -85,13 +93,15 @@
     }
   },
   "explicitly_not_in_scope_for_completed_m2": [
-    "Do not change wrap1_zhyp_g_fit.py logger post-hoc for this card",
     "Do not change G_grad_spine PASS definition on M2",
-    "Do not retune M2 bars from euc_skip SUSPECTED"
+    "Do not retune M2 bars from euc_skip SUSPECTED",
+    "Do not reintroduce a hold[0]-only mid-run probe (decision 1 landed)"
   ],
   "agenda_ids_recommended": [
-    "A-grad-logger-train-backward-align",
     "A-grad-spine-rel-floor-next-card"
   ],
-  "signed_design": "Cursor agent 2026-09-21 — B2 euc_skip share required companion; M2 class-floor + SUSPECTED eval carried in"
+  "agenda_ids_closed": [
+    "A-grad-logger-train-backward-align"
+  ],
+  "signed_design": "Cursor agent 2026-09-21 — B2 euc_skip share required companion; M2 class-floor + SUSPECTED eval carried in; decision 1 landed same day"
 }

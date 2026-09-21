@@ -94,23 +94,6 @@
   ],
   "items": [
     {
-      "id": "A-grad-logger-train-backward-align",
-      "status": "OPEN",
-      "priority": 2,
-      "kind": "harness",
-      "title": "Align grad telemetry with multi-structure train backward",
-      "opened": "2026-09-21",
-      "blocked_by": [],
-      "blocks": [],
-      "note": "REQUIRED on next wrap1 z_hyp card: bucket_grad_l2 must come from the same 11-structure backward as the Adam step, not a single-structure probe. Projector sawtooth is a measurement artifact under the current logger.",
-      "design": "data/gates/tokyo_eye_equ_grad_telemetry_next_card_design.json",
-      "evidence": [
-        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_midrun_grad_notes.json",
-        "data/gates/tokyo_eye_equ_grad_telemetry_next_card_design.json"
-      ],
-      "next": "Land in next sealed harness prereg runner before READY_TO_RUN"
-    },
-    {
       "id": "A-grad-spine-rel-floor-next-card",
       "status": "OPEN",
       "priority": 2,
@@ -119,12 +102,13 @@
       "opened": "2026-09-21",
       "blocked_by": [],
       "blocks": [],
-      "note": "Form locked: spine/sdrp ratio (B) + REQUIRED companion euc_skip share log (B2, diagnostic-only until s_max signed). r_min unsigned; M2 baseline attn/sdrp\u22480.34 projector\u22480.20 moe\u22480.031. B2 exists so SUSPECTED euc_skip compensation cannot stay invisible to the next card.",
+      "note": "Form locked: spine/sdrp ratio (B) + REQUIRED companion euc_skip share log (B2, diagnostic-only until s_max signed). r_min unsigned; M2 baseline attn/sdrp≈0.34 projector≈0.20 moe≈0.031. B2 exists so SUSPECTED euc_skip compensation cannot stay invisible to the next card. Prerequisite A-grad-logger-train-backward-align is DONE — ratios must use the aligned train-backward telemetry.",
       "design": "data/gates/tokyo_eye_equ_grad_telemetry_next_card_design.json",
       "evidence": [
         "data/gates/tokyo_eye_equ_grad_telemetry_next_card_design.json",
         "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_euc_skip_compensation_check.json",
-        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_class_floor_check.json"
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_class_floor_check.json",
+        "tests/v8/test_wrap1_zhyp_logger_align.py"
       ],
       "next": "Sign r_min (+ optional s_max); require B2 euc_share logging on next DualSpace capacity prereg"
     },
@@ -265,6 +249,27 @@
     }
   ],
   "closed_this_period": [
+    {
+      "id": "A-grad-logger-train-backward-align",
+      "status": "DONE",
+      "priority": 2,
+      "kind": "harness",
+      "title": "Align grad telemetry with multi-structure train backward",
+      "opened": "2026-09-21",
+      "closed": "2026-09-21",
+      "blocked_by": [],
+      "blocks": [],
+      "note": "Runner now snapshots bucket_grad_l2 + euc_skip_share from the same mean-over-train-structures SDRP backward used for clip/Adam (step0 + every LOG_EVERY). No second single-structure probe.",
+      "design": "data/gates/tokyo_eye_equ_grad_telemetry_next_card_design.json",
+      "result": "LANDED in scripts/wrap1_zhyp_g_fit.py; acceptance tests/v8/test_wrap1_zhyp_logger_align.py",
+      "evidence": [
+        "scripts/wrap1_zhyp_g_fit.py",
+        "tests/v8/test_wrap1_zhyp_logger_align.py",
+        "data/gates/tokyo_eye_equ_grad_telemetry_next_card_design.json",
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_midrun_grad_notes.json"
+      ],
+      "do_not_reopen_as": "reintroduce hold[0]-only probe for mid-run heatmap"
+    },
     {
       "id": "C-zhyp-g-fit-card",
       "status": "DONE",

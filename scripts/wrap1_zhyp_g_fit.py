@@ -267,6 +267,24 @@ def _total_grad_norm(params) -> float:
     return float(total**0.5)
 
 
+def _bucket_grad_l2_map(system: torch.nn.Module) -> dict[str, float]:
+    """Snapshot per-bucket grad L2 from the current autograd graph (pre-clip)."""
+    return {
+        k: float(v.get("grad_l2", 0.0))
+        for k, v in bucket_grad_stats(system.spine).items()
+    }
+
+
+def _euc_skip_share(bucket_l2: dict[str, float]) -> float:
+    """euc_skip / (euc_skip + Σ spine NZ buckets) — B2 diagnostic."""
+    euc = float(bucket_l2.get("euc_skip", 0.0))
+    spine = sum(float(bucket_l2.get(b, 0.0)) for b in SPINE_NZ_BUCKETS)
+    denom = euc + spine
+    if denom <= 0.0:
+        return float("nan")
+    return float(euc / denom)
+
+
 def run_step_sdrp_only(
     system: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
@@ -278,8 +296,12 @@ def run_step_sdrp_only(
     explore_epsilon: float,
     max_grad_norm: float = MAX_GRAD_NORM,
     sdrp_coeff: float = SDRP_COEFF,
-) -> dict[str, float]:
-    """One mean-over-structures step; SDRP CE only (omit zero-coeff terms)."""
+) -> dict[str, Any]:
+    """One mean-over-structures step; SDRP CE only (omit zero-coeff terms).
+
+    ``bucket_grad_l2`` is snapshotted from this same multi-structure backward
+    (pre-clip), not from a separate single-structure probe.
+    """
     if not batches:
         raise ValueError("batches must be non-empty")
     n = len(batches)
@@ -311,9 +333,15 @@ def run_step_sdrp_only(
                 "preclip_norm": float("nan"),
                 "postclip_norm": float("nan"),
                 "clip_active": 0.0,
+                "bucket_grad_l2": {},
+                "euc_skip_share": float("nan"),
             }
         loss.backward()
         loss_sum += float(loss.detach())
+
+    # Telemetry from THIS backward — before clip/step (A-grad-logger-train-backward-align).
+    bucket_l2 = _bucket_grad_l2_map(system)
+    euc_share = _euc_skip_share(bucket_l2)
 
     preclip = _total_grad_norm(system.parameters())
     if not math.isfinite(preclip):
@@ -326,6 +354,8 @@ def run_step_sdrp_only(
             "preclip_norm": float("nan"),
             "postclip_norm": float("nan"),
             "clip_active": 0.0,
+            "bucket_grad_l2": bucket_l2,
+            "euc_skip_share": euc_share,
         }
     torch.nn.utils.clip_grad_norm_(system.parameters(), max_grad_norm)
     postclip = min(preclip, float(max_grad_norm))
@@ -340,33 +370,50 @@ def run_step_sdrp_only(
         "postclip_norm": float(postclip),
         "clip_active": float(clip_active),
         "max_grad_norm": float(max_grad_norm),
+        "bucket_grad_l2": bucket_l2,
+        "euc_skip_share": euc_share,
     }
 
 
-def _step0_spine_ok(system: torch.nn.Module, batch: dict[str, Any], *, tau: float) -> dict[str, Any]:
-    """G_grad_spine at step-0: one SDRP backward, check spine buckets NZ."""
+def _step0_spine_ok(
+    system: torch.nn.Module,
+    batches: list[dict[str, Any]],
+    *,
+    tau: float,
+) -> dict[str, Any]:
+    """G_grad_spine at step-0: mean-over-train-structures SDRP backward.
+
+    Same multi-structure graph as ``run_step_sdrp_only`` (no single-structure probe).
+    """
+    if not batches:
+        raise ValueError("batches must be non-empty")
     system.train()
-    optimizer_dummy = None  # noqa: F841 — explicit no opt; grads only
     system.zero_grad(set_to_none=True)
-    out = system(
-        batch["x"],
-        batch["edge_index"],
-        batch["edge_type"],
-        tau_ceiling=tau,
-        chem=batch.get("gate_chem"),
-    )
-    loss = float(SDRP_COEFF) * sdrp_cross_entropy(out["sdrp_logits"], batch["sdrp_target"])
-    loss.backward()
+    n = len(batches)
+    for batch in batches:
+        out = system(
+            batch["x"],
+            batch["edge_index"],
+            batch["edge_type"],
+            tau_ceiling=tau,
+            chem=batch.get("gate_chem"),
+        )
+        loss = (float(SDRP_COEFF) * sdrp_cross_entropy(out["sdrp_logits"], batch["sdrp_target"])) / float(n)
+        loss.backward()
     table = bucket_grad_stats(system.spine)
     statuses = {b: bucket_status(table.get(b, {"nz": 0, "zero": 0, "none": 1})) for b in SPINE_NZ_BUCKETS}
     log_c = bucket_status(table.get("_log_c", {"nz": 0, "zero": 0, "none": 1}))
     ok = all(statuses[b] == "NZ" for b in SPINE_NZ_BUCKETS)
+    bucket_l2 = {k: float(v.get("grad_l2", 0.0)) for k, v in table.items()}
     system.zero_grad(set_to_none=True)
     return {
         "ok": ok,
         "statuses": statuses,
         "_log_c_status": log_c,
         "grad_l2": {b: float(table.get(b, {}).get("grad_l2", 0.0)) for b in SPINE_NZ_BUCKETS},
+        "bucket_grad_l2": bucket_l2,
+        "euc_skip_share": _euc_skip_share(bucket_l2),
+        "n_train_structures": n,
     }
 
 
@@ -470,9 +517,9 @@ def run_one_fold(
     hold_batch = _load_batch(hold, device)
     c_init = _curvature_c(system)
 
-    # Step-0 spine reachability (G_grad_spine)
+    # Step-0 spine reachability (G_grad_spine) — multi-structure train backward
     step0 = _step0_spine_ok(
-        system, train_batches[0], tau=float(cfg["tau_start"])
+        system, train_batches, tau=float(cfg["tau_start"])
     )
     if not step0["ok"]:
         return {
@@ -557,6 +604,11 @@ def run_one_fold(
             }
             for b, g in (step0.get("grad_l2") or {}).items():
                 step0_metrics[f"grad_l2_{b}"] = float(g)
+            if step0.get("euc_skip_share") is not None:
+                step0_metrics["euc_skip_share"] = float(step0["euc_skip_share"])
+            for b, g in (step0.get("bucket_grad_l2") or {}).items():
+                if f"grad_l2_{b}" not in step0_metrics:
+                    step0_metrics[f"grad_l2_{b}"] = float(g)
             mlflow.log_metrics(step0_metrics, step=0)
             print(
                 f"[zhyp_g_fit] hold={hold} step0 G_grad_spine="
@@ -591,23 +643,10 @@ def run_one_fold(
                 clip_logged += 1
                 if metrics.get("clip_active", 0.0) >= 1.0:
                     clip_active_count += 1
-                # bucket grads: re-run one SDRP backward for telemetry (no step)
-                system.zero_grad(set_to_none=True)
-                b0 = train_batches[0]
-                out = system(
-                    b0["x"], b0["edge_index"], b0["edge_type"],
-                    tau_ceiling=float(metrics["tau_ceiling"]),
-                    chem=b0.get("gate_chem"),
-                )
-                (
-                    float(SDRP_COEFF)
-                    * sdrp_cross_entropy(out["sdrp_logits"], b0["sdrp_target"])
-                ).backward()
-                last_bucket = {
-                    k: float(v.get("grad_l2", 0.0))
-                    for k, v in bucket_grad_stats(system.spine).items()
-                }
-                system.zero_grad(set_to_none=True)
+                # Aligned telemetry: same multi-structure backward as this Adam step
+                # (A-grad-logger-train-backward-align). No second single-structure probe.
+                last_bucket = dict(metrics.get("bucket_grad_l2") or {})
+                euc_share = float(metrics.get("euc_skip_share", float("nan")))
 
                 c_now = _curvature_c(system)
                 row = {
@@ -618,6 +657,8 @@ def run_one_fold(
                     "clip_active": metrics["clip_active"],
                     "c": c_now,
                     "bucket_grad_l2": last_bucket,
+                    "euc_skip_share": euc_share,
+                    "grad_source": "train_backward_multi_structure",
                 }
                 curve.append(row)
                 spine_nz = {
@@ -628,6 +669,7 @@ def run_one_fold(
                     f"loss={metrics['loss_total']:.4f} "
                     f"preclip={metrics['preclip_norm']:.3f} "
                     f"clip={int(metrics['clip_active'])} "
+                    f"euc_share={euc_share:.3f} "
                     f"spine_grad={{{', '.join(f'{k}={v:.2e}' for k, v in spine_nz.items())}}}"
                 )
                 if mlflow is not None:
@@ -638,6 +680,7 @@ def run_one_fold(
                         "clip_active": float(metrics["clip_active"]),
                         "curvature_c": float(c_now),
                         "G_grad_spine_ok": 1.0,  # still live if we got here
+                        "euc_skip_share": euc_share,
                     }
                     for b, g in last_bucket.items():
                         payload[f"grad_l2_{b}"] = float(g)
@@ -645,6 +688,11 @@ def run_one_fold(
                         payload[f"spine_nz_{b}"] = (
                             1.0 if float(last_bucket.get(b, 0.0)) > 0.0 else 0.0
                         )
+                        sdrp_l2 = float(last_bucket.get("sdrp_head", 0.0))
+                        if sdrp_l2 > 0.0:
+                            payload[f"rel_to_sdrp_{b}"] = float(
+                                last_bucket.get(b, 0.0)
+                            ) / sdrp_l2
                     mlflow.log_metrics(payload, step=step)
 
         c_final = _curvature_c(system)
