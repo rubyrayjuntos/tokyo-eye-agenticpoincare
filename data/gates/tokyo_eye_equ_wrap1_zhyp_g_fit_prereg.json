@@ -2,17 +2,17 @@
   "schema_version": 1,
   "gate_id": "tokyo_eye_equ_wrap1_zhyp_g_fit_prereg",
   "display_lineage": "Tokyo Eye EQU",
-  "status": "DECISIONS_APPROVED_AWAITING_SEAL",
+  "status": "READY_TO_RUN",
   "approval_status": "DECISIONS_APPROVED",
-  "execution_state": "NOT_STARTED",
+  "execution_state": "READY_TO_RUN",
   "date_drafted": "2026-09-20",
   "date_decisions_locked": "2026-09-20",
   "date_decisions_signed": "2026-09-20",
   "drafted_by": "Cursor agent (host); operator decisions locked below",
   "do_not_promote": true,
   "promote_eligible": false,
-  "no_code_or_train_until_approved": true,
-  "no_train_until_seal_preconditions": true,
+  "no_code_or_train_until_approved": false,
+  "no_train_until_seal_preconditions": false,
   "standing_rule": "Prose without a failing test always loses to a convenient default.",
   "question": "With SDRP-live (sole loss) through DualSpaceSDRPHead on cold SE(3)-lite, do hyperbolic spine buckets receive gradient and can the stack clear train + held-out SDRP capacity bars in a fixed 400-step budget \u2014 as a harness/capacity probe with an intentionally leaked target?",
   "why_redesign": {
@@ -243,7 +243,7 @@
     }
   },
   "seal_preconditions": {
-    "status": "REQUIRED before READY_TO_RUN \u2014 all three blockers must clear TOGETHER before any training; no early train on partial clearance",
+    "status": "CLEARED \u2014 all three blockers together",
     "blocking_in_dependency_order": [
       {
         "id": 1,
@@ -293,7 +293,7 @@
     ]
   },
   "pins": {
-    "git_commit": "FILL_AFTER_LAND_COMMIT",
+    "git_commit": "0193f329e978da653c5eb16dd374c6f95ff8eb58",
     "files": {
       "science/tokyo_eye/v8/model.py": "28e243bd8ed821c4830f77a3a3f8d42130bdccc1f6c6ef92da0767b9ba420159",
       "science/tokyo_eye/v8/heads.py": "d35bdc722a9f4c8a36167c553e390e07f73f999b46c0a2f7e0b369c869f7ff26",
@@ -362,10 +362,8 @@
     "SE(3)-lite result is not Equiformer-pool biology evidence"
   ],
   "open_before_seal": [
-    "DONE host: grad-reachability fixture + CUDA PASS",
-    "DONE host: runner scripts/wrap1_zhyp_g_fit.py (CUDA smoke PASS)",
-    "DONE host: B dual-orphan systemic provenance note stamped",
-    "REMAINING: land commit \u2192 fill pins.git_commit \u2192 READY_TO_RUN"
+    "DONE all three seal blockers cleared together 2026-09-20",
+    "READY_TO_RUN \u2014 exact_command in code_after_approval"
   ],
   "fixture_landed": {
     "date": "2026-09-20",
@@ -375,9 +373,11 @@
     "mlflow_cuda": "PASS Quadro T1000 via PYTHONPATH=/workspace",
     "blocker_1": "CLEARED",
     "blocker_2": "CLEARED",
-    "blocker_3_commit_pin": "PENDING_LAND"
+    "blocker_3_commit_pin": "CLEARED"
   },
   "open_for_operator_before_approval": [],
   "signed_decisions": "Ray Swan 2026-09-20 \u2014 six locks APPROVED. Card not SEALED / not READY_TO_RUN until all three seal blockers clear together.",
-  "signed_draft": "Ray Swan 2026-09-20 \u2014 decisions LOCKED then SIGNED; seal pending (all-together rule); fixture blockers 1+2 cleared 2026-09-20"
+  "signed_draft": "Ray Swan 2026-09-20 \u2014 decisions LOCKED then SIGNED; seal pending (all-together rule); fixture blockers 1+2 cleared 2026-09-20",
+  "date_sealed": "2026-09-20",
+  "signed_seal": "Ray Swan 2026-09-20 \u2014 operator go-ahead; commit-then-pin verified against land commit"
 }
