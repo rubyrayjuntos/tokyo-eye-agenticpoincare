@@ -13,7 +13,8 @@
     "Lessons are permanent; agenda items can close. Do not delete lessons \u2014 only add.",
     "next_experiment_sealed.json may summarize; this file owns the item list and lessons.",
     "Do not open a sealed card that silently assumes a CLOSED lesson is still unknown.",
-    "blocks/blocked_by must be mutual and reference real item or closed ids; CI: tests/v8/test_equ_agenda.py"
+    "blocks/blocked_by must be mutual and reference real item or closed ids; CI: tests/v8/test_equ_agenda.py",
+    "Next capacity prereg must re-derive held-out S1/S2 with its own reachability table (not train ceilings)."
   ],
   "lessons": [
     {
@@ -235,7 +236,7 @@
         "data/gates/tokyo_eye_equ_r5_lever_joint_check.json",
         "data/gates/tokyo_eye_equ_reachable_bars_design.json"
       ],
-      "next": "next sealed capacity prereg inherits M2 bars; do not reopen metric choice without new card",
+      "next": "Next sealed capacity prereg: inherit M2 train bars (0.40 mean+min); lock held-out S1/S2 only after citing held_out_reachability_for_next_prereg in tokyo_eye_equ_reachable_bars_design.json (do not transfer train ceilings).",
       "design_constraint": "SDRP argmax minority emptiness is R0/R1 count geometry, not R5-specific; graph edge-threshold levers are exhausted for unlocking lift\u22651.30 on these 12 folds",
       "design_draft": "data/gates/tokyo_eye_equ_reachable_bars_design.json",
       "closed": "2026-09-21",
