@@ -67,14 +67,15 @@
       "blocks": [
         "A-pool-frontend"
       ],
-      "note": "Prerequisite for any future capacity claim. Prefer checking whether less-R5-dominated graph construction (wrap / R5 demotion levers) can improve label geometry before inventing a wholly new target \u2014 may also inform typed-path work but see A-typed-path (not the same root cause).",
+      "note": "Prerequisite for any future capacity claim. A-r5-graph-lever-joint-check DONE: wrap (frozen, R1\u2194R2 only) and dropping R5 both leave lift\u22651.30 structurally unreachable (max-lift macro mean ~1.16; 0/12 at drop-R5). Next is a reachable metric or non-argmax target \u2014 not a wrap/R5 rebuild.",
       "related_lessons": [
         "L-bar-reuse-without-reachability"
       ],
       "evidence": [
-        "data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_result.json"
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_result.json",
+        "data/gates/tokyo_eye_equ_r5_lever_joint_check.json"
       ],
-      "next": "sealed diagnostic or redesign prereg \u2014 do not extend z_hyp card"
+      "next": "sealed metric/target redesign \u2014 not a graph-lever card"
     },
     {
       "id": "A-typed-path-utilization",
@@ -99,23 +100,6 @@
         "data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_result.json"
       ],
       "next": "sealed typed-path diagnostic card",
-      "blocks": []
-    },
-    {
-      "id": "A-r5-graph-lever-joint-check",
-      "status": "OPEN",
-      "priority": 2,
-      "kind": "design_check",
-      "title": "Before splitting A-reachable vs A-typed-path into two cards, check R5/wrap levers",
-      "opened": "2026-09-21",
-      "blocked_by": [],
-      "depends_on_read": [
-        "A-reachable-bars-or-less-skewed-target",
-        "A-typed-path-utilization"
-      ],
-      "note": "Operator ask: less-R5-dominated construction might fix label ceiling; typed-path probe says it alone does not restore rel_bias grad. Still worth one design check \u2014 if a governed wrap/R5 change improves label reachability, do that first; typed-path may still need its own card.",
-      "evidence": [],
-      "next": "short design note or micro-diagnostic \u2014 not a train card",
       "blocks": []
     },
     {
@@ -220,6 +204,27 @@
         "data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_prereg.json"
       ],
       "do_not_reopen_as": "800-step extension or silent bar nudge"
+    },
+    {
+      "id": "A-r5-graph-lever-joint-check",
+      "status": "DONE",
+      "priority": 2,
+      "kind": "design_check",
+      "title": "Before splitting A-reachable vs A-typed-path into two cards, check R5/wrap levers",
+      "opened": "2026-09-21",
+      "blocked_by": [],
+      "depends_on_read": [
+        "A-reachable-bars-or-less-skewed-target",
+        "A-typed-path-utilization"
+      ],
+      "note": "Operator ask: less-R5-dominated construction might fix label ceiling; typed-path probe says it alone does not restore rel_bias grad. Still worth one design check \u2014 if a governed wrap/R5 change improves label reachability, do that first; typed-path may still need its own card.",
+      "evidence": [
+        "data/gates/tokyo_eye_equ_r5_lever_joint_check.json"
+      ],
+      "next": "short design note or micro-diagnostic \u2014 not a train card",
+      "blocks": [],
+      "closed": "2026-09-21",
+      "result": "NO \u2014 wrap/R5 levers do not make lift\u22651.30 reachable; do not merge with typed-path"
     }
   ],
   "signed": "Ray Swan / Cursor agent 2026-09-21 \u2014 agenda SSOT opened"

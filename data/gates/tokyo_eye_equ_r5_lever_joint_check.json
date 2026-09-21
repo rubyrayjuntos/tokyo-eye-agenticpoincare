@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_r5_lever_joint_check",
+  "agenda_id": "A-r5-graph-lever-joint-check",
+  "status": "DONE",
+  "date": "2026-09-21",
+  "display_lineage": "Tokyo Eye EQU",
+  "kind": "design_check_not_a_train",
+  "do_not_promote": true,
+  "question": "Can a governed wrap or R5 lever make the inherited lift≥1.30 bar reachable, so reachable-bars and typed-path should wait on one graph change?",
+  "verdict": "NO — do not open a wrap/R5 rebuild card to unlock the old bar. Split stands: A-reachable is a metric/target redesign; A-typed-path stays its own diagnostic.",
+  "levers": {
+    "wrap": {
+      "frozen_at": 1,
+      "code": "set_dehydron_wrap_max refuses any value other than DEHYDRON_WRAP_MAX (addendum §2.7)",
+      "what_it_changes": "R1 vs R2 among existing H-bonds only. It does not add or remove R5 edges.",
+      "extreme_remap_on_cached_graphs": {
+        "all_R2_to_R1_macro_mean_max_lift": 1.159,
+        "all_R1_to_R2_macro_mean_max_lift": 1.075,
+        "structures_with_max_lift_ge_1_30": "1/12 and 0/12"
+      },
+      "read": "Even illegal wrap extremes do not make bar 1.30 satisfiable."
+    },
+    "r5": {
+      "cutoff": "CB neighborhood 8.0 Å (_detect_r5_pairs); residual after R1–R4 exclusivity",
+      "as_built_directed_frac": 0.62,
+      "strongest_counterfactual": "drop all R5 edges from cached graphs and recompute sdrp_heuristic_from_edges (not a rebuild, not a train)",
+      "result": {
+        "majority_class_shifts": "SDRP_NEIGHBORHOOD 0.925 → SDRP_CORE 0.866 pooled",
+        "macro_mean_of_theoretical_max_lift": 1.161,
+        "structures_with_max_lift_ge_1_30": "0/12",
+        "structures_with_max_lift_ge_1_10": "9/12",
+        "salt_hydrophobe_still_near_empty": true
+      },
+      "read": "Omitting R5 replaces one majority (neighborhood) with another (core from R0+R1 argmax). The 1.30 bar stays structurally unreachable. Argmax-over-counts, not R5 volume alone, is why classes 2/3 stay empty."
+    }
+  },
+  "implication_for_agenda": {
+    "A-r5-graph-lever-joint-check": "DONE — lever does not unlock the inherited bar",
+    "A-reachable-bars-or-less-skewed-target": "OPEN — next is a reachable metric or a non-argmax target, not a wrap/R5 graph card",
+    "A-typed-path-utilization": "OPEN — unchanged; prior probe already showed uniform edge_type does not restore rel_bias, and this check does not merge the two"
+  },
+  "not_claims": [
+    "not permission to retune wrap off 1",
+    "not a proposal to delete R5 from the model graph",
+    "not evidence the architecture cannot fit a reachable target",
+    "not a typed-path close"
+  ],
+  "method": "Cached wrap=1 graphs for the 12 LOSO structures; sdrp_heuristic_from_edges under edge drops/remaps. No training. No loader edit.",
+  "signed": "Cursor agent 2026-09-21 — design check for A-r5-graph-lever-joint-check"
+}
