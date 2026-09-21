@@ -7,6 +7,9 @@ Enforces ``data/gates/tokyo_eye_equ_agenda.json``:
   * every blocks / blocked_by string resolves to a real item (or closed) id
   * blocks and blocked_by are mutual (if A blocks B, B lists A in blocked_by)
   * related_lessons resolve to lesson ids; depends_on_read resolves to item ids
+  * ``closed_this_period`` holds only closed statuses (not OPEN/BLOCKED/IN_FLIGHT)
+  * ``items`` holds only live statuses (not DONE/WONT_DO/SUPERSEDED)
+  * each id appears in exactly one of ``items`` / ``closed_this_period``
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ ALLOWED_STATUS = frozenset(
     {"OPEN", "BLOCKED", "IN_FLIGHT", "DONE", "WONT_DO", "SUPERSEDED"}
 )
 CLOSED_STATUSES = frozenset({"DONE", "WONT_DO", "SUPERSEDED"})
+LIVE_STATUSES = frozenset({"OPEN", "BLOCKED", "IN_FLIGHT"})
 
 
 @pytest.fixture(scope="module")
@@ -60,6 +64,35 @@ def test_unique_ids(agenda: dict) -> None:
         assert len(ids) == len(set(ids)), f"duplicate ids in {label}: {ids}"
     overlap = set(item_ids) & set(closed_ids)
     assert not overlap, f"id in both items and closed_this_period: {overlap}"
+
+
+def test_list_membership_matches_status(agenda: dict) -> None:
+    """OPEN/BLOCKED/IN_FLIGHT live in ``items``; closed statuses live in ``closed_this_period``.
+
+    Catches the 2026-09-21 drift where six genuinely open harness ids sat under
+    ``closed_this_period`` while the mutuality/evidence tests still passed —
+    because those checks walked both lists without enforcing list↔status fit.
+    """
+    live_errors: list[str] = []
+    for row in agenda.get("items") or []:
+        status = str(row.get("status", ""))
+        if status not in LIVE_STATUSES:
+            live_errors.append(
+                f"items[{row.get('id')!r}] has status={status!r}; "
+                f"closed statuses belong in closed_this_period"
+            )
+    closed_errors: list[str] = []
+    for row in agenda.get("closed_this_period") or []:
+        status = str(row.get("status", ""))
+        if status not in CLOSED_STATUSES:
+            closed_errors.append(
+                f"closed_this_period[{row.get('id')!r}] has status={status!r}; "
+                f"live statuses (OPEN/BLOCKED/IN_FLIGHT) belong in items"
+            )
+    assert not live_errors and not closed_errors, (
+        "agenda list↔status mismatch:\n  "
+        + "\n  ".join(live_errors + closed_errors)
+    )
 
 
 def test_status_and_done_requires_evidence(agenda: dict) -> None:

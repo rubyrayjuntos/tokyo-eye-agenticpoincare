@@ -511,7 +511,9 @@ def run_one_fold(
             mlflow = None
 
     run_ctx = (
-        mlflow.start_run(run_name=f"wrap1_zhyp_g_fit_hold_{hold.replace(':', '')}")
+        mlflow.start_run(
+            run_name=f"wrap1_zhyp_{card.card}_hold_{hold.replace(':', '')}"
+        )
         if mlflow is not None
         else None
     )
@@ -522,13 +524,16 @@ def run_one_fold(
                     "diagnostic": "true",
                     "do_not_promote": "true",
                     "arm": "zhyp_g_fit_sdrp_live",
+                    "card": card.card,
+                    "metric_family": card.metric_family,
                     "moe_mode": "ablated",
                     "sdrp_coeff": str(SDRP_COEFF),
                     "dehydron_coeff": "0.0",
                     "margin_coeff": "0.0",
                     "frontend": "cold_se3_lite",
                     "hold": hold,
-                    "gate_id": "tokyo_eye_equ_wrap1_zhyp_g_fit",
+                    "gate_id": card.gate_id.replace("_result", "_prereg"),
+                    "G_grad_spine_step0": "PASS" if step0["ok"] else "FAIL",
                 }
             )
             mlflow.log_params(
@@ -539,8 +544,26 @@ def run_one_fold(
                     "max_grad_norm": MAX_GRAD_NORM,
                     "steps": steps,
                     "seed": seed,
+                    "card": card.card,
+                    "metric_family": card.metric_family,
+                    "g_fit_train_macro_min": card.g_fit_train_macro_min,
+                    "g_fit_train_min_struct": card.g_fit_train_min_struct,
                 }
             )
+            # Gate telemetry — what we are actually testing
+            step0_metrics = {
+                "G_grad_spine_ok": 1.0 if step0["ok"] else 0.0,
+                "curvature_c": float(c_init),
+            }
+            for b, g in (step0.get("grad_l2") or {}).items():
+                step0_metrics[f"grad_l2_{b}"] = float(g)
+            mlflow.log_metrics(step0_metrics, step=0)
+            print(
+                f"[zhyp_g_fit] hold={hold} step0 G_grad_spine="
+                f"{'PASS' if step0['ok'] else 'FAIL'} "
+                f"grad_l2={step0.get('grad_l2')}"
+            )
+
         for step in range(steps):
             eps_t = float(eps_sched.epsilon(step))
             try:
@@ -586,7 +609,6 @@ def run_one_fold(
                 }
                 system.zero_grad(set_to_none=True)
 
-                # drift approx: L2 of param delta not tracked cheaply; log c only
                 c_now = _curvature_c(system)
                 row = {
                     "step": step,
@@ -598,68 +620,118 @@ def run_one_fold(
                     "bucket_grad_l2": last_bucket,
                 }
                 curve.append(row)
+                spine_nz = {
+                    b: last_bucket.get(b, 0.0) for b in SPINE_NZ_BUCKETS
+                }
                 print(
                     f"[zhyp_g_fit] hold={hold} step={step} "
                     f"loss={metrics['loss_total']:.4f} "
                     f"preclip={metrics['preclip_norm']:.3f} "
-                    f"clip={int(metrics['clip_active'])}"
+                    f"clip={int(metrics['clip_active'])} "
+                    f"spine_grad={{{', '.join(f'{k}={v:.2e}' for k, v in spine_nz.items())}}}"
                 )
                 if mlflow is not None:
-                    mlflow.log_metrics(
-                        {
-                            "loss_total": float(metrics["loss_total"]),
-                            "preclip_norm": float(metrics["preclip_norm"]),
-                            "postclip_norm": float(metrics["postclip_norm"]),
-                            "clip_active": float(metrics["clip_active"]),
-                            "curvature_c": float(c_now),
-                        },
-                        step=step,
-                    )
+                    payload = {
+                        "loss_total": float(metrics["loss_total"]),
+                        "preclip_norm": float(metrics["preclip_norm"]),
+                        "postclip_norm": float(metrics["postclip_norm"]),
+                        "clip_active": float(metrics["clip_active"]),
+                        "curvature_c": float(c_now),
+                        "G_grad_spine_ok": 1.0,  # still live if we got here
+                    }
+                    for b, g in last_bucket.items():
+                        payload[f"grad_l2_{b}"] = float(g)
+                    for b in SPINE_NZ_BUCKETS:
+                        payload[f"spine_nz_{b}"] = (
+                            1.0 if float(last_bucket.get(b, 0.0)) > 0.0 else 0.0
+                        )
+                    mlflow.log_metrics(payload, step=step)
+
+        c_final = _curvature_c(system)
+        if abs(c_final - c_init) > 1e-5:
+            abort_wiring_c = True
+
+        tau_eval = float(cfg["tau_end"])
+        train_per: dict[str, Any] = {}
+        for t, b in zip(train_tags, train_batches):
+            train_per[t] = _sdrp_structure_metrics(system, b, tau_ceiling=tau_eval)
+        held = _sdrp_structure_metrics(system, hold_batch, tau_ceiling=tau_eval)
+        shuffle = _edge_type_shuffle_sensitivity(
+            system, hold_batch, tau_ceiling=tau_eval, seed=seed
+        )
+
+        train_lifts = [
+            float(v["lift"]) for v in train_per.values() if math.isfinite(v["lift"])
+        ]
+        macro_lift = float(np.mean(train_lifts)) if train_lifts else float("nan")
+        min_lift = float(np.min(train_lifts)) if train_lifts else float("nan")
+        train_f1s = [
+            float(v["macro_f1"])
+            for v in train_per.values()
+            if math.isfinite(v["macro_f1"])
+        ]
+        macro_f1_mean = float(np.mean(train_f1s)) if train_f1s else float("nan")
+        min_f1 = float(np.min(train_f1s)) if train_f1s else float("nan")
+
+        if card.metric_family == "M2_macro_f1":
+            train_macro = macro_f1_mean
+            train_min = min_f1
+        else:
+            train_macro = macro_lift
+            train_min = min_lift
+
+        g_fit_train = bool(
+            finite
+            and step0["ok"]
+            and not abort_wiring_c
+            and math.isfinite(train_macro)
+            and math.isfinite(train_min)
+            and train_macro >= card.g_fit_train_macro_min
+            and train_min >= card.g_fit_train_min_struct
+        )
+        clip_frac = (
+            float(clip_active_count) / float(clip_logged) if clip_logged else float("nan")
+        )
+
+        if mlflow is not None:
+            final = {
+                "train_macro_lift": float(macro_lift),
+                "train_min_lift": float(min_lift),
+                "train_macro_f1": float(macro_f1_mean),
+                "train_min_f1": float(min_f1),
+                "train_score_macro": float(train_macro),
+                "train_score_min": float(train_min),
+                "heldout_lift": float(held["lift"]),
+                "heldout_macro_f1": float(held["macro_f1"]),
+                "heldout_sdrp_top1": float(held["sdrp_top1_acc"]),
+                "heldout_majority": float(held["majority_rate"]),
+                "g_fit_train_pass_fold": 1.0 if g_fit_train else 0.0,
+                "G_grad_spine_ok": 1.0 if step0["ok"] else 0.0,
+                "G_finite": 1.0 if finite else 0.0,
+                "c_drift": float(c_final - c_init),
+                "clip_active_fraction": float(clip_frac)
+                if math.isfinite(clip_frac)
+                else float("nan"),
+                "edge_type_shuffle_abs_delta": float(
+                    shuffle.get("sdrp_logits_abs_delta_mean", float("nan"))
+                ),
+            }
+            mlflow.log_metrics(final, step=steps)
+            mlflow.set_tags(
+                {
+                    "g_fit_train_pass_fold": "PASS" if g_fit_train else "FAIL",
+                    "G_finite": "PASS" if finite else "FAIL",
+                }
+            )
+            print(
+                f"[zhyp_g_fit] hold={hold} FINAL "
+                f"train_score={train_macro:.4f}/{train_min:.4f} "
+                f"held_f1={held['macro_f1']:.4f} held_lift={held['lift']:.4f} "
+                f"g_fit_train={'PASS' if g_fit_train else 'FAIL'}"
+            )
     finally:
         if run_ctx is not None:
             mlflow.end_run()
-
-    c_final = _curvature_c(system)
-    if abs(c_final - c_init) > 1e-5:
-        abort_wiring_c = True
-
-    tau_eval = float(cfg["tau_end"])
-    train_per: dict[str, Any] = {}
-    for t, b in zip(train_tags, train_batches):
-        train_per[t] = _sdrp_structure_metrics(system, b, tau_ceiling=tau_eval)
-    held = _sdrp_structure_metrics(system, hold_batch, tau_ceiling=tau_eval)
-    shuffle = _edge_type_shuffle_sensitivity(
-        system, hold_batch, tau_ceiling=tau_eval, seed=seed
-    )
-
-    train_lifts = [float(v["lift"]) for v in train_per.values() if math.isfinite(v["lift"])]
-    macro_lift = float(np.mean(train_lifts)) if train_lifts else float("nan")
-    min_lift = float(np.min(train_lifts)) if train_lifts else float("nan")
-    train_f1s = [
-        float(v["macro_f1"]) for v in train_per.values() if math.isfinite(v["macro_f1"])
-    ]
-    macro_f1_mean = float(np.mean(train_f1s)) if train_f1s else float("nan")
-    min_f1 = float(np.min(train_f1s)) if train_f1s else float("nan")
-
-    if card.metric_family == "M2_macro_f1":
-        train_macro = macro_f1_mean
-        train_min = min_f1
-    else:
-        train_macro = macro_lift
-        train_min = min_lift
-
-    g_fit_train = bool(
-        finite
-        and step0["ok"]
-        and not abort_wiring_c
-        and math.isfinite(train_macro)
-        and math.isfinite(train_min)
-        and train_macro >= card.g_fit_train_macro_min
-        and train_min >= card.g_fit_train_min_struct
-    )
-    clip_frac = (
-        float(clip_active_count) / float(clip_logged) if clip_logged else float("nan")
-    )
 
     return {
         "arm": "zhyp_g_fit",

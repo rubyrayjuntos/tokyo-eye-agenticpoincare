@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_sdrp_corpus_class_coverage_design",
+  "display_lineage": "Tokyo Eye EQU",
+  "status": "DESIGN_NOTE_OPEN",
+  "date": "2026-09-21",
+  "kind": "data_composition — not a training card; not an architecture change",
+  "do_not_promote": true,
+  "parent_evidence": [
+    "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_class_floor_check.json",
+    "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_result.json",
+    "manifests/v8_stage_a_small_v1.json",
+    "data/gates/wrap1_dehydron_loso/folds_frozen.json"
+  ],
+  "standing_rule": "Prose without a failing test always loses to a convenient default.",
+  "project_state_framing": {
+    "read": "This session's durable findings are almost entirely measurement corrections, not architecture incapacity. Instruments are becoming capable of asking whether the hyperbolic spine can fit SDRP/dehydron signal; that question is not yet answered under favorable measurement.",
+    "do_not_read_as": "the architecture does not work",
+    "architecture_redesign": "NOT YET — every open architecture-adjacent question (moe low grad, euc_skip compensation, minority-class move) still has an unresolved measurement question in front of it. Changing architecture now confounds attribution.",
+    "measurement_work": "Continue the already-queued agenda (logger-align, G_grad_spine_rel, B2 euc_skip share) + class-scope honesty. Do not open a parallel 'rethink measurement broadly' track."
+  },
+  "question": "Before any future SDRP-style capacity claim that pretends to cover 5 heuristic classes, should Stage-A-12 (or its successor) be expanded or replaced so salt-bridge and hydrophobe-contact labels actually occur?",
+  "fact_locked": {
+    "on_current_12": {
+      "SDRP_SALT (2)": "0 residues across 0/12 structures",
+      "SDRP_HYDROPHOBE (3)": "0 residues across 0/12 structures",
+      "effective_label_space": "{CORE, DEHYDRON_RIM, NEIGHBORHOOD} only",
+      "source": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_class_floor_check.json"
+    },
+    "implication": "No training budget, architecture change, or metric fix on this corpus can ever test whether the model learns salt/hydrophobe — that is corpus composition, not a model problem."
+  },
+  "options": {
+    "A_keep_stage_a_12_narrow_claim": {
+      "cost_class": "cheap",
+      "do": "Keep folds_frozen / Stage-A-12 for harness cards; every SDRP capacity prereg must state effective_classes={0,1,4} and forbid 5-class language.",
+      "pros": "No new data work; honest scope; instrumentation queue unblocked.",
+      "cons": "Never tests salt/hydrophobe on this line."
+    },
+    "B_expand_manifest_for_contact_types": {
+      "cost_class": "expensive — not a peer alternative to A/C in cost, even though peer in scope",
+      "do": "Design (not run) a successor manifest that includes structures where sdrp_heuristic_from_edges yields nonzero class 2 and/or 3 counts; freeze new folds only after reachability + class-coverage table.",
+      "pros": "Makes a future 5-class (or 4-class with salt/hydrophobe) claim possible.",
+      "cons": "New data/governance work; must not silently replace Stage-A-12 mid-instrumentation.",
+      "cost_asymmetry": {
+        "why_not_peer_to_A_or_C": "B is the only option that requires new data acquisition plus re-verification, on every added structure, of what Stage-A-12 already established: sequence-identity thresholds, wrap-threshold calibration, and R0–R5 graph construction. That is a larger lift than A (claim narrowing) or C (target change on the existing corpus).",
+        "required_if_chosen": [
+          "Per-new-structure class-coverage table (nonzero salt and/or hydrophobe counts)",
+          "Reachability re-derivation for any new capacity bars (train + held-out) — train ceilings do not transfer",
+          "Re-check wrap-threshold / R0–R5 construction invariants on additions before folds_frozen successor seal",
+          "Separate sealed prereg — does not block logger-align / spine-rel / B2"
+        ]
+      },
+      "gate": "Separate sealed prereg; does not block logger-align / spine-rel / B2."
+    },
+    "C_change_target_not_corpus": {
+      "cost_class": "cheap-to-moderate (design + new bars on existing corpus; no new PDB acquisition)",
+      "do": "Drop SDRP argmax heuristic for capacity claims; use a target that is present and less majority-dominated on Stage-A-12 (or non-leaking biology target on pool).",
+      "pros": "Avoids expanding corpus to chase empty classes.",
+      "cons": "Different scientific question; already partially the trunk path (claim-bearing hyp biology)."
+    }
+  },
+  "cost_note": "A/B/C are peer alternatives in *scope* (what claim becomes possible). They are not peer alternatives in *cost*. Prefer A or C unless the scientific need specifically requires salt/hydrophobe coverage — then budget B as its own data+governance card, not a table row next to A.",
+  "decision_status": "OPEN — operator chooses A/B/C (or A+B phased) before the next SDRP capacity claim that would imply 5-class coverage",
+  "sequencing": {
+    "now": "This note + agenda id. No train. No architecture change.",
+    "parallel_ok": "May proceed while A-grad-logger-train-backward-align and A-grad-spine-rel-floor-next-card land — it is data-scope, not train-loop.",
+    "after_next_capacity_card": "Hold architecture/training-redesign conversation only after instruments are trustworthy and one capacity card has run through them."
+  },
+  "not_in_scope": [
+    "No Stage-2 SDRP / C1 loader change",
+    "No inventing C1′",
+    "No silent expansion of folds_frozen without a new card",
+    "No architecture redesign triggered by this note alone"
+  ],
+  "signed_draft": "Cursor agent 2026-09-21 — operator-directed: corpus composition is the one architecture-adjacent question worth opening now because it is decision-relevant independent of pending measurement fixes"
+}

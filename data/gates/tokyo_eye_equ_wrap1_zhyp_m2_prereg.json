@@ -2,9 +2,9 @@
   "schema_version": 1,
   "gate_id": "tokyo_eye_equ_wrap1_zhyp_m2_prereg",
   "display_lineage": "Tokyo Eye EQU",
-  "status": "READY_TO_RUN",
+  "status": "COMPLETED_INCONCLUSIVE_UNDERFIT",
   "approval_status": "DECISIONS_APPROVED",
-  "execution_state": "READY",
+  "execution_state": "COMPLETED",
   "date_drafted": "2026-09-21",
   "date_decisions_locked": "2026-09-21",
   "date_decisions_signed": "2026-09-21",
@@ -198,5 +198,8 @@
   "signed_decisions": "Ray Swan 2026-09-21 \u2014 M2 train bars + held-out S1/S2 locked against reachability tables; seal pending commit-then-pin",
   "signed_draft": "Cursor agent 2026-09-21 \u2014 capacity prereg after reachable-bars chain",
   "date_sealed": "2026-09-21",
-  "signed_seal": "Cursor agent 2026-09-21 \u2014 commit-then-pin on ea567340a8a5b68fd7eca39f8a5a2e4796576d4c; M2 bars locked"
+  "signed_seal": "Cursor agent 2026-09-21 \u2014 commit-then-pin on ea567340a8a5b68fd7eca39f8a5a2e4796576d4c; M2 bars locked",
+  "scoped_verdict_line": "capacity miss under cold-lite / 400-step / MoE-ablated: G_fit_train fails on min-structure macro-F1 (0/12 clear 0.40) while mean clears on all 12 \u2014 not an architecture-ceiling claim",
+  "result": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_result.json",
+  "completion_note": "G_finite+G_grad_spine PASS. G_fit_train FAIL 0/12 on min F1 (mean cleared 12/12). Held would fail S1/S2. euc_skip compensation SUSPECTED 8/12. See result.scientific_read."
 }

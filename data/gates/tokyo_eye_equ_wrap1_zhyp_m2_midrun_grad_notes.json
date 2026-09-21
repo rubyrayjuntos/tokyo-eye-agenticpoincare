@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_wrap1_zhyp_m2_midrun_grad_notes",
+  "status": "DIAGNOSTIC_NOTE",
+  "date": "2026-09-21",
+  "parent_card": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_prereg.json",
+  "folds_inspected_at_write": ["1MBN:A", "1LYZ:A", "1BG1:A", "1F88:A"],
+  "do_not_promote": true,
+  "not_a_verdict": true,
+  "purpose": "Cheap mid-run checks on live grad-flow plots — capture before 12-fold aggregate replaces single-fold detail.",
+  "findings": {
+    "projector_nonmonotonic": {
+      "observation": "projector bucket_grad_l2 is noisier and more non-monotonic than attn_layers/moe/sdrp_head across all 4 folds so far (sign-flip counts ~13–21 vs smoother CE decay on sdrp_head).",
+      "not_a_logger_bucket_mislabel": "param_bucket maps only RadialAngularProjector params (radial_mlp + angular_proj + scalar_proj; 7 tensors / 177 params). No foreign modules leak into 'projector'.",
+      "likely_contributors": [
+        "Telemetry probe is a SECOND SDRP backward on train_batches[0] only (single structure), while the Adam step averages 11 train structures — single-structure α-sensitive probe amplifies variance.",
+        "Projector α = σ(radial_mlp(s)) * tau_ceiling sits on a sigmoid + curriculum radius; small weight moves can jump grad L2 without a global loss spike (observed: projector spikes while attn/sdrp keep decaying).",
+        "Small param count → L2 more sensitive to individual tensor spikes than moe/attn aggregates."
+      ],
+      "ruling_now": "Mostly consistent with real α/tau-coupled dynamics + single-structure probe artifact — NOT a dead/misbucketed module. Not evidence of wiring failure.",
+      "primary_explanation": "single-structure probe backward vs 11-structure-mean Adam step — measurement property, not model property",
+      "required_on_next_card": "Log bucket grads from the same multi-structure backward as the train step (see tokyo_eye_equ_grad_telemetry_next_card_design.json decision 1). Not optional."
+    },
+    "euc_skip_late_uptick": {
+      "observation": "Fold-dependent. 1MBN last/early(~50-300) ratio ~3.1 (last=0.024); 1F88 ~2.4; 1BG1 ~1.6; 1LYZ reverse (~0.4).",
+      "status": "NOTED — not a G_grad_spine bar; DualSpace path can move.",
+      "prestated_aggregate_criterion": "data/gates/tokyo_eye_equ_grad_telemetry_next_card_design.json#decisions.3_euc_skip_compensation_prestated",
+      "ruling_now": "Present on some folds, absent on others; too early to claim compensation. When all 12 folds land, evaluate the locked rule — do not eyeball."
+    },
+    "G_grad_spine_PASS_threshold": {
+      "current_definition": "bucket_status == NZ AND grad_l2 > 0.0 (float). No magnitude floor. See science/tokyo_eye/v8/grad_reachability.py::assert_sdrp_live_spine_reachable.",
+      "observed_scale_gap": "At step-0, moe/attn ≈ 0.09–0.10 across folds (moe ~6e-3 vs attn ~6e-2). moe is the dimmest live spine bucket on the heatmap but still PASS.",
+      "risk": "PASS currently means 'in graph and not exactly zero' — same NONE/ZERO/NZ trichotomy from the dehydron work — NOT 'above a meaningful utilization floor'. A weak-but-nonzero connection that later collapses toward machine epsilon would still PASS step-0.",
+      "ruling_now": "Threshold is intentional for the wiring gate (graph membership), and that is what L-wiring-capacity-separation established. It is NOT a strength/utilization gate.",
+      "do_not_quietly_retune_on_this_card": true,
+      "next_card_split": "A = membership (keep). B = G_grad_spine_rel RATIO to sdrp_head at same step (form locked; r_min unsigned until M2 step-0 baseline). See tokyo_eye_equ_grad_telemetry_next_card_design.json."
+    }
+  },
+  "next_card_design": "data/gates/tokyo_eye_equ_grad_telemetry_next_card_design.json",
+  "capacity_reminder": "train macro-F1 on individual folds is live telemetry only; M2 G_fit_train is mean+min over 11 train structures, all 12 folds. Do not read capacity from 1–4 folds in flight.",
+  "signed": "Cursor agent 2026-09-21 — mid-run notes; next-card design pinned same day"
+}

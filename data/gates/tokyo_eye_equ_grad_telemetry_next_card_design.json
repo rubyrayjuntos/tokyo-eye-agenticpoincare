@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_grad_telemetry_next_card_design",
+  "display_lineage": "Tokyo Eye EQU",
+  "status": "DESIGN_LOCKED_AWAITING_NEXT_PREREG",
+  "date": "2026-09-21",
+  "parent_evidence": [
+    "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_midrun_grad_notes.json",
+    "data/gates/wrap1_zhyp_m2/",
+    "science/tokyo_eye/v8/grad_reachability.py"
+  ],
+  "do_not_promote": true,
+  "applies_to": "Next sealed card in the wrap1 z_hyp / SDRP-live harness family (not the in-flight M2 card).",
+  "standing_rule": "Prose without a failing test always loses to a convenient default.",
+  "decisions": {
+    "1_grad_logger_alignment": {
+      "status": "REQUIRED — not optional footnote",
+      "problem": "Current every-10-step bucket_grad_l2 is a second SDRP backward on train_batches[0] only, while the Adam step averages 11 train structures. Projector sawtooth is primarily a measurement property, not a model property.",
+      "requirement": "On the next card, spine/euc_skip/dark bucket_grad_l2 logged at step 0 and every LOG_EVERY must come from the same multi-structure backward used for the training step (mean over the 11 train structures' SDRP loss, or equivalently the backward that produced the clipped grads before optimizer.step). No separate single-structure probe for the standing heatmap/curves.",
+      "why": "Otherwise every future step-0 heatmap requires mentally discounting projector variance — re-litigating this finding. Fix once in the runner.",
+      "acceptance_test": "A unit or smoke assert that logged bucket_grad_l2 for step k equals bucket_grad_stats after the train backward at step k (within float tol), not after an extra hold[0]-only backward.",
+      "does_not_change": "G_grad_spine membership gate (A) semantics; only the telemetry source."
+    },
+    "2_G_grad_spine_split_A_and_B": {
+      "status": "DESIGN_FORM_LOCKED — numeric B threshold NOT locked until baseline from completed M2 step-0 distribution + operator sign",
+      "A_membership": {
+        "name": "G_grad_spine",
+        "keep": true,
+        "definition": "NONE | ZERO | NZ trichotomy; spine buckets NZ with grad_l2 > 0.0; dark buckets NONE under SDRP-only. Unchanged from assert_sdrp_live_spine_reachable.",
+        "measures": "graph membership / wiring — not utilization strength"
+      },
+      "B_relative_floor": {
+        "name": "G_grad_spine_rel",
+        "form_locked": "RATIO — not raw magnitude",
+        "why_not_absolute": "Raw grad_l2 floors (e.g. 1e-4) change meaning as CE saturates: healthy step-0 magnitudes look 'starved' by step 300 on every fold of this card. Same class of silent semantic drift as train-time moe_load_e* earlier this month.",
+        "definition_draft": "At each logged step t (including step 0), for each bucket b in {attn_layers, projector, moe}: require grad_l2[b](t) / grad_l2[sdrp_head](t) >= r_min[b], using grads from the aligned train backward (decision 1). sdrp_head is the reference because it is the loss-local head under SDRP-live sole loss.",
+        "alternative_considered": "ratio to total preclip param-grad norm — rejected as primary because preclip mixes frontend+spine and clip regime; keep as diagnostic only.",
+        "r_min_status": "NOT LOCKED. M2 step-0 baseline (near-constant across 12 folds): attn/sdrp≈0.339, projector/sdrp≈0.195, moe/sdrp≈0.031. Operator signs r_min before any next prereg READY_TO_RUN.",
+        "when_evaluated": "At minimum step 0 (wiring+relative health). Optional: also require the ratio not collapse below r_min/2 for >K consecutive log points — separate sub-bar, only if signed.",
+        "fail_name": "WEAK_SPINE_REL (does not imply ABORT_WIRING; membership A can still PASS)"
+      },
+      "B2_euc_skip_share": {
+        "name": "G_euc_skip_share",
+        "status": "REQUIRED companion diagnostic on next DualSpace / SDRP-live capacity card — form locked; numeric bar unsigned",
+        "why": "M2 left euc_skip compensation SUSPECTED (8/12). If euc_skip soaks gradient that a healthier spine would use for minority classes (CORE/DEHYDRON_RIM), a spine-only ratio bar (B) can PASS while the compensation failure mode continues. Track euc_skip share explicitly so SUSPECTED cannot stay invisible to the next card's instrumentation.",
+        "definition_draft": "At each logged step t from the aligned train backward: euc_share(t) = grad_l2[euc_skip](t) / (grad_l2[euc_skip](t) + sum_{b in SPINE_NZ} grad_l2[b](t)). Log euc_share alongside B ratios.",
+        "hypothesis_tied_to_M2": "Compensation suspicion: late euc_share rises while spine/sdrp ratios fall and minority-class F1 stays at majority-only floor.",
+        "bar_options_for_operator_sign": [
+          "DIAGNOSTIC_ONLY — log + report; no pass/fail (minimum for next card)",
+          "SOFT_CAP — fail WEAK_SPINE_REL or flag COMPENSATION if euc_share(t) > s_max for >K consecutive late log points while any spine/sdrp ratio is below r_min[b]",
+          "HARD_CAP — euc_share(t) <= s_max at step 0 and mean(late) — only if operator wants DualSpace balance as a locked gate"
+        ],
+        "default_until_signed": "DIAGNOSTIC_ONLY on the next card — must be logged; numeric s_max not invented here",
+        "depends_on": "decision 1 (aligned train backward) — otherwise euc_share inherits the same probe artifact as projector"
+      }
+    },
+    "3_euc_skip_compensation_prestated": {
+      "status": "EVALUATED on M2 — SUSPECTED 8/12 (see tokyo_eye_equ_wrap1_zhyp_m2_euc_skip_compensation_check.json)",
+      "hypothesis": "Late DualSpace euc_skip branch grows while hyperbolic spine buckets floor — possible compensation for something the spine is not learning.",
+      "m2_result": "SUSPECTED — carried into B2_euc_skip_share for next card; do not retune M2 bars.",
+      "windows_on_400_step_card": {
+        "mid": "log points with step in [50, 300]",
+        "late": "log points with step >= 350",
+        "note": "LOG_EVERY=10 → mid has ~26 points; late has ~6 points (350..399)."
+      },
+      "per_fold_metrics": {
+        "euc_ratio": "mean(euc_skip.grad_l2 over late) / mean(euc_skip.grad_l2 over mid)",
+        "spine_floor_b": "for b in {attn_layers, projector, moe, sdrp_head}: mean(b over late) / max(b over full curve)",
+        "spine_floored_count": "number of the four spine buckets with spine_floor_b < 0.20"
+      },
+      "fold_matches_compensation_pattern": {
+        "rule": "euc_ratio >= 2.0 AND spine_floored_count >= 3",
+        "rationale": "Requires both late euc_skip growth (geometrically meaningful vs mid) and broad spine collapse toward peak — not euc_skip alone (1LYZ can fall) and not a single noisy spine bucket."
+      },
+      "card_level_flag": {
+        "rule": "If n_matching_folds >= 6 of 12, set scientific_read.euc_skip_compensation = SUSPECTED and cite per-fold table; if >= 9 of 12, set LIKELY.",
+        "not_a_pass_fail_of_M2": true,
+        "not_auto_ABORT": true,
+        "action_if_flagged": "Carry into next-card design via B2_euc_skip_share; do not retune M2 bars post-hoc."
+      }
+    },
+    "4_m2_class_floor_carry": {
+      "status": "EVALUATED — tokyo_eye_equ_wrap1_zhyp_m2_class_floor_check.json",
+      "read": "Train-min F1 equals majority-only macro-F1 on {CORE, DEHYDRON_RIM, NEIGHBORHOOD}; salt/hydrophobe absent from labels 0/12. Same two minorities floor every fold — not a varying rare-class story; do not merge with A-typed-path as identical."
+    }
+  },
+  "explicitly_not_in_scope_for_completed_m2": [
+    "Do not change wrap1_zhyp_g_fit.py logger post-hoc for this card",
+    "Do not change G_grad_spine PASS definition on M2",
+    "Do not retune M2 bars from euc_skip SUSPECTED"
+  ],
+  "agenda_ids_recommended": [
+    "A-grad-logger-train-backward-align",
+    "A-grad-spine-rel-floor-next-card"
+  ],
+  "signed_design": "Cursor agent 2026-09-21 — B2 euc_skip share required companion; M2 class-floor + SUSPECTED eval carried in"
+}

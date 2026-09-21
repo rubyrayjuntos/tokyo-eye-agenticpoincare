@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_wrap1_zhyp_m2_class_floor_check",
+  "status": "EVALUATED",
+  "date": "2026-09-21",
+  "parent": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_result.json",
+  "question": "Is the train-min F1 floor the same minority classes on every fold, or different ones?",
+  "method": "Compare observed train_min macro-F1 to majority-only theoretical macro-F1 over present classes (predict all-majority). Per-class F1 not in fold stamps (no saved logits); majority-only equivalence identifies the failure mode without a replay.",
+  "class_ids": {
+    "0": "SDRP_CORE",
+    "1": "SDRP_DEHYDRON_RIM",
+    "2": "SDRP_SALT",
+    "3": "SDRP_HYDROPHOBE",
+    "4": "SDRP_NEIGHBORHOOD"
+  },
+  "findings": {
+    "salt_hydrophobe_absent_from_labels": {
+      "class_2_present_on": "0/12 structures (0 residues pooled)",
+      "class_3_present_on": "0/12 structures (0 residues pooled)",
+      "implication": "M2 macro-F1 never includes salt/hydrophobe — they cannot be the floor-sitters on this card. Same R0/R1 argmax geometry as A-r5-lever / L-argmax-dominated-by-r0-r1."
+    },
+    "present_classes_always": {
+      "set": [0, 1, 4],
+      "names": ["SDRP_CORE", "SDRP_DEHYDRON_RIM", "SDRP_NEIGHBORHOOD"],
+      "majority_always": 4,
+      "pooled_counts": {"0": 170, "1": 85, "4": 3138}
+    },
+    "train_min_equals_majority_only_classifier": {
+      "delta_train_min_minus_maj_only_macro_f1": {"mean": 0.0, "max": 0.0003, "min": 0.0},
+      "read": "On every fold, the worst train structure's macro-F1 equals (to float noise) the theoretical majority-only macro-F1 over {0,1,4} ≈ 1/3. Model predicts all-NEIGHBORHOOD on that structure: F1(4)≈1, F1(0)=F1(1)=0 → macro≈0.32."
+    },
+    "which_classes_floor": {
+      "answer": "SAME on every fold: CORE (0) and DEHYDRON_RIM (1) sit at F1=0 under all-maj prediction; NEIGHBORHOOD (4) is the majority basin.",
+      "not_salt_hydrophobe": "Salt/hydrophobe are not in the metric at all.",
+      "not_structure_varying_rare_class": "Victims of train-min rotate (1IVO 5/12, 4OBE 3/12, 2SHP 2/12, …) but the class pattern is identical everywhere."
+    },
+    "vs_typed_path": {
+      "do_not_merge_as_same_item": true,
+      "shared_upstream": "R0/R1-dominated argmax produces empty salt/hydrophobe labels AND NEIGHBORHOOD majority — construction-level link.",
+      "distinct_failure_here": "M2 min miss is majority-CE collapse on the two present minorities (CORE, DEHYDRON_RIM), which do have labels. A-typed-path is about rel_bias/gamma/beta gradient silence when typed edges exist — complementary, not identical.",
+      "agenda_language": "Confirms persistent majority-basin fit failure on CORE+DEHYDRON_RIM under this stack — not proof that typed-path silence is the bottleneck for M2, and not a generic 'random rare class per fold' story."
+    }
+  },
+  "heldout_note": "Most held folds also sit within ~0.01 of maj-only floor; a few slightly above (1BG1 Δ+0.029, 1F88 +0.021) without clearing 0.40.",
+  "do_not_promote": true,
+  "signed": "Cursor agent 2026-09-21 — five-minute class-floor check before filing M2 settled"
+}

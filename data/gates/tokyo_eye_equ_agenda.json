@@ -14,7 +14,9 @@
     "next_experiment_sealed.json may summarize; this file owns the item list and lessons.",
     "Do not open a sealed card that silently assumes a CLOSED lesson is still unknown.",
     "blocks/blocked_by must be mutual and reference real item or closed ids; CI: tests/v8/test_equ_agenda.py",
-    "Next capacity prereg must re-derive held-out S1/S2 with its own reachability table (not train ceilings)."
+    "Next capacity prereg must re-derive held-out S1/S2 with its own reachability table (not train ceilings).",
+    "Session findings that correct measurement are not architecture incapacity \u2014 do not open architecture redesign while measurement questions sit in front of the claim.",
+    "SDRP capacity claims on Stage-A-12 must not imply 5-class coverage while salt/hydrophobe labels are absent \u2014 see tokyo_eye_equ_sdrp_corpus_class_coverage_design.json."
   ],
   "lessons": [
     {
@@ -64,9 +66,89 @@
         "data/gates/tokyo_eye_equ_r5_lever_joint_check.json",
         "data/gates/tokyo_eye_equ_reachable_bars_design.json"
       ]
+    },
+    {
+      "id": "L-grad-probe-vs-train-backward",
+      "date": "2026-09-21",
+      "title": "Single-structure grad probes are measurement noise, not model noise",
+      "statement": "wrap1_zhyp logger's every-10-step bucket_grad_l2 used a second SDRP backward on train_batches[0] while Adam averaged 11 structures. Projector sawtooth was primarily that measurement mismatch. Next harness card must log grads from the train backward itself.",
+      "evidence": [
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_midrun_grad_notes.json",
+        "data/gates/tokyo_eye_equ_grad_telemetry_next_card_design.json"
+      ],
+      "process_gap": "treat probe-curve shape as model dynamics without checking whether the probe matches the train backward"
+    },
+    {
+      "id": "L-measurement-before-architecture",
+      "date": "2026-09-21",
+      "title": "This line's recent findings are measurement corrections, not architecture verdicts",
+      "statement": "Pooled AUPRC, dehydron-off-spine, unreachable lift bars, mean-only F1, and 3-not-5 effective SDRP classes were instrument/scope failures. SDRP-live spine reach is confirmed wiring. Do not redesign architecture while moe/euc_skip/minority-fit questions still have unsigned measurement in front of them \u2014 land instruments, run one clean capacity card, then decide.",
+      "evidence": [
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_result.json",
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_class_floor_check.json",
+        "data/gates/tokyo_eye_equ_grad_telemetry_next_card_design.json",
+        "data/gates/tokyo_eye_equ_sdrp_corpus_class_coverage_design.json"
+      ],
+      "process_gap": "treat INCONCLUSIVE_UNDERFIT or low moe grad as architecture incapacity before instruments are trustworthy"
     }
   ],
   "items": [
+    {
+      "id": "A-grad-logger-train-backward-align",
+      "status": "OPEN",
+      "priority": 2,
+      "kind": "harness",
+      "title": "Align grad telemetry with multi-structure train backward",
+      "opened": "2026-09-21",
+      "blocked_by": [],
+      "blocks": [],
+      "note": "REQUIRED on next wrap1 z_hyp card: bucket_grad_l2 must come from the same 11-structure backward as the Adam step, not a single-structure probe. Projector sawtooth is a measurement artifact under the current logger.",
+      "design": "data/gates/tokyo_eye_equ_grad_telemetry_next_card_design.json",
+      "evidence": [
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_midrun_grad_notes.json",
+        "data/gates/tokyo_eye_equ_grad_telemetry_next_card_design.json"
+      ],
+      "next": "Land in next sealed harness prereg runner before READY_TO_RUN"
+    },
+    {
+      "id": "A-grad-spine-rel-floor-next-card",
+      "status": "OPEN",
+      "priority": 2,
+      "kind": "harness",
+      "title": "G_grad_spine_rel ratio floor (separate from membership A)",
+      "opened": "2026-09-21",
+      "blocked_by": [],
+      "blocks": [],
+      "note": "Form locked: spine/sdrp ratio (B) + REQUIRED companion euc_skip share log (B2, diagnostic-only until s_max signed). r_min unsigned; M2 baseline attn/sdrp\u22480.34 projector\u22480.20 moe\u22480.031. B2 exists so SUSPECTED euc_skip compensation cannot stay invisible to the next card.",
+      "design": "data/gates/tokyo_eye_equ_grad_telemetry_next_card_design.json",
+      "evidence": [
+        "data/gates/tokyo_eye_equ_grad_telemetry_next_card_design.json",
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_euc_skip_compensation_check.json",
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_class_floor_check.json"
+      ],
+      "next": "Sign r_min (+ optional s_max); require B2 euc_share logging on next DualSpace capacity prereg"
+    },
+    {
+      "id": "A-sdrp-corpus-class-coverage",
+      "status": "OPEN",
+      "priority": 2,
+      "kind": "data_composition",
+      "title": "Stage-A-12 cannot host salt/hydrophobe SDRP labels \u2014 decide scope or expand",
+      "opened": "2026-09-21",
+      "blocked_by": [],
+      "blocks": [],
+      "note": "Decision-relevant now independent of instrumentation: 0/12 structures have class 2/3 labels. Options A keep+narrow claim, B expand manifest (EXPENSIVE \u2014 not peer cost to A/C; requires new acquisition + re-verify seq-id/wrap/R0-R5 + reachability on additions), C change target. Design note only \u2014 no train. Does not block logger-align / spine-rel / B2.",
+      "design": "data/gates/tokyo_eye_equ_sdrp_corpus_class_coverage_design.json",
+      "evidence": [
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_class_floor_check.json",
+        "data/gates/tokyo_eye_equ_sdrp_corpus_class_coverage_design.json"
+      ],
+      "related_lessons": [
+        "L-measurement-before-architecture",
+        "L-argmax-dominated-by-r0-r1-not-r5"
+      ],
+      "next": "Operator lock A/B/C (or A+B phased) before any SDRP capacity claim that implies 5-class coverage"
+    },
     {
       "id": "A-typed-path-utilization",
       "status": "OPEN",
@@ -75,7 +157,7 @@
       "title": "Typed-path near-dark: frontend.rel_bias and attn gamma/beta",
       "opened": "2026-09-21",
       "blocked_by": [],
-      "note": "Spine NZ overall; typed params specifically near-dark. Probe 2026-09-21: NOT init-scale (rel_bias mean|w| > seed_proj); NOT rescued by uniform edge_type and/or uniform labels alone \u2014 R5 dominance explains unsatisfiable lift bars (A-reachable) but is NOT sufficient alone for typed-param silence. Likely architectural dilution / path utilization; keep as separate item until a sealed diagnostic merges them with evidence.",
+      "note": "Spine NZ overall; typed params specifically near-dark. Probe 2026-09-21: NOT init-scale (rel_bias mean|w| > seed_proj); NOT rescued by uniform edge_type and/or uniform labels alone \u2014 R5 dominance explains unsatisfiable lift bars (A-reachable) but is NOT sufficient alone for typed-param silence. Likely architectural dilution / path utilization; keep as separate item until a sealed diagnostic merges them with evidence. M2 class-floor check 2026-09-21: salt/hydrophobe have 0 labels on these 12 folds \u2014 M2 min miss is CORE+DEHYDRON_RIM under majority CE, not typed-path proving the M2 bottleneck. Keep separate.",
       "probe_2026_09_21": {
         "rel_bias_vs_seed_proj_mean_abs_init_ratio": 2.73,
         "rel_bias_grad_over_weight_vs_seed_proj": "~1000\u00d7 smaller",
@@ -196,6 +278,19 @@
       "do_not_reopen_as": "800-step extension or silent bar nudge"
     },
     {
+      "id": "C-zhyp-m2-card",
+      "status": "DONE",
+      "closed": "2026-09-21",
+      "title": "wrap1 z_hyp M2 macro-F1 capacity cold-lite 400-step card",
+      "result": "INCONCLUSIVE_UNDERFIT (mean cleared 12/12; min at majority floor 0/12)",
+      "evidence": [
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_result.json",
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_prereg.json",
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_class_floor_check.json"
+      ],
+      "do_not_reopen_as": "mean-only bar or silent min-bar drop"
+    },
+    {
       "id": "A-r5-graph-lever-joint-check",
       "status": "DONE",
       "priority": 2,
@@ -236,12 +331,32 @@
         "data/gates/tokyo_eye_equ_r5_lever_joint_check.json",
         "data/gates/tokyo_eye_equ_reachable_bars_design.json"
       ],
-      "next": "Capacity card in flight: data/gates/tokyo_eye_equ_wrap1_zhyp_m2_prereg.json (S1 mean\u22650.40; S2 \u226510/12 at \u22650.40; train mean+min 0.40).",
+      "next": "M2 capacity COMPLETED_INCONCLUSIVE_UNDERFIT \u2014 mean cleared 12/12, min failed 0/12. See tokyo_eye_equ_wrap1_zhyp_m2_result.json.",
       "design_constraint": "SDRP argmax minority emptiness is R0/R1 count geometry, not R5-specific; graph edge-threshold levers are exhausted for unlocking lift\u22651.30 on these 12 folds",
       "design_draft": "data/gates/tokyo_eye_equ_reachable_bars_design.json",
       "closed": "2026-09-21",
       "result": "M2 macro-F1 locked; bar 0.40 mean+min; stretch 0.50; reachability PASS",
-      "follow_on_card": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_prereg.json"
+      "follow_on_card": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_prereg.json",
+      "follow_on_result": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_result.json"
+    },
+    {
+      "id": "A-euc-skip-compensation-check-post-m2",
+      "status": "DONE",
+      "priority": 2,
+      "kind": "diagnostic",
+      "title": "Evaluate prestated euc_skip compensation rule on full M2 folds",
+      "opened": "2026-09-21",
+      "blocked_by": [],
+      "blocks": [],
+      "note": "Criterion locked before aggregate: euc_ratio>=2.0 AND >=3/4 spine buckets late/peak<0.20; flag SUSPECTED if >=6/12 folds, LIKELY if >=9/12. Not an M2 pass/fail.",
+      "design": "data/gates/tokyo_eye_equ_grad_telemetry_next_card_design.json",
+      "evidence": [
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_euc_skip_compensation_check.json",
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_result.json"
+      ],
+      "closed": "2026-09-21",
+      "result": "SUSPECTED 8/12 under prestated rule \u2014 not an M2 fail; carry to next DualSpace/harness design",
+      "next": "Do not retune M2; use as input to next card if DualSpace compensation is in scope"
     }
   ],
   "signed": "Ray Swan / Cursor agent 2026-09-21 \u2014 agenda SSOT opened"

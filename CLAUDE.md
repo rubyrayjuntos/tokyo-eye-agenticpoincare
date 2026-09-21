@@ -9,7 +9,7 @@ This file overrides dated design specs as your working instructions.
 
 ## Control plane (read these first)
 
-0. **Fresh stitch (2026-09-21):** Agenda SSOT [`data/gates/tokyo_eye_equ_agenda.json`](data/gates/tokyo_eye_equ_agenda.json) — open items + lessons. z_hyp G_fit **DONE** `INCONCLUSIVE_UNDERFIT` (scoped). Prior handoff: [`docs/history/session-handoff-2026-09-20-equ-gfit-marginal.md`](docs/history/session-handoff-2026-09-20-equ-gfit-marginal.md)
+0. **Fresh stitch (2026-09-21):** Agenda SSOT [`data/gates/tokyo_eye_equ_agenda.json`](data/gates/tokyo_eye_equ_agenda.json). M2 capacity **DONE** `INCONCLUSIVE_UNDERFIT` (mean cleared / min at majority floor). Project state: **measurement-capable, not architecture-failed** — lesson `L-measurement-before-architecture`. Next: land instruments (logger-align, spine-rel, B2 euc_share), then one capacity card; corpus class-coverage design note open (not train). Prior handoff: [`docs/history/session-handoff-2026-09-20-equ-gfit-marginal.md`](docs/history/session-handoff-2026-09-20-equ-gfit-marginal.md)
 1. **[`docs/TOKYOEYE_ARCHITECTURE_SSOT.md`](docs/TOKYOEYE_ARCHITECTURE_SSOT.md)** — front door (intended stack; no numeric pins)
 2. **[`docs/superpowers/specs/2026-09-16-tokyo-eye-v8-freeze-addendum.md`](docs/superpowers/specs/2026-09-16-tokyo-eye-v8-freeze-addendum.md)** — sole owner of numbers / signed §2.x
 3. `docs/PROJECT_HUB.md` — stitch only; not machine truth
@@ -51,7 +51,7 @@ This file overrides dated design specs as your working instructions.
 | SDRP Stage 1 / G7/G8 | PARKED `SDRP_PARKED_DIAGNOSTIC_ONLY` |
 | wrap=1 dehydron LOSO on SE(3)-lite | **CLOSED_MARGINAL** — E=200 underfit-shaped; E=400 locked binary `DECAY_UNSETTLED` (1MBN 0.809 / 1LYZ **0.799** / 1BG1 0.824). Scientific read: marginal, not clean. No third lite prereg. Arm B not lean-able either way. Close: `…_G_fit_E400_close.json`. B-era pins (harness `8c7e2be2…` + script `34b75807…`) **dual-orphan / unverifiable class**. |
 | wrap=1 z_hyp SDRP-live G_fit (lite) | **INCONCLUSIVE_UNDERFIT** — scoped: capacity miss under **cold-lite / 400 / MoE-ablated** only (not architecture ceiling). G_grad_spine PASS at scale; locked G_fit_train FAIL. **Label ceiling:** maj≈0.85–0.96 → max lift≈1.04–1.18 so bar 1.30 was STRUCTURALLY_UNREACHABLE. **Typed second gap:** `rel_bias`/`gamma`/`beta` near-dark while spine NZ. Stamp+read: `tokyo_eye_equ_wrap1_zhyp_g_fit_result.json`. Open agenda in `tokyo_eye_equ_agenda.json`. |
-| wrap=1 z_hyp M2 macro-F1 capacity (lite) | **IN FLIGHT** — `tokyo_eye_equ_wrap1_zhyp_m2_prereg.json`; bars mean+min train ≥0.40; S1 mean≥0.40; S2 ≥10/12 ≥0.40. Runner: `scripts/wrap1_zhyp_g_fit.py --card m2`. |
+| wrap=1 z_hyp M2 macro-F1 capacity (lite) | **INCONCLUSIVE_UNDERFIT** — G_grad_spine PASS; G_fit_train FAIL 0/12 on **min** F1 (mean cleared 12/12 at ≥0.40; mins stuck ~0.31–0.33). Held would fail S1/S2 (~0.32). euc_skip compensation **SUSPECTED** 8/12. Stamp: `tokyo_eye_equ_wrap1_zhyp_m2_result.json`. |
 
 ## ACTIVE trunk (after assembly ENFORCED)
 
@@ -60,7 +60,7 @@ Theory isn’t showing because routing + supervision + protocol are wrong — no
 1. **Assembly gate ENFORCED** — default `--frontend equiformer_pool`; stub requires `--allow-off-path-frontend`; live `pure_hyp_pass`; pool deps constructible; claim-bearing third leg (`--claim-bearing-biology` → non-leak + `--log-biology-grad-sources`). Tests: `tests/v8/test_assembly_gate.py`.
 
 2. **Next sealed card only** (see `tokyo_eye_equ_next_experiment_sealed.json` + agenda):
-   - **Harness capacity (in flight):** M2 macro-F1 on cold lite (`wrap1_zhyp_m2_prereg`) — not biology; not defect-B close.
+   - Harness capacity M2 on cold lite **DONE** `INCONCLUSIVE_UNDERFIT` (min bar); next harness work = logger-align + optional G_grad_spine_rel — not another lift bar.
    - MoE eval-utilization / §2.6 on **Equiformer pool only** (`tokyo_eye_equ_moe_verify_on_pool.json`), **or**
    - Hyperbolic biology with non-leaking target + loss on `z_hyp` + `--log-biology-grad-sources` + `--claim-bearing-biology`.
 

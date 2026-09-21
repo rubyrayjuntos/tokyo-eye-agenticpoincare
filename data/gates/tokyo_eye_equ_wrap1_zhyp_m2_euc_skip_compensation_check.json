@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_wrap1_zhyp_m2_euc_skip_compensation_check",
+  "status": "EVALUATED",
+  "date": "2026-09-21",
+  "criterion_source": "data/gates/tokyo_eye_equ_grad_telemetry_next_card_design.json#decisions.3_euc_skip_compensation_prestated",
+  "rule": "fold matches if euc_ratio>=2.0 AND spine_floored_count>=3; SUSPECTED if >=6/12, LIKELY if >=9/12",
+  "n_matching_folds": 8,
+  "of_n": 12,
+  "verdict": "SUSPECTED",
+  "note": "SUSPECTED (8/12). Not an M2 pass/fail. Carry to next-card design; do not retune M2 bars.",
+  "per_fold": [
+    {
+      "hold": "1BG1:A",
+      "euc_ratio": 1.5734,
+      "spine_floored_count": 4,
+      "spine_floor_late_over_peak": {
+        "attn_layers": 0.0361,
+        "projector": 0.0662,
+        "moe": 0.029,
+        "sdrp_head": 0.039
+      },
+      "matches": false
+    },
+    {
+      "hold": "1F88:A",
+      "euc_ratio": 2.376,
+      "spine_floored_count": 3,
+      "spine_floor_late_over_peak": {
+        "attn_layers": 0.0394,
+        "projector": 0.3068,
+        "moe": 0.0357,
+        "sdrp_head": 0.0558
+      },
+      "matches": true
+    },
+    {
+      "hold": "1HHP:A",
+      "euc_ratio": 0.7457,
+      "spine_floored_count": 3,
+      "spine_floor_late_over_peak": {
+        "attn_layers": 0.0531,
+        "projector": 0.3361,
+        "moe": 0.0519,
+        "sdrp_head": 0.0363
+      },
+      "matches": false
+    },
+    {
+      "hold": "1IVO:A",
+      "euc_ratio": 2.2101,
+      "spine_floored_count": 3,
+      "spine_floor_late_over_peak": {
+        "attn_layers": 0.0573,
+        "projector": 0.4632,
+        "moe": 0.049,
+        "sdrp_head": 0.046
+      },
+      "matches": true
+    },
+    {
+      "hold": "1LYZ:A",
+      "euc_ratio": 0.3984,
+      "spine_floored_count": 3,
+      "spine_floor_late_over_peak": {
+        "attn_layers": 0.0479,
+        "projector": 0.708,
+        "moe": 0.0662,
+        "sdrp_head": 0.0345
+      },
+      "matches": false
+    },
+    {
+      "hold": "1MBN:A",
+      "euc_ratio": 3.0878,
+      "spine_floored_count": 4,
+      "spine_floor_late_over_peak": {
+        "attn_layers": 0.0288,
+        "projector": 0.0141,
+        "moe": 0.0307,
+        "sdrp_head": 0.0696
+      },
+      "matches": true
+    },
+    {
+      "hold": "1TEN:A",
+      "euc_ratio": 2.6418,
+      "spine_floored_count": 3,
+      "spine_floor_late_over_peak": {
+        "attn_layers": 0.0378,
+        "projector": 0.4217,
+        "moe": 0.0404,
+        "sdrp_head": 0.0534
+      },
+      "matches": true
+    },
+    {
+      "hold": "1TIM:A",
+      "euc_ratio": 2.4105,
+      "spine_floored_count": 4,
+      "spine_floor_late_over_peak": {
+        "attn_layers": 0.0686,
+        "projector": 0.0823,
+        "moe": 0.0407,
+        "sdrp_head": 0.0506
+      },
+      "matches": true
+    },
+    {
+      "hold": "1UBQ:A",
+      "euc_ratio": 0.5477,
+      "spine_floored_count": 3,
+      "spine_floor_late_over_peak": {
+        "attn_layers": 0.0796,
+        "projector": 0.4981,
+        "moe": 0.0528,
+        "sdrp_head": 0.0326
+      },
+      "matches": false
+    },
+    {
+      "hold": "2SHP:A",
+      "euc_ratio": 2.7724,
+      "spine_floored_count": 3,
+      "spine_floor_late_over_peak": {
+        "attn_layers": 0.0409,
+        "projector": 0.4438,
+        "moe": 0.0392,
+        "sdrp_head": 0.0526
+      },
+      "matches": true
+    },
+    {
+      "hold": "2Z6H:A",
+      "euc_ratio": 2.3459,
+      "spine_floored_count": 3,
+      "spine_floor_late_over_peak": {
+        "attn_layers": 0.0632,
+        "projector": 0.3451,
+        "moe": 0.0442,
+        "sdrp_head": 0.0482
+      },
+      "matches": true
+    },
+    {
+      "hold": "4OBE:A",
+      "euc_ratio": 2.0753,
+      "spine_floored_count": 3,
+      "spine_floor_late_over_peak": {
+        "attn_layers": 0.0411,
+        "projector": 0.5916,
+        "moe": 0.0373,
+        "sdrp_head": 0.0547
+      },
+      "matches": true
+    }
+  ],
+  "do_not_promote": true,
+  "signed": "Cursor agent 2026-09-21 \u2014 prestated rule evaluated post-aggregate"
+}
