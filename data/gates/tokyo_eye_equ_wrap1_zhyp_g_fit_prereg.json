@@ -14,25 +14,40 @@
   "no_code_or_train_until_approved": true,
   "no_train_until_seal_preconditions": true,
   "standing_rule": "Prose without a failing test always loses to a convenient default.",
-  "question": "With SDRP-live (sole loss) through DualSpaceSDRPHead on cold SE(3)-lite, do hyperbolic spine buckets receive gradient and can the stack clear train + held-out SDRP capacity bars in a fixed 400-step budget — as a harness/capacity probe with an intentionally leaked target?",
+  "question": "With SDRP-live (sole loss) through DualSpaceSDRPHead on cold SE(3)-lite, do hyperbolic spine buckets receive gradient and can the stack clear train + held-out SDRP capacity bars in a fixed 400-step budget \u2014 as a harness/capacity probe with an intentionally leaked target?",
   "why_redesign": {
     "parent_chain": "wrap1 lite G_fit E200/E400 CLOSED_MARGINAL + diagnostics 2026-09-20",
     "failure_modes_addressed": [
-      "wrong_loss_path — dehydron BCE/margin never reached spine (euc_skip only); INSTR drift table: attn/projector/moe/sdrp_head = 0/0 while euc_skip+mechanism_head moved",
-      "pooled_only_metric — prior G_fit reported train pooled dehydron AUPRC only",
-      "no_gradient_verification — no pre-run spine reachability fixture",
-      "ambiguous_frontend_typing — pool del edge_type; this card uses lite so edge_type can reach the model",
-      "unstated_budget — decay/epoch extensions without new prereg",
-      "clip_ambiguity — pre-clip 2.75 vs max_grad_norm=1.0 on euc_skip-only; spine reconnect may bind clip harder"
+      "wrong_loss_path \u2014 dehydron BCE/margin never reached spine (euc_skip only); INSTR drift table: attn/projector/moe/sdrp_head = 0/0 while euc_skip+mechanism_head moved",
+      "pooled_only_metric \u2014 prior G_fit reported train pooled dehydron AUPRC only",
+      "no_gradient_verification \u2014 no pre-run spine reachability fixture",
+      "ambiguous_frontend_typing \u2014 pool del edge_type; this card uses lite so edge_type can reach the model",
+      "unstated_budget \u2014 decay/epoch extensions without new prereg",
+      "clip_ambiguity \u2014 pre-clip 2.75 vs max_grad_norm=1.0 on euc_skip-only; spine reconnect may bind clip harder"
     ],
     "independent_corroboration": {
       "source": "INSTR E400 per-module grad/drift (not in gate JSON; corroborates grad_attribution_check)",
       "table": {
-        "spine.attn_layers_projector_moe_sdrp_evidential__log_c": {"grad": 0, "drift": 0},
-        "spine.mechanism_head": {"grad": 0.36, "drift": 2.6},
-        "spine.euc_skip": {"grad": 0.34, "drift": 1.7},
-        "frontend_whole": {"grad": 0.87, "drift": 0.52},
-        "frontend.out_v_scalar_trunk_vector_trunk": {"grad": 0, "drift": 0},
+        "spine.attn_layers_projector_moe_sdrp_evidential__log_c": {
+          "grad": 0,
+          "drift": 0
+        },
+        "spine.mechanism_head": {
+          "grad": 0.36,
+          "drift": 2.6
+        },
+        "spine.euc_skip": {
+          "grad": 0.34,
+          "drift": 1.7
+        },
+        "frontend_whole": {
+          "grad": 0.87,
+          "drift": 0.52
+        },
+        "frontend.out_v_scalar_trunk_vector_trunk": {
+          "grad": 0,
+          "drift": 0
+        },
         "backbone_tensors_no_grad": 84,
         "preclip_grad_norm_last_step": 2.75,
         "max_grad_norm": 1.0,
@@ -43,7 +58,7 @@
     "supersedes_as_next_card": [
       "pool typed G_fit at 0.80 (pool cannot carry edge_type)",
       "third lite dehydron epoch prereg",
-      "prior draft of this card that required a new dehydron→z_hyp head and equiformer_pool"
+      "prior draft of this card that required a new dehydron\u2192z_hyp head and equiformer_pool"
     ],
     "evidence": [
       "data/gates/tokyo_eye_equ_grad_attribution_check.json",
@@ -54,67 +69,72 @@
     ]
   },
   "decisions_locked": {
-    "status": "OPERATOR_SIGNED — six locks accepted as written; not open options",
+    "status": "OPERATOR_SIGNED \u2014 six locks accepted as written; not open options",
     "operator_signed": "Ray Swan 2026-09-20",
     "signed_items": [
-      "1_wiring_shape — DualSpaceSDRPHead + SDRP-live; no new head; intentional leak ≠ defect B; moe ablated",
-      "2_loss_coeffs — sdrp_coeff=0.1, dehydron_coeff=0, margin_coeff=0",
-      "3_step_budget — 400 steps; no extensions",
-      "4_frontend — cold SE(3)-lite + allow_off_path; pool forbidden",
-      "5_grad_fixture_first — fixture PASS before any 400-step run",
-      "6_log_c_and_clip — _log_c not expected to move; log clip_active_fraction"
+      "1_wiring_shape \u2014 DualSpaceSDRPHead + SDRP-live; no new head; intentional leak \u2260 defect B; moe ablated",
+      "2_loss_coeffs \u2014 sdrp_coeff=0.1, dehydron_coeff=0, margin_coeff=0",
+      "3_step_budget \u2014 400 steps; no extensions",
+      "4_frontend \u2014 cold SE(3)-lite + allow_off_path; pool forbidden",
+      "5_grad_fixture_first \u2014 fixture PASS before any 400-step run",
+      "6_log_c_and_clip \u2014 _log_c not expected to move; log clip_active_fraction"
     ],
     "1_wiring_shape": {
       "choice": "Reuse DualSpaceSDRPHead with SDRP-live. Do NOT build a new dehydron head on z_hyp.",
       "why": "Only path already empirically confirmed to route gradient into attn_layers/projector/moe/sdrp_head (grad_attribution_check positive control). A new head would be unverified wiring risk.",
       "intentional_leak": "SDRP target remains edge-type-histogram-derived (same leakage family as dehydron labels). For G_fit this is intentional: capacity probe given the answer. Remains non-claim-bearing and does NOT close defect B.",
       "moe_mode": "ablated",
-      "moe_mode_why": "Experts still receive gradient under ablation (gate frozen, routing fixed). Router health is moe_verify_on_pool — do not conflate."
+      "moe_mode_why": "Experts still receive gradient under ablation (gate frozen, routing fixed). Router health is moe_verify_on_pool \u2014 do not conflate."
     },
     "2_loss_coeffs": {
       "sdrp_coeff": 0.1,
       "dehydron_coeff": 0.0,
       "margin_coeff": 0.0,
       "sdrp_coeff_precedent": "eqf_mode_c_s9_20260823 (historical logged value; not invented)",
-      "why_sole_sdrp": "Zero dehydron and margin so SDRP is the only active task loss — no ambiguity which term drove spine gradient. Adam normalizes by grad variance; sole-contributor matters more than 0.1 vs 1.0 scale."
+      "why_sole_sdrp": "Zero dehydron and margin so SDRP is the only active task loss \u2014 no ambiguity which term drove spine gradient. Adam normalizes by grad variance; sole-contributor matters more than 0.1 vs 1.0 scale."
     },
     "3_step_budget": {
       "optimizer_steps": 400,
       "extensions": "FORBIDDEN without a new sealed prereg",
-      "why": "Spine modules share lr_hyperbolic=1e-3 with the euc_skip/mechanism_head group that already moved substantially in 400 steps once they had gradient. 400 is a precedented starting budget at that LR — not a guarantee. Whatever the run shows at exactly 400 steps is the result; no 'extend to 800 because still climbing'."
+      "why": "Spine modules share lr_hyperbolic=1e-3 with the euc_skip/mechanism_head group that already moved substantially in 400 steps once they had gradient. 400 is a precedented starting budget at that LR \u2014 not a guarantee. Whatever the run shows at exactly 400 steps is the result; no 'extend to 800 because still climbing'."
     },
     "4_frontend": {
       "mode": "cold SE(3)-lite",
       "allow_off_path_frontend": true,
       "pool": "FORBIDDEN on this card",
-      "why_not_pool": "equiformer_pool_frontend.py deletes edge_index/edge_type — cannot carry the leaked typed signal this G_fit depends on; would silently become untyped-only again.",
+      "why_not_pool": "equiformer_pool_frontend.py deletes edge_index/edge_type \u2014 cannot carry the leaked typed signal this G_fit depends on; would silently become untyped-only again.",
       "policy": "disclosed, pre-registered, cheap, harness-diagnostic-only (SSOT SE(3)-lite pilot policy)",
       "typed_means": "edge_type reaches the model via lite rel_bias/scatter. Prior reachability check found weak effect on euc_skip path; recheck type-sensitivity after spine has gradient (trained spine may use the channel differently)."
     },
     "5_grad_fixture_first": {
       "order": "Build and pass gradient-reachability fixture BEFORE any 400-step training run is allowed to start.",
       "fixture": "Small synthetic model (sprint unit-test dims), one forward/backward, no PDB I/O, reuse per-bucket grad-norm wrapper from grad_attribution_check.",
-      "assert_nonzero_grad": ["attn_layers", "projector", "moe", "sdrp_head"],
+      "assert_nonzero_grad": [
+        "attn_layers",
+        "projector",
+        "moe",
+        "sdrp_head"
+      ],
       "assert_not_in_graph_when_coeff_zero": "dehydron/margin paths with coeff=0 must show grad is None (not merely 0.0) where structurally disconnected; distinguish 'not in graph' vs 'in graph but zeroed' as in grad_attribution_check.",
-      "fail": "ABORT_WIRING — do not start the 400-step card run"
+      "fail": "ABORT_WIRING \u2014 do not start the 400-step card run"
     },
     "6_log_c_and_clip": {
       "_log_c": {
         "expected_to_move_on_this_card": false,
-        "justification": "model.forward detaches curvature to a Python float (c_val = float(self.curvature().detach()...)) and DualSpaceSDRPHead uses bound float self.c — _log_c is not in the autograd graph under current trunk. Freeze addendum item #16 (learned c / document pin) remains a SEPARATE card. This G_fit does not silently claim learned-c training.",
-        "log": "Record final softplus(_log_c) vs init; expect drift ~0. Nonzero drift is an anomaly → ABORT_WIRING investigation."
+        "justification": "model.forward detaches curvature to a Python float (c_val = float(self.curvature().detach()...)) and DualSpaceSDRPHead uses bound float self.c \u2014 _log_c is not in the autograd graph under current trunk. Freeze addendum item #16 (learned c / document pin) remains a SEPARATE card. This G_fit does not silently claim learned-c training.",
+        "log": "Record final softplus(_log_c) vs init; expect drift ~0. Nonzero drift is an anomaly \u2192 ABORT_WIRING investigation."
       },
       "clip_fraction": {
         "log_every_n_steps": 10,
         "definition": "fraction of steps where pre-clip grad norm > max_grad_norm (and the pre-clip / post-clip norms)",
-        "why": "INSTR last step had pre-clip 2.75 vs max 1.0 with only euc_skip/mechanism_head active. Once spine contributes, clip will likely bind harder and shrink effective per-parameter updates — needed to separate 'flat because clipped/spread' from 'no signal' at the fixed 400-step budget."
+        "why": "INSTR last step had pre-clip 2.75 vs max 1.0 with only euc_skip/mechanism_head active. Once spine contributes, clip will likely bind harder and shrink effective per-parameter updates \u2014 needed to separate 'flat because clipped/spread' from 'no signal' at the fixed 400-step budget."
       }
     }
   },
   "predecessors": {
     "lite_g_fit_close": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_G_fit_E400_close.json",
     "b_disposition": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_B_disposition.json",
-    "b_harness_identity": "UNVERIFIED_PIN_UNRECOVERABLE",
+    "b_harness_identity": "UNVERIFIED_PIN_UNRECOVERABLE (harness+script dual orphan; B_ERA_PROVENANCE_CHAIN)",
     "arm_b_prereg_bars_shape": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_prereg.json",
     "folds_frozen": "data/gates/wrap1_dehydron_loso/folds_frozen.json",
     "grad_attribution": "data/gates/tokyo_eye_equ_grad_attribution_check.json",
@@ -122,13 +142,16 @@
     "assembly_gate": "science/tokyo_eye/v8/assembly_gate.py"
   },
   "held_out_baseline_locked_at_draft": {
-    "note": "Prior dehydron euc_skip held-out lift band (0.97–1.21) is context for why dehydron-only G_fit failed to generalise — NOT the metric of this card (dehydron_coeff=0).",
+    "note": "Prior dehydron euc_skip held-out lift band (0.97\u20131.21) is context for why dehydron-only G_fit failed to generalise \u2014 NOT the metric of this card (dehydron_coeff=0).",
     "source_dehydron_euc_skip": "data/gates/tokyo_eye_equ_g_fit_per_structure_recheck.json",
-    "observed_dehydron_lift_band": [0.97, 1.21],
+    "observed_dehydron_lift_band": [
+      0.97,
+      1.21
+    ],
     "this_card_metric": "SDRP top-1 accuracy lift vs majority-class rate (see pass_fail_bars.lift_definition)"
   },
   "design": {
-    "purpose_class": "harness_capacity_G_fit — intentional leak; not biology seal; not defect-B close; not MoE-on claim",
+    "purpose_class": "harness_capacity_G_fit \u2014 intentional leak; not biology seal; not defect-B close; not MoE-on claim",
     "frontend": {
       "mode": "cold SE(3)-lite",
       "freeze_backbone": false,
@@ -141,17 +164,30 @@
       "sdrp_coeff": 0.1,
       "dehydron_coeff": 0.0,
       "margin_coeff": 0.0,
-      "moe_balance_under_ablation": "inactive / constant — not a task loss"
+      "moe_balance_under_ablation": "inactive / constant \u2014 not a task loss"
     },
-    "head": "existing DualSpaceSDRPHead(z_moe, h_euc) — no new modules",
-    "structures": ["1MBN:A", "1LYZ:A", "1BG1:A", "1F88:A", "2Z6H:A", "1HHP:A", "1TEN:A", "1UBQ:A", "1TIM:A", "4OBE:A", "1IVO:A", "2SHP:A"],
+    "head": "existing DualSpaceSDRPHead(z_moe, h_euc) \u2014 no new modules",
+    "structures": [
+      "1MBN:A",
+      "1LYZ:A",
+      "1BG1:A",
+      "1F88:A",
+      "2Z6H:A",
+      "1HHP:A",
+      "1TEN:A",
+      "1UBQ:A",
+      "1TIM:A",
+      "4OBE:A",
+      "1IVO:A",
+      "2SHP:A"
+    ],
     "protocol": {
-      "split": "leave-one-structure-out (LOSO), 12 folds — folds_frozen.json; train 11, eval 1 held-out",
+      "split": "leave-one-structure-out (LOSO), 12 folds \u2014 folds_frozen.json; train 11, eval 1 held-out",
       "why_12": "Held-out bars reuse Arm B S1/S2 shape (structure-level bootstrap n=12).",
       "optimizer_steps": 400,
       "steps_per_epoch": 1,
       "batch_reduction": "mean over 11 train structures (same as run_epoch_mean_structures)",
-      "model_selection": "NONE — last step only",
+      "model_selection": "NONE \u2014 last step only",
       "device": "cuda",
       "device_stop": "If CUDA unavailable: STOP. No CPU fallback.",
       "seed": 0
@@ -171,12 +207,17 @@
     ]
   },
   "pass_fail_bars": {
-    "status": "LOCKED at draft with decisions — not adjustable after seeing results without a new signed card",
+    "status": "LOCKED at draft with decisions \u2014 not adjustable after seeing results without a new signed card",
     "lift_definition": "per structure, last step: SDRP_top1_accuracy / majority_class_rate. Majority classifier has lift = 1.0 by construction.",
     "G_finite": "no non-finite loss or gradient in any fold",
     "G_grad_spine": {
       "when": "gradient-reachability fixture (decision 5) AND step-0 of each fold under card coeffs",
-      "require_nonzero": ["attn_layers", "projector", "moe", "sdrp_head"],
+      "require_nonzero": [
+        "attn_layers",
+        "projector",
+        "moe",
+        "sdrp_head"
+      ],
       "require_none_not_zero_for_disabled": "with dehydron_coeff=0 and margin_coeff=0, mechanism_head dehydron path must not be required to carry task loss; spine must still light via SDRP CE",
       "fail": "ABORT_WIRING"
     },
@@ -195,14 +236,14 @@
     },
     "verdict_table": {
       "ABORT_NONFINITE": "G_finite fails",
-      "ABORT_WIRING": "G_grad_spine fails (fixture or step-0) OR unexpected _log_c drift — harness/wiring still wrong",
+      "ABORT_WIRING": "G_grad_spine fails (fixture or step-0) OR unexpected _log_c drift \u2014 harness/wiring still wrong",
       "INCONCLUSIVE_UNDERFIT": "G_finite and G_grad_spine pass; G_fit_train fails",
       "FAIL_NO_SIGNAL": "G_finite and G_grad_spine and G_fit_train pass; S1 or S2 fails",
-      "PASS_SIGNAL": "G_finite and G_grad_spine and G_fit_train and S1 and S2 — capacity probe only; see not_claims"
+      "PASS_SIGNAL": "G_finite and G_grad_spine and G_fit_train and S1 and S2 \u2014 capacity probe only; see not_claims"
     }
   },
   "seal_preconditions": {
-    "status": "REQUIRED before READY_TO_RUN — all three blockers must clear TOGETHER before any training; no early train on partial clearance",
+    "status": "REQUIRED before READY_TO_RUN \u2014 all three blockers must clear TOGETHER before any training; no early train on partial clearance",
     "blocking_in_dependency_order": [
       {
         "id": 1,
@@ -219,45 +260,52 @@
       {
         "id": 3,
         "name": "commit_then_pin",
-        "require": "Host commits run_v8_experiment.py and all wiring/runner/fixture files to origin/master. Record pins.git_commit = that SHA. Verify each pinned path with: git show <commit>:<path> | sha256sum  — must match pins.files[<path>] before run starts. Lesson: B pin 8c7e2be2… matched no git object (UNVERIFIED_PIN_UNRECOVERABLE).",
+        "require": "Host commits run_v8_experiment.py and all wiring/runner/fixture files to origin/master. Record pins.git_commit = that SHA. Verify each pinned path with: git show <commit>:<path> | sha256sum  \u2014 must match pins.files[<path>] before run starts. Lesson: B pin 8c7e2be2\u2026 matched no git object (UNVERIFIED_PIN_UNRECOVERABLE).",
         "must_pass_before": "seal / READY_TO_RUN"
       }
     ],
-    "no_shortcut": "None of the three can be skipped with 'it looks fine, let's just run it' — that is the failure mode this chain traced.",
+    "no_shortcut": "None of the three can be skipped with 'it looks fine, let's just run it' \u2014 that is the failure mode this chain traced.",
     "order": [
       "1. Land grad-reachability fixture under tests/v8/ (host commit)",
       "2. Land runner (SDRP-only coeffs, lite+allow_off_path, clip+bucket+per-structure SDRP logging)",
       "3. Fixture PASS on CUDA",
       "4. git commit + push; fill pins.git_commit; verify git show <commit>:<path> | sha256sum == pins.files",
-      "5. Only when 1+2+3 are all true: set READY_TO_RUN — never seal from dirty tree or /tmp-only runner"
+      "5. Only when 1+2+3 are all true: set READY_TO_RUN \u2014 never seal from dirty tree or /tmp-only runner"
     ],
     "commit_then_pin": {
       "rule": "Commit ALL code this card needs to origin/master FIRST. Fill pins from that commit. Verify with git show <commit>:<path> | sha256sum.",
-      "forbid": ["dirty-tree seals", "sha256 of uncommitted bytes", "/tmp-only runner called sealed", "train after fixture-only without pin", "train after pin without CUDA fixture pass"]
+      "forbid": [
+        "dirty-tree seals",
+        "sha256 of uncommitted bytes",
+        "/tmp-only runner called sealed",
+        "train after fixture-only without pin",
+        "train after pin without CUDA fixture pass"
+      ]
     },
     "write_path_blocker": {
-      "status": "BLOCKER_AS_OF_DRAFT — decisions signed; seal/run still blocked until host lands commits",
+      "status": "CLEARED \u2014 host writable checkout landed runner",
       "observed_2026-09-20": "appuser cannot write experiments/training/v8/ or scripts/; data/gates/ writable",
       "rule": "Host must land commits from a writable checkout. Assistant runs exact_command and writes stamps under data/gates/ only."
     },
     "parallel_non_blocking": [
-      "_log_c: already locked expected_to_move=false on this card (detached in forward); freeze item #16 learned-c remains a separate card — do not age into silent ambiguity",
-      "B-era clone hunt for 8c7e2be2…: still worth finding if a retired checkout exists, but does not block sealing this card"
+      "_log_c: expected_to_move=false (detach/_bind_c float); freeze item #16 separate card",
+      "B-era provenance chain CLOSED as unverifiable class: harness 8c7e2be2\u2026 AND script 34b75807\u2026 both orphaned (same failure mode) \u2014 see B_disposition.systemic_finding_2026_09_20"
     ]
   },
   "pins": {
-    "git_commit": "FILL_AT_SEAL",
+    "git_commit": "FILL_AFTER_LAND_COMMIT",
     "files": {
-      "science/tokyo_eye/v8/model.py": "FILL_AT_SEAL",
-      "science/tokyo_eye/v8/heads.py": "FILL_AT_SEAL",
-      "science/tokyo_eye/v8/engine.py": "FILL_AT_SEAL",
-      "science/tokyo_eye/v8/moe.py": "FILL_AT_SEAL",
-      "science/tokyo_eye/v8/equiformer_frontend.py": "FILL_AT_SEAL",
-      "science/tokyo_eye/v8/assembly_gate.py": "FILL_AT_SEAL",
-      "science/tokyo_eye/v8/configs/equiformer_v3_weight_map.json": "FILL_AT_SEAL",
-      "experiments/training/v8/run_v8_experiment.py": "FILL_AT_SEAL",
-      "scripts/<runner>.py": "FILL_AT_SEAL",
-      "tests/v8/test_<grad_reachability>.py": "FILL_AT_SEAL"
+      "science/tokyo_eye/v8/model.py": "28e243bd8ed821c4830f77a3a3f8d42130bdccc1f6c6ef92da0767b9ba420159",
+      "science/tokyo_eye/v8/heads.py": "d35bdc722a9f4c8a36167c553e390e07f73f999b46c0a2f7e0b369c869f7ff26",
+      "science/tokyo_eye/v8/engine.py": "b0a7da65e31982770b47b9cfa5499de30b1ea302e81c7ce7074755c1fdcfda9d",
+      "science/tokyo_eye/v8/moe.py": "92317a490d0c8fff90d2611ba7bdb02f441ed3364733c0e86249bb4e1b139423",
+      "science/tokyo_eye/v8/equiformer_frontend.py": "5ba418c43bb4234fbb38140dcac4232f7cfc4077e968ea80e8d7c336b6d7cc59",
+      "science/tokyo_eye/v8/assembly_gate.py": "3411ae5fbeffd4a6676e96ce6ba9844262d99ce9161c81bc13d28b6eea239ad7",
+      "science/tokyo_eye/v8/configs/equiformer_v3_weight_map.json": "aada48cb979ff3128e89edd6b7bbbd56f0c1114ef64a394ca31a7a240464c4ef",
+      "science/tokyo_eye/v8/grad_reachability.py": "27cc2c99618f9b55ea2e34ad9897b8f8248d8e7638043078653e83e04ee29498",
+      "experiments/training/v8/run_v8_experiment.py": "c1df1048bc817dac30afd1658a3b0c5c14eab3478fc8e6ea2dcd823d3b15f2c6",
+      "scripts/wrap1_zhyp_g_fit.py": "969d1b4068e93b5707c331f3e0bea59916c399a33393e674f50c80b1b43f5ab1",
+      "tests/v8/test_grad_reachability_zhyp_g_fit.py": "935db3ea153d5f0493c361def447aef3538f862240572076ba73f75ba3f3b305"
     },
     "frontend": "cold_se3_lite",
     "allow_off_path_frontend": true,
@@ -271,7 +319,7 @@
     "device": "cuda",
     "max_grad_norm": 1.0,
     "lr_hyperbolic": 0.001,
-    "lr_frontend": "FILL_AT_SEAL from build_param_groups",
+    "lr_frontend": 1e-05,
     "S1_mean_lift_min": 1.3,
     "S1_ci_lb_min": 1.1,
     "S2_min_structures_above_chance": 10,
@@ -284,12 +332,12 @@
     "head": "DualSpaceSDRPHead"
   },
   "code_after_approval": {
-    "first": "tests/v8 gradient-reachability fixture (decision 5) — must PASS before training",
-    "runner": "scripts/<name>_zhyp_g_fit.py — SDRP-only coeffs, lite+allow_off_path, 12-fold LOSO, clip+bucket logging",
+    "first": "tests/v8 gradient-reachability fixture (decision 5) \u2014 must PASS before training",
+    "runner": "scripts/wrap1_zhyp_g_fit.py",
     "no_new_head": true,
     "stamp_location": "data/gates/",
-    "exact_command": "FILL_AT_SEAL",
-    "smoke_command": "FILL_AT_SEAL"
+    "exact_command": "PYTHONPATH=/workspace python3 scripts/wrap1_zhyp_g_fit.py --device cuda --steps 400 --seed 0",
+    "smoke_command": "PYTHONPATH=/workspace python3 scripts/wrap1_zhyp_g_fit.py --smoke --device cuda --no-mlflow"
   },
   "constraints": {
     "no_promote": true,
@@ -307,17 +355,17 @@
   },
   "not_claims": [
     "PASS_SIGNAL is not a biology seal",
-    "intentional SDRP leak does not close defect B (edge_type → label leakage)",
+    "intentional SDRP leak does not close defect B (edge_type \u2192 label leakage)",
     "not a MoE-on vs ablated comparison (moe_verify_on_pool remains separate)",
     "not learned-curvature training (_log_c detached in forward; freeze item #16 separate)",
     "not permission to treat prior dehydron lite G_fit CLOSED_MARGINAL as pool capacity",
     "SE(3)-lite result is not Equiformer-pool biology evidence"
   ],
   "open_before_seal": [
-    "DONE host: grad-reachability fixture landed (science/tokyo_eye/v8/grad_reachability.py + tests/v8/test_grad_reachability_zhyp_g_fit.py)",
-    "DONE host+mlflow: fixture PASS on CUDA (Quadro T1000)",
-    "REMAINING: Commit-then-pin — commit fixture (+ runner when ready) to origin/master; fill pins.git_commit; verify git show <commit>:<path> | sha256sum",
-    "Only when commit-pin clears → READY_TO_RUN (no partial train)"
+    "DONE host: grad-reachability fixture + CUDA PASS",
+    "DONE host: runner scripts/wrap1_zhyp_g_fit.py (CUDA smoke PASS)",
+    "DONE host: B dual-orphan systemic provenance note stamped",
+    "REMAINING: land commit \u2192 fill pins.git_commit \u2192 READY_TO_RUN"
   ],
   "fixture_landed": {
     "date": "2026-09-20",
@@ -327,9 +375,9 @@
     "mlflow_cuda": "PASS Quadro T1000 via PYTHONPATH=/workspace",
     "blocker_1": "CLEARED",
     "blocker_2": "CLEARED",
-    "blocker_3_commit_pin": "OPEN"
+    "blocker_3_commit_pin": "PENDING_LAND"
   },
   "open_for_operator_before_approval": [],
-  "signed_decisions": "Ray Swan 2026-09-20 — six locks APPROVED. Card not SEALED / not READY_TO_RUN until all three seal blockers clear together.",
-  "signed_draft": "Ray Swan 2026-09-20 — decisions LOCKED then SIGNED; seal pending (all-together rule); fixture blockers 1+2 cleared 2026-09-20"
+  "signed_decisions": "Ray Swan 2026-09-20 \u2014 six locks APPROVED. Card not SEALED / not READY_TO_RUN until all three seal blockers clear together.",
+  "signed_draft": "Ray Swan 2026-09-20 \u2014 decisions LOCKED then SIGNED; seal pending (all-together rule); fixture blockers 1+2 cleared 2026-09-20"
 }

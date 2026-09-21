@@ -9,7 +9,7 @@ This file overrides dated design specs as your working instructions.
 
 ## Control plane (read these first)
 
-0. **Fresh stitch (2026-09-20):** [`docs/history/session-handoff-2026-09-20-equ-gfit-marginal.md`](docs/history/session-handoff-2026-09-20-equ-gfit-marginal.md) — lite G_fit CLOSED_MARGINAL; next = pool typed G_fit
+0. **Fresh stitch (2026-09-20):** [`docs/history/session-handoff-2026-09-20-equ-gfit-marginal.md`](docs/history/session-handoff-2026-09-20-equ-gfit-marginal.md) — lite dehydron G_fit CLOSED_MARGINAL; next sealed card = **z_hyp SDRP-live G_fit** (`tokyo_eye_equ_wrap1_zhyp_g_fit_prereg.json`)
 1. **[`docs/TOKYOEYE_ARCHITECTURE_SSOT.md`](docs/TOKYOEYE_ARCHITECTURE_SSOT.md)** — front door (intended stack; no numeric pins)
 2. **[`docs/superpowers/specs/2026-09-16-tokyo-eye-v8-freeze-addendum.md`](docs/superpowers/specs/2026-09-16-tokyo-eye-v8-freeze-addendum.md)** — sole owner of numbers / signed §2.x
 3. `docs/PROJECT_HUB.md` — stitch only; not machine truth
@@ -49,7 +49,7 @@ This file overrides dated design specs as your working instructions.
 | MoE/ε card (step 1) | **CLOSED:** R=`NEVER_LIVE` → A=`PASS` ablated. MoE-on unhealthy |
 | wrap=1 biology rescore | DIAGNOSTIC — weak dehydron; SDRP degenerate |
 | SDRP Stage 1 / G7/G8 | PARKED `SDRP_PARKED_DIAGNOSTIC_ONLY` |
-| wrap=1 dehydron LOSO on SE(3)-lite | **CLOSED_MARGINAL** — E=200 underfit-shaped; E=400 locked binary `DECAY_UNSETTLED` (1MBN 0.809 / 1LYZ **0.799** / 1BG1 0.824). Scientific read: marginal, not clean. No third lite prereg. Arm B not lean-able either way. Close: `…_G_fit_E400_close.json`. Next: pool typed G_fit. |
+| wrap=1 dehydron LOSO on SE(3)-lite | **CLOSED_MARGINAL** — E=200 underfit-shaped; E=400 locked binary `DECAY_UNSETTLED` (1MBN 0.809 / 1LYZ **0.799** / 1BG1 0.824). Scientific read: marginal, not clean. No third lite prereg. Arm B not lean-able either way. Close: `…_G_fit_E400_close.json`. B-era pins (harness `8c7e2be2…` + script `34b75807…`) **dual-orphan / unverifiable class**. Next harness: z_hyp SDRP-live G_fit (not pool typed dehydron). |
 
 ## ACTIVE trunk (after assembly ENFORCED)
 
@@ -61,7 +61,7 @@ Theory isn’t showing because routing + supervision + protocol are wrong — no
    - MoE eval-utilization / §2.6 on **Equiformer pool only** (`tokyo_eye_equ_moe_verify_on_pool.json`), **or**
    - Hyperbolic biology with non-leaking target + loss on `z_hyp` + `--log-biology-grad-sources` + `--claim-bearing-biology`.
 
-3. **SE(3)-lite pilots** — wrap=1 LOSO G_fit **CLOSED_MARGINAL** (`…_G_fit_E400_close.json`). Stop lite curve modeling / third prereg. Next harness capacity probe: **Equiformer-pool typed G_fit** (same folds/threshold). Do not lean on Arm B as FAIL_NO_SIGNAL from lite alone.
+3. **SE(3)-lite pilots** — wrap=1 dehydron LOSO G_fit **CLOSED_MARGINAL**. Stop dehydron lite curve modeling / third prereg. **Active harness capacity probe:** z_hyp SDRP-live G_fit (`scripts/wrap1_zhyp_g_fit.py`, prereg `tokyo_eye_equ_wrap1_zhyp_g_fit_prereg.json`) — intentional leak, not biology. Do not lean on Arm B as FAIL_NO_SIGNAL from lite alone. Pool typed dehydron G_fit superseded as next by this redesign.
 
 4. **Do not** open another cold stub diagnostic as trunk science. Defect B (edge_type → dehydron leakage) remains open — wrap AMEND did not fix it; claim-bearing gate refuses leaking stacks.
 

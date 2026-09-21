@@ -31,9 +31,20 @@
   "Arm_B_read": "Do not lean hard either way. Lite G_fit never gave a crisp binary to interpret B's S1/S2 fail as FAIL_NO_SIGNAL or as decisive underfit.",
   "harness_identity": {
     "b_result_pin": "8c7e2be2e73bc8ca5d11f2eaa5becc3e2c1b6e5984f62db4f90a9a7efd676ae1",
+    "b_script_pin": "34b758077d1c6e45a911220dcc374902087909ad8df8f52fd35b735d85db5585",
     "current_harness": "c1df1048bc817dac30afd1658a3b0c5c14eab3478fc8e6ea2dcd823d3b15f2c6",
     "status": "UNVERIFIED_PIN_UNRECOVERABLE",
+    "scope": "B_ERA_PROVENANCE_CHAIN",
     "note": "Pinned bytes not in git, image, pyc, Cursor history, or host tokyo-eyes trees. Instrumented G_fit replay ran on the current harness; that it reproduces Arm B's loop is UNVERIFIED.",
+    "systemic_finding_2026_09_20": {
+      "summary": "Two independent orphaned pins from the same B-era run share the same failure mode — treat the entire provenance chain as unverifiable, not only the harness file.",
+      "orphaned_pins": {
+        "run_v8_experiment_py": "8c7e2be2e73bc8ca5d11f2eaa5becc3e2c1b6e5984f62db4f90a9a7efd676ae1",
+        "arm_b_runner_script": "34b758077d1c6e45a911220dcc374902087909ad8df8f52fd35b735d85db5585"
+      },
+      "hunt": "git history of run_v8 (only 056c9b13…→c1df1048…), host Documents/Downloads/actions-runner copies, Cursor History, MLflow artifact trees — no HIT for either pin. 2512cd2 ('before retiring this clone') saved into this repo at 056c9b13…, not the B pin.",
+      "governance": "B-era artifacts from that period are unverifiable as a class. Additional unchecked pins from the same window should be assumed orphaned until proven otherwise. Do not reconstruct Arm B byte-identity from current trunk."
+    },
     "operator_approved": "option_b_pin_unrecoverable 2026-09-20"
   },
   "next_command_note": "Stop SE(3)-lite G_fit curve work. No third lite prereg. Do NOT run pool typed G_fit at 0.80 as-is: per-structure recheck shows held-out ~chance (memorisation) and grad attribution shows dehydron loss does not reach the hyperbolic layers. G_fit needs redesign under a new sealed card. Do not promote.",
@@ -44,7 +55,8 @@
     "locked 0.80 bar was not moved — MARGINAL is scientific read, not a silent clear",
     "MARGINAL ≠ clean PLATEAU_BELOW capacity fail",
     "S1/S2 + lite G_fit say nothing about hyperbolic geometry, typed signal, or pool biology",
-    "G_fit replay is not proven to be Arm B's loop (harness pin mismatch)"
+    "G_fit replay is not proven to be Arm B's loop (harness pin mismatch)",
+    "B-era provenance chain (harness 8c7e2be2… + script 34b75807…) is unverifiable as a class — not a single-file accident"
   ],
   "signed": "Ray Swan 2026-09-20"
 }
