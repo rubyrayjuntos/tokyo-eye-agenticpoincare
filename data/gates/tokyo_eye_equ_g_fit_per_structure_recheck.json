@@ -108,5 +108,5 @@
     "not a capacity clear",
     "not an Arm B disposition edit"
   ],
-  "implication_for_epoch_budget_chain": "E200->E400 decay modelling is moot as a capacity question (wiring + step budget, not metric). G_fit is a train-fit gate, so near-chance held-out is expected and is a memorisation diagnostic, not a G_fit failure. Redesign G_fit (loss through z_hyp; report per-structure + held-out) before any new epoch card. Hold pool typed G_fit and Arm B disposition edit."
+  "implication_for_epoch_budget_chain": "E200->E400 decay modelling is moot as a capacity question (wiring + step budget, not metric). G_fit is a train-fit gate, so near-chance held-out is expected and is a memorisation diagnostic, not a G_fit failure. Redesign G_fit (loss through z_hyp; report per-structure + held-out) before any new epoch card. Hold pool typed G_fit. Arm B disposition already records harness_identity=UNVERIFIED_PIN_UNRECOVERABLE (option_b 2026-09-20)."
 }

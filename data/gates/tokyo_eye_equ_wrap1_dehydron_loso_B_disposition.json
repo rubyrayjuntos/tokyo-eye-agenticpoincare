@@ -29,13 +29,22 @@
   },
   "active_branch": "CLOSED_MARGINAL_LITE_G_FIT",
   "Arm_B_read": "Do not lean hard either way. Lite G_fit never gave a crisp binary to interpret B's S1/S2 fail as FAIL_NO_SIGNAL or as decisive underfit.",
-  "next_command_note": "Stop SE(3)-lite G_fit curve work. No third lite prereg. Next: Equiformer-pool typed G_fit (same folds/threshold) as capacity probe — see tokyo_eye_equ_wrap1_dehydron_loso_G_fit_E400_close.json. Do not promote.",
+  "harness_identity": {
+    "b_result_pin": "8c7e2be2e73bc8ca5d11f2eaa5becc3e2c1b6e5984f62db4f90a9a7efd676ae1",
+    "current_harness": "c1df1048bc817dac30afd1658a3b0c5c14eab3478fc8e6ea2dcd823d3b15f2c6",
+    "status": "UNVERIFIED_PIN_UNRECOVERABLE",
+    "note": "Pinned bytes not in git, image, pyc, Cursor history, or host tokyo-eyes trees. Instrumented G_fit replay ran on the current harness; that it reproduces Arm B's loop is UNVERIFIED.",
+    "operator_approved": "option_b_pin_unrecoverable 2026-09-20"
+  },
+  "next_command_note": "Stop SE(3)-lite G_fit curve work. No third lite prereg. Do NOT run pool typed G_fit at 0.80 as-is: per-structure recheck shows held-out ~chance (memorisation) and grad attribution shows dehydron loss does not reach the hyperbolic layers. G_fit needs redesign under a new sealed card. Do not promote.",
   "not_claims": [
     "not a biology pass",
     "cold SE(3)-lite: nothing about EquiformerV3 pool",
     "S1/S2 fail on SE(3)-lite is not evidence the intended architecture has no biology signal",
     "locked 0.80 bar was not moved — MARGINAL is scientific read, not a silent clear",
-    "MARGINAL ≠ clean PLATEAU_BELOW capacity fail"
+    "MARGINAL ≠ clean PLATEAU_BELOW capacity fail",
+    "S1/S2 + lite G_fit say nothing about hyperbolic geometry, typed signal, or pool biology",
+    "G_fit replay is not proven to be Arm B's loop (harness pin mismatch)"
   ],
   "signed": "Ray Swan 2026-09-20"
 }
