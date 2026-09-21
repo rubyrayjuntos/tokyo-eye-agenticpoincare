@@ -383,5 +383,14 @@
   "date_completed": "2026-09-21",
   "result": "data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_result.json",
   "card_verdict": "INCONCLUSIVE_UNDERFIT",
-  "completion_note": "G_finite+G_grad_spine PASS (spine reconnect worked). G_fit_train FAIL: all 12 folds train_macro_lift\u22481.02 (bar 1.30), min\u22480.99\u20131.00 (bar 1.10). Held-out lifts\u22480.82\u20131.00. clip_active_fraction=0; _log_c drift=0. Loss fell but lift stayed near majority."
+  "completion_note": "G_finite+G_grad_spine PASS. Locked G_fit_train FAIL. Scientific read: capacity miss under cold-lite/400/MoE-ablated only; lift bar 1.30 structurally unreachable (maj~0.85\u20130.96 \u2192 max lift~1.04\u20131.18); typed rel_bias/gamma/beta near-dark while spine NZ. See result.scientific_read.",
+  "scoped_verdict_line": "capacity miss under cold-lite / 400-step / MoE-ablated conditions (not an architecture-ceiling claim)",
+  "open_agenda_after_card": [
+    "less_majority_dominated_target_or_reachable_bars (prerequisite for future capacity claims)",
+    "typed_path_rel_bias_gamma_beta_utilization (second gap; diagnostic card)",
+    "equiformer_pool_frontend_capacity_or_biology (separate sealed card)",
+    "moe_on_vs_ablated_identical_wiring (moe_verify_on_pool)",
+    "freeze_item_16_learned_c_or_signed_pin",
+    "hyp_biology_non_leaking_on_z_hyp"
+  ]
 }

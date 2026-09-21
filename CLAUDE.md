@@ -50,7 +50,7 @@ This file overrides dated design specs as your working instructions.
 | wrap=1 biology rescore | DIAGNOSTIC — weak dehydron; SDRP degenerate |
 | SDRP Stage 1 / G7/G8 | PARKED `SDRP_PARKED_DIAGNOSTIC_ONLY` |
 | wrap=1 dehydron LOSO on SE(3)-lite | **CLOSED_MARGINAL** — E=200 underfit-shaped; E=400 locked binary `DECAY_UNSETTLED` (1MBN 0.809 / 1LYZ **0.799** / 1BG1 0.824). Scientific read: marginal, not clean. No third lite prereg. Arm B not lean-able either way. Close: `…_G_fit_E400_close.json`. B-era pins (harness `8c7e2be2…` + script `34b75807…`) **dual-orphan / unverifiable class**. |
-| wrap=1 z_hyp SDRP-live G_fit (lite) | **INCONCLUSIVE_UNDERFIT** — G_finite+G_grad_spine PASS (spine reconnect works; `_log_c` NONE; mech/evidential dark). G_fit_train FAIL: train lift≈1.02 vs bar 1.30 (0/12 folds). Held-out lift mean 0.95 (≤ majority). Loss ↓ 0.165→0.025; clip never active. Stamp: `tokyo_eye_equ_wrap1_zhyp_g_fit_result.json`. |
+| wrap=1 z_hyp SDRP-live G_fit (lite) | **INCONCLUSIVE_UNDERFIT** — scoped: capacity miss under **cold-lite / 400 / MoE-ablated** only (not architecture ceiling). G_grad_spine PASS at scale; locked G_fit_train FAIL. **Label ceiling:** maj≈0.85–0.96 → max lift≈1.04–1.18 so bar 1.30 was STRUCTURALLY_UNREACHABLE. **Typed second gap:** `rel_bias`/`gamma`/`beta` near-dark while spine NZ. Stamp+read: `tokyo_eye_equ_wrap1_zhyp_g_fit_result.json`. Open agenda in `tokyo_eye_equ_next_experiment_sealed.json` `post_zhyp_g_fit_2026_09_21`. |
 
 ## ACTIVE trunk (after assembly ENFORCED)
 

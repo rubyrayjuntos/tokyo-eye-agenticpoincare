@@ -31,7 +31,8 @@
     "verdict": "INCONCLUSIVE_UNDERFIT",
     "G_finite": true,
     "G_grad_spine": true,
-    "G_fit_train": false
+    "G_fit_train": false,
+    "G_fit_train_note": "Locked bar failed (0/12). Scientific read: bar was also structurally unreachable \u2014 see label_geometry_ceiling."
   },
   "per_fold_summary": {
     "1MBN:A": {
@@ -153,7 +154,75 @@
     "not a MoE-on vs ablated comparison (moe_verify_on_pool remains separate)",
     "not learned-curvature training (_log_c detached in forward; freeze item #16 separate)",
     "not permission to treat prior dehydron lite G_fit CLOSED_MARGINAL as pool capacity",
-    "SE(3)-lite result is not Equiformer-pool biology evidence"
+    "SE(3)-lite result is not Equiformer-pool biology evidence",
+    "INCONCLUSIVE_UNDERFIT is not an architecture-ceiling claim \u2014 scoped to cold-lite/400/MoE-ablated",
+    "G_fit_train bar 1.30 was structurally unreachable given SDRP majority rates on these folds \u2014 bar miss \u2260 model cannot fit reachable targets",
+    "typed-channel near-silence (rel_bias/gamma/beta) is a separate finding from spine reconnect PASS"
   ],
-  "signed": "auto from wrap1_zhyp_g_fit.py"
+  "signed": "auto from wrap1_zhyp_g_fit.py",
+  "scoped_verdict_line": "capacity miss under cold-lite / 400-step / MoE-ablated conditions (not an architecture-ceiling claim)",
+  "scientific_read": {
+    "date": "2026-09-21",
+    "wiring_vs_capacity": "First clean separation: G_grad_spine PASS at scale (all 12 folds NZ on attn/projector/moe/sdrp_head); G_fit_train FAIL under locked bars. Dehydron INSTR 0/0 spine is retired as the explanation for this card.",
+    "configuration_scope": "capacity miss under cold SE(3)-lite + 400 steps + MoE ablated + seed 0 + SDRP-live sole loss. Not a statement about Equiformer-pool, MoE-on, learned-c, or longer budgets.",
+    "clip_correction": "Pre-run clip-risk prediction (from dehydron preclip 2.75) did not materialize: clip_active_fraction=0, max preclip~0.74. Spreading grad across spine+euc_skip lowers aggregate norm vs two Euclidean MLPs.",
+    "label_geometry_ceiling": {
+      "finding": "SDRP heuristic argmax on wrap=1 graphs yields majority class SDRP_NEIGHBORHOOD (id=4) at ~84.8\u201395.7% per structure (pooled 92.5%). Classes SDRP_SALT/HYDROPHOBE (2/3) have zero winners on these 12 folds despite R3/R4 edges existing \u2014 argmax loses to R5-dominated counts. This is by construction of sdrp_heuristic_from_edges + R5-heavy graphs, not a fold sampling accident.",
+      "edge_type_pooled_fractions_R0_to_R5": [
+        0.165,
+        0.131,
+        0.049,
+        0.027,
+        0.008,
+        0.62
+      ],
+      "pooled_sdrp_class_fractions_0_to_4": [
+        0.05,
+        0.025,
+        0.0,
+        0.0,
+        0.925
+      ],
+      "max_lift_if_acc_1_per_structure": [
+        1.0776,
+        1.0753,
+        1.0787,
+        1.0905,
+        1.0764,
+        1.1792,
+        1.0718,
+        1.1338,
+        1.0787,
+        1.0977,
+        1.0941,
+        1.0449
+      ],
+      "macro_mean_of_theoretical_max_lifts": 1.0916,
+      "G_fit_train_bar_1_30": "STRUCTURALLY_UNREACHABLE on this metric\u00d7label (need acc > 1.0)",
+      "G_fit_train_min_bar_1_10": "reachable on only 2/12 structures even at perfect accuracy",
+      "implication": "Locked-card INCONCLUSIVE_UNDERFIT stands (bars not moved post-hoc). Scientific inference must not treat the 1.30 miss as architecture incapacity \u2014 the bar was an Arm-B-shaped lift threshold reused on a majority rate where max possible lift \u2248 1.04\u20131.18. Future capacity cards need a less majority-dominated target and/or a metric whose bars are reachable (e.g. macro-F1, balanced acc, or lift bars set below theoretical max)."
+    },
+    "typed_channel_second_gap": {
+      "shuffle_sdrp_logits_abs_delta": "0.0002\u20130.003 post-train (barely used)",
+      "posthoc_grad_probe_2026_09_21": {
+        "protocol": "cold + after 50 SDRP-only steps; single-structure telemetry backward",
+        "frontend_rel_bias_L2_step0": 1.4e-05,
+        "frontend_seed_proj_L2_step0": 0.0128,
+        "attn_gamma_beta_L2_step0": "~0 (mean|g| ~1e-8)",
+        "attn_layers_bucket_L2_step0": 0.0625,
+        "sdrp_head_L2_step0": 0.184,
+        "read": "Spine is live, but typed relation parameters specifically are near-dark: frontend.rel_bias ~1000\u00d7 smaller than seed_proj; HyperbolicGraphAttention gamma/beta effectively zero vs non-typed attn params. Low shuffle sensitivity is consistent with a second, narrower wiring/utilization gap on the typed path \u2014 not foldable into a pure capacity story."
+      }
+    },
+    "loss_vs_lift": "Loss keeps falling while lift stays ~1.0: CE sharpens inside the majority basin. Extending steps without a new card would deepen that basin, not buy minority-sensitive lift.",
+    "open_agenda_not_this_card": [
+      "less_majority_dominated_target_or_reachable_bars (prerequisite for future capacity claims)",
+      "typed_path_rel_bias_gamma_beta_utilization (second gap; diagnostic card)",
+      "equiformer_pool_frontend_capacity_or_biology (separate sealed card)",
+      "moe_on_vs_ablated_identical_wiring (moe_verify_on_pool)",
+      "freeze_item_16_learned_c_or_signed_pin",
+      "hyp_biology_non_leaking_on_z_hyp"
+    ]
+  },
+  "amendment_signed": "Ray Swan / Cursor agent 2026-09-21 \u2014 scoping + label ceiling + typed-path probe"
 }

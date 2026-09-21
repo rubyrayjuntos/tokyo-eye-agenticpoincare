@@ -15,7 +15,7 @@
       "id": "moe_eval_utilization_on_pool",
       "frontend": "equiformer_pool",
       "pointer": "data/gates/tokyo_eye_equ_moe_verify_on_pool.json",
-      "note": "Sealed §2.6 / eval-util remedies on pool only"
+      "note": "Sealed \u00a72.6 / eval-util remedies on pool only"
     },
     {
       "id": "hyp_biology_non_leaking",
@@ -48,5 +48,25 @@
     "example_pilot": "data/gates/tokyo_eye_equ_wrap1_dehydron_loso_B_result.json"
   },
   "status_note": "ENFORCED assembly gate is closed in-tree; next prereg may open only from allowed_next_cards. Claim-bearing biology must pass assembly third leg (non-leak + biology_grad log).",
-  "signed": "Ray Swan 2026-09-19"
+  "signed": "Ray Swan 2026-09-19",
+  "post_zhyp_g_fit_2026_09_21": {
+    "parent": "data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_result.json",
+    "card_binary": "INCONCLUSIVE_UNDERFIT",
+    "scoped_read": "capacity miss under cold-lite / 400-step / MoE-ablated conditions (not an architecture-ceiling claim)",
+    "do_not": [
+      "extend this card to 800 steps",
+      "retune locked 1.30 bar post-hoc",
+      "read as architecture ceiling or FAIL_NO_SIGNAL",
+      "another cold dehydron lite epoch prereg"
+    ],
+    "open_agenda": [
+      "less_majority_dominated_target_or_reachable_bars (prerequisite for future capacity claims)",
+      "typed_path_rel_bias_gamma_beta_utilization (second gap; diagnostic card)",
+      "equiformer_pool_frontend_capacity_or_biology (separate sealed card)",
+      "moe_on_vs_ablated_identical_wiring (moe_verify_on_pool)",
+      "freeze_item_16_learned_c_or_signed_pin",
+      "hyp_biology_non_leaking_on_z_hyp"
+    ],
+    "note": "Wiring/capacity separation is closed for this configuration. Trunk sealed biology cards remain claim-bearing non-leak on pool; harness follow-ups above need their own sealed preregs."
+  }
 }
