@@ -13,6 +13,13 @@ fixed across two arms, varying only ``lr_frontend``:
   * ``sealed``  : lr_frontend = 1e-5 (matches the sealed M2/G_fit lock)
   * ``lr_1e-4`` : lr_frontend = 1e-4
 
+A third arm, ``lr_1e-4_bbtrain``, belongs to a separate card (its own prereg,
+``tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_1e-4_bbtrain_prereg.json``): identical to
+``lr_1e-4`` except the pool backbone's own Dropout / GraphDropPath modules are
+actually in train mode during training (see ``apply_backbone_train_mode`` and
+lesson ``L-backbone-eval-mode-during-train``). The first two arms share the
+original prereg and run with that regularization silently OFF.
+
 Same protocol as the sealed M2 card otherwise: SDRP-live sole loss,
 sdrp_coeff=0.1, dehydron/margin=0, MoE ablated, 12-fold LOSO, same M2 bars
 (train macro+min F1 >=0.40; held-out S1 mean>=0.40; S2 >=10/12 structures
@@ -44,6 +51,7 @@ import hashlib
 import json
 import math
 import sys
+import types
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -84,7 +92,8 @@ from science.tokyo_eye.v8.grad_reachability import (  # noqa: E402
 from science.tokyo_eye.v8.heads import sdrp_cross_entropy  # noqa: E402
 
 FOLDS_FROZEN = REPO_ROOT / "data" / "gates" / "wrap1_dehydron_loso" / "folds_frozen.json"
-PREREG = REPO_ROOT / "data" / "gates" / "tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_prereg.json"
+PREREG_POOL_LR = REPO_ROOT / "data" / "gates" / "tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_prereg.json"
+PREREG_BBTRAIN = REPO_ROOT / "data" / "gates" / "tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_1e-4_bbtrain_prereg.json"
 RESULT_DIR = REPO_ROOT / "data" / "gates" / "wrap1_zhyp_m2_pool_lr"
 
 # Card lock -- amendment_rule in the prereg: any change here needs a new signed card.
@@ -104,10 +113,58 @@ S1_CI_LB_MIN: float | None = None  # M2 family: no CI gate, matches sealed M2 ca
 S2_MIN_ABOVE = 10
 S2_THRESHOLD = 0.40
 
-LR_ARMS: dict[str, float] = {
-    "sealed": 1e-5,
-    "lr_1e-4": 1e-4,
+# One row per arm. Arms of the same card differ in exactly one field.
+ARMS: dict[str, dict[str, Any]] = {
+    "sealed": {"lr_frontend": 1e-5, "backbone_train_mode": False, "prereg": PREREG_POOL_LR},
+    "lr_1e-4": {"lr_frontend": 1e-4, "backbone_train_mode": False, "prereg": PREREG_POOL_LR},
+    "lr_1e-4_bbtrain": {"lr_frontend": 1e-4, "backbone_train_mode": True, "prereg": PREREG_BBTRAIN},
 }
+LR_ARMS: dict[str, float] = {k: float(v["lr_frontend"]) for k, v in ARMS.items()}
+
+
+def apply_backbone_train_mode(system: torch.nn.Module) -> None:
+    """Make ``system.train()`` reach the pool backbone's own regularization.
+
+    ``EquiformerPoolFrontend.train()`` ends with ``self._backbone.eval()``
+    unconditionally (science/tokyo_eye/v8/equiformer_pool_frontend.py), so even
+    with ``freeze_backbone=False`` the backbone's Dropout / GraphDropPath modules
+    are silently OFF during training. This binds an instance-level ``train`` that
+    skips that override and leaves the shared module untouched. ``system.eval()``
+    still puts everything in eval mode, so evaluation is unaffected.
+    """
+
+    def _train_full(self, mode: bool = True):
+        return torch.nn.Module.train(self, mode)
+
+    system.frontend.train = types.MethodType(_train_full, system.frontend)
+
+
+def backbone_reg_modules(system: torch.nn.Module) -> list[torch.nn.Module]:
+    """Backbone modules that are stochastic when in train mode (p > 0)."""
+    mods: list[torch.nn.Module] = []
+    for m in system.frontend._backbone.modules():
+        if isinstance(m, torch.nn.Dropout) and m.p > 0.0:
+            mods.append(m)
+        elif type(m).__name__ == "GraphDropPath" and float(m.drop_prob or 0.0) > 0.0:
+            mods.append(m)
+    return mods
+
+
+def backbone_reg_modules_live(system: torch.nn.Module) -> tuple[int, int]:
+    """(# in train mode, # total) over ``backbone_reg_modules``."""
+    mods = backbone_reg_modules(system)
+    return sum(1 for m in mods if m.training), len(mods)
+
+
+def assert_backbone_regularization_live(system: torch.nn.Module) -> tuple[int, int]:
+    """Raise unless every backbone regularization module is in train mode."""
+    live, total = backbone_reg_modules_live(system)
+    if not (total > 0 and live == total):
+        raise RuntimeError(
+            f"backbone regularization not active: {live}/{total} Dropout/GraphDropPath modules in "
+            "train mode; arm requires all. Aborting rather than running a mislabeled card."
+        )
+    return live, total
 
 
 def _sha256(path: Path) -> str:
@@ -119,7 +176,7 @@ def _card_paths(arm: str) -> G.CardPaths:
     return G.CardPaths(
         card=f"m2_pool_{arm}",
         metric_family="M2_macro_f1",
-        prereg=PREREG,
+        prereg=ARMS[arm]["prereg"],
         result=REPO_ROOT / "data" / "gates" / f"tokyo_eye_equ_wrap1_zhyp_m2_pool_{arm}_result.json",
         out_dir=RESULT_DIR / arm,
         gate_id=f"tokyo_eye_equ_wrap1_zhyp_m2_pool_{arm}_result",
@@ -153,6 +210,8 @@ def run_one_fold(
     system.frontend._backbone.gradient_checkpointing_block_list = (
         [1] * int(system.frontend._backbone.num_layers)
     )
+    if ARMS[arm]["backbone_train_mode"]:
+        apply_backbone_train_mode(system)
     load_info["frontend_pilot"] = "equiformer_v3_pool_cold_init"
     load_info["arm"] = f"zhyp_m2_pool_{arm}"
 
@@ -248,11 +307,13 @@ def run_one_fold(
                 "hold": hold, "gate_id": card.gate_id.replace("_result", "_prereg"),
                 "G_grad_spine_step0": "PASS" if step0["ok"] else "FAIL",
                 "frontend_governed": "true (allow_off_path_frontend=False)",
+                "backbone_train_mode": str(ARMS[arm]["backbone_train_mode"]),
             })
             mlflow.log_params({
                 "lr_frontend": lr_frontend, "lr_hyperbolic": lr_hyperbolic,
                 "sdrp_coeff": SDRP_COEFF, "max_grad_norm": MAX_GRAD_NORM,
                 "steps": steps, "seed": seed, "max_neighbors": MAX_NEIGHBORS,
+                "backbone_train_mode": str(ARMS[arm]["backbone_train_mode"]),
                 "card": card.card, "metric_family": card.metric_family,
             })
             step0_metrics = {"G_grad_spine_ok": 1.0 if step0["ok"] else 0.0, "curvature_c": float(c_init)}
@@ -286,6 +347,10 @@ def run_one_fold(
                 last_bucket = dict(metrics.get("bucket_grad_l2") or {})
                 euc_share = float(metrics.get("euc_skip_share", float("nan")))
                 c_now = G._curvature_c(system)
+                if ARMS[arm]["backbone_train_mode"]:
+                    reg_live, reg_total = assert_backbone_regularization_live(system)
+                else:
+                    reg_live, reg_total = backbone_reg_modules_live(system)
                 curve.append({
                     "step": step, "loss_total": metrics["loss_total"],
                     "preclip_norm": metrics["preclip_norm"], "postclip_norm": metrics["postclip_norm"],
@@ -301,6 +366,7 @@ def run_one_fold(
                         "postclip_norm": float(metrics["postclip_norm"]), "clip_active": float(metrics["clip_active"]),
                         "curvature_c": float(c_now), "G_grad_spine_ok": 1.0, "euc_skip_share": euc_share,
                     }
+                    payload["backbone_reg_modules_live"] = float(reg_live)
                     for b, gval in last_bucket.items():
                         payload[f"grad_l2_{b}"] = float(gval)
                     mlflow.log_metrics(payload, step=step)
@@ -364,6 +430,7 @@ def run_one_fold(
         "tau_eval": tau_eval, "frontend": "equiformer_v3_pool_cold_init",
         "c_init": c_init, "c_final": c_final, "c_drift": float(c_final - c_init),
         "lr_frontend": lr_frontend, "lr_hyperbolic": lr_hyperbolic,
+        "backbone_train_mode": ARMS[arm]["backbone_train_mode"],
         "clip_active_fraction": clip_frac, "train_per_structure": train_per,
         "train_macro_lift": macro_lift, "train_min_lift": min_lift,
         "train_macro_f1": macro_f1_mean, "train_min_f1": min_f1,
@@ -452,6 +519,7 @@ def main() -> int:
         "display_lineage": "Tokyo Eye EQU", "do_not_promote": True,
         "card": str(card.prereg.relative_to(REPO_ROOT)), "metric_family": card.metric_family,
         "lr_frontend_arm": arm, "lr_frontend": LR_ARMS[arm],
+        "backbone_train_mode": ARMS[arm]["backbone_train_mode"],
         "seed": int(args.seed), "steps": STEPS, "folds": [r["heldout"][0] for r in fold_results],
         "frontend": "equiformer_v3_pool_cold_init", "moe_mode": "ablated", "sdrp_coeff": SDRP_COEFF,
         "dehydron_coeff": 0.0, "margin_coeff": 0.0, "scoring": scored,

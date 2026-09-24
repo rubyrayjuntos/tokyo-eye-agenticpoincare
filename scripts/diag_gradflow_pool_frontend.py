@@ -64,7 +64,12 @@ Modes
                         ``self._backbone.eval()`` unconditionally, so with
                         ``freeze_backbone=False`` the backbone's own
                         regularization (attn_weights_drop, drop_path_rate) is
-                        expected to be silently OFF during training.
+                        expected to be silently OFF during training. With
+                        ``--backbone-train-mode`` it instead checks the card's fix
+                        (all modules live, stay live across repeated train() calls,
+                        off under eval()). ``--backbone-train-mode`` also works with
+                        the other verify-* modes, e.g. to re-run checkpoint
+                        equivalence with dropout / drop-path actually ACTIVE.
 """
 from __future__ import annotations
 
@@ -86,6 +91,11 @@ if str(REPO_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 import wrap1_zhyp_g_fit as G  # noqa: E402  (sibling script, sealed-protocol constants + loaders)
+from wrap1_zhyp_m2_pool_lr import (  # noqa: E402  (the card's train-mode fix + counters)
+    apply_backbone_train_mode,
+    backbone_reg_modules,
+    backbone_reg_modules_live,
+)
 from experiments.training.v8.run_v8_experiment import (  # noqa: E402
     build_equiformer_pool_system,
 )
@@ -130,7 +140,8 @@ def _rec_clamp(x: torch.Tensor, *, max_r: float, eps: float = 1e-5) -> torch.Ten
 spine_model.clamp_ball_radius = _rec_clamp
 
 
-def _build_system(device: torch.device, max_neighbors: int, no_euc: bool, cfg: dict[str, Any]):
+def _build_system(device: torch.device, max_neighbors: int, no_euc: bool, cfg: dict[str, Any],
+                  backbone_train_mode: bool = False):
     system, info = build_equiformer_pool_system(
         cfg, equiformer_ckpt=None, device=device, freeze_backbone=False,
         max_neighbors=max_neighbors, cold_init=True,
@@ -138,6 +149,8 @@ def _build_system(device: torch.device, max_neighbors: int, no_euc: bool, cfg: d
     system.set_moe_mode("ablated")
     bb = system.frontend._backbone
     bb.gradient_checkpointing_block_list = [1] * int(bb.num_layers)
+    if backbone_train_mode:
+        apply_backbone_train_mode(system)
     if no_euc:
         with torch.no_grad():
             system.spine.euc_skip.weight.zero_()
@@ -182,17 +195,21 @@ def _param_groups(system, *, lr_backbone: float, lr_hyperbolic: float):
     ]
 
 
-def verify_checkpoint(device: torch.device, tag: str, max_neighbors: int, seed: int) -> bool:
+def verify_checkpoint(device: torch.device, tag: str, max_neighbors: int, seed: int,
+                      backbone_train_mode: bool = False) -> bool:
     """One fwd/bwd with vs. without activation checkpointing; same seed+batch."""
     cfg = load_weight_map(REPO_ROOT / DEFAULT_WEIGHT_MAP)
+    backbone_reg_modules_live_holder: dict[str, tuple[int, int]] = {}
 
     def run(ckpt_on: bool) -> tuple[float, dict[str, torch.Tensor | None]]:
         torch.manual_seed(seed)
-        system, _ = _build_system(device, max_neighbors, no_euc=False, cfg=cfg)
+        system, _ = _build_system(device, max_neighbors, no_euc=False, cfg=cfg,
+                                  backbone_train_mode=backbone_train_mode)
         system.frontend._backbone.gradient_checkpointing_block_list = (
             [1 if ckpt_on else 0] * int(system.frontend._backbone.num_layers)
         )
         system.train()
+        backbone_reg_modules_live_holder["last"] = backbone_reg_modules_live(system)
         torch.manual_seed(seed + 1000)
         b = G._load_batch(tag, device)
         out = system(b["x"], b["edge_index"], b["edge_type"], tau_ceiling=0.7, chem=b.get("gate_chem"))
@@ -203,6 +220,8 @@ def verify_checkpoint(device: torch.device, tag: str, max_neighbors: int, seed: 
 
     loss_off, g_off = run(False)
     loss_on, g_on = run(True)
+    live, total = backbone_reg_modules_live_holder.get("last", (None, None))
+    print(f"[verify-checkpoint] backbone regularization live during the comparison: {live}/{total} (backbone_train_mode={backbone_train_mode})")
     print(f"[verify-checkpoint] loss off={loss_off:.10f} on={loss_on:.10f} diff={abs(loss_off - loss_on):.2e}")
     max_abs, max_rel, n_cmp, n_none_mismatch, worst = 0.0, 0.0, 0, 0, None
     for k in g_off:
@@ -224,12 +243,13 @@ def verify_checkpoint(device: torch.device, tag: str, max_neighbors: int, seed: 
     return ok
 
 
-def verify_pure_hyp(device: torch.device, tag: str, max_neighbors: int, no_euc: bool, seed: int) -> bool:
+def verify_pure_hyp(device: torch.device, tag: str, max_neighbors: int, no_euc: bool, seed: int,
+                    backbone_train_mode: bool = False) -> bool:
     from science.tokyo_eye.v8.pure_hyp_pass import scan_forward
 
     cfg = load_weight_map(REPO_ROOT / DEFAULT_WEIGHT_MAP)
     torch.manual_seed(seed)
-    system, info = _build_system(device, max_neighbors, no_euc, cfg)
+    system, info = _build_system(device, max_neighbors, no_euc, cfg, backbone_train_mode=backbone_train_mode)
     print(f"[verify-pure-hyp] frontend load_info={info}")
     b = G._load_batch(tag, device)
 
@@ -243,31 +263,47 @@ def verify_pure_hyp(device: torch.device, tag: str, max_neighbors: int, no_euc: 
     return bool(report.passed)
 
 
-def verify_train_mode(device: torch.device, max_neighbors: int, seed: int) -> bool:
+def verify_train_mode(device: torch.device, max_neighbors: int, seed: int,
+                      backbone_train_mode: bool = False) -> bool:
     """Report whether backbone regularization modules are live after system.train().
 
-    Returns True iff every active-probability Dropout / GraphDropPath in the
-    backbone is in training mode (i.e. regularization would actually run).
+    Default config (no fix): expected NO -- ``EquiformerPoolFrontend.train()`` forces the
+    backbone to eval. With ``backbone_train_mode=True`` (the card's fix) every module must
+    be live after ``system.train()``, stay live across repeated ``train()`` calls, and be
+    off under ``system.eval()``. Returns True iff the checks that apply all hold.
     """
-    import torch.nn as nn
-
     cfg = load_weight_map(REPO_ROOT / DEFAULT_WEIGHT_MAP)
     torch.manual_seed(seed)
-    system, _ = _build_system(device, max_neighbors, no_euc=False, cfg=cfg)
+    system, _ = _build_system(device, max_neighbors, no_euc=False, cfg=cfg,
+                              backbone_train_mode=backbone_train_mode)
+    mods = backbone_reg_modules(system)
+    n_do = sum(isinstance(m, torch.nn.Dropout) for m in mods)
+    print(f"[verify-train-mode] backbone regularization modules: {n_do} Dropout(p>0) + "
+          f"{len(mods) - n_do} GraphDropPath(p>0) = {len(mods)}; fix applied: {backbone_train_mode}")
+
+    def state(label: str) -> tuple[int, int]:
+        live, total = backbone_reg_modules_live(system)
+        print(f"[verify-train-mode] {label:<40s} backbone.training="
+              f"{str(system.frontend._backbone.training):<5s} live={live}/{total}")
+        return live, total
+
     system.train()
-    bb = system.frontend._backbone
-    print(f"[verify-train-mode] system.training={system.training} "
-          f"frontend.training={system.frontend.training} backbone.training={bb.training}")
-    dropouts = [(n, m) for n, m in bb.named_modules() if isinstance(m, nn.Dropout) and m.p > 0.0]
-    droppaths = [(n, m) for n, m in bb.named_modules()
-                 if type(m).__name__ == "GraphDropPath" and float(m.drop_prob or 0.0) > 0.0]
-    n_do_live = sum(1 for _, m in dropouts if m.training)
-    n_dp_live = sum(1 for _, m in droppaths if m.training)
-    print(f"[verify-train-mode] nn.Dropout with p>0: {len(dropouts)} modules, {n_do_live} in train mode"
-          + (f" (p={sorted({m.p for _, m in dropouts})})" if dropouts else ""))
-    print(f"[verify-train-mode] GraphDropPath with drop_prob>0: {len(droppaths)} modules, {n_dp_live} in train mode"
-          + (f" (drop_prob={sorted({float(m.drop_prob) for _, m in droppaths})})" if droppaths else ""))
-    ok = (n_do_live == len(dropouts)) and (n_dp_live == len(droppaths))
+    live, total = state("after system.train()")
+    ok = total > 0 and live == total
+    if backbone_train_mode:
+        system.eval()
+        l, _ = state("after system.eval()")
+        ok = ok and l == 0
+        system.train()
+        l, _ = state("after system.eval(); system.train()")
+        ok = ok and l == total
+        system.frontend.train(True)
+        l, _ = state("after frontend.train(True) directly")
+        ok = ok and l == total
+        system.train()
+        system.train()
+        l, _ = state("after repeated system.train()")
+        ok = ok and l == total
     print(f"[verify-train-mode] backbone regularization active during training: {'YES' if ok else 'NO'}")
     return ok
 
@@ -442,20 +478,26 @@ def main() -> int:
     ap.add_argument("--eval-every", type=int, default=40)
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--no-mlflow", action="store_true")
+    ap.add_argument("--backbone-train-mode", action="store_true",
+                    help="apply the M2 pool card's fix so system.train() reaches the backbone's "
+                         "Dropout/GraphDropPath; verify-* modes only")
     ap.add_argument("--out-dir", default=str(REPO_ROOT / "data" / "gates" / "diag_gradflow_pool_frontend"))
     a = ap.parse_args()
     if a.device == "cuda" and not torch.cuda.is_available():
         raise SystemExit("CUDA requested but unavailable (no CPU fallback)")
     device = torch.device(a.device)
+    if a.backbone_train_mode and a.mode == "train":
+        raise SystemExit("--backbone-train-mode is only supported for the verify-* modes")
 
     if a.mode == "verify-checkpoint":
-        ok = verify_checkpoint(device, a.tag, a.max_neighbors, a.seed)
+        ok = verify_checkpoint(device, a.tag, a.max_neighbors, a.seed, a.backbone_train_mode)
         return 0 if ok else 1
     if a.mode == "verify-train-mode":
         # exit 0 = regularization active, 1 = silently off (informational finding, not a crash)
-        return 0 if verify_train_mode(device, a.max_neighbors, a.seed) else 1
+        return 0 if verify_train_mode(device, a.max_neighbors, a.seed, a.backbone_train_mode) else 1
     if a.mode == "verify-pure-hyp":
-        ok = verify_pure_hyp(device, a.tag, a.max_neighbors, no_euc=False, seed=a.seed)
+        ok = verify_pure_hyp(device, a.tag, a.max_neighbors, no_euc=False, seed=a.seed,
+                             backbone_train_mode=a.backbone_train_mode)
         return 0 if ok else 1
 
     if not a.condition:

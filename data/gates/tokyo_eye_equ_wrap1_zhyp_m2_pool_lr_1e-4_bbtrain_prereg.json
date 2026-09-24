@@ -1,0 +1,206 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_1e-4_bbtrain_prereg",
+  "display_lineage": "Tokyo Eye EQU",
+  "status": "DRAFT",
+  "approval_status": "AWAITING_OPERATOR_SIGN",
+  "execution_state": "NOT_STARTED",
+  "date_drafted": "2026-09-24",
+  "drafted_by": "Claude (session agent), on operator direction to run the backbone-train-mode arm before seed variance",
+  "do_not_promote": true,
+  "promote_eligible": false,
+  "no_code_or_train_until_approved": true,
+  "no_train_until_seal_preconditions": true,
+  "standing_rule": "Prose without a failing test always loses to a convenient default.",
+  "agenda_ids": [
+    "A-pool-frontend"
+  ],
+  "question": "Holding everything fixed at the completed lr_1e-4 arm (EquiformerPoolFrontend cold_init, lr_frontend 1e-4, 400 steps, 12-fold LOSO, seed 0), does making the backbone's own Dropout (7 x p=0.1) and GraphDropPath (7 x 0.05) actually active during training change the locked M2 outcome or the train/held-out gap?",
+  "metric_family": "M2_macro_f1",
+  "parent_cards": {
+    "baseline_arm_stamp": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_1e-4_result.json",
+    "baseline_prereg": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_prereg.json",
+    "agenda": "data/gates/tokyo_eye_equ_agenda.json"
+  },
+  "why_this_card": {
+    "baseline_result": "lr_1e-4 arm as run (git 3ce001a): FAIL_NO_SIGNAL. S1 pass (held-out mean macro-F1 0.4270), S2 8/12 vs 10 required. Train macro-F1 0.974 (0.960-0.987), mean train-min 0.935; mean train minus held-out gap 0.547. Single seed; 6/12 folds within 0.03 of the 0.40 bar.",
+    "finding": "EquiformerPoolFrontend.train() calls self._backbone.eval() unconditionally (science/tokyo_eye/v8/equiformer_pool_frontend.py:153-156). Verified: 0/14 regularization modules in train mode after system.train() (scripts/diag_gradflow_pool_frontend.py --mode verify-train-mode). The baseline arm therefore trained an unfrozen ~30M-parameter backbone with its own regularization off.",
+    "hypothesis_status": "CANDIDATE contributor to the train/held-out gap, UNTESTED. The rates are mild (0.1 / 0.05) relative to an 11-structure (~3.3k residue) training set on ~30M parameters, so the size of any effect is unknown. Other contributors -- very small training set, the intentional edge_type->label leak, cold init -- are not ruled out. This card measures the effect of this one change; it does not presuppose the effect is large.",
+    "fix": "Instance-level override in the runner (apply_backbone_train_mode): system.frontend.train is bound to nn.Module.train, so system.train() reaches the backbone. equiformer_pool_frontend.py is NOT modified, so the file pins of the completed arms stay valid.",
+    "not_a_biology_seal": true,
+    "intentional_leak": true
+  },
+  "isolation_discipline": {
+    "single_variable": "backbone_train_mode: False in the baseline (lr_1e-4) arm, True here.",
+    "identical_to_baseline": [
+      "frontend architecture and cold_init",
+      "lr_frontend 1e-4",
+      "lr_hyperbolic",
+      "max_neighbors 16",
+      "activation checkpointing (re-verified with regularization live)",
+      "sdrp_coeff 0.1",
+      "moe_mode ablated",
+      "steps 400",
+      "seed 0",
+      "12 folds LOSO",
+      "evaluation under system.eval() (all regularization off, as in the baseline)"
+    ],
+    "enforced_by": "tests/v8/test_pool_backbone_train_mode.py::test_only_bbtrain_arm_enables_backbone_train_mode_and_nothing_else_differs",
+    "baseline_comparability_caveat": "The baseline is one seed-0 run. GPU nondeterminism means a same-config rerun is not guaranteed bit-identical, and no seed-to-seed variance estimate exists yet. Comparison to the baseline is therefore descriptive; see interpretation_rule.",
+    "amendment_rule": "Any change to locked bars, steps, seed, frontend, max_neighbors, lr values, or the arm definition requires a new signed card, not an edit to this one."
+  },
+  "design": {
+    "purpose_class": "harness_capacity_G_fit_M2 -- intentional leak; not biology; not defect-B close",
+    "frontend": {
+      "mode": "equiformer_v3_pool_cold_init",
+      "allow_off_path_frontend": false,
+      "cold_init": true,
+      "mptrj_checkpoint": "NONE (architecture only, addendum SS2.3 default)",
+      "max_neighbors": 16,
+      "backbone_train_mode": true,
+      "runtime_guard": "assert_backbone_regularization_live() at every logged step (every 10): the run ABORTS if any of the 14 modules is not in train mode",
+      "se3_lite": "FORBIDDEN"
+    },
+    "moe_mode": "ablated",
+    "loss_coeffs": {
+      "sdrp_coeff": 0.1,
+      "dehydron_coeff": 0.0,
+      "margin_coeff": 0.0
+    },
+    "structures": [
+      "1MBN:A",
+      "1LYZ:A",
+      "1BG1:A",
+      "1F88:A",
+      "2Z6H:A",
+      "1HHP:A",
+      "1TEN:A",
+      "1UBQ:A",
+      "1TIM:A",
+      "4OBE:A",
+      "1IVO:A",
+      "2SHP:A"
+    ],
+    "protocol": {
+      "split": "LOSO 12 folds -- folds_frozen.json (same as baseline)",
+      "optimizer_steps": 400,
+      "model_selection": "NONE -- last step only",
+      "device": "cuda",
+      "device_stop": "If CUDA unavailable: STOP. No CPU fallback.",
+      "seed": 0
+    }
+  },
+  "verification_before_seal": {
+    "verify_train_mode_default_config": "0/14 live after system.train() -- NO (control; confirms the finding)",
+    "verify_train_mode_with_fix": "14/14 live after system.train(); 0/14 under system.eval(); 14/14 after eval->train, after frontend.train(True) directly, and after repeated system.train()",
+    "verify_checkpoint_with_regularization_live": "14/14 live during the comparison; loss identical off/on (1.6315717697); max abs grad diff 4.47e-8 over 318 tensors (RNG replay across checkpoint recompute correct); loss differs from the regularization-off run (1.63147), confirming the flag changes the computation",
+    "note_on_earlier_checkpoint_check": "The checkpoint-equivalence check cited by the baseline prereg ran with regularization OFF, so it did not exercise dropout RNG replay; the check above does.",
+    "unit_tests": "PENDING",
+    "smoke_run": "PENDING"
+  },
+  "pass_fail_bars": {
+    "status": "REUSED VERBATIM from the baseline card / sealed M2 card",
+    "source": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_prereg.json#pass_fail_bars",
+    "each_arm_scored_independently": true,
+    "descriptive_secondary_not_pass_fail": [
+      "paired per-fold held-out macro-F1 delta vs the baseline arm",
+      "mean train minus held-out macro-F1 gap (baseline 0.547)",
+      "number of folds with held-out lift > 1 (baseline 2/12)"
+    ]
+  },
+  "interpretation_rule": {
+    "status": "PROPOSED -- operator to confirm or change BEFORE seal; the numbers are judgment calls, not derived",
+    "verdict": "The locked bars decide the scored verdict exactly as for the baseline arm.",
+    "comparison_to_baseline": "Descriptive until a seed-variance estimate exists (planned follow-up: seed 1 on the first six folds in canonical order, fixed before any result).",
+    "reading_bands": {
+      "clear_effect": "mean train minus held-out gap falls by >= 0.10 from 0.547 AND (S1 mean or S2 count improves on 0.4270 / 8)",
+      "not_distinguishable_from_noise": "anything else. This is NOT evidence that regularization is irrelevant -- only that a single-seed comparison cannot separate a small effect from run-to-run noise.",
+      "worse": "S1 mean and S2 count both worse than baseline: report as observed, single seed; do not explain away."
+    }
+  },
+  "compute_budget": {
+    "status": "ESTIMATE -- no timing of the regularization-active path beyond the 3-step smoke run",
+    "expected": "~42h wall. Baseline arm took 41.6h (2026-09-22 18:13:07 -> 2026-09-24 11:47 UTC), ~3.5h/fold, fold time tracking training residues (r=+0.90). Dropout/drop-path adds negligible compute. One job at a time on the single 4GB GPU (~3.4GB used)."
+  },
+  "code_after_approval": {
+    "runner": "scripts/wrap1_zhyp_m2_pool_lr.py",
+    "exact_command": "python3 scripts/wrap1_zhyp_m2_pool_lr.py --lr-frontend-arm lr_1e-4_bbtrain --device cuda --steps 400 --seed 0",
+    "smoke_command": "python3 scripts/wrap1_zhyp_m2_pool_lr.py --lr-frontend-arm lr_1e-4_bbtrain --smoke --device cuda --no-mlflow",
+    "result_stamp": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_1e-4_bbtrain_result.json",
+    "fold_dir": "data/gates/wrap1_zhyp_m2_pool_lr/lr_1e-4_bbtrain/"
+  },
+  "constraints": {
+    "no_promote": true,
+    "no_step_extension": true,
+    "no_cpu_fallback": true,
+    "no_se3_lite_on_this_card": true,
+    "no_lift_as_pass_fail": true,
+    "no_change_to_runner_protocol_without_new_card": true,
+    "amendment_rule": "Any change to locked bars, steps, seed, frontend, max_neighbors, lr values, or the arm definition requires a new signed card."
+  },
+  "not_claims": [
+    "PASS_SIGNAL is not a biology seal",
+    "intentional SDRP leak does not close defect B",
+    "not a MoE-on claim",
+    "not learned-curvature training",
+    "cold_init pool result is not an MPtrj-warm-start claim",
+    "does not establish that regularization explains the train/held-out gap -- it measures the effect of this one change at one seed"
+  ],
+  "pins": {
+    "git_commit": null,
+    "files": {},
+    "note": "Fill at seal (commit-then-pin). The runner changed after the baseline arm ran (adds ARMS / bbtrain); pin its new sha256 and the commit that contains it.",
+    "baseline_as_run": {
+      "git_commit": "3ce001a7aa5e282bcf0d88b043c9cd632d39896a",
+      "note": "commit message describes Docker changes only but contains the baseline card's runner, prereg, stamp and fold results; blob hashes verified against the stamp"
+    }
+  },
+  "seal_preconditions": {
+    "status": "NOT CLEARED",
+    "blocking_in_dependency_order": [
+      {
+        "id": 1,
+        "name": "fix_verified",
+        "require": "verify-train-mode 14/14 with fix; checkpoint equivalence with regularization live",
+        "status": "CLEARED 2026-09-24"
+      },
+      {
+        "id": 2,
+        "name": "unit_tests_pass",
+        "require": "tests/v8/test_pool_backbone_train_mode.py + tests/v8/test_equ_agenda.py",
+        "status": "PENDING"
+      },
+      {
+        "id": 3,
+        "name": "smoke_wiring_check",
+        "require": "--smoke passes with the runtime guard on",
+        "status": "PENDING"
+      },
+      {
+        "id": 4,
+        "name": "interpretation_rule_confirmed",
+        "require": "operator confirms or edits interpretation_rule.reading_bands",
+        "status": "OPEN"
+      },
+      {
+        "id": 5,
+        "name": "commit_then_pin",
+        "require": "commit runner + tests + this prereg; fill pins",
+        "status": "OPEN"
+      },
+      {
+        "id": 6,
+        "name": "operator_go",
+        "require": "explicit go to occupy the single GPU for ~42h",
+        "status": "OPEN"
+      },
+      {
+        "id": 7,
+        "name": "cuda_available",
+        "require": "CUDA for sealed run",
+        "status": "CHECK_AT_RUN"
+      }
+    ]
+  },
+  "signed_draft": "Claude (session agent) 2026-09-24 -- DRAFT, not operator-signed"
+}
