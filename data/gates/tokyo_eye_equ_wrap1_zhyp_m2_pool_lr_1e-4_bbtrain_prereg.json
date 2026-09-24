@@ -2,9 +2,9 @@
   "schema_version": 1,
   "gate_id": "tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_1e-4_bbtrain_prereg",
   "display_lineage": "Tokyo Eye EQU",
-  "status": "DRAFT",
-  "approval_status": "AWAITING_OPERATOR_SIGN",
-  "execution_state": "NOT_STARTED",
+  "status": "READY_TO_RUN",
+  "approval_status": "OPERATOR_CONFIRMED_GO",
+  "execution_state": "STARTING",
   "date_drafted": "2026-09-24",
   "drafted_by": "Claude (session agent), on operator direction to run the backbone-train-mode arm before seed variance",
   "do_not_promote": true,
@@ -105,18 +105,21 @@
     "descriptive_secondary_not_pass_fail": [
       "paired per-fold held-out macro-F1 delta vs the baseline arm",
       "mean train minus held-out macro-F1 gap (baseline 0.547)",
-      "number of folds with held-out lift > 1 (baseline 2/12)"
+      "number of folds with held-out lift > 1 (baseline 2/12)",
+      "per-fold paired gap difference vs baseline and the same-direction fold count"
     ]
   },
   "interpretation_rule": {
-    "status": "PROPOSED -- operator to confirm or change BEFORE seal; the numbers are judgment calls, not derived",
+    "status": "PROVISIONAL -- replace once seed-variance data exists (agenda A-pool-seed-variance). Operator accepted a provisional placeholder in principle (chat 2026-09-24); the numbers below are judgment calls, not derived.",
+    "why_not_derived_from_baseline_fold_spread": "The between-fold spread of the baseline's train-minus-held-out gaps (SD 0.083 across the 12 folds) measures heterogeneity between held-out STRUCTURES. That cancels in a paired per-fold comparison, so it is not the run-to-run noise a second seed would show; and the standard error of the mean gap is 0.024, about 3.5x smaller, so the 'derived' threshold depends on which statistic is picked. The relevant noise (seed-to-seed change in the per-fold gap) has not been measured.",
     "verdict": "The locked bars decide the scored verdict exactly as for the baseline arm.",
     "comparison_to_baseline": "Descriptive until a seed-variance estimate exists (planned follow-up: seed 1 on the first six folds in canonical order, fixed before any result).",
-    "reading_bands": {
+    "reading_bands_provisional": {
       "clear_effect": "mean train minus held-out gap falls by >= 0.10 from 0.547 AND (S1 mean or S2 count improves on 0.4270 / 8)",
       "not_distinguishable_from_noise": "anything else. This is NOT evidence that regularization is irrelevant -- only that a single-seed comparison cannot separate a small effect from run-to-run noise.",
       "worse": "S1 mean and S2 count both worse than baseline: report as observed, single seed; do not explain away."
-    }
+    },
+    "paired_consistency_descriptive": "Also report, per fold, (baseline gap minus this arm's gap) and how many of the 12 folds move in the same direction. Descriptive only: folds share 10 of 11 training structures and one seed, so their noise is correlated and a sign count overstates independence."
   },
   "compute_budget": {
     "status": "ESTIMATE -- no timing of the regularization-active path beyond the 3-step smoke run",
@@ -147,16 +150,24 @@
     "does not establish that regularization explains the train/held-out gap -- it measures the effect of this one change at one seed"
   ],
   "pins": {
-    "git_commit": null,
-    "files": {},
-    "note": "Fill at seal (commit-then-pin). The runner changed after the baseline arm ran (adds ARMS / bbtrain); pin its new sha256 and the commit that contains it.",
+    "git_commit": "a8898a5d91fa728839defda056771516c298960e",
+    "files": {
+      "scripts/wrap1_zhyp_m2_pool_lr.py": "2d4409ac0454f53c3edfee0fb5c0db3a00995e4f97403d240a3c017927033c00",
+      "scripts/wrap1_zhyp_g_fit.py": "9304ce826eab2971e98c5c8ed282c77d2055affa86567b969a98c11918aed4e1",
+      "science/tokyo_eye/v8/equiformer_pool_frontend.py": "51e1ddb390da685f7aff08a265004a41af3897fa3fb760723bc364fd4047a37b",
+      "science/tokyo_eye/v8/assembly_gate.py": "3411ae5fbeffd4a6676e96ce6ba9844262d99ce9161c81bc13d28b6eea239ad7",
+      "data/gates/tokyo_eye_equ_reachable_bars_design.json": "e221c03a7a3bb9e93920e5dfc552060c7e91c1e10230e808e715ca0ef5ec1efb",
+      "tests/v8/test_pool_backbone_train_mode.py": "cee82551c0d1c43b24e0eef177dc69bc83885454938066cc0cf7843a7684cffa",
+      "scripts/diag_gradflow_pool_frontend.py": "411844502495e050b3aa025b818ad87ccf3e21d93f1b8baae9c987370acf5e48"
+    },
+    "note": "Pinned at seal: git_commit is the HEAD that contains every pinned file unmodified (verified). The prereg itself is committed in the sealing commit that follows; it must not change while the run is in flight (the stamp records its sha256 at scoring).",
     "baseline_as_run": {
       "git_commit": "3ce001a7aa5e282bcf0d88b043c9cd632d39896a",
       "note": "commit message describes Docker changes only but contains the baseline card's runner, prereg, stamp and fold results; blob hashes verified against the stamp"
     }
   },
   "seal_preconditions": {
-    "status": "NOT CLEARED",
+    "status": "CLEARED -- READY_TO_RUN (cuda check at run time)",
     "blocking_in_dependency_order": [
       {
         "id": 1,
@@ -180,19 +191,19 @@
         "id": 4,
         "name": "interpretation_rule_confirmed",
         "require": "operator confirms or edits interpretation_rule.reading_bands",
-        "status": "OPEN"
+        "status": "CLEARED AS PROVISIONAL (operator accepted a provisional placeholder in principle; see interpretation_rule)"
       },
       {
         "id": 5,
         "name": "commit_then_pin",
         "require": "commit runner + tests + this prereg; fill pins",
-        "status": "OPEN"
+        "status": "CLEARED: pins.git_commit a8898a5 contains all pinned files unmodified"
       },
       {
         "id": 6,
         "name": "operator_go",
         "require": "explicit go to occupy the single GPU for ~42h",
-        "status": "OPEN"
+        "status": "CLEARED 2026-09-24 (operator, chat: 'Go on the 42-hour run -- yes')"
       },
       {
         "id": 7,
@@ -202,5 +213,5 @@
       }
     ]
   },
-  "signed_draft": "Claude (session agent) 2026-09-24 -- DRAFT, not operator-signed"
+  "signed_draft": "Claude (session agent) 2026-09-24 -- DRAFT, not operator-signed | SEALED for run: operator go via session chat 2026-09-24; interpretation_rule provisional"
 }
