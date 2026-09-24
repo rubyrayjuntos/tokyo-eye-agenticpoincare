@@ -95,8 +95,8 @@
     "verify_train_mode_with_fix": "14/14 live after system.train(); 0/14 under system.eval(); 14/14 after eval->train, after frontend.train(True) directly, and after repeated system.train()",
     "verify_checkpoint_with_regularization_live": "14/14 live during the comparison; loss identical off/on (1.6315717697); max abs grad diff 4.47e-8 over 318 tensors (RNG replay across checkpoint recompute correct); loss differs from the regularization-off run (1.63147), confirming the flag changes the computation",
     "note_on_earlier_checkpoint_check": "The checkpoint-equivalence check cited by the baseline prereg ran with regularization OFF, so it did not exercise dropout RNG replay; the check above does.",
-    "unit_tests": "PENDING",
-    "smoke_run": "PENDING"
+    "unit_tests": "PASS 2026-09-24: tests/v8/test_pool_backbone_train_mode.py (3) + tests/v8/test_equ_agenda.py (8)",
+    "smoke_run": "PASS 2026-09-24: --lr-frontend-arm lr_1e-4_bbtrain --smoke (1 fold, 3 steps, guard passed at logged steps 0 and 2)"
   },
   "pass_fail_bars": {
     "status": "REUSED VERBATIM from the baseline card / sealed M2 card",
@@ -168,13 +168,13 @@
         "id": 2,
         "name": "unit_tests_pass",
         "require": "tests/v8/test_pool_backbone_train_mode.py + tests/v8/test_equ_agenda.py",
-        "status": "PENDING"
+        "status": "CLEARED 2026-09-24"
       },
       {
         "id": 3,
         "name": "smoke_wiring_check",
         "require": "--smoke passes with the runtime guard on",
-        "status": "PENDING"
+        "status": "CLEARED 2026-09-24"
       },
       {
         "id": 4,

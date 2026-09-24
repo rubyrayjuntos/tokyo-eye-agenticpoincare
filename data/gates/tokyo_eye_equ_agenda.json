@@ -115,6 +115,19 @@
         "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_prereg.json"
       ],
       "process_gap": "treating a script as disposable scratch work because its output, not the script itself, seemed like the thing that needed to persist"
+    },
+    {
+      "id": "L-backbone-eval-mode-during-train",
+      "date": "2026-09-24",
+      "title": "A top-level .train() call does not guarantee submodules are in train mode -- inspect per-module .training",
+      "statement": "EquiformerPoolFrontend.train() ends with self._backbone.eval() unconditionally (science/tokyo_eye/v8/equiformer_pool_frontend.py:153-156), including when freeze_backbone=False. The 12-fold lr_1e-4 pool card (FAIL_NO_SIGNAL: S1 pass 0.4270, S2 8/12) therefore trained an unfrozen ~30M-parameter EquiformerV3 backbone with its own regularization off: 0 of 14 Dropout(p=0.1)/GraphDropPath(0.05) modules were in train mode (scripts/diag_gradflow_pool_frontend.py --mode verify-train-mode). Nobody inspected .training on those modules before a ~42h card; it was found afterwards. Effect on the observed 0.55 mean train/held-out gap is UNTESTED: the rates are mild relative to an 11-structure training set on ~30M parameters, so the size of any effect is unknown, and other contributors (tiny training set, the intentional edge_type->label leak, cold init) are not ruled out. Also: the checkpoint-equivalence check cited by that card's prereg ran with regularization off and so did not exercise dropout RNG replay; re-run with regularization live it passes (max abs grad diff 4.5e-8 over 318 tensors). Generalizable rule: after any train()/eval() override, freeze logic or wrapper, verify per-submodule .training flags (and that repeated train() calls do not undo them) instead of trusting the top-level call. A grep of science/, experiments/ and scripts/ (third_party excluded) found no other first-party train() override of this shape.",
+      "evidence": [
+        "scripts/diag_gradflow_pool_frontend.py",
+        "tests/v8/test_pool_backbone_train_mode.py",
+        "scripts/wrap1_zhyp_m2_pool_lr.py",
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_1e-4_result.json"
+      ],
+      "process_gap": "assuming system.train() propagates to every submodule; not inspecting .training on regularization modules before sealing a compute-heavy card"
     }
   ],
   "items": [
@@ -194,13 +207,13 @@
     },
     {
       "id": "A-pool-frontend",
-      "status": "IN_FLIGHT",
+      "status": "OPEN",
       "priority": 2,
       "kind": "harness_or_biology",
       "title": "Equiformer-pool frontend capacity or biology (separate sealed card)",
       "opened": "2026-09-21",
       "blocked_by": [],
-      "note": "Lite result is not pool evidence. Capacity on pool still needs reachable bars. Diagnostic 2026-09-22 (scripts/diag_gradflow_pool_frontend.py; non-claim, do_not_promote, off-path -- cold_init pool frontend, no MPtrj ckpt, activation-checkpointed backbone, 4/12 train structures for GPU-memory reasons): gradient reaches 288/292 frontend tensors (vs 25/117 under SE(3)-lite -- see L-se3-lite-frontend-1-of-7-blocks). At lr_frontend=1e-5 (sealed value) train fit on those 4 structures reproduces the M2 card's stuck floor almost exactly (min_f1 0.327/0.324 vs sealed min ~0.31-0.33). At lr_frontend=1e-4, same 4 structures clear decisively -- train macro_f1 0.895, min_f1 0.865 -- with per-structure lift>1 and macro_f1 well above majority-basin on every structure, including the one pinned at exact majority under 1e-5 (1TEN:A: acc=maj=0.933/lift=1.000/f1=0.32 -> acc=0.989/lift=1.060/f1=0.887), which rules out majority-sharpening as the explanation. TRAIN-FIT ONLY, NOT HELD-OUT: 4 of 12 structures (76-155 residues), 200 of 400 steps. Those 4 are exactly 3 of the 4 lowest-held-out-F1 folds in the sealed 12-fold M2 result (1UBQ 0.307, 1TEN 0.316, 1LYZ 0.317 -- the 3 lowest of 12; 1HHP 0.320 mid-pack), i.e. historically hard-to-generalize structures, not easy ones -- but this diagnostic still says nothing about held-out performance at this LR/frontend combination. Process checks passed clean for this exact config: gradient-checkpointing bit-equivalence (max abs grad diff 4.5e-8 over 318 tensors) and pure_hyp_pass (0 violations). Execution started 2026-09-22 18:13 UTC: lr_1e-4 arm, full 400 steps, all 12 folds (operator 'go' on the agent's recommended scope; prereg data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_prereg.json flipped DRAFT->READY_TO_RUN for this arm only). Benchmarked at 31.5s/step, ~42h expected wall-clock, single 4GB GPU. sealed (1e-5) control arm on the same pool frontend is a planned follow-up once this arm's result lands, NOT skipped -- without it, 'the LR change specifically mattered' stays an inference from the earlier 4-structure diagnostic, not this sealed run's own isolation. Do not read or report on individual fold results before all 12 land.",
+      "note": "Lite result is not pool evidence. Capacity on pool still needs reachable bars. Diagnostic 2026-09-22 (scripts/diag_gradflow_pool_frontend.py; non-claim, do_not_promote, off-path -- cold_init pool frontend, no MPtrj ckpt, activation-checkpointed backbone, 4/12 train structures for GPU-memory reasons): gradient reaches 288/292 frontend tensors (vs 25/117 under SE(3)-lite -- see L-se3-lite-frontend-1-of-7-blocks). At lr_frontend=1e-5 (sealed value) train fit on those 4 structures reproduces the M2 card's stuck floor almost exactly (min_f1 0.327/0.324 vs sealed min ~0.31-0.33). At lr_frontend=1e-4, same 4 structures clear decisively -- train macro_f1 0.895, min_f1 0.865 -- with per-structure lift>1 and macro_f1 well above majority-basin on every structure, including the one pinned at exact majority under 1e-5 (1TEN:A: acc=maj=0.933/lift=1.000/f1=0.32 -> acc=0.989/lift=1.060/f1=0.887), which rules out majority-sharpening as the explanation. TRAIN-FIT ONLY, NOT HELD-OUT: 4 of 12 structures (76-155 residues), 200 of 400 steps. Those 4 are exactly 3 of the 4 lowest-held-out-F1 folds in the sealed 12-fold M2 result (1UBQ 0.307, 1TEN 0.316, 1LYZ 0.317 -- the 3 lowest of 12; 1HHP 0.320 mid-pack), i.e. historically hard-to-generalize structures, not easy ones -- but this diagnostic still says nothing about held-out performance at this LR/frontend combination. Process checks passed clean for this exact config: gradient-checkpointing bit-equivalence (max abs grad diff 4.5e-8 over 318 tensors) and pure_hyp_pass (0 violations). Execution started 2026-09-22 18:13 UTC: lr_1e-4 arm, full 400 steps, all 12 folds (operator 'go' on the agent's recommended scope; prereg data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_prereg.json flipped DRAFT->READY_TO_RUN for this arm only). Benchmarked at 31.5s/step, ~42h expected wall-clock, single 4GB GPU. sealed (1e-5) control arm on the same pool frontend is a planned follow-up once this arm's result lands, NOT skipped -- without it, 'the LR change specifically mattered' stays an inference from the earlier 4-structure diagnostic, not this sealed run's own isolation. Do not read or report on individual fold results before all 12 land. RESULT 2026-09-24 (as-run commit 3ce001a): lr_1e-4 arm COMPLETED FAIL_NO_SIGNAL -- G_finite/G_grad_spine/G_fit_train pass in all 12 folds (train macro-F1 0.96-0.99), S1 pass (0.4270; bootstrap 95% LB 0.388, diagnostic only), S2 FAIL 8/12 vs 10. Held-out mean 0.324 (lite) -> 0.427; folds >= 0.40: 0 -> 8; but held-out accuracy beats the majority rate in only 2/12 folds and the mean train/held-out gap is 0.55. Single seed; 6/12 folds within 0.03 of the bar; the 1e-5 control arm has not run, so LR-vs-frontend attribution is open. Post-run finding: the backbone's own regularization was silently off (L-backbone-eval-mode-during-train) -- treat this run's generalization numbers accordingly. Status returned to OPEN because nothing is executing (IN_FLIGHT = a prereg'd run is running).",
       "evidence": [
         "data/gates/tokyo_eye_equ_next_experiment_sealed.json",
         "scripts/diag_gradflow_pool_frontend.py",
@@ -209,13 +222,18 @@
         "data/gates/diag_gradflow_pool_frontend/pool_no_euc_seed0.json",
         "data/gates/diag_gradflow_pool_frontend/pool_no_euc_lr1e-4_seed0.json",
         "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_prereg.json",
-        "scripts/wrap1_zhyp_m2_pool_lr.py"
+        "scripts/wrap1_zhyp_m2_pool_lr.py",
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_1e-4_result.json",
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_1e-4_bbtrain_prereg.json",
+        "tests/v8/test_pool_backbone_train_mode.py"
       ],
-      "next": "sealed prereg when bars/target ready Directionally-promising diagnostic (2026-09-22) supports drafting that prereg sooner rather than later: isolate frontend LR alone (pool@1e-5 vs pool@1e-4, frontend architecture held fixed), full 12-structure LOSO, scored against the already-locked M2 mean+min macro-F1 bar -- do not combine the LR change with any other simultaneous change (e.g. euc_skip removal).",
+      "next": "Per operator (2026-09-24): run the backbone train-mode arm first (A-pool-bbtrain-card), then seed variance (A-pool-seed-variance); sealed (1e-5) control arm only if the LR-vs-frontend attribution claim is wanted.",
       "blocks": [],
       "related_lessons": [
         "L-se3-lite-frontend-1-of-7-blocks",
-        "L-measurement-before-architecture"
+        "L-measurement-before-architecture",
+        "L-backbone-eval-mode-during-train",
+        "L-tmp-scripts-not-durable"
       ]
     },
     {
@@ -289,6 +307,63 @@
         "data/gates/tokyo_eye_equ_nonclaim_disposition.json"
       ],
       "next": "non-leaking target design \u2014 not another leaking lite pilot as trunk"
+    },
+    {
+      "id": "A-pool-bbtrain-card",
+      "status": "OPEN",
+      "priority": 1,
+      "kind": "sealed_card",
+      "title": "Backbone train-mode arm: same as lr_1e-4 arm but backbone Dropout/GraphDropPath actually active",
+      "opened": "2026-09-24",
+      "blocked_by": [],
+      "blocks": [],
+      "note": "DRAFT prereg written, fix verified (14/14 modules live; survives eval->train and repeated train(); checkpoint equivalence re-verified with regularization live), unit tests + smoke pass. Single variable vs the completed lr_1e-4 arm; runtime guard aborts the run if any of the 14 modules is not in train mode. Hypothesis (regularization contributes to the 0.55 train/held-out gap) is a candidate, untested, effect size unknown. interpretation_rule bands are PROPOSED and need operator confirmation before seal. ~42h on the single GPU.",
+      "design": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_1e-4_bbtrain_prereg.json",
+      "related_lessons": [
+        "L-backbone-eval-mode-during-train",
+        "L-measurement-before-architecture"
+      ],
+      "evidence": [
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_1e-4_bbtrain_prereg.json",
+        "scripts/wrap1_zhyp_m2_pool_lr.py",
+        "tests/v8/test_pool_backbone_train_mode.py",
+        "scripts/diag_gradflow_pool_frontend.py"
+      ],
+      "next": "operator confirms interpretation_rule + explicit go; commit-then-pin; launch"
+    },
+    {
+      "id": "A-pool-seed-variance",
+      "status": "OPEN",
+      "priority": 2,
+      "kind": "diagnostic",
+      "title": "Seed-to-seed variance of S1 mean / S2 count on the pool card",
+      "opened": "2026-09-24",
+      "blocked_by": [],
+      "blocks": [],
+      "note": "6/12 baseline folds sit within 0.03 of the 0.40 bar and there is exactly one seed, so any near-bar comparison between arms cannot be read without a variance estimate. Proposed: seed 1 on the first six folds in canonical order (fixed before any result; ~21h). Sequenced after A-pool-bbtrain-card per operator, but needed before a small S2/S1 difference between arms is attributed to any cause.",
+      "evidence": [
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_1e-4_result.json"
+      ],
+      "next": "prereg after the bbtrain card decision"
+    },
+    {
+      "id": "A-pool-frontend-train-override",
+      "status": "OPEN",
+      "priority": 2,
+      "kind": "harness",
+      "title": "EquiformerPoolFrontend.train() forces backbone.eval() even when freeze_backbone=False -- shared fix vs per-card override",
+      "opened": "2026-09-24",
+      "blocked_by": [],
+      "blocks": [],
+      "note": "Currently handled per card by an instance-level override in scripts/wrap1_zhyp_m2_pool_lr.py (apply_backbone_train_mode) so the shared module and the pins on it stay untouched. A shared fix (force eval only when the backbone is actually frozen) would change behavior for any other freeze=False caller and the hash pinned by completed cards (recoverable at 3ce001a). Decide deliberately; tests/v8/test_pool_backbone_train_mode.py pins the current behavior.",
+      "related_lessons": [
+        "L-backbone-eval-mode-during-train"
+      ],
+      "evidence": [
+        "science/tokyo_eye/v8/equiformer_pool_frontend.py",
+        "tests/v8/test_pool_backbone_train_mode.py"
+      ],
+      "next": "operator decision: keep per-card override or fix the shared module (with its own note on affected cards)"
     }
   ],
   "closed_this_period": [

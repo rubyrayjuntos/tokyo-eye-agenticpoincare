@@ -198,5 +198,15 @@
     "does not close A-typed-path-utilization (dark R_q/R_k/gamma/beta params already shown independent of this frontend/LR change)",
     "cold_init pool result is not an MPtrj-warm-start claim"
   ],
-  "signed": "auto from wrap1_zhyp_m2_pool_lr.py"
+  "signed": "auto from wrap1_zhyp_m2_pool_lr.py",
+  "post_hoc_annotations": [
+    {
+      "date": "2026-09-24",
+      "author": "Claude (session agent), added after scoring at operator request; no scored field was changed",
+      "as_scored_git_commit": "3ce001a7aa5e282bcf0d88b043c9cd632d39896a",
+      "locked_verdict": "FAIL_NO_SIGNAL stands as recorded (rule: G_fit_train passes and S1 or S2 fails).",
+      "context": "S1 passed (0.4270) and S2 missed by two folds (8/12 vs 10 required) on a single seed, with 6/12 folds within 0.03 of the 0.40 bar. This run trained the unfrozen backbone with its own Dropout/GraphDropPath OFF (0/14 modules in train mode; lesson L-backbone-eval-mode-during-train), so it should not be cited as evidence about the architecture's generalization under standard regularization. Read the verdict field together with this note.",
+      "follow_up": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_1e-4_bbtrain_prereg.json (DRAFT)"
+    }
+  ]
 }

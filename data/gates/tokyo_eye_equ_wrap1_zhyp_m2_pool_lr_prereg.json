@@ -4,7 +4,7 @@
   "display_lineage": "Tokyo Eye EQU",
   "status": "READY_TO_RUN",
   "approval_status": "OPERATOR_CONFIRMED_SCOPE",
-  "execution_state": "STARTING",
+  "execution_state": "PARTIAL -- lr_1e-4 arm COMPLETED 2026-09-24 (FAIL_NO_SIGNAL); sealed (1e-5) arm NOT RUN",
   "date_drafted": "2026-09-22",
   "drafted_by": "Claude (session agent), on operator request to push ahead on A-pool-frontend",
   "do_not_promote": true,
@@ -54,7 +54,8 @@
       "mptrj_checkpoint": "NONE (architecture only, addendum SS2.3 default)",
       "max_neighbors": 16,
       "activation_checkpointing": "gradient_checkpointing_block_list = [1]*7 on the backbone -- required to fit a 4GB GPU; verified bit-equivalent to no-checkpointing (max abs grad diff 4.5e-8 over 318 tensors, scripts/diag_gradflow_pool_frontend.py --mode verify-checkpoint)",
-      "se3_lite": "FORBIDDEN on this card (that is the entire point of it)"
+      "se3_lite": "FORBIDDEN on this card (that is the entire point of it)",
+      "backbone_regularization_during_training": "OFF for the arms of this card: EquiformerPoolFrontend.train() forces backbone.eval(); 0/14 Dropout/GraphDropPath modules in train mode (found after the lr_1e-4 arm ran; see lesson L-backbone-eval-mode-during-train). The 'verified bit-equivalent' checkpoint note above was measured with regularization off and did not exercise dropout RNG replay."
     },
     "moe_mode": "ablated",
     "loss_coeffs": {
@@ -121,7 +122,7 @@
     "each_arm_scored_independently": true
   },
   "compute_budget": {
-    "status": "BLOCKING -- scope not yet authorized, see open_decision below",
+    "status": "RESOLVED for the lr_1e-4 arm; sealed arm scope needs a separate go",
     "benchmark": {
       "hardware": "single 4GB GPU (Quadro T1000), the only GPU available in this environment",
       "method": "scripts/bench_pool_frontend_step_time.py --hold 1MBN:A --steps 25 (committed, re-runnable; originally a /tmp script -- see lesson L-tmp-scripts-not-durable in data/gates/tokyo_eye_equ_agenda.json)",
@@ -156,7 +157,8 @@
     },
     "risk_note": "step-count reduction is not free: the pool-frontend diagnostic at lr=1e-4 stayed flat at the majority-basin F1 level through step ~80-120 before climbing to its final value by step 199 (on smaller, easier structures than several of these 12 folds) -- fewer than ~150-200 steps risks an underpowered INCONCLUSIVE_UNDERFIT read that reflects compute-starvation, not capacity, and 400 steps also keeps this card comparable step-for-step to the sealed lite M2 card.",
     "open_decision": "RESOLVED 2026-09-22 (operator 'go' in session chat, on the agent's recommended default): run lr_1e-4 arm alone first, full locked 400 steps, all 12 folds (~42h). sealed (1e-5) control arm deferred to a follow-up run pending this arm's result.",
-    "background_execution_note": "runs incrementally -- each completed fold's JSON is written to data/gates/wrap1_zhyp_m2_pool_lr/<arm>/ immediately, and the runner skips folds that already have a result file on restart, so a long background run surviving across sessions loses at most the in-progress fold if interrupted."
+    "background_execution_note": "runs incrementally -- each completed fold's JSON is written to data/gates/wrap1_zhyp_m2_pool_lr/<arm>/ immediately, and the runner skips folds that already have a result file on restart, so a long background run surviving across sessions loses at most the in-progress fold if interrupted.",
+    "actual_lr_1e-4_arm": "41.6h wall (2026-09-22 18:13:07 -> 2026-09-24 11:47 UTC), ~3.5h/fold on average; fold time tracked training residues (r=+0.90 over the first six folds); memory flat 3396-3398 MiB at every fold boundary (one transient 3578 MiB reading)."
   },
   "code_after_approval": {
     "runner": "scripts/wrap1_zhyp_m2_pool_lr.py",
@@ -207,7 +209,9 @@
     "sdrp_coeff": 0.1,
     "frontend": "equiformer_v3_pool_cold_init",
     "max_neighbors": 16,
-    "moe_mode": "ablated"
+    "moe_mode": "ablated",
+    "as_run_git_commit": "3ce001a7aa5e282bcf0d88b043c9cd632d39896a",
+    "as_run_note": "Commit 3ce001a (message describes Docker changes only) contains this card's runner, prereg, stamp and fold results; blob hashes verified equal to the stamp's script_sha256 / prereg_sha256 and to every pinned file. pins.git_commit above is the pre-run HEAD and does not contain the runner."
   },
   "seal_preconditions": {
     "status": "CLEARED for lr_1e-4 arm -- sealed arm still requires a separate go",
@@ -238,5 +242,25 @@
       }
     ]
   },
-  "signed_draft": "Claude (session agent) 2026-09-22 -- drafted on operator instruction to push ahead on A-pool-frontend; NOT operator-signed, status intentionally DRAFT pending compute-scope decision | RUN AUTHORIZED: operator 'go' via session chat 2026-09-22, lr_1e-4 arm only, 400 steps, 12 folds"
+  "signed_draft": "Claude (session agent) 2026-09-22 -- drafted on operator instruction to push ahead on A-pool-frontend; NOT operator-signed, status intentionally DRAFT pending compute-scope decision | RUN AUTHORIZED: operator 'go' via session chat 2026-09-22, lr_1e-4 arm only, 400 steps, 12 folds",
+  "arm_results": {
+    "lr_1e-4": {
+      "verdict": "FAIL_NO_SIGNAL",
+      "stamp": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_1e-4_result.json",
+      "G_finite": true,
+      "G_grad_spine": true,
+      "G_fit_train": "PASS 12/12 (train macro-F1 0.960-0.987; train-min 0.913-0.955)",
+      "S1": "PASS mean 0.4270 (bar 0.40; bootstrap 95% LB 0.388, diagnostic only)",
+      "S2": "FAIL 8/12 (bar 10/12)",
+      "wall_hours": 41.6,
+      "as_run_git_commit": "3ce001a7aa5e282bcf0d88b043c9cd632d39896a"
+    }
+  },
+  "scoped_verdict_line": "capacity probe under pool frontend cold_init / lr_frontend 1e-4 / 400 steps / MoE-ablated / backbone regularization silently OFF: G_fit_train PASS 12/12, S1 PASS (0.4270), S2 FAIL 8/12 (needs 10). Single seed. Read with L-backbone-eval-mode-during-train.",
+  "completion_note": "lr_1e-4 arm finished cleanly (exit 0). sealed (1e-5) control arm deferred, still READY_TO_RUN via the runner gate. LR-vs-frontend attribution of the improvement over the lite card remains open until that arm runs.",
+  "post_run_notes": [
+    "Edited after scoring for completion bookkeeping only; the as-scored version is at 3ce001a (sha256 recorded in the stamp as prereg_sha256).",
+    "Follow-up card (train-mode arm): data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_1e-4_bbtrain_prereg.json (DRAFT).",
+    "The runner (scripts/wrap1_zhyp_m2_pool_lr.py) was extended after the lr_1e-4 arm ran (adds the lr_1e-4_bbtrain arm), so pins.files for it no longer matches the working tree; the as-run version is at 3ce001a. The 'sealed' and 'lr_1e-4' code paths are unchanged apart from extra logging (backbone_reg_modules_live metric, backbone_train_mode tag/param/stamp key). Re-pin the runner before running the sealed control arm."
+  ]
 }
