@@ -153,6 +153,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.mlflow
+      args:
+        # Must equal the host uid/gid that owns ~/.claude (see volumes below).
+        APPUSER_UID: ${HOST_UID:-1000}
+        APPUSER_GID: ${HOST_GID:-1000}
       cache_from:
         - tokyoeye-science:latest
     image: tokyoeye-mlflow:latest
@@ -189,8 +193,9 @@ services:
       - ./experiments:/app/experiments
       - ./:/workspace:rw
       - mlflow_codex_auth:/home/appuser/.codex
-      # Host Claude Code auth (option 2): credentials from ~/.claude on the host.
-      # Grant uid 999 read via scripts/mlflow_claude_host_auth_acl.sh (mode 600 otherwise blocks appuser).
+      # Host Claude Code auth: ~/.claude on the host. appuser is built with the host
+      # uid (APPUSER_UID above), so the mode-600 credentials survive token-refresh
+      # rewrites with no ACL. Non-1000 host uid: set HOST_UID/HOST_GID and rebuild.
       - ${HOME}/.claude:/home/appuser/.claude:rw
       - mlflow_assistant_cfg:/home/appuser/.mlflow/assistant
     depends_on:

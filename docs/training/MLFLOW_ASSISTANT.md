@@ -46,13 +46,11 @@ Use the Claude login **already on the host** (`~/.claude`). Compose bind-mounts:
 
 `${HOME}/.claude` → `/home/appuser/.claude`
 
-The container runs as `appuser` (uid **999**). Host credential files are usually
-mode `600` owned by your uid, so grant ACL once:
-
-```bash
-bash scripts/mlflow_claude_host_auth_acl.sh
-docker compose up -d mlflow
-```
+The image builds `appuser` with the **host uid/gid** (`APPUSER_UID`/`APPUSER_GID`,
+default 1000; override with `HOST_UID`/`HOST_GID`). Credentials are mode `600` and are
+rewritten on every token refresh, so matching the uid (not an ACL) is what keeps host
+login == container login. After changing the uid: `docker compose up -d --build mlflow`.
+`scripts/mlflow_claude_host_auth_acl.sh` is a legacy fallback for an old uid-999 image only.
 
 Verify the mount and auth from outside:
 
@@ -154,8 +152,8 @@ Hold pool typed G_fit until a redesigned card exists. Optional CLI resume of a
 Claude transcript (outside the UI):  
 `docker compose exec mlflow sh -lc 'cd /workspace && claude --resume <session-id>'`.
 
-The container runs as `appuser` (uid 999). Host-owned repo directories may deny
-create unless prepared. For the write smoke:
+The container runs as `appuser` (host uid, default 1000). Repo directories owned by another
+uid may deny create. For the write smoke:
 
 ```bash
 docker compose exec -u root mlflow \
@@ -169,7 +167,7 @@ docker compose exec -u root mlflow \
   host `~/.claude/projects/`, bind-mounted). Gates remain machine truth.
 - Missing CLI: rebuild `mlflow`.
 - Codex logged out: rerun `docker compose exec mlflow codex login`.
-- Claude auth broken: re-auth on the host, then `bash scripts/mlflow_claude_host_auth_acl.sh`.
+- Claude auth broken: re-auth on the host (`claude auth login`); check `docker compose exec mlflow claude auth status`. If it says logged out, confirm `docker compose exec mlflow id -u` equals `id -u` on the host; if not, rebuild with `HOST_UID`/`HOST_GID`.
 - Wrong provider/project: rerun `docker compose exec mlflow mlflow assistant --configure`.
 - Reset config only: remove `mlflow_assistant_cfg` after explicit operator approval.
 - Reset Codex login only: remove `mlflow_codex_auth` after explicit operator approval.

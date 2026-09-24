@@ -36,6 +36,17 @@ def test_mlflow_compose_security_boundary() -> None:
     assert "mlflow_assistant_cfg" in compose["volumes"]
 
 
+def test_mlflow_appuser_matches_host_uid_for_claude_credentials() -> None:
+    dockerfile = (ROOT / "Dockerfile.mlflow").read_text()
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
+    args = compose["services"]["mlflow"]["build"]["args"]
+
+    assert "ARG APPUSER_UID=1000" in dockerfile
+    assert "usermod -o -u" in dockerfile
+    assert args["APPUSER_UID"] == "${HOST_UID:-1000}"
+    assert args["APPUSER_GID"] == "${HOST_GID:-1000}"
+
+
 def test_mlflow_governance_storage_is_preserved() -> None:
     compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
     mlflow = compose["services"]["mlflow"]

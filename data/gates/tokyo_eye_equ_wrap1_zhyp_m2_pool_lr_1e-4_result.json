@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_1e-4_result",
+  "status": "FAIL_NO_SIGNAL",
+  "date": "2026-09-24",
+  "display_lineage": "Tokyo Eye EQU",
+  "do_not_promote": true,
+  "card": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_prereg.json",
+  "metric_family": "M2_macro_f1",
+  "lr_frontend_arm": "lr_1e-4",
+  "lr_frontend": 0.0001,
+  "seed": 0,
+  "steps": 400,
+  "folds": [
+    "1MBN:A",
+    "1LYZ:A",
+    "1BG1:A",
+    "1F88:A",
+    "2Z6H:A",
+    "1HHP:A",
+    "1TEN:A",
+    "1UBQ:A",
+    "1TIM:A",
+    "4OBE:A",
+    "1IVO:A",
+    "2SHP:A"
+  ],
+  "frontend": "equiformer_v3_pool_cold_init",
+  "moe_mode": "ablated",
+  "sdrp_coeff": 0.1,
+  "dehydron_coeff": 0.0,
+  "margin_coeff": 0.0,
+  "scoring": {
+    "verdict": "FAIL_NO_SIGNAL",
+    "G_finite": true,
+    "G_grad_spine": true,
+    "G_fit_train": true,
+    "metric_family": "M2_macro_f1",
+    "S1": {
+      "pass": true,
+      "mean_macro_f1": 0.4270336640359058,
+      "bar_mean": 0.4,
+      "ci95_lb_diagnostic": 0.38810365321597445
+    },
+    "S2": {
+      "pass": false,
+      "n_macro_f1_ge_bar": 8,
+      "of_n": 12,
+      "bar_n": 10,
+      "threshold": 0.4
+    },
+    "held_scores": [
+      0.37399770904925544,
+      0.41642567958357435,
+      0.34442660438865375,
+      0.42973799295638376,
+      0.4162444190390162,
+      0.5138241388241388,
+      0.3235867446393762,
+      0.623671497584541,
+      0.3819000236910685,
+      0.4414556962025316,
+      0.4329778294874281,
+      0.4261556329849013
+    ]
+  },
+  "per_fold_summary": {
+    "1MBN:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_f1": 0.960469899095101,
+      "train_min_f1": 0.9125890944072763,
+      "g_fit_train_pass_fold": true,
+      "heldout_macro_f1": 0.37399770904925544,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "1LYZ:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_f1": 0.9775572975131387,
+      "train_min_f1": 0.9379815824093215,
+      "g_fit_train_pass_fold": true,
+      "heldout_macro_f1": 0.41642567958357435,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "1BG1:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_f1": 0.9825136166711541,
+      "train_min_f1": 0.9357934822902975,
+      "g_fit_train_pass_fold": true,
+      "heldout_macro_f1": 0.34442660438865375,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "1F88:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_f1": 0.9736592220031652,
+      "train_min_f1": 0.9432685656794316,
+      "g_fit_train_pass_fold": true,
+      "heldout_macro_f1": 0.42973799295638376,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "2Z6H:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_f1": 0.9712259607506311,
+      "train_min_f1": 0.9255715045188729,
+      "g_fit_train_pass_fold": true,
+      "heldout_macro_f1": 0.4162444190390162,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "1HHP:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_f1": 0.9705458411051762,
+      "train_min_f1": 0.9357934822902975,
+      "g_fit_train_pass_fold": true,
+      "heldout_macro_f1": 0.5138241388241388,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "1TEN:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_f1": 0.9711370797355579,
+      "train_min_f1": 0.9432685656794316,
+      "g_fit_train_pass_fold": true,
+      "heldout_macro_f1": 0.3235867446393762,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "1UBQ:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_f1": 0.9619372794322865,
+      "train_min_f1": 0.9227104918423247,
+      "g_fit_train_pass_fold": true,
+      "heldout_macro_f1": 0.623671497584541,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "1TIM:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_f1": 0.9856344141252457,
+      "train_min_f1": 0.9554612937433723,
+      "g_fit_train_pass_fold": true,
+      "heldout_macro_f1": 0.3819000236910685,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "4OBE:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_f1": 0.9866678861056216,
+      "train_min_f1": 0.9379815824093215,
+      "g_fit_train_pass_fold": true,
+      "heldout_macro_f1": 0.4414556962025316,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "1IVO:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_f1": 0.9804354743809907,
+      "train_min_f1": 0.9432685656794316,
+      "g_fit_train_pass_fold": true,
+      "heldout_macro_f1": 0.4329778294874281,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    },
+    "2SHP:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_f1": 0.9692424721158601,
+      "train_min_f1": 0.9253589688497055,
+      "g_fit_train_pass_fold": true,
+      "heldout_macro_f1": 0.4261556329849013,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    }
+  },
+  "script_sha256": "91d3831485b2a2eb1707934d3eefc49a3711841b77c6feb8c7123274a788fd16",
+  "prereg_sha256": "8b26c9870dc16dfc64dcf80d03f5262df522f359b57250a75edb6016630027df",
+  "folds_frozen_sha256": "bea720b0d67ae86b4ef0850091094948e05aceff9cf9d6214d602721b3bc3a0e",
+  "git_commit": "de9ed8245cd1b7034eb1436437bb87a00fde54d3",
+  "not_claims": [
+    "PASS_SIGNAL is not a biology seal",
+    "intentional SDRP leak does not close defect B",
+    "not a MoE-on claim",
+    "not learned-curvature training",
+    "does not close A-typed-path-utilization (dark R_q/R_k/gamma/beta params already shown independent of this frontend/LR change)",
+    "cold_init pool result is not an MPtrj-warm-start claim"
+  ],
+  "signed": "auto from wrap1_zhyp_m2_pool_lr.py"
+}

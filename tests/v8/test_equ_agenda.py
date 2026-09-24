@@ -10,6 +10,9 @@ Enforces ``data/gates/tokyo_eye_equ_agenda.json``:
   * ``closed_this_period`` holds only closed statuses (not OPEN/BLOCKED/IN_FLIGHT)
   * ``items`` holds only live statuses (not DONE/WONT_DO/SUPERSEDED)
   * each id appears in exactly one of ``items`` / ``closed_this_period``
+  * no live item's ``blocked_by`` references an id whose status is already
+    DONE/WONT_DO/SUPERSEDED (2026-09-22: A-pool-frontend sat blocked_by a
+    closed id for a full period before it was noticed by hand)
 """
 
 from __future__ import annotations
@@ -164,3 +167,32 @@ def test_blocks_blocked_by_symmetric(agenda: dict) -> None:
                     f"{aid} blocked_by {bid}, but {bid}.blocks does not list {aid}"
                 )
     assert not errors, "asymmetric agenda edges:\n  " + "\n  ".join(errors)
+
+
+def test_blocked_by_targets_are_live(agenda: dict) -> None:
+    """A live item cannot be ``blocked_by`` an id that has already closed.
+
+    Closing a blocker should clear the dependent's ``blocked_by`` entry (and
+    the closer's ``blocks`` entry, per ``test_blocks_blocked_by_symmetric``)
+    in the same edit. Without this check that edge can go stale silently:
+    A-reachable-bars-or-less-skewed-target closed DONE on 2026-09-21 while
+    A-pool-frontend kept listing it in ``blocked_by`` — mutuality and
+    edge-resolution checks both still passed throughout, because neither
+    checks that the referenced status is still live.
+    """
+    status_by_id: dict[str, str] = {
+        str(row["id"]): str(row.get("status", ""))
+        for row in list(agenda["items"]) + list(agenda.get("closed_this_period", []))
+    }
+    errors: list[str] = []
+    for row in agenda.get("items") or []:
+        rid = str(row["id"])
+        for bid in row.get("blocked_by") or []:
+            b_status = status_by_id.get(bid)
+            if b_status in CLOSED_STATUSES:
+                errors.append(
+                    f"{rid}.blocked_by -> {bid!r}, but {bid} has closed status "
+                    f"{b_status!r}; clear the blocked_by/blocks edge instead of "
+                    "leaving it stale"
+                )
+    assert not errors, "stale blocked_by on closed blocker:\n  " + "\n  ".join(errors)

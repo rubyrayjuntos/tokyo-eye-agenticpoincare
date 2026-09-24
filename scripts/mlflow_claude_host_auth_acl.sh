@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
+# LEGACY fallback — not needed when the mlflow image is built with APPUSER_UID equal
+# to the host uid (default 1000; see Dockerfile.mlflow). The ACL is dropped whenever
+# Claude rewrites .credentials.json, so it is not a durable fix.
 # Grant the MLflow container appuser (uid 999) read access to host Claude auth.
-# Option 2: bind-mount ${HOME}/.claude → /home/appuser/.claude (see docker-compose.yml).
+# Only relevant for an image built with the old uid 999.
 set -euo pipefail
 
 CLAUDE_HOME="${CLAUDE_HOME:-${HOME}/.claude}"

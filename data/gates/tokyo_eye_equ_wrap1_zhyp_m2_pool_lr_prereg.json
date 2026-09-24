@@ -1,0 +1,242 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_prereg",
+  "display_lineage": "Tokyo Eye EQU",
+  "status": "READY_TO_RUN",
+  "approval_status": "OPERATOR_CONFIRMED_SCOPE",
+  "execution_state": "STARTING",
+  "date_drafted": "2026-09-22",
+  "drafted_by": "Claude (session agent), on operator request to push ahead on A-pool-frontend",
+  "do_not_promote": true,
+  "promote_eligible": false,
+  "no_code_or_train_until_approved": true,
+  "no_train_until_seal_preconditions": true,
+  "standing_rule": "Prose without a failing test always loses to a convenient default.",
+  "agenda_ids": [
+    "A-pool-frontend"
+  ],
+  "question": "Holding the frontend architecture fixed at EquiformerPoolFrontend (cold_init, no MPtrj ckpt), does raising lr_frontend from the sealed 1e-5 to 1e-4 clear the already-locked M2 macro-F1 train + held-out capacity bars over the full 12-fold LOSO -- and does the sealed-matched 1e-5 arm, on the same real frontend, reproduce the SE(3)-lite card's stuck floor?",
+  "metric_family": "M2_macro_f1",
+  "parent_cards": {
+    "sealed_lite_m2": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_result.json",
+    "pool_frontend_diagnostic": "data/gates/diag_gradflow_pool_frontend/pool_base_seed0.json",
+    "pool_frontend_diagnostic_lr1e4": "data/gates/diag_gradflow_pool_frontend/pool_no_euc_lr1e-4_seed0.json",
+    "agenda": "data/gates/tokyo_eye_equ_agenda.json"
+  },
+  "why_this_card": {
+    "prior_scope_gap": "Sealed M2 card's SE(3)-lite frontend only executes backbone.blocks[0] (see lesson L-se3-lite-frontend-1-of-7-blocks) -- it could never test frontend-architecture capacity regardless of LR.",
+    "diagnostic_motivation": "scripts/diag_gradflow_pool_frontend.py, 4 of 12 train structures, 200 of 400 steps: at lr_frontend=1e-5 reproduced the sealed card's exact stuck floor (min_f1 0.327/0.324 vs sealed ~0.31-0.33); at lr_frontend=1e-4, all 4 structures cleared with real minority-class discrimination (train macro_f1 0.895, min_f1 0.865), including the structure pinned at exact majority under 1e-5 (1TEN:A acc=maj=0.933/lift=1.000/f1=0.32 -> acc=0.989/lift=1.060/f1=0.887) -- ruling out majority-sharpening as the explanation.",
+    "diagnostic_caveat_carried_forward": "That diagnostic used only 4 of 12 structures (76-155 residues) -- specifically 3 of the 4 lowest-held-out-F1 folds in the sealed 12-fold M2 result (1UBQ 0.307, 1TEN 0.316, 1LYZ 0.317; 1HHP 0.320 mid-pack) -- so it is train-fit-only evidence on historically hard-to-generalize structures, not a held-out result. This card exists to get the held-out answer.",
+    "governed_frontend_note": "Unlike the SE(3)-lite pilots, this card's frontend is real (EquiformerPoolFrontend, cold_init) and assert_governed_assembly runs with allow_off_path_frontend=False -- pure_hyp_pass is a live enforced gate here, not skipped. Spot-checked clean ahead of time (scripts/diag_gradflow_pool_frontend.py --mode verify-pure-hyp, 0 violations) but re-checked live in every fold's run_one_fold, not assumed.",
+    "not_a_biology_seal": true,
+    "intentional_leak": true
+  },
+  "isolation_discipline": {
+    "rule": "Exactly one variable changes between arms: lr_frontend. Frontend architecture, cold_init, max_neighbors, activation checkpointing, sdrp_coeff, seed, steps, folds, moe_mode, and lr_hyperbolic are identical across both arms.",
+    "arms": {
+      "sealed": {
+        "lr_frontend": 1e-05,
+        "purpose": "control -- same frontend architecture as lr_1e-4 arm, sealed-matched LR"
+      },
+      "lr_1e-4": {
+        "lr_frontend": 0.0001,
+        "purpose": "primary -- the arm the pool-frontend diagnostic motivated"
+      }
+    },
+    "amendment_rule": "Any change to locked bars, steps, seed, frontend, max_neighbors, or the two LR values requires a new signed card, not an edit to this one."
+  },
+  "design": {
+    "purpose_class": "harness_capacity_G_fit_M2 -- intentional leak; not biology; not defect-B close",
+    "frontend": {
+      "mode": "equiformer_v3_pool_cold_init",
+      "allow_off_path_frontend": false,
+      "cold_init": true,
+      "mptrj_checkpoint": "NONE (architecture only, addendum SS2.3 default)",
+      "max_neighbors": 16,
+      "activation_checkpointing": "gradient_checkpointing_block_list = [1]*7 on the backbone -- required to fit a 4GB GPU; verified bit-equivalent to no-checkpointing (max abs grad diff 4.5e-8 over 318 tensors, scripts/diag_gradflow_pool_frontend.py --mode verify-checkpoint)",
+      "se3_lite": "FORBIDDEN on this card (that is the entire point of it)"
+    },
+    "moe_mode": "ablated",
+    "loss_coeffs": {
+      "sdrp_coeff": 0.1,
+      "dehydron_coeff": 0.0,
+      "margin_coeff": 0.0
+    },
+    "structures": [
+      "1MBN:A",
+      "1LYZ:A",
+      "1BG1:A",
+      "1F88:A",
+      "2Z6H:A",
+      "1HHP:A",
+      "1TEN:A",
+      "1UBQ:A",
+      "1TIM:A",
+      "4OBE:A",
+      "1IVO:A",
+      "2SHP:A"
+    ],
+    "protocol": {
+      "split": "LOSO 12 folds -- folds_frozen.json (same folds as the sealed M2 card)",
+      "optimizer_steps": 400,
+      "model_selection": "NONE -- last step only",
+      "device": "cuda",
+      "device_stop": "If CUDA unavailable: STOP. No CPU fallback.",
+      "seed": 0
+    }
+  },
+  "pass_fail_bars": {
+    "status": "REUSED VERBATIM from the sealed M2 card -- not re-derived, since the target/reachability geometry (SDRP label distribution) is unchanged; only the frontend and lr_frontend differ",
+    "source": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_prereg.json#pass_fail_bars",
+    "G_finite": "no non-finite loss or gradient in any fold",
+    "G_grad_spine": {
+      "when": "step-0 of each fold",
+      "require_nonzero": [
+        "attn_layers",
+        "projector",
+        "moe",
+        "sdrp_head"
+      ],
+      "fail": "ABORT_WIRING"
+    },
+    "G_fit_train": {
+      "metric": "per-structure train macro-F1 at last step",
+      "bar": "macro-mean over the 11 train structures >= 0.40 AND min train-structure macro-F1 >= 0.40",
+      "stretch_not_pass_fail": 0.5,
+      "fail": "INCONCLUSIVE_UNDERFIT"
+    },
+    "S1_mean_macro_f1": {
+      "bar": "mean over the 12 held-out structures of macro-F1 >= 0.40"
+    },
+    "S2_consistency": {
+      "bar": "macro-F1 >= 0.40 on >= 10 of 12 held-out structures"
+    },
+    "verdict_table": {
+      "ABORT_NONFINITE": "G_finite fails",
+      "ABORT_WIRING": "G_grad_spine fails or unexpected _log_c drift",
+      "INCONCLUSIVE_UNDERFIT": "G_finite and G_grad_spine pass; G_fit_train fails",
+      "FAIL_NO_SIGNAL": "G_finite and G_grad_spine and G_fit_train pass; S1 or S2 fails",
+      "PASS_SIGNAL": "all gates -- capacity probe only; see not_claims"
+    },
+    "each_arm_scored_independently": true
+  },
+  "compute_budget": {
+    "status": "BLOCKING -- scope not yet authorized, see open_decision below",
+    "benchmark": {
+      "hardware": "single 4GB GPU (Quadro T1000), the only GPU available in this environment",
+      "method": "scripts/bench_pool_frontend_step_time.py --hold 1MBN:A --steps 25 (committed, re-runnable; originally a /tmp script -- see lesson L-tmp-scripts-not-durable in data/gates/tokyo_eye_equ_agenda.json)",
+      "result": "31.5s/step (stddev ~0.06s, flat), peak memory 3.18GB flat from step 1 through step 24 -- no fragmentation growth observed over 25 steps"
+    },
+    "cost_table_hours": {
+      "100_steps": {
+        "per_fold_min": 52.6,
+        "12_folds_1_arm_h": 10.5,
+        "12_folds_2_arms_h": 21.0
+      },
+      "150_steps": {
+        "per_fold_min": 78.9,
+        "12_folds_1_arm_h": 15.8,
+        "12_folds_2_arms_h": 31.5
+      },
+      "200_steps": {
+        "per_fold_min": 105.1,
+        "12_folds_1_arm_h": 21.0,
+        "12_folds_2_arms_h": 42.1
+      },
+      "300_steps": {
+        "per_fold_min": 157.7,
+        "12_folds_1_arm_h": 31.5,
+        "12_folds_2_arms_h": 63.1
+      },
+      "400_steps_card_lock": {
+        "per_fold_min": 210.3,
+        "12_folds_1_arm_h": 42.1,
+        "12_folds_2_arms_h": 84.1
+      }
+    },
+    "risk_note": "step-count reduction is not free: the pool-frontend diagnostic at lr=1e-4 stayed flat at the majority-basin F1 level through step ~80-120 before climbing to its final value by step 199 (on smaller, easier structures than several of these 12 folds) -- fewer than ~150-200 steps risks an underpowered INCONCLUSIVE_UNDERFIT read that reflects compute-starvation, not capacity, and 400 steps also keeps this card comparable step-for-step to the sealed lite M2 card.",
+    "open_decision": "RESOLVED 2026-09-22 (operator 'go' in session chat, on the agent's recommended default): run lr_1e-4 arm alone first, full locked 400 steps, all 12 folds (~42h). sealed (1e-5) control arm deferred to a follow-up run pending this arm's result.",
+    "background_execution_note": "runs incrementally -- each completed fold's JSON is written to data/gates/wrap1_zhyp_m2_pool_lr/<arm>/ immediately, and the runner skips folds that already have a result file on restart, so a long background run surviving across sessions loses at most the in-progress fold if interrupted."
+  },
+  "code_after_approval": {
+    "runner": "scripts/wrap1_zhyp_m2_pool_lr.py",
+    "exact_command_sealed_arm": "python3 scripts/wrap1_zhyp_m2_pool_lr.py --lr-frontend-arm sealed --device cuda --steps 400 --seed 0",
+    "exact_command_lr1e4_arm": "python3 scripts/wrap1_zhyp_m2_pool_lr.py --lr-frontend-arm lr_1e-4 --device cuda --steps 400 --seed 0",
+    "smoke_command": "python3 scripts/wrap1_zhyp_m2_pool_lr.py --lr-frontend-arm lr_1e-4 --smoke --device cuda --no-mlflow",
+    "stamp_location": "data/gates/",
+    "result_stamp_sealed_arm": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_sealed_result.json",
+    "result_stamp_lr1e4_arm": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_1e-4_result.json",
+    "fold_dir": "data/gates/wrap1_zhyp_m2_pool_lr/<arm>/"
+  },
+  "constraints": {
+    "no_promote": true,
+    "no_step_extension": true,
+    "no_cpu_fallback": true,
+    "no_se3_lite_on_this_card": true,
+    "no_lift_as_pass_fail": true,
+    "no_third_lr_value_without_new_card": true,
+    "amendment_rule": "Any change to locked bars, steps, seed, frontend, max_neighbors, or the two LR arm values requires a new signed card."
+  },
+  "not_claims": [
+    "PASS_SIGNAL is not a biology seal",
+    "intentional SDRP leak does not close defect B",
+    "not a MoE-on claim",
+    "not learned-curvature training",
+    "does not close A-typed-path-utilization (dark R_q/R_k/gamma/beta params already shown independent of this frontend/LR change)",
+    "cold_init pool result is not an MPtrj-warm-start claim"
+  ],
+  "pins": {
+    "git_commit": "de9ed8245cd1b7034eb1436437bb87a00fde54d3",
+    "files": {
+      "scripts/wrap1_zhyp_m2_pool_lr.py": "91d3831485b2a2eb1707934d3eefc49a3711841b77c6feb8c7123274a788fd16",
+      "scripts/wrap1_zhyp_g_fit.py": "9304ce826eab2971e98c5c8ed282c77d2055affa86567b969a98c11918aed4e1",
+      "science/tokyo_eye/v8/equiformer_pool_frontend.py": "51e1ddb390da685f7aff08a265004a41af3897fa3fb760723bc364fd4047a37b",
+      "science/tokyo_eye/v8/assembly_gate.py": "3411ae5fbeffd4a6676e96ce6ba9844262d99ce9161c81bc13d28b6eea239ad7",
+      "data/gates/tokyo_eye_equ_reachable_bars_design.json": "e221c03a7a3bb9e93920e5dfc552060c7e91c1e10230e808e715ca0ef5ec1efb"
+    },
+    "metric_family": "M2_macro_f1",
+    "G_fit_train_macro_f1_mean_min": 0.4,
+    "G_fit_train_macro_f1_min_structure_min": 0.4,
+    "S1_mean_macro_f1_min": 0.4,
+    "S2_min_structures_ge_0_40": 10,
+    "S2_of_n": 12,
+    "stretch_macro_f1": 0.5,
+    "optimizer_steps": 400,
+    "seed": 0,
+    "device": "cuda",
+    "sdrp_coeff": 0.1,
+    "frontend": "equiformer_v3_pool_cold_init",
+    "max_neighbors": 16,
+    "moe_mode": "ablated"
+  },
+  "seal_preconditions": {
+    "status": "CLEARED for lr_1e-4 arm -- sealed arm still requires a separate go",
+    "blocking_in_dependency_order": [
+      {
+        "id": 1,
+        "name": "smoke_wiring_check",
+        "require": "scripts/wrap1_zhyp_m2_pool_lr.py --smoke passes for both arms",
+        "status": "CLEARED -- both arms smoke-tested clean 2026-09-22"
+      },
+      {
+        "id": 2,
+        "name": "compute_scope_decision",
+        "require": "operator picks step count / arm order given the ~10-84h cost table above",
+        "status": "CLEARED -- lr_1e-4 arm, 400 steps, 12 folds"
+      },
+      {
+        "id": 3,
+        "name": "cuda_available",
+        "require": "CUDA for sealed run",
+        "status": "CHECK_AT_RUN"
+      },
+      {
+        "id": 4,
+        "name": "commit_then_pin",
+        "require": "Commit this runner + prereg; verify sha256 in pins matches",
+        "status": "PINS_RECORDED_NOT_YET_COMMITTED (git commit only on explicit operator request per harness policy)"
+      }
+    ]
+  },
+  "signed_draft": "Claude (session agent) 2026-09-22 -- drafted on operator instruction to push ahead on A-pool-frontend; NOT operator-signed, status intentionally DRAFT pending compute-scope decision | RUN AUTHORIZED: operator 'go' via session chat 2026-09-22, lr_1e-4 arm only, 400 steps, 12 folds"
+}

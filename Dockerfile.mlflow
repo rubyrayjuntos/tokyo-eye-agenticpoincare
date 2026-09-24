@@ -6,6 +6,15 @@ FROM tokyoeye-science:latest
 
 USER root
 
+# Run as the host user's uid/gid so the bind-mounted ~/.claude (credentials are
+# mode 600 and are rewritten on every token refresh) is owned by the same uid
+# inside the container. Host `claude login` == container login, no ACLs.
+ARG APPUSER_UID=1000
+ARG APPUSER_GID=1000
+RUN groupmod -o -g "${APPUSER_GID}" appuser \
+    && usermod -o -u "${APPUSER_UID}" -g "${APPUSER_GID}" appuser \
+    && chown -R "${APPUSER_UID}:${APPUSER_GID}" /home/appuser
+
 # Copy the official Node runtime rather than installing an unpinned distro package.
 COPY --from=node /usr/local/ /usr/local/
 
@@ -50,9 +59,7 @@ else:
     print(f"already patched {api}")
 PY
 RUN chown -R appuser:appuser \
-        /home/appuser/.codex \
-        /home/appuser/.claude \
-        /home/appuser/.mlflow \
+        /home/appuser \
         /workspace
 
 USER appuser

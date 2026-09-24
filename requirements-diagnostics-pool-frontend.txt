@@ -1,0 +1,18 @@
+# Additive deps for scripts/diag_gradflow_pool_frontend.py only.
+# Not part of the governed science image (requirements-science.txt) --
+# EquiformerPoolFrontend / EquiformerV3_OC (science/third_party/fairchem,
+# science/third_party/equiformer_v3_model) needs these on top of it.
+#
+# Install (no-deps, matches how these were resolved against the existing
+# torch==2.3.1 / torch_geometric==2.5.3 / cuda12.1 pins -- installing with
+# deps could pull in a conflicting torch/numpy):
+#
+#   pip install --no-deps -r requirements-diagnostics-pool-frontend.txt
+#   pip install --no-deps torch-cluster==1.6.3 -f https://data.pyg.org/whl/torch-2.3.1+cu121.html
+#
+# (torch-cluster needs the PyG wheel index, not PyPI, to match the
+# torch+cuda build already pinned in Dockerfile.science -- can't be a
+# plain line in this file.)
+ase==3.29.0
+lmdb==2.3.0
+huggingface_hub==1.32.0

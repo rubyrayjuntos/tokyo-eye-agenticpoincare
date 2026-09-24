@@ -90,6 +90,31 @@
         "data/gates/tokyo_eye_equ_sdrp_corpus_class_coverage_design.json"
       ],
       "process_gap": "treat INCONCLUSIVE_UNDERFIT or low moe grad as architecture incapacity before instruments are trustworthy"
+    },
+    {
+      "id": "L-se3-lite-frontend-1-of-7-blocks",
+      "date": "2026-09-22",
+      "title": "SE(3)-lite frontend findings cover a 1-block stub, not frontend architecture capacity",
+      "statement": "StubEquiformerFrontend._se3_lite_forward (science/tokyo_eye/v8/equiformer_frontend.py) only ever executes self.backbone.blocks[0]; 84 of 91 backbone-block parameters (6 of the nominal 7 blocks) are structurally outside the loss graph regardless of LR, steps, or coefficient tuning. Every prior SE(3)-lite finding describing the frontend as 'barely moved' (z_hyp G_fit, M2 capacity) was correctly measured but scoped to 1-block-stub capacity, not frontend architecture capacity -- do not cite those numbers as evidence about frontend capacity in general. Swapping in the real EquiformerV3 pool frontend (cold_init, no MPtrj ckpt) reaches gradient in 288/292 frontend tensors (only the unused OC20 energy head stays NONE) on the same diagnostic scale. Spine/wiring conclusions from those cards are unaffected -- this is a scope correction on the frontend side only, not a retraction.",
+      "evidence": [
+        "scripts/diag_gradflow_pool_frontend.py",
+        "data/gates/diag_gradflow_pool_frontend/pool_base_seed0.json",
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_result.json",
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_result.json"
+      ],
+      "process_gap": "reading 'frontend barely moved under SE(3)-lite' as evidence about frontend architecture capacity, rather than checking whether the lite stub's forward actually executes all nominal blocks"
+    },
+    {
+      "id": "L-tmp-scripts-not-durable",
+      "date": "2026-09-22",
+      "title": "A script's result being recorded durably does not make the script itself reproducible",
+      "statement": "Twice in one session, a script was written to /tmp on the reasoning that only its *output* needed to survive (a diagnostic finding, a benchmark number already quoted in a prereg). Both times this was wrong: if the script itself doesn't exist anywhere durable, nobody -- including a future instance of this agent -- can re-run it to verify the claim, reproduce it on different hardware, or extend it. First instance (gradient-flow diagnostics, checkpoint/pure_hyp verification) was caught by the operator and fixed by moving to scripts/diag_gradflow_pool_frontend.py with pinned deps. Second instance (scripts/bench_pool_frontend_step_time.py, used to size the M2 pool-LR prereg's compute budget) was caught by the operator asking directly why /tmp was being used again, after the first fix. Rule going forward: if a script's number is going to be quoted in a gate, card, or prereg, the script itself is part of the evidence and belongs in scripts/, not /tmp -- there is no such thing as a disposable-script/durable-result split.",
+      "evidence": [
+        "scripts/diag_gradflow_pool_frontend.py",
+        "scripts/bench_pool_frontend_step_time.py",
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_prereg.json"
+      ],
+      "process_gap": "treating a script as disposable scratch work because its output, not the script itself, seemed like the thing that needed to persist"
     }
   ],
   "items": [
@@ -102,7 +127,7 @@
       "opened": "2026-09-21",
       "blocked_by": [],
       "blocks": [],
-      "note": "Form locked: spine/sdrp ratio (B) + REQUIRED companion euc_skip share log (B2, diagnostic-only until s_max signed). r_min unsigned; M2 baseline attn/sdrp≈0.34 projector≈0.20 moe≈0.031. B2 exists so SUSPECTED euc_skip compensation cannot stay invisible to the next card. Prerequisite A-grad-logger-train-backward-align is DONE — ratios must use the aligned train-backward telemetry.",
+      "note": "Form locked: spine/sdrp ratio (B) + REQUIRED companion euc_skip share log (B2, diagnostic-only until s_max signed). r_min unsigned; M2 baseline attn/sdrp\u22480.34 projector\u22480.20 moe\u22480.031. B2 exists so SUSPECTED euc_skip compensation cannot stay invisible to the next card. Prerequisite A-grad-logger-train-backward-align is DONE \u2014 ratios must use the aligned train-backward telemetry.",
       "design": "data/gates/tokyo_eye_equ_grad_telemetry_next_card_design.json",
       "evidence": [
         "data/gates/tokyo_eye_equ_grad_telemetry_next_card_design.json",
@@ -153,27 +178,45 @@
         "L-wiring-capacity-separation"
       ],
       "evidence": [
-        "data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_result.json"
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_g_fit_result.json",
+        "scripts/diag_gradflow_pool_frontend.py",
+        "data/gates/diag_gradflow_pool_frontend/pool_base_seed0.json"
       ],
       "next": "sealed typed-path diagnostic card",
-      "blocks": []
+      "blocks": [],
+      "probe_2026_09_22_pool_frontend": {
+        "context": "Same R_q/R_k/gamma/beta near-dark check repeated under EquiformerPoolFrontend (cold_init) at lr_frontend=1e-5 and 1e-4, vs the 2026-09-21 SE(3)-lite probe",
+        "dark_ratio_vs_sdrp_head_grad": "~1e-3x head grad in all three conditions (pool_base, pool_no_euc, pool_no_euc_lr1e-4) -- same order as the SE(3)-lite probe",
+        "frontend_swap_rescues_dark_attn_params": false,
+        "10x_frontend_lr_rescues_dark_attn_params": false,
+        "note": "Third independent negative result (after uniform-edge_type and uniform-labels on 2026-09-21) pointing at something intrinsic to the hyperbolic attention module's own relation-typing mechanism, not the frontend or its LR."
+      }
     },
     {
       "id": "A-pool-frontend",
-      "status": "OPEN",
+      "status": "IN_FLIGHT",
       "priority": 2,
       "kind": "harness_or_biology",
       "title": "Equiformer-pool frontend capacity or biology (separate sealed card)",
       "opened": "2026-09-21",
-      "blocked_by": [
-        "A-reachable-bars-or-less-skewed-target"
-      ],
-      "note": "Lite result is not pool evidence. Capacity on pool still needs reachable bars.",
+      "blocked_by": [],
+      "note": "Lite result is not pool evidence. Capacity on pool still needs reachable bars. Diagnostic 2026-09-22 (scripts/diag_gradflow_pool_frontend.py; non-claim, do_not_promote, off-path -- cold_init pool frontend, no MPtrj ckpt, activation-checkpointed backbone, 4/12 train structures for GPU-memory reasons): gradient reaches 288/292 frontend tensors (vs 25/117 under SE(3)-lite -- see L-se3-lite-frontend-1-of-7-blocks). At lr_frontend=1e-5 (sealed value) train fit on those 4 structures reproduces the M2 card's stuck floor almost exactly (min_f1 0.327/0.324 vs sealed min ~0.31-0.33). At lr_frontend=1e-4, same 4 structures clear decisively -- train macro_f1 0.895, min_f1 0.865 -- with per-structure lift>1 and macro_f1 well above majority-basin on every structure, including the one pinned at exact majority under 1e-5 (1TEN:A: acc=maj=0.933/lift=1.000/f1=0.32 -> acc=0.989/lift=1.060/f1=0.887), which rules out majority-sharpening as the explanation. TRAIN-FIT ONLY, NOT HELD-OUT: 4 of 12 structures (76-155 residues), 200 of 400 steps. Those 4 are exactly 3 of the 4 lowest-held-out-F1 folds in the sealed 12-fold M2 result (1UBQ 0.307, 1TEN 0.316, 1LYZ 0.317 -- the 3 lowest of 12; 1HHP 0.320 mid-pack), i.e. historically hard-to-generalize structures, not easy ones -- but this diagnostic still says nothing about held-out performance at this LR/frontend combination. Process checks passed clean for this exact config: gradient-checkpointing bit-equivalence (max abs grad diff 4.5e-8 over 318 tensors) and pure_hyp_pass (0 violations). Execution started 2026-09-22 18:13 UTC: lr_1e-4 arm, full 400 steps, all 12 folds (operator 'go' on the agent's recommended scope; prereg data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_prereg.json flipped DRAFT->READY_TO_RUN for this arm only). Benchmarked at 31.5s/step, ~42h expected wall-clock, single 4GB GPU. sealed (1e-5) control arm on the same pool frontend is a planned follow-up once this arm's result lands, NOT skipped -- without it, 'the LR change specifically mattered' stays an inference from the earlier 4-structure diagnostic, not this sealed run's own isolation. Do not read or report on individual fold results before all 12 land.",
       "evidence": [
-        "data/gates/tokyo_eye_equ_next_experiment_sealed.json"
+        "data/gates/tokyo_eye_equ_next_experiment_sealed.json",
+        "scripts/diag_gradflow_pool_frontend.py",
+        "requirements-diagnostics-pool-frontend.txt",
+        "data/gates/diag_gradflow_pool_frontend/pool_base_seed0.json",
+        "data/gates/diag_gradflow_pool_frontend/pool_no_euc_seed0.json",
+        "data/gates/diag_gradflow_pool_frontend/pool_no_euc_lr1e-4_seed0.json",
+        "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_prereg.json",
+        "scripts/wrap1_zhyp_m2_pool_lr.py"
       ],
-      "next": "sealed prereg when bars/target ready",
-      "blocks": []
+      "next": "sealed prereg when bars/target ready Directionally-promising diagnostic (2026-09-22) supports drafting that prereg sooner rather than later: isolate frontend LR alone (pool@1e-5 vs pool@1e-4, frontend architecture held fixed), full 12-structure LOSO, scored against the already-locked M2 mean+min macro-F1 bar -- do not combine the LR change with any other simultaneous change (e.g. euc_skip removal).",
+      "blocks": [],
+      "related_lessons": [
+        "L-se3-lite-frontend-1-of-7-blocks",
+        "L-measurement-before-architecture"
+      ]
     },
     {
       "id": "A-moe-verify-on-pool",
@@ -324,10 +367,8 @@
       "title": "Reachable capacity bars and/or less majority-dominated target",
       "opened": "2026-09-21",
       "blocked_by": [],
-      "blocks": [
-        "A-pool-frontend"
-      ],
-      "note": "Prerequisite for any future capacity claim. A-r5-graph-lever-joint-check DONE: wrap (frozen, R1\u2194R2 only) and dropping R5 both leave lift\u22651.30 structurally unreachable (max-lift macro mean ~1.16; 0/12 at drop-R5). GENERALIZATION (carry forward): salt/hydrophobe stay nearly empty even with R5 fully removed \u2014 the SDRP argmax is dominated by R0/R1 edge counts on these graphs, not by R5 crowding minority classes. That forecloses further \"adjust some other edge threshold / demote another relation\" proposals as a path to rescuing the inherited lift bar; design around a non-argmax target or a reachable metric instead. Next is that redesign \u2014 not a wrap/R5 (or other edge-threshold) rebuild.",
+      "blocks": [],
+      "note": "Prerequisite for any future capacity claim. A-r5-graph-lever-joint-check DONE: wrap (frozen, R1\u2194R2 only) and dropping R5 both leave lift\u22651.30 structurally unreachable (max-lift macro mean ~1.16; 0/12 at drop-R5). GENERALIZATION (carry forward): salt/hydrophobe stay nearly empty even with R5 fully removed \u2014 the SDRP argmax is dominated by R0/R1 edge counts on these graphs, not by R5 crowding minority classes. That forecloses further \"adjust some other edge threshold / demote another relation\" proposals as a path to rescuing the inherited lift bar; design around a non-argmax target or a reachable metric instead. Next is that redesign \u2014 not a wrap/R5 (or other edge-threshold) rebuild. (2026-09-22: blocks edge to A-pool-frontend cleared -- this item closed PASS/reachability-established and no longer gates it; see A-pool-frontend for the pool-frontend diagnostic that followed.)",
       "related_lessons": [
         "L-bar-reuse-without-reachability"
       ],
