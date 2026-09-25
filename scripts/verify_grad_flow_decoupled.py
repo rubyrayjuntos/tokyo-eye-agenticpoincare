@@ -124,7 +124,8 @@ def verify_train_mode(system: torch.nn.Module) -> dict[str, Any]:
 
 
 def verify_grad_flow(
-    device: torch.device, steps: int, seed: int, no_mlflow: bool
+    device: torch.device, steps: int, seed: int, no_mlflow: bool,
+    dehydron_coeff: float = DEHYDRON_COEFF, mech_lr_scale: float = 1.0, tag: str = "",
 ) -> dict[str, Any]:
     torch.manual_seed(seed)
     cfg = load_weight_map(REPO_ROOT / DEFAULT_WEIGHT_MAP)
@@ -140,12 +141,20 @@ def verify_grad_flow(
     bce0 = _step0_dehydron_bce(system, hold_batch, tau=float(cfg["tau_start"]))
     train_mode = verify_train_mode(system)
 
+    lr_hyp = float(cfg["lr_hyperbolic"])
+    mech_ids = {id(q) for q in system.spine.mechanism_head.parameters()}
+    spine_params = [q for q in system.spine.parameters() if q.requires_grad]
     groups = [
-        {"params": [p for p in system.frontend.parameters() if p.requires_grad],
+        {"params": [q for q in system.frontend.parameters() if q.requires_grad],
          "lr": 1e-4, "name": "backbone"},
-        {"params": [p for p in system.spine.parameters() if p.requires_grad],
-         "lr": float(cfg["lr_hyperbolic"]), "name": "hyperbolic"},
     ]
+    if mech_lr_scale != 1.0:  # single-variable variant: only the mechanism head's LR differs
+        groups.append({"params": [q for q in spine_params if id(q) not in mech_ids],
+                       "lr": lr_hyp, "name": "hyperbolic"})
+        groups.append({"params": [q for q in spine_params if id(q) in mech_ids],
+                       "lr": lr_hyp * float(mech_lr_scale), "name": "mechanism_head"})
+    else:  # baseline grouping, unchanged
+        groups.append({"params": spine_params, "lr": lr_hyp, "name": "hyperbolic"})
     optimizer = torch.optim.Adam(groups)
     radius = CurriculumRadiusController(float(cfg["tau_start"]), float(cfg["tau_end"]), steps)
     gumbel = GumbelTemperatureSchedule(
@@ -166,13 +175,14 @@ def verify_grad_flow(
         _mlflow.set_tracking_uri("http://127.0.0.1:5000")
         _mlflow.set_experiment(MLFLOW_EXPERIMENT)
         mlflow = _mlflow
-        mlflow.start_run(run_name=f"verify_grad_flow_decoupled_r2_fold0_{hold.replace(':', '')}")
+        mlflow.start_run(run_name=f"verify_grad_flow_decoupled_r2_fold0_{hold.replace(':', '')}{tag}")
         mlflow.set_tags({
             "diagnostic": "true", "do_not_promote": "true",
             "arch": "decoupled_arch", "hold": hold, "mode": "verify-grad-flow",
+            "variant": tag or "baseline",
         })
         mlflow.log_params({
-            "steps": steps, "seed": seed, "dehydron_coeff": DEHYDRON_COEFF,
+            "steps": steps, "seed": seed, "dehydron_coeff": dehydron_coeff, "mech_lr_scale": mech_lr_scale,
             "sdrp_coeff": M2.SDRP_COEFF, "lr_frontend": 1e-4,
             "lr_hyperbolic": float(cfg["lr_hyperbolic"]), "max_neighbors": M2.MAX_NEIGHBORS,
             **{f"summary_{k}": v for k, v in system.spine.model_summary().items()},
@@ -191,7 +201,7 @@ def verify_grad_flow(
             m = G.run_step_sdrp_only(
                 system, optimizer, train_batches, epoch=step, radius=radius, gumbel=gumbel,
                 explore_epsilon=float(eps_sched.epsilon(step)), max_grad_norm=MAX_GRAD_NORM,
-                sdrp_coeff=M2.SDRP_COEFF, dehydron_coeff=DEHYDRON_COEFF,
+                sdrp_coeff=M2.SDRP_COEFF, dehydron_coeff=dehydron_coeff,
             )
             if m.get("nan_abort", 0.0) >= 1.0 or not math.isfinite(float(m["loss_total"])):
                 raise RuntimeError(f"non-finite at step {step}: {m}")
@@ -234,7 +244,7 @@ def verify_grad_flow(
             for name, g in gates.items():
                 mlflow.set_tag(f"gate_{name}", "PASS" if g["pass"] else "FAIL")
             mlflow.set_tag("all_gates", "PASS" if result["all_pass"] else "FAIL")
-            out = REPO_ROOT / "data" / "gates" / "verify_grad_flow_decoupled_result.json"
+            out = REPO_ROOT / "data" / "gates" / f"verify_grad_flow_decoupled_result{tag}.json"
             out.write_text(json.dumps(result, indent=2, default=float))
             mlflow.log_artifact(str(out))
         return result
@@ -250,6 +260,10 @@ def main() -> int:
     ap.add_argument("--steps", type=int, default=100)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--no-mlflow", action="store_true")
+    ap.add_argument("--dehydron-coeff", type=float, default=DEHYDRON_COEFF)
+    ap.add_argument("--mech-lr-scale", type=float, default=1.0,
+                    help="multiplier on lr_hyperbolic for MechanismScoreHead params only")
+    ap.add_argument("--tag", default="", help="suffix for run name / result file, e.g. _dcoef0.3")
     a = ap.parse_args()
     device = torch.device(a.device)
     rc = 0
@@ -260,7 +274,7 @@ def main() -> int:
         print(json.dumps(r))
         rc = 0 if r["pass"] else 1
     if a.mode in ("verify-grad-flow", "all"):
-        res = verify_grad_flow(device, a.steps, a.seed, a.no_mlflow)
+        res = verify_grad_flow(device, a.steps, a.seed, a.no_mlflow, a.dehydron_coeff, a.mech_lr_scale, a.tag)
         print(json.dumps(res, indent=2, default=float))
         rc = 0 if res["all_pass"] else 1
     return rc

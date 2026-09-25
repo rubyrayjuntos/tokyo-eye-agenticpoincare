@@ -1,0 +1,66 @@
+{
+  "hold": "1MBN:A",
+  "n_train": 11,
+  "tau": 0.7,
+  "passes": {
+    "bce_only": {
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.0015946697379408785,
+        "attn_layers": 0.0013458876376026844,
+        "moe": 0.00012145617617800988,
+        "euc_skip": 0.21930215231155087,
+        "sdrp_head": 0.0,
+        "mechanism_head": 0.7569078720039519
+      },
+      "grad_input_z_hyp_l2": 0.0015203963140901688,
+      "grad_input_h_euc_l2": 0.0013806967537088625,
+      "grad_input_z_hyp_rms": 2.360909382670652e-06,
+      "grad_input_h_euc_rms": 2.143980415004376e-06,
+      "z_over_h_l2": 1.1011804800772087,
+      "z_over_h_rms": 1.1011804800772087
+    },
+    "sdrp_only": {
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.02394533039247944,
+        "attn_layers": 0.014306012750702358,
+        "moe": 0.001269896320957692,
+        "euc_skip": 0.03400139620674636,
+        "sdrp_head": 0.1528593897154225,
+        "mechanism_head": 0.0
+      },
+      "grad_input_z_hyp_l2": 0.0026438901506124738,
+      "grad_input_h_euc_l2": 3.4110463320462214e-05,
+      "grad_input_z_hyp_rms": 4.105498681813645e-06,
+      "grad_input_h_euc_rms": 5.2967579672615764e-08,
+      "z_over_h_l2": 77.50965226633127,
+      "z_over_h_rms": 77.50965226633129
+    },
+    "combined": {
+      "bucket_grad_l2": {
+        "_log_c": 0.0,
+        "projector": 0.023708834413718297,
+        "attn_layers": 0.014238985973457388,
+        "moe": 0.001263502769076638,
+        "euc_skip": 0.22157301038148616,
+        "sdrp_head": 0.152859389715469,
+        "mechanism_head": 0.7569078729267749
+      },
+      "grad_input_z_hyp_l2": 0.0030334545246855087,
+      "grad_input_h_euc_l2": 0.0013810388515566592,
+      "grad_input_z_hyp_rms": 4.710423974896605e-06,
+      "grad_input_h_euc_rms": 2.1445116330895353e-06,
+      "z_over_h_l2": 2.19650194581152,
+      "z_over_h_rms": 2.1965019458115203
+    }
+  },
+  "checks": {
+    "bce_reaches_projector": true,
+    "bce_reaches_attn_layers": true,
+    "bce_reaches_mechanism_head": true,
+    "bce_grad_wrt_z_hyp_nonzero": true,
+    "sdrp_only_mechanism_head_zero": true
+  },
+  "all_pass": true
+}
