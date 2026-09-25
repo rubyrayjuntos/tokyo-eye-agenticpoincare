@@ -30,6 +30,7 @@ for p in (str(REPO_ROOT), str(SCRIPTS)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
+import git_provenance  # noqa: E402
 import wrap1_zhyp_g_fit as G  # noqa: E402
 from experiments.training.v8.run_v8_experiment import (  # noqa: E402
     DEFAULT_WEIGHT_MAP,
@@ -186,7 +187,9 @@ def verify_grad_flow(
             "sdrp_coeff": M2.SDRP_COEFF, "lr_frontend": 1e-4,
             "lr_hyperbolic": float(cfg["lr_hyperbolic"]), "max_neighbors": M2.MAX_NEIGHBORS,
             **{f"summary_{k}": v for k, v in system.spine.model_summary().items()},
+            **git_provenance.provenance_params(REPO_ROOT),
         })
+        git_provenance.log_dirty_diff(mlflow, REPO_ROOT)
         mlflow.log_metrics({
             "bce_step0": bce0["bce_step0"], "label_prior": bce0["label_prior"],
             "bce_constant_prior": bce0["bce_constant_prior"],
@@ -264,7 +267,10 @@ def main() -> int:
     ap.add_argument("--mech-lr-scale", type=float, default=1.0,
                     help="multiplier on lr_hyperbolic for MechanismScoreHead params only")
     ap.add_argument("--tag", default="", help="suffix for run name / result file, e.g. _dcoef0.3")
+    ap.add_argument("--allow-dirty", action="store_true",
+                    help="run even if tracked code differs from HEAD (diff is logged to MLflow)")
     a = ap.parse_args()
+    git_provenance.require_clean_code(REPO_ROOT, a.allow_dirty)
     device = torch.device(a.device)
     rc = 0
     if a.mode in ("verify-train-mode",):

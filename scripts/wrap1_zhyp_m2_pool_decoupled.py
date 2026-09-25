@@ -38,6 +38,7 @@ if str(REPO_ROOT) not in sys.path:
 if str(REPO_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
+import git_provenance  # noqa: E402
 import wrap1_zhyp_g_fit as G  # noqa: E402  (sibling script -- reuse, not fork)
 from experiments.training.v8.run_v8_experiment import (  # noqa: E402
     build_equiformer_pool_system,
@@ -297,7 +298,9 @@ def run_one_fold(
                 "steps": steps, "seed": seed, "max_neighbors": MAX_NEIGHBORS,
                 "backbone_train_mode": str(ARMS[arm]["backbone_train_mode"]),
                 "card": card.card, "metric_family": card.metric_family,
+                **git_provenance.provenance_params(REPO_ROOT),
             })
+            git_provenance.log_dirty_diff(mlflow, REPO_ROOT)
             step0_metrics = {"G_grad_spine_ok": 1.0 if step0["ok"] else 0.0, "curvature_c": float(c_init)}
             for b, gval in (step0.get("grad_l2") or {}).items():
                 step0_metrics[f"grad_l2_{b}"] = float(gval)
@@ -455,7 +458,10 @@ def main() -> int:
     p.add_argument("--folds", default="", help="comma-separated hold tags to run; default = all 12")
     p.add_argument("--smoke", action="store_true", help="1 fold, 3 steps, no stamps -- bypasses READY_TO_RUN")
     p.add_argument("--allow-unsealed", action="store_true")
+    p.add_argument("--allow-dirty", action="store_true",
+                   help="run even if tracked code differs from HEAD (diff is logged to MLflow)")
     args = p.parse_args()
+    git_provenance.require_clean_code(REPO_ROOT, args.allow_dirty)
     arm = args.lr_frontend_arm
     card = _card_paths(arm)
 
