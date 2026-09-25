@@ -319,6 +319,9 @@ def run_step_sdrp_only(
     optimizer.zero_grad(set_to_none=True)
 
     loss_sum = 0.0
+    sdrp_sum = 0.0
+    bce_sum = 0.0
+    bce_per_structure: list[float] = []
     for batch in batches:
         out = system(
             batch["x"],
@@ -330,10 +333,14 @@ def run_step_sdrp_only(
         loss_sdrp = sdrp_cross_entropy(out["sdrp_logits"], batch["sdrp_target"])
         # Do NOT multiply disabled terms by 0.0 -- omit them.
         loss = float(sdrp_coeff) * loss_sdrp
+        sdrp_sum += float(loss_sdrp.detach()) / float(n)
         if float(dehydron_coeff) != 0.0:
-            loss = loss + float(dehydron_coeff) * F.binary_cross_entropy_with_logits(
+            loss_bce = F.binary_cross_entropy_with_logits(
                 out["mechanism_score"], batch["dehydron_labels"]
             )
+            loss = loss + float(dehydron_coeff) * loss_bce
+            bce_sum += float(loss_bce.detach()) / float(n)
+            bce_per_structure.append(float(loss_bce.detach()))
         loss = loss / float(n)
         if not torch.isfinite(loss):
             return {
@@ -383,6 +390,10 @@ def run_step_sdrp_only(
         "max_grad_norm": float(max_grad_norm),
         "bucket_grad_l2": bucket_l2,
         "euc_skip_share": euc_share,
+        "loss_sdrp_ce": float(sdrp_sum),
+        "loss_dehydron_bce": float(bce_sum),
+        "bce_per_structure": bce_per_structure,
+        "explore_epsilon": float(explore_epsilon),
     }
 
 

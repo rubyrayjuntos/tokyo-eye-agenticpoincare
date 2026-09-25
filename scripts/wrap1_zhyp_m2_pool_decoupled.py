@@ -78,6 +78,7 @@ DECOUPLE_R2_INPUT = True
 MAX_GRAD_NORM = 1.0
 MAX_NEIGHBORS = 16  # pool-frontend memory bound on a 4GB card
 LOG_EVERY = 10
+DENSE_LOG_STEPS = 150  # log EVERY step through here (sparse spikes fell between LOG_EVERY points)
 BOOTSTRAP_DRAWS = 10000
 BOOTSTRAP_SEED = 0
 S2_OF_N = 12
@@ -256,6 +257,8 @@ def run_one_fold(
     finite = True
     clip_active_count = 0
     clip_logged = 0
+    steps_run = 0
+    clip_all_steps = 0
     curve: list[dict[str, Any]] = []
     abort_wiring_c = False
 
@@ -320,10 +323,15 @@ def run_one_fold(
             if metrics.get("nan_abort", 0.0) >= 1.0 or not math.isfinite(float(metrics.get("loss_total", float("nan")))):
                 finite = False
                 break
-            if step % LOG_EVERY == 0 or step == steps - 1:
-                clip_logged += 1
-                if metrics.get("clip_active", 0.0) >= 1.0:
-                    clip_active_count += 1
+            steps_run += 1
+            if metrics.get("clip_active", 0.0) >= 1.0:
+                clip_all_steps += 1
+            sparse_point = step % LOG_EVERY == 0 or step == steps - 1
+            if step < DENSE_LOG_STEPS or sparse_point:
+                if sparse_point:  # keeps clip_active_fraction comparable to the baseline card
+                    clip_logged += 1
+                    if metrics.get("clip_active", 0.0) >= 1.0:
+                        clip_active_count += 1
                 last_bucket = dict(metrics.get("bucket_grad_l2") or {})
                 euc_share = float(metrics.get("euc_skip_share", float("nan")))
                 c_now = G._curvature_c(system)
@@ -335,6 +343,12 @@ def run_one_fold(
                     "step": step, "loss_total": metrics["loss_total"],
                     "preclip_norm": metrics["preclip_norm"], "postclip_norm": metrics["postclip_norm"],
                     "clip_active": metrics["clip_active"], "c": c_now,
+                    "loss_sdrp_ce": metrics.get("loss_sdrp_ce"),
+                    "loss_dehydron_bce": metrics.get("loss_dehydron_bce"),
+                    "tau_ceiling": metrics.get("tau_ceiling"),
+                    "gumbel_temperature": metrics.get("gumbel_temperature"),
+                    "explore_epsilon": metrics.get("explore_epsilon"),
+                    "bce_per_structure": metrics.get("bce_per_structure"),
                     "bucket_grad_l2": last_bucket, "euc_skip_share": euc_share,
                 })
                 print(f"[m2_pool_lr] hold={hold} arm={arm} step={step} "
@@ -347,6 +361,14 @@ def run_one_fold(
                         "curvature_c": float(c_now), "G_grad_spine_ok": 1.0, "euc_skip_share": euc_share,
                     }
                     payload["backbone_reg_modules_live"] = float(reg_live)
+                    for k in ("loss_sdrp_ce", "loss_dehydron_bce", "tau_ceiling",
+                              "gumbel_temperature", "explore_epsilon"):
+                        if metrics.get(k) is not None:
+                            payload[k] = float(metrics[k])
+                    bps = metrics.get("bce_per_structure") or []
+                    if bps:
+                        payload["bce_per_structure_max"] = float(max(bps))
+                        payload["bce_per_structure_min"] = float(min(bps))
                     for b, gval in last_bucket.items():
                         payload[f"grad_l2_{b}"] = float(gval)
                     mlflow.log_metrics(payload, step=step)
@@ -377,6 +399,7 @@ def run_one_fold(
             and min_f1 >= card.g_fit_train_min_struct
         )
         clip_frac = float(clip_active_count) / float(clip_logged) if clip_logged else float("nan")
+        clip_frac_all = float(clip_all_steps) / float(steps_run) if steps_run else float("nan")
 
         if mlflow is not None:
             final = {
@@ -388,6 +411,7 @@ def run_one_fold(
                 "G_grad_spine_ok": 1.0 if step0["ok"] else 0.0, "G_finite": 1.0 if finite else 0.0,
                 "c_drift": float(c_final - c_init),
                 "clip_active_fraction": float(clip_frac) if math.isfinite(clip_frac) else float("nan"),
+                "clip_active_fraction_all_steps": float(clip_frac_all) if math.isfinite(clip_frac_all) else float("nan"),
                 "edge_type_shuffle_abs_delta": float(shuffle.get("sdrp_logits_abs_delta_mean", float("nan"))),
             }
             mlflow.log_metrics(final, step=steps)
@@ -411,7 +435,8 @@ def run_one_fold(
         "c_init": c_init, "c_final": c_final, "c_drift": float(c_final - c_init),
         "lr_frontend": lr_frontend, "lr_hyperbolic": lr_hyperbolic,
         "backbone_train_mode": ARMS[arm]["backbone_train_mode"],
-        "clip_active_fraction": clip_frac, "train_per_structure": train_per,
+        "clip_active_fraction": clip_frac, "clip_active_fraction_all_steps": clip_frac_all,
+        "train_per_structure": train_per,
         "train_macro_lift": macro_lift, "train_min_lift": min_lift,
         "train_macro_f1": macro_f1_mean, "train_min_f1": min_f1,
         "train_score_macro": macro_f1_mean, "train_score_min": min_f1,

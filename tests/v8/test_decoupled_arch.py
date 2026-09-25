@@ -192,3 +192,55 @@ def test_label_side_equals_legacy_on_real_loso_structures() -> None:
         chem = chemistry_gate_features(n, dec.edge_index, dec.edge_type, ca_coords(recs))
         assert float(np.abs(chem[:, 1]).max()) == 0.0  # tau column must not carry the label
         assert int((dec.edge_type == 3).sum()) >= int((legacy.edge_type == 3).sum())
+
+
+def _pairs(ei: np.ndarray, et: np.ndarray, types: set[int]) -> set[tuple[int, int]]:
+    return {(int(a), int(b)) for a, b, t in zip(ei[0], ei[1], et) if int(t) in types}
+
+
+def test_hbond_connectivity_survives_decoupling_synthetic() -> None:
+    """Option (a): every legacy R1/R2 pair stays connected in the model input,
+    typed R1 (or R4 when a coincident salt bridge outranks it) -- never dropped, never R2."""
+    from science.tokyo_eye.v8.r0_r5_graph import R4_SALT_BRIDGE
+
+    recs = _hbond_records()
+    legacy = build_r0_r5_graph(recs)
+    dec = build_r0_r5_graph(recs, decouple_r2_input=True)
+    legacy_hb = _pairs(legacy.edge_index, legacy.edge_type, {R1_HBOND, R2_DEHYDRON})
+    assert legacy_hb, "fixture must contain an H-bond"
+    assert legacy_hb <= _pairs(dec.edge_index, dec.edge_type, {R1_HBOND, R4_SALT_BRIDGE})
+    assert not _pairs(dec.edge_index, dec.edge_type, {R2_DEHYDRON})
+
+
+def test_hbond_connectivity_survives_decoupling_real_structures() -> None:
+    import sys
+    from pathlib import Path
+
+    import pytest
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+    try:
+        import wrap1_zhyp_g_fit as G
+        from science.tokyo_eye.v8.loader import (
+            ensure_pdb_cached,
+            parse_residue_records_from_pdb_chain,
+        )
+        from science.tokyo_eye.v8.r0_r5_graph import R4_SALT_BRIDGE
+
+        loaded = []
+        for t in G._all_structure_tags()[:3]:
+            pdb, ch = G._parse_tag(t)
+            loaded.append([
+                r for r in parse_residue_records_from_pdb_chain(
+                    ensure_pdb_cached(pdb, G.PDB_DIR), ch)
+                if r.get_atom("CA") is not None
+            ])
+    except Exception as exc:  # noqa: BLE001
+        pytest.skip(f"real structures unavailable: {exc}")
+
+    for recs in loaded:
+        legacy = build_r0_r5_graph(recs)
+        dec = build_r0_r5_graph(recs, decouple_r2_input=True)
+        legacy_hb = _pairs(legacy.edge_index, legacy.edge_type, {R1_HBOND, R2_DEHYDRON})
+        got = _pairs(dec.edge_index, dec.edge_type, {R1_HBOND, R4_SALT_BRIDGE})
+        assert legacy_hb <= got, f"{len(legacy_hb - got)} H-bond pairs lost from model input"

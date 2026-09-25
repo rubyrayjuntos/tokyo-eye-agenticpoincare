@@ -201,9 +201,15 @@ def verify_grad_flow(
                 row[name] = float(m["bucket_grad_l2"].get(bucket, 0.0))
             # grads were cleared by optimizer.step()->zero on next call; read value-path now
             row["grad_l2_attn_value_path"] = _value_path_grad_l2(system)
+            for k in ("loss_sdrp_ce", "loss_dehydron_bce", "tau_ceiling",
+                      "gumbel_temperature", "explore_epsilon", "clip_active"):
+                row[k] = float(m.get(k, float("nan")))
+            bps = m.get("bce_per_structure") or []
+            row["bce_per_structure_max"] = float(max(bps)) if bps else float("nan")
+            row["bce_per_structure_min"] = float(min(bps)) if bps else float("nan")
             per_step.append(row)
-            if mlflow is not None and (step % 10 == 0 or step == steps - 1):
-                mlflow.log_metrics({k: v for k, v in row.items() if k != "step"}, step=step)
+            if mlflow is not None:  # every step: spikes fell between the old every-10th samples
+                mlflow.log_metrics({k: v for k, v in row.items() if k != "step" and v == v}, step=step)
             if step % 10 == 0 or step == steps - 1:
                 print(f"[verify-grad-flow] step={step} loss={row['loss_total']:.4f} "
                       + " ".join(f"{k.replace('grad_l2_', '')}={row[k]:.2e}" for k in
@@ -221,7 +227,7 @@ def verify_grad_flow(
                               "pass": bce0["bce_step0"] > BCE_STEP0_MIN}
         gates["no_r2_in_model_input"] = leak
         gates["train_mode_14_of_14"] = train_mode
-        result = {"hold": hold, "steps": steps, "gates": gates,
+        result = {"hold": hold, "steps": steps, "per_step": per_step, "gates": gates,
                   "all_pass": all(g["pass"] for g in gates.values()),
                   "model_summary": system.spine.model_summary()}
         if mlflow is not None:
