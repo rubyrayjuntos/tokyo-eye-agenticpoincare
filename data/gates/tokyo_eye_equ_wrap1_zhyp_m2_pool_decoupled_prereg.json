@@ -73,5 +73,27 @@
  "observed_clipping_in_diagnostic": "preclip_norm > max_grad_norm(1.0) at logged steps 0 (1.05), 50 (4.66), 80 (1.11) of 100; logged every 10 steps only. Not confined to the first steps.",
  "telemetry_reconciliation": "Terminal logged step of run 325ed1a2e04a4db7ae5615261e6da71a is 99: mech 0.129, sdrp 0.0212, attn 0.00211, moe 2.6e-4, value-path 2.3e-4, preclip 0.398. Step 90 values are mech 0.284, sdrp 0.0248, attn 0.0044, moe 4.8e-4, value 3.5e-4, preclip 0.829.",
  "isolation_check": "MLflow run 0afb43f249464302be82349c537908fc (diag/gradflow-decoupled-r2); data/gates/verify_mechanism_grad_isolation_result.json",
- "mechanism_gradient_note": "MechanismScoreHead is one head on the concatenation [z_hyp, h_euc] with one BCE loss; z_hyp and h_euc are its two input halves, not two loss terms."
+ "mechanism_gradient_note": "MechanismScoreHead is one head on the concatenation [z_hyp, h_euc] with one BCE loss; z_hyp and h_euc are its two input halves, not two loss terms.",
+ "corrections": [
+  {
+   "date": "2026-09-25",
+   "field": "drafted_by",
+   "correction": "Cites run 325ed1a2 as the final 100-step diagnostic. That run's MLflow tag mlflow.source.git.commit is addbcab0aa2107a13de408a3b551f0613ee77f47 (HEAD at launch). Timeline (UTC, 2026-09-25): 325ed1a2 started 00:32:49; 79b5b58 (decoupled architecture) was committed at 01:37:15, 64 min later; scripts/verify_grad_flow_decoupled.py was not tracked at addbcab. So it ran from an uncommitted working tree. Its result artifact's model_summary equals that of 9352afc6 (sdrp_head LIVE, mechanism_head LIVE[z_hyp,h_euc], evidential_head STRUCTURALLY_EXCLUDED, curvature FROZEN, attention_relation_typing value_path), so it ran the decoupled architecture. It logged only every 10th step and its artifact has no per_step data. The run matching pin 158491f with dense per-step logging is 9352afc6cc7d4afd8fa9377d8576d57f (started 01:58:20, 8 s after 158491f was committed at 01:58:12; git_commit 158491f128f3904218a61b59e6fbf0953a0ddf50; 100 steps; all 8 gates PASS). The two agree on all shared logged steps to <=5e-5 relative (seed 0, identical logged params), so the gate conclusion is unchanged. The exact bytes of 325ed1a2's working tree were never committed and are not recoverable from git or MLflow; local editor/shell history was not checked. Treated as closed."
+  },
+  {
+   "date": "2026-09-25",
+   "field": "observed_clipping_in_diagnostic",
+   "correction": "Superseded by dense per-step data. Run 9352afc6cc7d4afd8fa9377d8576d57f: clip_active on 27/100 steps (0-2, 44-50, 52-57, 62-64, 66, 68, 76, 77, 80, 85, 89, 94), 24/56 from step 44 on, max preclip_norm 8.31 at step 49. Seed 1 (run f30b8567dda049799cd1efd4cc0b94a2): 45/100 clipped, first burst step 38, max 4.99 at step 44. Clipping is not confined to the first steps and is not seed-specific. Cause not established."
+  },
+  {
+   "date": "2026-09-25",
+   "field": "pins",
+   "correction": "pins.git_commit (158491f) predates 603a216 and 46b6280. Per git stat, neither touched science/ (model/graph): 603a216 changed scripts/verify_grad_flow_decoupled.py and added evidence JSONs; 46b6280 added scripts/git_provenance.py and a clean-tree guard, --allow-dirty and git_commit/git_dirty/git_dirty_files params to scripts/verify_grad_flow_decoupled.py and scripts/wrap1_zhyp_m2_pool_decoupled.py (the runner now aborts on a dirty tracked tree). pins.git_commit is deliberately left unchanged for the operator to set to the launch commit."
+  },
+  {
+   "date": "2026-09-25",
+   "field": "isolation_check",
+   "correction": "Verified, no change to the reference. Run 0afb43f249464302be82349c537908fc (verify_mechanism_grad_isolation_fold0_1MBNA) records git_commit 79b5b58dd7cad681364645d89794b0aecf490542, which contains the dual-input MechanismScoreHead wiring; started 2026-09-25 01:48:10 UTC; tag all_checks=PASS; bce_only/z_over_h_l2 = 1.1012. Caveat: scripts/verify_mechanism_grad_isolation.py was first committed in 158491f (01:58:12), ten minutes after the run started, so the run used an uncommitted copy of that script; the committed script may differ from what ran."
+  }
+ ]
 }

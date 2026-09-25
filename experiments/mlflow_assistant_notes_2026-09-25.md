@@ -98,6 +98,13 @@ Runs: s1 baseline f30b8567dda049799cd1efd4cc0b94a2 (`_seed1_base`), s1 dehydron_
 - BCE cost of c=0.3: +0.014 (s0), +0.020 (s1) at step 99, on the training objective; gap at step 50 is +0.032 in s1. 100-step horizon only.
 - The rationale draft "max norm >8.0 ... <5% clipped" does not hold across seeds (s1 baseline max 4.99; s1 c=0.3 is 5/100).
 
+## Provenance findings on earlier runs (2026-09-25)
+
+- 325ed1a2 started 00:32:49 UTC; 79b5b58 (decoupled architecture) was committed 01:37:15, so it ran from an uncommitted tree under HEAD addbcab. Its artifact's model_summary equals 9352afc6's (decoupled wiring), so it DID run the decoupled architecture; earlier note calling it "older code" was wrong on that point. Sparse logging and the missing per_step data are real. Exact tree bytes not recoverable from git/MLflow.
+- 9352afc6 started 8 s after 158491f was committed: it ran committed code.
+- Isolation run 0afb43f2 records 79b5b58 (has the dual-input wiring), all_checks PASS, bce_only z_over_h_l2 = 1.1012 (the ratio is 1.101, not 1.087). It also ran an uncommitted copy of verify_mechanism_grad_isolation.py (script first committed in 158491f, 10 min later).
+- Card corrections for these are appended (uncommitted) in the prereg card's `corrections` field.
+
 ## Open items
 
 1. DONE (46b6280): git provenance guard in both runners.
