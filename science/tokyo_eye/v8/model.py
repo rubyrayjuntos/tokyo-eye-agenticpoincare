@@ -42,15 +42,25 @@ class TokyoEyesHyperbolicV8(nn.Module):
         c: float = 1.0,
         eps: float = 1e-5,
         moe_temperature: float = 1.0,
+        decoupled_arch: bool = False,
     ) -> None:
         super().__init__()
         if int(num_attn_layers) not in (2, 3):
             raise ValueError("num_attn_layers must be in {2, 3} (freeze §7.3)")
         self.hidden_dim = int(hidden_dim)
         self.eps = float(eps)
+        # decoupled_arch bundles the 2026-09-24 fixes (off = legacy layout, so old
+        # checkpoints/state_dicts keep loading):
+        #   * MechanismScoreHead reads [z_hyp, h_euc] (was h_euc only),
+        #   * attention drops additive beta_R; relation typing lives on the value path,
+        #   * evidential head structurally excluded (no loss term ever reached it),
+        #   * curvature frozen at init (it was already unreachable via .detach()).
+        self.decoupled_arch = bool(decoupled_arch)
         # Learned curvature (freeze §6). softplus(log_c) > 0.
         init_c = max(float(c), 1e-3)
         self._log_c = nn.Parameter(torch.log(torch.expm1(torch.tensor(init_c))))
+        if self.decoupled_arch:
+            self._log_c.requires_grad_(False)
         self.tau_clamp_mode = "per_stage"
 
         self.projector = RadialAngularProjector(
@@ -59,7 +69,11 @@ class TokyoEyesHyperbolicV8(nn.Module):
         self.attn_layers = nn.ModuleList(
             [
                 HyperbolicGraphAttention(
-                    hidden_dim, num_relations=num_relations, c=float(c), eps=eps
+                    hidden_dim,
+                    num_relations=num_relations,
+                    c=float(c),
+                    eps=eps,
+                    relation_value_path=self.decoupled_arch,
                 )
                 for _ in range(num_attn_layers)
             ]
@@ -73,8 +87,24 @@ class TokyoEyesHyperbolicV8(nn.Module):
         )
         self.euc_skip = nn.Linear(scalar_dim, hidden_dim)
         self.sdrp_head = DualSpaceSDRPHead(hidden_dim, num_sdrp_classes, c=float(c))
-        self.evidential_head = EvidentialHead(hidden_dim)
-        self.mechanism_head = MechanismScoreHead(hidden_dim)
+        if self.decoupled_arch:
+            self.evidential_head = None
+            self.mechanism_head = MechanismScoreHead(2 * hidden_dim, hidden=hidden_dim)
+        else:
+            self.evidential_head = EvidentialHead(hidden_dim)
+            self.mechanism_head = MechanismScoreHead(hidden_dim)
+
+    def model_summary(self) -> dict[str, str]:
+        """Structural status of each head / frozen part (for logging next to a run)."""
+        return {
+            "sdrp_head": "LIVE",
+            "mechanism_head": "LIVE[z_hyp,h_euc]" if self.decoupled_arch else "LEGACY[h_euc]",
+            "evidential_head": (
+                "STRUCTURALLY_EXCLUDED" if self.evidential_head is None else "LEGACY_UNWIRED"
+            ),
+            "curvature": "FROZEN" if not self._log_c.requires_grad else "LEARNABLE_UNREACHABLE",
+            "attention_relation_typing": "value_path" if self.decoupled_arch else "logit_beta",
+        }
 
     @property
     def c(self) -> float:
@@ -141,8 +171,14 @@ class TokyoEyesHyperbolicV8(nn.Module):
 
         sdrp_logits = self.sdrp_head(z_moe, h_euc, tau_ceiling=float(tau_ceiling))
         radius = torch.linalg.vector_norm(z_moe, dim=-1)
-        evidence = self.evidential_head(h_euc, radius=radius)
-        mechanism_score = self.mechanism_head(h_euc)
+        if self.evidential_head is None:
+            evidence = None
+        else:
+            evidence = self.evidential_head(h_euc, radius=radius)
+        if self.decoupled_arch:
+            mechanism_score = self.mechanism_head(torch.cat([z_moe, h_euc], dim=-1))
+        else:
+            mechanism_score = self.mechanism_head(h_euc)
 
         return {
             "z_hyp": z_moe,

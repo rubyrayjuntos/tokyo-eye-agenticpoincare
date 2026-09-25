@@ -144,9 +144,11 @@ def graph_cache_path(
     *,
     cache_dir: Path | str = DEFAULT_GRAPH_CACHE_DIR,
     wrap_max: int | None = None,
+    decouple_r2_input: bool = False,
 ) -> Path:
     h = graph_cache_hash(wrap_max=wrap_max)
-    return Path(cache_dir) / f"{pdb_id.upper()}_{chain}_{h}.pt"
+    tag = "_dr3" if decouple_r2_input else ""  # dr3 = salt-first + 6.5 A hydrophobic input typing
+    return Path(cache_dir) / f"{pdb_id.upper()}_{chain}_{h}{tag}.pt"
 
 
 def ca_coords(records: Sequence[ResidueRecord]) -> np.ndarray:
@@ -234,16 +236,23 @@ def batch_from_records(
     pdb_id: str,
     chain: str,
     device: torch.device | str = "cpu",
+    decouple_r2_input: bool = False,
 ) -> dict[str, Any]:
-    """Build harness batch dict from residue records."""
-    graph = build_r0_r5_graph(records)
+    """Build harness batch dict from residue records.
+
+    With ``decouple_r2_input`` the model-facing ``edge_index`` / ``edge_type`` /
+    ``gate_chem`` carry no R2 information, while the dehydron label
+    (``wrap <= DEHYDRON_WRAP_MAX``, frozen at 1) and the SDRP target are still
+    derived from the wrap-gated label typing so targets are unchanged.
+    """
+    graph = build_r0_r5_graph(records, decouple_r2_input=decouple_r2_input)
     coords = ca_coords(records)
-    dehydron = dehydron_labels_from_edges(
-        graph.num_nodes, graph.edge_index, graph.edge_type
-    )
-    sdrp = sdrp_heuristic_from_edges(
-        graph.num_nodes, graph.edge_index, graph.edge_type
-    )
+    if graph.label_edge_index is not None and graph.label_edge_type is not None:
+        l_ei, l_et = graph.label_edge_index, graph.label_edge_type
+    else:
+        l_ei, l_et = graph.edge_index, graph.edge_type
+    dehydron = dehydron_labels_from_edges(graph.num_nodes, l_ei, l_et)
+    sdrp = sdrp_heuristic_from_edges(graph.num_nodes, l_ei, l_et)
     pos, neg = mechanism_soft_targets(dehydron)
     gate_chem = chemistry_gate_features(
         graph.num_nodes, graph.edge_index, graph.edge_type, coords
@@ -320,6 +329,7 @@ def _save_graph_cache(path: Path, batch: dict[str, Any]) -> None:
         "dehydron_frac": float(batch["dehydron_frac"]),
         "cache_hash": graph_cache_hash(),
         "cache_version": BIOPHYS_CACHE_VERSION,
+        "decouple_r2_input": bool(batch.get("graph_meta", {}).get("decouple_r2_input", False)),
     }
     try:
         torch.save(payload, path)
@@ -331,6 +341,7 @@ def _load_graph_cache(
     path: Path,
     *,
     device: torch.device | str = "cpu",
+    decouple_r2_input: bool = False,
 ) -> dict[str, Any] | None:
     if not path.is_file():
         return None
@@ -342,6 +353,8 @@ def _load_graph_cache(
         return None
     if payload.get("cache_version") != BIOPHYS_CACHE_VERSION:
         return None
+    if bool(payload.get("decouple_r2_input", False)) != bool(decouple_r2_input):
+        return None  # never serve a graph built in the other R2 mode
     device = torch.device(device)
     dehydron = payload["dehydron_labels"]
     if "gate_chem" not in payload:
@@ -377,11 +390,16 @@ def load_structure_batch(
     device: torch.device | str = "cpu",
     use_graph_cache: bool = True,
     graph_cache_dir: Path | str = DEFAULT_GRAPH_CACHE_DIR,
+    decouple_r2_input: bool = False,
 ) -> dict[str, Any]:
     path = ensure_pdb_cached(pdb_id, pdb_dir)
-    cache_path = graph_cache_path(pdb_id, chain, cache_dir=graph_cache_dir)
+    cache_path = graph_cache_path(
+        pdb_id, chain, cache_dir=graph_cache_dir, decouple_r2_input=decouple_r2_input
+    )
     if use_graph_cache:
-        cached = _load_graph_cache(cache_path, device=device)
+        cached = _load_graph_cache(
+            cache_path, device=device, decouple_r2_input=decouple_r2_input
+        )
         if cached is not None:
             return cached
 
@@ -389,7 +407,13 @@ def load_structure_batch(
     records = [r for r in records if r.get_atom("CA") is not None]
     if not records:
         raise ValueError(f"no CA-complete residues for {pdb_id}:{chain}")
-    batch = batch_from_records(records, pdb_id=pdb_id, chain=chain, device=device)
+    batch = batch_from_records(
+        records,
+        pdb_id=pdb_id,
+        chain=chain,
+        device=device,
+        decouple_r2_input=decouple_r2_input,
+    )
     batch["from_graph_cache"] = False
     if use_graph_cache:
         _save_graph_cache(cache_path, batch)

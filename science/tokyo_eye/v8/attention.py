@@ -6,6 +6,8 @@ FROZEN contract:
 
 * Sparse ``edge_index`` / ``edge_type`` only — no dense ``N×N`` logit board.
 * Logits: ``(-d_H(Q_i, K_j) * γ_R + β_R) / sqrt(d_h)`` on each directed edge.
+  With ``relation_value_path=True`` β_R is removed and relation typing moves to the
+  value path (per-relation SO(d) rotation + gyroscalar on each edge message).
 * Q/K/V/output via origin-centered **orthogonal gyro-maps** (ambient SO(d) on
   Poincaré coords) — **not** ``exp₀(W · log₀(z))``.
 * Aggregation: Lorentz-weighted Einstein midpoint in Klein coordinates.
@@ -279,6 +281,7 @@ class HyperbolicGraphAttention(nn.Module):
         num_relations: int = NUM_RELATIONS_DEFAULT,
         c: float = 1.0,
         eps: float = 1e-5,
+        relation_value_path: bool = False,
     ) -> None:
         super().__init__()
         if dim < 1:
@@ -295,10 +298,21 @@ class HyperbolicGraphAttention(nn.Module):
         self.R_v = GyroOrthogonalMap(dim)
         self.R_o = GyroOrthogonalMap(dim)
 
+        self.relation_value_path = bool(relation_value_path)
         self.gamma = nn.Embedding(num_relations, 1)
-        self.beta = nn.Embedding(num_relations, 1)
         nn.init.ones_(self.gamma.weight)
-        nn.init.zeros_(self.beta.weight)
+        if self.relation_value_path:
+            # Relation identity acts on message CONTENT, not on softmax weights:
+            # the additive beta_R is a constant shift inside a destination-segmented
+            # softmax and cancels wherever a neighborhood is single-relation.
+            self.beta = None
+            self.R_v_rel = nn.ModuleList(
+                [GyroOrthogonalMap(dim) for _ in range(num_relations)]
+            )
+            self.v_scale = nn.Parameter(torch.ones(num_relations))
+        else:
+            self.beta = nn.Embedding(num_relations, 1)
+            nn.init.zeros_(self.beta.weight)
         # sigmoid(-1.0986) ≈ 0.25 — full-strength Möbius residual pins τ.
         self.residual_logit = nn.Parameter(torch.tensor(-1.0986122886681098))
         self.last_attn: torch.Tensor | None = None
@@ -308,6 +322,18 @@ class HyperbolicGraphAttention(nn.Module):
     def _self_transport(self, z: torch.Tensor) -> torch.Tensor:
         """Option A isolate / self path: on-manifold orthogonal gyro-map."""
         return self.R_o(z, c=self.c, eps=self.eps)
+
+    def _relation_edge_values(
+        self, v: torch.Tensor, src: torch.Tensor, rel: torch.Tensor
+    ) -> torch.Tensor:
+        """``v_ij = t_type(ij) ⊗ (v_j · R_type(ij))`` — on-manifold, per directed edge."""
+        v_e = v[src]
+        rotated = v_e.clone()
+        for r in torch.unique(rel).tolist():
+            m = rel == int(r)
+            rotated[m] = self.R_v_rel[int(r)](v_e[m], c=self.c, eps=self.eps)
+        t = self.v_scale[rel].clamp_min(0.05)
+        return gyroscalar_mul(t, rotated, c=self.c, eps=self.eps)
 
     def forward(
         self,
@@ -361,8 +387,11 @@ class HyperbolicGraphAttention(nn.Module):
 
         d_ij = poincare_dist(q[src], k[dst], c=self.c, eps=self.eps)
         gamma_r = self.gamma(rel).squeeze(-1)
-        beta_r = self.beta(rel).squeeze(-1)
-        logits = (-d_ij * gamma_r + beta_r) / math.sqrt(self.dim)
+        if self.relation_value_path:
+            logits = (-d_ij * gamma_r) / math.sqrt(self.dim)
+        else:
+            beta_r = self.beta(rel).squeeze(-1)
+            logits = (-d_ij * gamma_r + beta_r) / math.sqrt(self.dim)
 
         # Freeze §7.1: segmented softmax over destination neighborhoods.
         attn = softmax(logits, dst, num_nodes=n)
@@ -371,9 +400,23 @@ class HyperbolicGraphAttention(nn.Module):
         self.last_edge_type = edge_type
 
         # Einstein midpoint in Klein with Lorentz γ (plan §3.2)
-        agg_h = sparse_einstein_klein_aggregate(
-            v, attn, src, dst, n=n, c=self.c, eps=self.eps
-        )
+        if self.relation_value_path:
+            v_edge = self._relation_edge_values(v, src, rel)
+            # Per-edge message points: reuse the whitelisted midpoint with src=arange(E)
+            # (identical math; keeps the pure-hyp gate's manifold-formula list unchanged).
+            agg_h = sparse_einstein_klein_aggregate(
+                v_edge,
+                attn,
+                torch.arange(v_edge.shape[0], device=v_edge.device),
+                dst,
+                n=n,
+                c=self.c,
+                eps=self.eps,
+            )
+        else:
+            agg_h = sparse_einstein_klein_aggregate(
+                v, attn, src, dst, n=n, c=self.c, eps=self.eps
+            )
         attended = self.R_o(agg_h, c=self.c, eps=self.eps)
 
         deg = scatter(

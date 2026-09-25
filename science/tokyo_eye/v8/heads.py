@@ -85,9 +85,10 @@ class EvidentialHead(nn.Module):
 class MechanismScoreHead(nn.Module):
     """Scalar mechanism score for margin hinge supervision."""
 
-    def __init__(self, dim: int) -> None:
+    def __init__(self, dim: int, *, hidden: int | None = None) -> None:
         super().__init__()
-        self.net = nn.Sequential(nn.Linear(dim, dim), nn.SiLU(), nn.Linear(dim, 1))
+        hid = int(dim if hidden is None else hidden)
+        self.net = nn.Sequential(nn.Linear(dim, hid), nn.SiLU(), nn.Linear(hid, 1))
 
     def forward(self, h: torch.Tensor) -> torch.Tensor:
         return self.net(h).squeeze(-1)

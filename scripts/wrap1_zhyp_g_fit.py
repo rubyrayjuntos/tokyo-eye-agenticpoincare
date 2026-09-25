@@ -138,7 +138,9 @@ def _parse_tag(tag: str) -> tuple[str, str]:
     return pdb, chain
 
 
-def _load_batch(tag: str, device: torch.device) -> dict[str, Any]:
+def _load_batch(
+    tag: str, device: torch.device, *, decouple_r2_input: bool = False
+) -> dict[str, Any]:
     from science.tokyo_eye.v8.loader import load_structure_batch
 
     pdb, chain = _parse_tag(tag)
@@ -149,6 +151,7 @@ def _load_batch(tag: str, device: torch.device) -> dict[str, Any]:
         device=device,
         use_graph_cache=True,
         graph_cache_dir=GRAPH_CACHE,
+        decouple_r2_input=decouple_r2_input,
     )
     batch["pdb_id"] = pdb
     batch["chain"] = chain
@@ -296,8 +299,11 @@ def run_step_sdrp_only(
     explore_epsilon: float,
     max_grad_norm: float = MAX_GRAD_NORM,
     sdrp_coeff: float = SDRP_COEFF,
+    dehydron_coeff: float = 0.0,
 ) -> dict[str, Any]:
-    """One mean-over-structures step; SDRP CE only (omit zero-coeff terms).
+    """One mean-over-structures step; SDRP CE (+ dehydron BCE iff coeff != 0).
+
+    Zero-coeff terms are omitted from the graph, never multiplied by 0.0.
 
     ``bucket_grad_l2`` is snapshotted from this same multi-structure backward
     (pre-clip), not from a separate single-structure probe.
@@ -322,8 +328,13 @@ def run_step_sdrp_only(
             chem=batch.get("gate_chem"),
         )
         loss_sdrp = sdrp_cross_entropy(out["sdrp_logits"], batch["sdrp_target"])
-        # Sole task loss — do NOT multiply disabled terms by 0.0.
-        loss = (float(sdrp_coeff) * loss_sdrp) / float(n)
+        # Do NOT multiply disabled terms by 0.0 -- omit them.
+        loss = float(sdrp_coeff) * loss_sdrp
+        if float(dehydron_coeff) != 0.0:
+            loss = loss + float(dehydron_coeff) * F.binary_cross_entropy_with_logits(
+                out["mechanism_score"], batch["dehydron_labels"]
+            )
+        loss = loss / float(n)
         if not torch.isfinite(loss):
             return {
                 "loss_total": float("nan"),

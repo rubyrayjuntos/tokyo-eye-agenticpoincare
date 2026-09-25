@@ -383,6 +383,7 @@ def build_equiformer_pool_system(
     freeze_backbone: bool = True,
     max_neighbors: int | None = 50,
     cold_init: bool = False,
+    spine_kwargs: dict[str, Any] | None = None,
 ) -> tuple[TokyoEyeV8WithFrontend, dict[str, Any]]:
     """EquiformerV3-to-pool builder (geoopt_restore / freeze-recon frontend).
 
@@ -436,6 +437,7 @@ def build_equiformer_pool_system(
         num_sdrp_classes=5,
         c=float(cfg.get("curvature_c", 1.0)),
         moe_temperature=float(cfg.get("gumbel_tau_start", 1.0)),
+        **(spine_kwargs or {}),
     )
     system = TokyoEyeV8WithFrontend(frontend, spine).to(device)
     return system, load_info

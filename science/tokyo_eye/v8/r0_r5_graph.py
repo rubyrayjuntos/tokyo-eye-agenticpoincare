@@ -64,6 +64,10 @@ WRAPPING_RADIUS_A = 6.5
 CB_NEIGHBORHOOD_A = 8.0
 PI_CENTROID_MAX_A = 5.0
 HYDROPHOBIC_CENTROID_MAX_A = 5.0
+# Model-facing (decoupled input) R3 reach. Label typing and the SDRP target keep the
+# frozen 5.0 A above: raising the global constant re-labels ~9.5% of residues' SDRP
+# target (322/3393 over the 12 LOSO structures, measured 2026-09-25).
+HYDROPHOBIC_CENTROID_INPUT_MAX_A = 6.5
 
 # Frozen wrap (addendum §2.7 AMEND). Runtime retune is forbidden.
 _ACTIVE_DEHYDRON_WRAP_MAX = DEHYDRON_WRAP_MAX
@@ -86,6 +90,10 @@ class R0R5GraphResult:
     edge_attr: np.ndarray  # [E, EDGE_ATTR_DIM] float32
     num_nodes: int
     meta: dict[str, Any]
+    # Supervision-side typing (R2 by wrap gate). ``None`` => same as the input
+    # graph (legacy). Set only when ``decouple_r2_input=True`` -- see builder.
+    label_edge_index: np.ndarray | None = None
+    label_edge_type: np.ndarray | None = None
 
 
 def get_dehydron_wrap_max() -> int:
@@ -125,6 +133,7 @@ def resolve_layer_b_primary(
     has_pi_or_hydrophobic: bool,
     has_salt: bool,
     has_r5_neighborhood: bool,
+    salt_first: bool = False,
 ) -> tuple[int | None, int]:
     """Descending R1/R2 → R3 → R4 → R5. Returns (primary_or_None, secondary_flags).
 
@@ -141,6 +150,11 @@ def resolve_layer_b_primary(
     if has_r5_neighborhood:
         flags |= 1 << R5_LOCAL_NEIGHBORHOOD
 
+    if salt_first and has_salt:
+        # Input-side only (decoupled graph): a salt bridge is not swallowed by a
+        # coincident H-bond. Label typing never sets this, so R1/R2 labels and
+        # the SDRP target keep the frozen descending exclusivity.
+        return R4_SALT_BRIDGE, flags
     if has_hbond:
         primary = R2_DEHYDRON if is_dehydron else R1_HBOND
         return primary, flags
@@ -457,8 +471,19 @@ def build_r0_r5_graph(
     residue_records: Sequence[ResidueRecord],
     *,
     pi_centroid_max: float = PI_CENTROID_MAX_A,
+    decouple_r2_input: bool = False,
 ) -> R0R5GraphResult:
-    """Build dual-layer R0–R5 sparse graph from residue atom records."""
+    """Build dual-layer R0–R5 sparse graph from residue atom records.
+
+    ``decouple_r2_input=True`` removes the dehydron target rule from the graph the
+    model sees: every atom-validated H-bond is typed R1 (never R2), the R2 bit is
+    never set in ``secondary_flags``, and the raw wrap count is not written to
+    ``edge_attr[0]``. The wrap-gated R2 typing is still computed and returned as
+    ``label_edge_index`` / ``label_edge_type`` for label generation only. In this
+    mode the model-facing typing also (a) lets a salt bridge outrank a coincident
+    H-bond (R4 over R1) and (b) reaches R3 hydrophobic contacts out to
+    ``HYDROPHOBIC_CENTROID_INPUT_MAX_A``; label typing keeps the frozen rules.
+    """
     records = [r for r in residue_records if r.get_atom("CA") is not None]
     n = len(records)
     if n == 0:
@@ -478,6 +503,11 @@ def build_r0_r5_graph(
     dst: list[int] = []
     types: list[int] = []
     attrs: list[list[float]] = []
+    # Label-side typing (legacy R2-by-wrap). Only populated when decoupling.
+    l_src: list[int] = []
+    l_dst: list[int] = []
+    l_types: list[int] = []
+    l_attrs: list[list[float]] = []
 
     # ----- Layer A: R0 peptide ±1 ------------------------------------------------
     r0_undirected = 0
@@ -488,6 +518,8 @@ def build_r0_r5_graph(
             if abs(int(records[i].residue_index) - int(records[j].residue_index)) != 1:
                 continue
             _append_bidir(src, dst, types, attrs, i, j, R0_COVALENT)
+            if decouple_r2_input:
+                _append_bidir(l_src, l_dst, l_types, l_attrs, i, j, R0_COVALENT)
             r0_undirected += 1
 
     # ----- Layer B candidates ----------------------------------------------------
@@ -508,13 +540,21 @@ def build_r0_r5_graph(
         for i, j, d, dih, align in pi_raw
     }
     hydro = _detect_hydrophobic_pairs(records, index_by_auth=index_by_auth)
+    if decouple_r2_input:
+        hydro_in = _detect_hydrophobic_pairs(
+            records,
+            index_by_auth=index_by_auth,
+            max_dist=HYDROPHOBIC_CENTROID_INPUT_MAX_A,
+        )
+    else:
+        hydro_in = hydro
     r5 = _detect_r5_pairs(records)
 
     candidate_keys: set[tuple[int, int]] = set()
     candidate_keys |= set(hbonds)
     candidate_keys |= set(salts)
     candidate_keys |= set(pi_pairs)
-    candidate_keys |= set(hydro)
+    candidate_keys |= set(hydro_in)  # superset of hydro (6.5 A reach >= 5.0 A)
     candidate_keys |= set(r5)
 
     counts = {
@@ -542,6 +582,7 @@ def build_r0_r5_graph(
             assert wrap is not None
             is_dehydron = classify_hbond_vs_dehydron(wrap) == R2_DEHYDRON
         has_pi = key in pi_pairs or key in hydro
+        has_pi_in = key in pi_pairs or key in hydro_in
         has_salt = key in salts
         has_r5n = key in r5
         primary, flags = resolve_layer_b_primary(
@@ -551,8 +592,23 @@ def build_r0_r5_graph(
             has_salt=has_salt,
             has_r5_neighborhood=has_r5n,
         )
-        if primary is None:
+        if primary is None and not decouple_r2_input:
             continue
+        label_primary = primary
+        if decouple_r2_input:
+            if primary is not None:
+                _append_bidir(l_src, l_dst, l_types, l_attrs, i, j, primary)
+            # Input typing: same resolution with the dehydron rule switched off.
+            primary, flags = resolve_layer_b_primary(
+                has_hbond=has_hbond,
+                is_dehydron=False,
+                has_pi_or_hydrophobic=has_pi_in,
+                has_salt=has_salt,
+                has_r5_neighborhood=has_r5n,
+                salt_first=True,
+            )
+            if primary is None:
+                continue
         dist = 0.0
         aux = 0.0
         if primary in (R1_HBOND, R2_DEHYDRON):
@@ -564,7 +620,7 @@ def build_r0_r5_graph(
                 dist = float(pi_pairs[key][0])
                 aux = float(pi_pairs[key][1])
             else:
-                dist = float(hydro[key])
+                dist = float(hydro_in[key])
         elif primary == R4_SALT_BRIDGE:
             dist = float(salts[key])
         elif primary == R5_LOCAL_NEIGHBORHOOD:
@@ -578,12 +634,15 @@ def build_r0_r5_graph(
             i,
             j,
             primary,
-            wrap=float(wrap) if wrap is not None else 0.0,
+            wrap=(
+                float(wrap) if (wrap is not None and not decouple_r2_input) else 0.0
+            ),
             dist=dist,
             flags=flags,
             aux=aux,
         )
-        counts[primary_name[primary]] += 1
+        if label_primary is not None:
+            counts[primary_name[label_primary]] += 1
 
     if src:
         edge_index = np.stack(
@@ -596,8 +655,24 @@ def build_r0_r5_graph(
         edge_type = np.zeros((0,), dtype=np.int64)
         edge_attr = np.zeros((0, EDGE_ATTR_DIM), dtype=np.float32)
 
+    label_edge_index: np.ndarray | None = None
+    label_edge_type: np.ndarray | None = None
+    if decouple_r2_input:
+        if l_src:
+            label_edge_index = np.stack(
+                [np.asarray(l_src, dtype=np.int64), np.asarray(l_dst, dtype=np.int64)]
+            )
+            label_edge_type = np.asarray(l_types, dtype=np.int64)
+        else:
+            label_edge_index = np.zeros((2, 0), dtype=np.int64)
+            label_edge_type = np.zeros((0,), dtype=np.int64)
+        assert_layer_b_exclusivity(label_edge_index, label_edge_type)
+        # Input graph must never carry the dehydron class.
+        assert not bool(np.any(edge_type == R2_DEHYDRON))
+
     wrap_counts = [float(v) for v in hbonds.values()]
     meta = {
+        "decouple_r2_input": bool(decouple_r2_input),
         "num_nodes": n,
         "undirected_counts": counts,
         "n_edges_directed": int(edge_type.shape[0]),
@@ -625,6 +700,8 @@ def build_r0_r5_graph(
         edge_attr=edge_attr,
         num_nodes=n,
         meta=meta,
+        label_edge_index=label_edge_index,
+        label_edge_type=label_edge_type,
     )
 
 
@@ -670,6 +747,7 @@ __all__ = [
     "DEHYDRON_WRAP_MAX",
     "EDGE_ATTR_DIM",
     "HYDROPHOBIC_CENTROID_MAX_A",
+    "HYDROPHOBIC_CENTROID_INPUT_MAX_A",
     "PI_CENTROID_MAX_A",
     "R0_COVALENT",
     "R0R5GraphResult",
