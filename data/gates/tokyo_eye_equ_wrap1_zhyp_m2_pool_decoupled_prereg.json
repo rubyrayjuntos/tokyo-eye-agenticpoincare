@@ -1,0 +1,77 @@
+{
+ "schema_version": 1,
+ "gate_id": "tokyo_eye_equ_wrap1_zhyp_m2_pool_decoupled_prereg",
+ "display_lineage": "Tokyo Eye EQU",
+ "status": "READY_TO_RUN",
+ "approval_status": "OPERATOR_CONFIRMED_GO",
+ "execution_state": "HALTED_PENDING_DENSE_DIAGNOSTIC_REVIEW",
+ "date_drafted": "2026-09-24",
+ "drafted_by": "Claude (session agent). Set READY_TO_RUN on the operator's explicit instruction, after the final 100-step diagnostic passed (MLflow run 325ed1a2e04a4db7ae5615261e6da71a, diag/gradflow-decoupled-r2).",
+ "do_not_promote": true,
+ "promote_eligible": false,
+ "no_train_until_seal_preconditions": true,
+ "metric_family": "M2_macro_f1",
+ "parent_cards": {
+  "baseline_arm_prereg": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_lr_1e-4_bbtrain_prereg.json",
+  "diagnostic": "MLflow experiment diag/gradflow-decoupled-r2 (run verify_grad_flow_decoupled_r2_fold0_*); result JSON data/gates/verify_grad_flow_decoupled_result.json"
+ },
+ "changes_vs_baseline": [
+  "model input has no R2 edges; H-bond geometry typed R1; edge_attr wrap scrubbed; gate_chem tau column zero (decouple_r2_input)",
+  "model-facing typing only: salt bridge (R4) outranks coincident H-bond, and R3 hydrophobic reach 6.5 A (HYDROPHOBIC_CENTROID_INPUT_MAX_A); labels, SDRP target and label-side typing keep the frozen rules (5.0 A, R1/R2->R3->R4->R5). Verified label-side == legacy on all 12 LOSO structures.",
+  "MechanismScoreHead input [z_hyp, h_euc]; dehydron_coeff 1.0 (baseline 0.0)",
+  "attention: beta_R removed; per-relation SO(d) rotation + gyroscalar on edge messages",
+  "evidential head STRUCTURALLY_EXCLUDED; curvature frozen (requires_grad False)",
+  "gate_chem tau column is zero in the model input (it equals the dehydron label, so it must stay out of the model)"
+ ],
+ "identical_to_baseline": [
+  "frontend + cold_init",
+  "lr_frontend 1e-4",
+  "lr_hyperbolic",
+  "max_neighbors 16",
+  "backbone_train_mode True",
+  "sdrp_coeff 0.1",
+  "moe_mode ablated",
+  "steps 400",
+  "seed 0",
+  "12 folds LOSO",
+  "evaluation under system.eval()"
+ ],
+ "labels_unchanged": "dehydron label = wrap <= 1 (DEHYDRON_WRAP_MAX frozen); SDRP target from label-side typing; targets identical to baseline",
+ "attribution_caveat": "Bundle of five changes; a pass/fail cannot be attributed to any one. The baseline also had the intentional edge_type->label leak, so held-out M2 numbers are not like-for-like with baseline.",
+ "preconditions": [
+  "verify_grad_flow_decoupled.py all_pass == true over the full 100 steps on the FINAL code (run_final.log; min over steps, not step 0)",
+  "python scripts/wrap1_zhyp_m2_pool_decoupled.py --smoke passes (assembly gate incl. require_pure_hyp on the value-path attention)",
+  "12 decoupled graph caches (*_dr3.pt) built fresh by the run; legacy caches are never served to this card"
+ ],
+ "script": "scripts/wrap1_zhyp_m2_pool_decoupled.py",
+ "not_claims": [
+  "not a biology seal",
+  "not promotable"
+ ],
+ "pins": {
+  "git_commit": "158491f128f3904218a61b59e6fbf0953a0ddf50",
+  "note": "code commit (supersedes 79b5b58: adds dense logging + telemetry only, no model/graph change); the card file itself is committed separately after this pin"
+ },
+ "config": {
+  "decouple_r2_input": true,
+  "dehydron_coeff": 1.0,
+  "sdrp_coeff": 0.1,
+  "margin_coeff": 0.0,
+  "spine_kwargs": {
+   "decoupled_arch": true
+  },
+  "freeze_backbone": false,
+  "backbone_train_mode": true,
+  "steps": 400,
+  "seed": 0,
+  "lr_frontend": 0.0001,
+  "max_grad_norm": 1.0,
+  "moe_mode": "ablated"
+ },
+ "halt_note": "Production run stopped ~10 min in (step ~10-20 of fold 1MBN:A) by the operator's hold; no fold results were written.",
+ "attribution_framing": "Option A: joint multi-task run (sdrp_coeff 0.1 + dehydron_coeff 1.0). Measured ONLY in isolated single-step passes from initial weights (fold 1MBN:A, verify_mechanism_grad_isolation.py): grad L2 w.r.t. z_hyp / w.r.t. h_euc into MechanismScoreHead = 1.101 under BCE-only; SDRP-only / BCE-only spine-bucket grad ratio = 10.63 on attn_layers and 10.46 on moe. The per-source contribution inside the combined run has NOT been separately measured; these ratios describe isolated passes, not composite attribution. Reading attn/moe gate results of the 12-fold run as SDRP-dominated is an inference from the isolated ratio.",
+ "observed_clipping_in_diagnostic": "preclip_norm > max_grad_norm(1.0) at logged steps 0 (1.05), 50 (4.66), 80 (1.11) of 100; logged every 10 steps only. Not confined to the first steps.",
+ "telemetry_reconciliation": "Terminal logged step of run 325ed1a2e04a4db7ae5615261e6da71a is 99: mech 0.129, sdrp 0.0212, attn 0.00211, moe 2.6e-4, value-path 2.3e-4, preclip 0.398. Step 90 values are mech 0.284, sdrp 0.0248, attn 0.0044, moe 4.8e-4, value 3.5e-4, preclip 0.829.",
+ "isolation_check": "MLflow run 0afb43f249464302be82349c537908fc (diag/gradflow-decoupled-r2); data/gates/verify_mechanism_grad_isolation_result.json",
+ "mechanism_gradient_note": "MechanismScoreHead is one head on the concatenation [z_hyp, h_euc] with one BCE loss; z_hyp and h_euc are its two input halves, not two loss terms."
+}
