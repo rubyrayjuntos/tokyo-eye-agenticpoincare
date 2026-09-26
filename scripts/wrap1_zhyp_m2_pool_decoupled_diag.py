@@ -10,8 +10,10 @@ It rebinds three module-level names of the sealed runner before calling its ``ma
                                     so diagnostic fold results must never be written there)
   CANONICAL_MLFLOW_EXPERIMENT    -> diag/heldout-dcoef<c>
 
-A subset of folds never stamps the card (the sealed runner prints "incomplete fold set"), and this
-wrapper additionally refuses to run all 12 folds.
+WARNING (corrected 2026-09-26): the sealed runner scores and STAMPS the card whenever every REQUESTED fold
+finished (it only prints "incomplete fold set" when fewer folds ran than were requested), so even a
+single-fold request writes data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_<arm>_result.json. This wrapper
+therefore redirects the card's result path into the diagnostic results dir, and also refuses to run all 12 folds.
 
 OPEN PRECONDITION for the eventual sealed 400-step launch: the verify_grad_flow gates ("min over all
 steps > threshold") fail transiently at 400 steps in the near-fit regime (attn_layers, moe); a
@@ -21,6 +23,7 @@ phase-aware rule is still owed. Not needed for this comparison.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import sys
 from pathlib import Path
@@ -110,6 +113,17 @@ def main() -> int:
     conf_dir.mkdir(parents=True, exist_ok=True)
     conf_name = "confusions_smoke.json" if a.smoke else f"confusions_seed{a.seed}_{'_'.join(folds).replace(':', '')}.json"
     _install_confusion_logger(conf_dir / conf_name)
+
+    orig_card_paths = M._card_paths
+
+    def _diag_card_paths(arm):  # CardPaths is a frozen dataclass; never let a diagnostic write the sealed card's result
+        cp = orig_card_paths(arm)
+        redirected = dataclasses.replace(cp, result=M.RESULT_DIR / f"NOT_A_CARD_RESULT_{tag}.json")
+        print(f"[diag] card.result redirected: {cp.result.relative_to(REPO_ROOT)} -> "
+              f"{redirected.result.relative_to(REPO_ROOT)}", flush=True)
+        return redirected
+
+    M._card_paths = _diag_card_paths
 
     orig = M.run_one_fold
 
