@@ -105,6 +105,47 @@ Runs: s1 baseline f30b8567dda049799cd1efd4cc0b94a2 (`_seed1_base`), s1 dehydron_
 - Isolation run 0afb43f2 records 79b5b58 (has the dual-input wiring), all_checks PASS, bce_only z_over_h_l2 = 1.1012 (the ratio is 1.101, not 1.087). It also ran an uncommitted copy of verify_mechanism_grad_isolation.py (script first committed in 158491f, 10 min later).
 - Card corrections for these are appended (uncommitted) in the prereg card's `corrections` field.
 
+## 400-step baseline (run 719b9961ef234eb98fc1ae29bad53d4e, seed 0, fold 0, dehydron_coeff 1.0, commit e289916, git_dirty=False)
+
+- MLflow tag all_gates = FAIL: gate_grad_l2_attn_layers and gate_grad_l2_moe fail; the other six gates PASS. The gates are "min over all steps > threshold", written for the 100-step run.
+  - attn_layers: min 8.53e-4 @ step 376 (thr 1e-3); only 2 steps at/below thr (350, 376); final 2.48e-3.
+  - moe: min 5.58e-5 @ step 383 (thr 1e-4); 19 steps at/below thr (first 306, last 396); final 1.47e-4.
+  - Transient dips while training loss is tiny, not a dead gradient path (mechanism 8.9e-3 min, sdrp 3.7e-3 min, value-path 4.8e-5 min all > thr). Whether these gates are meaningful at 400 steps is a gate-design question for the operator.
+- Training loss collapses: loss_dehydron_bce 0.698 (0), 0.554 (100), 0.143 (200), 0.012 (300), 0.018 (399). Per-structure BCE at 399: min 2.7e-4, max 0.106. This is the training objective on 11 training structures; it looks like near-memorization, and says nothing about held-out performance. So the "BCE cost of c=0.3" is a weak measure at this horizon.
+- Clipping: 97/400 steps (24%), max preclip_norm 8.44 @ step 49. Blocks of 50 steps: 8, 21, 8, 7, 33, 10, 6, 4. First bursts again at steps 45-57 and 62-68, then a near-continuous run at steps 207-255 (per-structure BCE max 1.15 @ step 250 while the min was 0.005).
+- Key finding: the early burst window sits at the SAME STEPS (~45-70) as in the 100-step runs even though tau_ceiling is stretched 4x (tau at step 50 = 0.737 here vs 0.847 in the 100-step runs). So the timing is NOT set by tau_ceiling (it is reproducible at fixed seed and coefficient; see the c=0.3 section below for the corrected reading). The gumbel/epsilon schedules are step-based (floor at step 13) and were not the coincident cause; other step-tied candidates (optimizer state) not tested.
+- A ~36 min stall between steps 384 and 385 (no other gap > 34 s); host pause suspected, not confirmed. Does not affect results.
+- Memorization check on the 400-step baseline (data only; no held-out metric exists in this diagnostic, so overfitting is consistent-with, not established):
+  - Per-structure BCE max was > 0.5 on 214 of 400 steps but only 13 steps after step 260; mean BCE is ~0.01-0.03 from step ~300. Clipping: 77/260 steps (30%) before step 260 vs 20/140 (14%) after. Gate dips (attn 2 steps, moe 19 steps) all occur after step 300, in the near-fit regime.
+  - Clip windows vs single-structure spikes: corr(clip_active, per-structure BCE max) = +0.23 (400-step) and +0.31 (100-step); clipped-step median BCE max 0.611 vs 0.517 (400-step), 0.708 vs 0.712 (100-step). Weak-to-moderate; does not show that clipping = one hard structure spiking. The 1.147 at step 250 is a single step; the 207-255 window has BCE max 0.15-0.63. Only max/min are logged, not which structure.
+  - The early window (steps ~45-70) happens at loss 0.55-0.7, long before any fit, so memorization does not explain it.
+- 22da0d3 (user commit) message mentions notes/card updates but the diff is only the 7 previously untracked data files. Nothing lost: HEAD's card already has the 4 corrections (ded6cae), no stash/other branch, reflog linear. Message is simply inaccurate; it is already on origin.
+- (superseded below) Coefficient 0.3 counterpart: run d5319789...
+
+## 400-step dehydron_coeff 0.3 (run d531978982f643b39a265950b92cbb81, seed 0, fold 0, commit 22da0d3, git_dirty=False; 212 min)
+
+| | 400-step baseline c=1.0 | 400-step c=0.3 |
+|---|---|---|
+| clipped steps | 97/400 (24%) | 7/400 (1.75%): 1, 51, 63, 67, 68, 203, 321 |
+| max preclip_norm | 8.44 @ 49 | 1.56 @ 67 |
+| steps with preclip > 0.5 | 263 | 49 |
+| all_gates | FAIL (attn_layers, moe) | FAIL (attn_layers, moe) |
+| attn_layers min / steps <= 1e-3 | 8.5e-4 @376 / 2 | 6.0e-4 @370 / 17 |
+| moe min / steps <= 1e-4 | 5.6e-5 @383 / 19 | 5.2e-5 @382 / 42 |
+| mean BCE @ 100 / 150 / 200 / 300 | 0.554 / 0.424 / 0.143 / 0.012 | 0.554 / 0.485 / 0.236 / 0.016 |
+| mean BCE avg over steps 350-399 | 0.0241 | 0.0238 |
+| steps with per-structure BCE max > 0.5 | 214 | 228 |
+
+- c=0.3 cut clipping ~14x and peak preclip ~5x, with no difference in end-of-run training BCE (transient lag mid-run, steps ~150-250). Training objective only; no held-out metric.
+- The two failing gates fail MORE at c=0.3 (17 and 42 steps below thr vs 2 and 19): gate rule (min over all steps) is not calibrated for 400 steps.
+- The early window (preclip > 0.5 at steps 50-72) persists at c=0.3.
+- Burst STEP INDICES replicate across horizons at fixed seed AND fixed coefficient: baseline peak @ step 49 in both the 100-step (8.31) and 400-step (8.44) runs; c=0.3 peak @ step 67 in both (1.68, 1.56), although tau_ceiling differs 4x. Seed 1 puts them elsewhere (baseline 4.99 @ 44, c=0.3 3.10 @ 52).
+- CORRECTION (2026-09-26): an earlier version of this note and the chat summary said the timing was "not set by ... coefficient". That was wrong: the peak moved from step 49 (c=1.0) to step 67 (c=0.3) at the same seed. Timing is a function of (seed, coefficient) and is insensitive to the tau schedule.
+- Cross-run check on preclip_norm, steps 3-99 (all first-100-step windows): same seed + coefficient, 100-step vs 400-step run: Spearman 0.96 (c=1.0) and 0.99 (c=0.3), top-10% steps overlap 10/10 (chance ~1). Same seed, c=1.0 vs c=0.3: Spearman ~0.59, top-10% overlap 1/10. Seed 0 vs seed 1: overlap 1/10 (c=1.0), 0/10 (c=0.3). At the other config's peak step there is no hidden smaller burst: step 49 in the c=0.3 run is 1.7x its median (400-step: 1.8x), step 67 in the c=1.0 run is 1.8x (1.7x). So the bursts are NOT one shared per-step trigger seen at different amplitudes.
+- Reading: the training trajectory is highly reproducible for a given seed and coefficient (a 100-step run predicts the first 100 steps of a 400-step run), and the instability events emerge from that trajectory; where they land depends on the loss weighting and the seed. An RNG-mask trigger (dropout/drop-path/Gumbel) is NOT supported by this and not excluded (same masks at the same step could still only matter in some weight states). No direct test done.
+
+## Open items (`_s400_dcoef0.3`), commit 22da0d3 (a user commit of data files only; code unchanged since ded6cae), in progress.
+
 ## Open items
 
 1. DONE (46b6280): git provenance guard in both runners.
