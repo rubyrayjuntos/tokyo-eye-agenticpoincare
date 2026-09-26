@@ -180,6 +180,33 @@ MLflow: `diag/heldout-dcoef1` run 02f77ba040884f76b02005ee1e67fe74; `diag/heldou
 - c=0.3 fits the training set better (train macro-F1 0.983 vs 0.888, min-F1 0.926 vs 0.647) with no clipping; c=1.0 with ~32% of steps clipped fits worse. The held-out score is no better, so the train/held-out gap is wider at 0.3.
 - Power caveat for the pre-committed next folds: in the earlier pool lr_1e-4 card, `1TEN:A` (0.324) and `1BG1:A` (0.344) were near the floor, while `1UBQ:A` (0.624), `1HHP:A` (0.514) and `4OBE:A` (0.441) were the highest. The pre-committed folds may therefore have little power to separate the coefficients. This comes from earlier-card data, not from the fold-0 result, but any change to the pre-committed folds is an amendment for the operator to decide and record with this rationale.
 
+## Why fold-0's c=0.3 score equals the earlier underfit card to 17 digits (checked 2026-09-26)
+
+- Not a cache/path bug. Held-out macro-F1 (`wrap1_zhyp_g_fit.py` ~lines 175-217) is the mean of per-class F1 over the classes PRESENT in y, computed from integer confusion counts of argmax(sdrp_logits). Fold `1MBN:A` has n=153 with class counts {majority 142, 8, 3}. The confusion (majority TP=140, FP=11, FN=2, both minority classes F1=0) gives macro-F1 = (280/293)/3 = 0.31854379977246870 vs logged 0.31854379977246877 (last-digit float ordering only), and top-1 = 140/153 = 0.91503 exactly as logged. The earlier underfit M2 card's fold-0 top-1 is also 0.91503 and its macro-F1 is the same number, so it has the same confusion counts. Same integer counts give the same float.
+- Consequence: both c=0.3 and the underfit card are majority-collapsed on this fold (all 11 minority nodes predicted as the majority class; 2 majority nodes predicted elsewhere). This is inferred from the arithmetic; per-node predictions are not stored and no checkpoint was saved.
+- The runner has no code path that reads another run's held-out result (it reads only the card, folds_frozen.json and its own fold file for resume), and c=0.3's held-out metrics are in its own MLflow run (diag/heldout-dcoef0.3) and its own results dir.
+- Granularity: from that confusion, ONE correctly predicted minority node adds +0.075 macro-F1 (class of 8) or +0.168 (class of 3). The whole c=1.0 vs c=0.3 gap (+0.0499) and the 0.06 band are smaller than one node. c=1.0 has LOWER top-1 (138/153 vs 140/153). So fold 0 cannot separate the two settings; a second seed on fold 0 would again resolve only a handful of nodes.
+
+Per-fold resolution (sdrp class counts from the frozen batches; "1 node" = macro-F1 change from one correct minority node starting from majority-collapse; last column = earlier pool lr_1e-4 held-out macro-F1, coefficient 0):
+
+| fold | n | class counts | 1 node (smallest / largest minority class) | pool lr_1e-4 held-out |
+|---|---|---|---|---|
+| 1MBN:A | 153 | 142/8/3 | +0.167 / +0.074 | 0.374 |
+| 1LYZ:A | 129 | 120/5/4 | +0.133 / +0.111 | 0.416 |
+| 1BG1:A | 558 | 517/24/17 | +0.037 / +0.027 | 0.344 |
+| 1F88:A | 338 | 310/20/8 | +0.074 / +0.032 | 0.430 |
+| 2Z6H:A | 533 | 495/30/8 | +0.074 / +0.022 | 0.416 |
+| 1HHP:A | 99 | 84/9/6 | +0.095 / +0.067 | 0.514 |
+| 1TEN:A | 89 | 83/4/2 | +0.222 / +0.133 | 0.324 |
+| 1UBQ:A | 76 | 67/8/1 | +0.333 / +0.074 | 0.624 |
+| 1TIM:A | 247 | 229/15/3 | +0.167 / +0.042 | 0.382 |
+| 4OBE:A | 169 | 154/10/5 | +0.111 / +0.061 | 0.441 |
+| 1IVO:A | 511 | 467/26/18 | +0.035 / +0.025 | 0.433 |
+| 2SHP:A | 491 | 470/13/8 | +0.074 / +0.048 | 0.426 |
+
+- The pre-committed folds are a poor pair for this question: `1TEN:A` has the coarsest resolution (one node = +0.13 to +0.22) and a near-floor earlier score; `1BG1:A` has good resolution (+0.03) but an earlier score near the floor. Folds with both fine resolution and clearly above-floor earlier scores: `1IVO:A` (0.433), `2Z6H:A` (0.416), `1F88:A` (0.430). This rests on label counts and the earlier card, not on fold-0 results. Swapping the pre-committed folds is an amendment for the operator to decide and record.
+- A single 0.06 band is not coherent across folds: on the large folds it is ~2 nodes, on the small folds less than one node. Consider judging differences in nodes or with an interval.
+
 ## Open items
 
 1. DONE (46b6280): git provenance guard in both runners.
