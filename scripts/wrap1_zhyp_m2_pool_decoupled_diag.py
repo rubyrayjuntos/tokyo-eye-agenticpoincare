@@ -21,8 +21,11 @@ phase-aware rule is still owed. Not needed for this comparison.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
+
+import torch
 
 SCRIPTS = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPTS.parent
@@ -32,6 +35,48 @@ for p in (str(REPO_ROOT), str(SCRIPTS)):
 
 import wrap1_zhyp_m2_pool_decoupled as M  # noqa: E402
 import wrap1_zhyp_g_fit as G  # noqa: E402
+
+
+def _install_confusion_logger(out_file: Path) -> None:
+    """Wrap G._sdrp_structure_metrics so every scored structure also saves its confusion matrix and
+    per-node predictions (the sealed runner stores only summary metrics). Never raises into the run."""
+    orig = G._sdrp_structure_metrics
+    records: list[dict] = []
+
+    def _shim(system, batch, *, tau_ceiling):
+        res = orig(system, batch, tau_ceiling=tau_ceiling)
+        try:
+            was = system.training
+            system.eval()
+            with torch.no_grad():
+                out = system(batch["x"], batch["edge_index"], batch["edge_type"],
+                             tau_ceiling=tau_ceiling, chem=batch.get("gate_chem"))
+                logits = out["sdrp_logits"]
+                pred = logits.argmax(dim=-1).cpu()
+                y = batch["sdrp_target"].long().cpu()
+                k = int(logits.shape[-1])
+            if was:
+                system.train()
+            cm = torch.zeros(k, k, dtype=torch.long)
+            cm.index_put_((y, pred), torch.ones_like(y), accumulate=True)
+            present = [c for c in range(k) if int((y == c).sum()) > 0]
+            f1s = []
+            for c in present:
+                tp = int(cm[c, c]); fp = int(cm[:, c].sum()) - tp; fn = int(cm[c, :].sum()) - tp
+                f1s.append(0.0 if tp == 0 else 2 * tp / (2 * tp + fp + fn))
+            recomputed = sum(f1s) / len(f1s) if f1s else float("nan")
+            records.append({
+                "n": int(y.numel()), "macro_f1_logged": res.get("macro_f1"), "macro_f1_recomputed": recomputed,
+                "confusion_true_rows_by_pred_cols": cm.tolist(), "y": y.tolist(), "pred": pred.tolist(),
+            })
+            out_file.write_text(json.dumps(records))
+            if abs(recomputed - float(res.get("macro_f1", recomputed))) > 1e-9:
+                print(f"[diag] WARNING: recomputed macro-F1 {recomputed} != logged {res.get('macro_f1')}", flush=True)
+        except Exception as exc:  # noqa: BLE001 -- diagnostics must never break the run
+            print(f"[diag] confusion logger error (ignored): {type(exc).__name__}: {exc}", flush=True)
+        return res
+
+    G._sdrp_structure_metrics = _shim
 
 
 def main() -> int:
@@ -60,6 +105,11 @@ def main() -> int:
     M.DEHYDRON_COEFF = float(a.dehydron_coeff)
     M.RESULT_DIR = REPO_ROOT / "data" / "gates" / f"diag_heldout_{tag}"
     M.CANONICAL_MLFLOW_EXPERIMENT = f"diag/heldout-{tag}"
+
+    conf_dir = Path("/tmp") if a.smoke else M.RESULT_DIR
+    conf_dir.mkdir(parents=True, exist_ok=True)
+    conf_name = "confusions_smoke.json" if a.smoke else f"confusions_seed{a.seed}_{'_'.join(folds).replace(':', '')}.json"
+    _install_confusion_logger(conf_dir / conf_name)
 
     orig = M.run_one_fold
 

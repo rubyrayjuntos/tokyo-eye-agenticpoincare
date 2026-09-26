@@ -207,6 +207,19 @@ Per-fold resolution (sdrp class counts from the frozen batches; "1 node" = macro
 - The pre-committed folds are a poor pair for this question: `1TEN:A` has the coarsest resolution (one node = +0.13 to +0.22) and a near-floor earlier score; `1BG1:A` has good resolution (+0.03) but an earlier score near the floor. Folds with both fine resolution and clearly above-floor earlier scores: `1IVO:A` (0.433), `2Z6H:A` (0.416), `1F88:A` (0.430). This rests on label counts and the earlier card, not on fold-0 results. Swapping the pre-committed folds is an amendment for the operator to decide and record.
 - A single 0.06 band is not coherent across folds: on the large folds it is ~2 nodes, on the small folds less than one node. Consider judging differences in nodes or with an interval.
 
+## LESSON: a fixed macro-F1 delta is not portable across folds (2026-09-26)
+
+The 0.06 threshold was derived from a rough cross-config comparison on fold 0 and then treated as if it applied to whichever fold came next. The same numeric gap is a different amount of actual prediction change on every fold (one correctly predicted minority node is worth +0.13 to +0.22 on `1TEN:A`, +0.075 to +0.17 on `1MBN:A`, but only +0.02 to +0.04 on `1BG1:A`/`1IVO:A`/`2Z6H:A`). Same class of mistake as reusing a bar (e.g. an earlier lift threshold) built for one label geometry on another. Standing rule: express any held-out difference threshold in node-level flips computed from the fold's own class counts, and check a fold's resolving power BEFORE spending compute on it.
+
+## AMENDMENT to the held-out plan (2026-09-26, before any 1IVO/2Z6H result)
+
+- Second-seed-at-fold-0 is dropped (fold 0 cannot resolve the comparison: see the granularity table). The pre-committed folds `1TEN:A` (coarsest resolution) and `1BG1:A` (near-floor earlier score) are replaced. Rationale rests on label counts and the earlier pool card, not on fold-0's outcome.
+- New plan: `1IVO:A` (n=511, class counts 467/26/18) at coefficient 1.0 then 0.3 (seed 0, 400 steps); add `2Z6H:A` (n=533, 495/30/8) if the 1IVO result is "close" (below).
+- Threshold in node units (proposed following the operator's suggestion; computed from each fold's class counts, starting from majority collapse, ignoring the small majority-F1 change). T1 = macro-F1 gain from ONE extra correct node in the fold's largest minority class; T3 = from THREE. `1IVO:A`: T1 ~ 0.025, T3 ~ 0.069 (largest minority class of 26; the class of 18 gives 0.035 / 0.095). `2Z6H:A`: T1 ~ 0.022, T3 ~ 0.061 (class of 30; the class of 8 gives 0.074 / 0.182).
+- Reading of gap = |heldout macro-F1(c=1.0) - heldout macro-F1(c=0.3)| on a fold: gap >= T3 = meaningful on that fold; T1 <= gap < T3 = close, run `2Z6H:A`; gap < T1 = indistinguishable at this fold's resolution. Also report per-class recall and the number of held-out nodes whose predictions differ (confusion matrices and per-node predictions are now saved).
+- Selection-bias statement for any write-up: folds were selected for resolving power and known above-floor earlier performance; a result here shows detectability where it is highest, NOT that the coefficient effect holds across the 12-fold corpus.
+- Wrapper change: `wrap1_zhyp_m2_pool_decoupled_diag.py` now saves `confusions_seed<S>_<fold>.json` (confusion matrix + per-node y/pred for every scored structure, the last record is the held-out fold) in the results dir; logger is exception-safe; smoke-tested (12 records, recomputed macro-F1 matches the runner's to ~1e-16).
+
 ## Open items
 
 1. DONE (46b6280): git provenance guard in both runners.
