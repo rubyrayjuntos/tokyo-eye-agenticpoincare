@@ -152,9 +152,33 @@ Question (only): does dehydron_coeff 0.3 cost anything in held-out performance v
 - Results: `data/gates/diag_heldout_dcoef<c>/`; MLflow experiments `diag/heldout-dcoef1` and `diag/heldout-dcoef0.3`. Per-fold metrics of interest: heldout_macro_f1, train_macro_f1, train_min_f1, clip_active_fraction, c_drift.
 - Step 1: fold `1MBN:A` (153 res) at coefficient 1.0, then 0.3; seed 0; 400 steps (~3.5 h each).
 - Pre-committed next folds if fold 0 is ambiguous (chosen now, independent of fold-0 results): `1TEN:A` (89 res, 2nd smallest) and `1BG1:A` (558 res, largest). Fold sizes (residues): 1UBQ 76, 1TEN 89, 1HHP 99, 1LYZ 129, 1MBN 153, 4OBE 169, 1TIM 247, 1F88 338, 2SHP 491, 1IVO 511, 2Z6H 533, 1BG1 558.
-- What counts as "ambiguous" / a meaningful macro-F1 difference is NOT set here; the operator should fix it before the results are read.
+- Pre-registered read (proposed by the operator 2026-09-26, recorded before any held-out number exists; revisable only until the first held-out result is read): |difference in heldout macro-F1 between c=1.0 and c=0.3| > 0.06 = "meaningful" (interim; revised 2026-09-26 by the operator from ~0.04-0.05, still before any held-out number); smaller = "ambiguous", pending multi-fold data. If the fold-0 difference is inside the band, the conditional next step is a second seed at fold 0 to measure seed-to-seed noise; if clearly outside, act without it. Anchor and its limits (checked against the result files):
+  - The 0.307-0.349 (spread 0.042) figure comes from `tokyo_eye_equ_wrap1_zhyp_m2_result.json` (status INCONCLUSIVE_UNDERFIT, dehydron_coeff 0.0, train macro-F1 ~0.43, i.e. every fold sat near the floor). The pool-frontend card `..._m2_pool_lr_1e-4_result.json` (FAIL_NO_SIGNAL, dehydron_coeff 0.0, train macro-F1 ~0.96-0.98) spans 0.324-0.624 (spread 0.300) across the same 12 folds. Between-fold spread mostly reflects structure difficulty, and for an underfit model it is compressed.
+  - The noise that matters for a same-fold paired comparison is seed-to-seed variance on that fold; it has not been measured. A second seed at fold 0 (2 more runs, ~7 h) would measure it directly.
+  - How to read the band (operator, 2026-09-26): 0.06 is a soft upper bound for "definitely not noise", not a sharp dividing line. A fold-0 difference inside the band is neither settled-meaningful nor settled-noise; it triggers the second-seed run. A difference clearly outside it can be acted on without that run.
+  - Where 0.06 comes from: 0.380 (pool bbtrain) - 0.319 (earlier M2 card) = 0.062 on fold 1MBN:A. That band is dominated by the underfit M2 card (train macro-F1 0.434, cold SE(3)-lite frontend, lr_frontend 1e-5); between the two fitted pool cards (0.374 vs 0.380) the difference is 0.006. So 0.06 is a conservative interim bar, not a noise floor.
+  - The three reference rows are NOT one-dial variants, but not because "coefficient 0.0" means different things: all three have the same loss config (sdrp_coeff 0.1, dehydron_coeff 0.0, margin_coeff 0.0, moe_mode ablated), i.e. SDRP-only with the mechanism-head BCE off. They differ in frontend: zhyp_m2 = cold SE(3)-lite, lr_frontend 1e-5; pool lr_1e-4 = equiformer_v3_pool_cold_init, lr 1e-4; pool lr_1e-4_bbtrain = same plus backbone_train_mode. All three also predate the decoupled architecture (R2 decoupling, value-path attention, [z_hyp, h_euc] mechanism head), so the new runs differ from every reference row in architecture and loss, not just in the dehydron coefficient.
+  - Reference points, fold 1MBN:A, seed 0, 400 steps, all dehydron_coeff 0.0: zhyp_m2 heldout 0.319 (train 0.434); pool lr_1e-4 heldout 0.374 (train 0.960); pool lr_1e-4_bbtrain heldout 0.380 (train 0.984). Two configs differ by 0.006 here, but they are different configs, not a noise estimate.
 - One fold cannot justify the amendment either way; the amendment needs the extra folds' data.
 - Open precondition for the sealed 400-step launch (independent of this comparison): the verify_grad_flow gates (min over all steps) fail transiently at 400 steps; a phase-aware rule is owed.
+
+## Fold-0 held-out results (diag wrapper; seed 0, fold 1MBN:A, 400 steps; commit 4f18b08, git_dirty=False for both; ~212 min each)
+
+MLflow: `diag/heldout-dcoef1` run 02f77ba040884f76b02005ee1e67fe74; `diag/heldout-dcoef0.3` run a38122c7... Results: `data/gates/diag_heldout_dcoef{1,0.3}/decoupled/seed0_hold_1MBNA.json` (untracked).
+
+| | c=1.0 | c=0.3 |
+|---|---|---|
+| heldout macro-F1 | 0.3684 | 0.3185 (0.31854379977246877) |
+| heldout sdrp_top1_acc (majority rate 0.9281) | 0.902 | 0.915 |
+| heldout lift (top1 / majority) | 0.9718 | 0.9859 |
+| train macro-F1 / min-F1 | 0.888 / 0.647 | 0.983 / 0.926 |
+| clip_active_fraction (all steps) | 0.317 (0.318) | 0.000 (0.018) |
+| g_fit_train_pass_fold, G_grad_spine | True, True | True, True |
+
+- Difference in held-out macro-F1 (c=1.0 minus c=0.3) = +0.0499: INSIDE the 0.06 band, so per the pre-registered read it is neither settled-meaningful nor settled-noise and triggers the second-seed run. (Under the original ~0.04-0.05 wording it would have sat on the line.)
+- c=0.3's held-out macro-F1 is bit-identical (17 digits) to the earlier underfit M2 card's fold-0 value 0.31854379977246877, i.e. it sits exactly at the floor-like score for this fold. c=1.0 is +0.05 above that floor. Both have lift < 1: neither beats the majority-rate top-1 baseline on held-out. Held-out signal on this fold is essentially absent for both (as in the pool cards, FAIL_NO_SIGNAL; their fold-0 values were 0.374 and 0.380 at coefficient 0).
+- c=0.3 fits the training set better (train macro-F1 0.983 vs 0.888, min-F1 0.926 vs 0.647) with no clipping; c=1.0 with ~32% of steps clipped fits worse. The held-out score is no better, so the train/held-out gap is wider at 0.3.
+- Power caveat for the pre-committed next folds: in the earlier pool lr_1e-4 card, `1TEN:A` (0.324) and `1BG1:A` (0.344) were near the floor, while `1UBQ:A` (0.624), `1HHP:A` (0.514) and `4OBE:A` (0.441) were the highest. The pre-committed folds may therefore have little power to separate the coefficients. This comes from earlier-card data, not from the fold-0 result, but any change to the pre-committed folds is an amendment for the operator to decide and record with this rationale.
 
 ## Open items
 
