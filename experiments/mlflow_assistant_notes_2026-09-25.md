@@ -120,7 +120,6 @@ Runs: s1 baseline f30b8567dda049799cd1efd4cc0b94a2 (`_seed1_base`), s1 dehydron_
   - Clip windows vs single-structure spikes: corr(clip_active, per-structure BCE max) = +0.23 (400-step) and +0.31 (100-step); clipped-step median BCE max 0.611 vs 0.517 (400-step), 0.708 vs 0.712 (100-step). Weak-to-moderate; does not show that clipping = one hard structure spiking. The 1.147 at step 250 is a single step; the 207-255 window has BCE max 0.15-0.63. Only max/min are logged, not which structure.
   - The early window (steps ~45-70) happens at loss 0.55-0.7, long before any fit, so memorization does not explain it.
 - 22da0d3 (user commit) message mentions notes/card updates but the diff is only the 7 previously untracked data files. Nothing lost: HEAD's card already has the 4 corrections (ded6cae), no stash/other branch, reflog linear. Message is simply inaccurate; it is already on origin.
-- (superseded below) Coefficient 0.3 counterpart: run d5319789...
 
 ## 400-step dehydron_coeff 0.3 (run d531978982f643b39a265950b92cbb81, seed 0, fold 0, commit 22da0d3, git_dirty=False; 212 min)
 
@@ -144,11 +143,22 @@ Runs: s1 baseline f30b8567dda049799cd1efd4cc0b94a2 (`_seed1_base`), s1 dehydron_
 - Cross-run check on preclip_norm, steps 3-99 (all first-100-step windows): same seed + coefficient, 100-step vs 400-step run: Spearman 0.96 (c=1.0) and 0.99 (c=0.3), top-10% steps overlap 10/10 (chance ~1). Same seed, c=1.0 vs c=0.3: Spearman ~0.59, top-10% overlap 1/10. Seed 0 vs seed 1: overlap 1/10 (c=1.0), 0/10 (c=0.3). At the other config's peak step there is no hidden smaller burst: step 49 in the c=0.3 run is 1.7x its median (400-step: 1.8x), step 67 in the c=1.0 run is 1.8x (1.7x). So the bursts are NOT one shared per-step trigger seen at different amplitudes.
 - Reading: the training trajectory is highly reproducible for a given seed and coefficient (a 100-step run predicts the first 100 steps of a 400-step run), and the instability events emerge from that trajectory; where they land depends on the loss weighting and the seed. An RNG-mask trigger (dropout/drop-path/Gumbel) is NOT supported by this and not excluded (same masks at the same step could still only matter in some weight states). No direct test done.
 
-## Open items (`_s400_dcoef0.3`), commit 22da0d3 (a user commit of data files only; code unchanged since ded6cae), in progress.
+
+## Held-out comparison plan (recorded 2026-09-26, BEFORE any held-out result exists)
+
+Question (only): does dehydron_coeff 0.3 cost anything in held-out performance vs 1.0? The clip-rate reduction is treated as settled (replicated over 2 seeds x 2 horizons).
+
+- Tool: `scripts/wrap1_zhyp_m2_pool_decoupled_diag.py` (new; wraps the sealed runner by rebinding DEHYDRON_COEFF, RESULT_DIR and CANONICAL_MLFLOW_EXPERIMENT, so the sealed script/hash, its resume-from-disk results folder and its MLflow experiment are untouched; refuses all-12-fold runs; a subset never stamps the card). Smoke-tested: overrides confirmed at call time.
+- Results: `data/gates/diag_heldout_dcoef<c>/`; MLflow experiments `diag/heldout-dcoef1` and `diag/heldout-dcoef0.3`. Per-fold metrics of interest: heldout_macro_f1, train_macro_f1, train_min_f1, clip_active_fraction, c_drift.
+- Step 1: fold `1MBN:A` (153 res) at coefficient 1.0, then 0.3; seed 0; 400 steps (~3.5 h each).
+- Pre-committed next folds if fold 0 is ambiguous (chosen now, independent of fold-0 results): `1TEN:A` (89 res, 2nd smallest) and `1BG1:A` (558 res, largest). Fold sizes (residues): 1UBQ 76, 1TEN 89, 1HHP 99, 1LYZ 129, 1MBN 153, 4OBE 169, 1TIM 247, 1F88 338, 2SHP 491, 1IVO 511, 2Z6H 533, 1BG1 558.
+- What counts as "ambiguous" / a meaningful macro-F1 difference is NOT set here; the operator should fix it before the results are read.
+- One fold cannot justify the amendment either way; the amendment needs the extra folds' data.
+- Open precondition for the sealed 400-step launch (independent of this comparison): the verify_grad_flow gates (min over all steps) fail transiently at 400 steps; a phase-aware rule is owed.
 
 ## Open items
 
 1. DONE (46b6280): git provenance guard in both runners.
 2. DONE: both single-variable arms ran (see above).
-3. Decide the 12-fold config (dehydron_coeff 1.0 vs 0.3). Seed 1 done (see above); remaining question is the 400-step horizon and the BCE cost there. The 12-fold runner has DEHYDRON_COEFF as a module constant, no CLI flag; changing it needs a documented prereg amendment.
-4. Push 46b6280 (and any later commits); commit this note and the draft card.
+3. Decide the 12-fold config (dehydron_coeff 1.0 vs 0.3): pending the held-out comparison above. Changing the sealed runner's DEHYDRON_COEFF needs a documented prereg amendment (the diag wrapper avoids editing the sealed script).
+4. Push local commits to origin (needs GitHub credentials on the host; the assistant container has none). Still owed: phase-aware gate rule for a 400-step sealed launch; per-structure BCE logging (with structure tags) if the hard-structure question matters.
