@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "gate_id": "tokyo_eye_equ_wrap1_zhyp_m2_pool_decoupled_result",
+  "status": "FAIL_NO_SIGNAL",
+  "date": "2026-09-26",
+  "display_lineage": "Tokyo Eye EQU",
+  "do_not_promote": true,
+  "card": "data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_decoupled_prereg.json",
+  "metric_family": "M2_macro_f1",
+  "lr_frontend_arm": "decoupled",
+  "lr_frontend": 0.0001,
+  "backbone_train_mode": true,
+  "seed": 0,
+  "steps": 400,
+  "folds": [
+    "1MBN:A"
+  ],
+  "frontend": "equiformer_v3_pool_cold_init",
+  "moe_mode": "ablated",
+  "sdrp_coeff": 0.1,
+  "dehydron_coeff": 0.3,
+  "margin_coeff": 0.0,
+  "scoring": {
+    "verdict": "FAIL_NO_SIGNAL",
+    "G_finite": true,
+    "G_grad_spine": true,
+    "G_fit_train": true,
+    "metric_family": "M2_macro_f1",
+    "S1": {
+      "pass": false,
+      "mean_macro_f1": 0.31854379977246877,
+      "bar_mean": 0.4,
+      "ci95_lb_diagnostic": 0.31854379977246877
+    },
+    "S2": {
+      "pass": false,
+      "n_macro_f1_ge_bar": 0,
+      "of_n": 12,
+      "bar_n": 10,
+      "threshold": 0.4
+    },
+    "held_scores": [
+      0.31854379977246877
+    ]
+  },
+  "per_fold_summary": {
+    "1MBN:A": {
+      "finite": true,
+      "G_grad_spine": true,
+      "train_macro_f1": 0.9830822293526711,
+      "train_min_f1": 0.9264230644993301,
+      "g_fit_train_pass_fold": true,
+      "heldout_macro_f1": 0.31854379977246877,
+      "c_drift": 0.0,
+      "clip_active_fraction": 0.0
+    }
+  },
+  "script_sha256": "4346c0810638cfd3fa2c815d0a64d3f4331341a37b5dcb5c72637d1adf2f9f45",
+  "prereg_sha256": "7fb3185208837715641dc1d6048fab60cdafb3de4239767ab8dce4fa38a9edf8",
+  "folds_frozen_sha256": "bea720b0d67ae86b4ef0850091094948e05aceff9cf9d6214d602721b3bc3a0e",
+  "git_commit": "158491f128f3904218a61b59e6fbf0953a0ddf50",
+  "not_claims": [
+    "not a biology seal",
+    "not promotable"
+  ],
+  "signed": "auto from wrap1_zhyp_m2_pool_lr.py"
+}
