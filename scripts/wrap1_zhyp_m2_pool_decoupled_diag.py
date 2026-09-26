@@ -28,6 +28,7 @@ import json
 import sys
 from pathlib import Path
 
+import mlflow
 import torch
 
 SCRIPTS = Path(__file__).resolve().parent
@@ -82,6 +83,30 @@ def _install_confusion_logger(out_file: Path) -> None:
     G._sdrp_structure_metrics = _shim
 
 
+def _diag_tags(tags: dict) -> dict:
+    """The sealed runner tags its runs diagnostic=false, card=m2_pool_<arm>, gate_id=..._prereg. Rewrite those so a
+    diagnostic run can never be mistaken for a sealed-card run by tag (the experiment name differs too)."""
+    out = dict(tags)
+    if "diagnostic" in out:
+        out["diagnostic"] = "true"
+        out["not_a_card_result"] = "true"
+        out["diag_wrapper"] = "wrap1_zhyp_m2_pool_decoupled_diag.py"
+    if "card" in out and not str(out["card"]).startswith("DIAG_"):
+        out["card"] = "DIAG_" + str(out["card"])
+    if "gate_id" in out and not str(out["gate_id"]).startswith("NOT_A_GATE"):
+        out["gate_id"] = "NOT_A_GATE_diag_of_" + str(out["gate_id"])
+    return out
+
+
+def _install_tag_rewrite() -> None:
+    orig_set_tags = mlflow.set_tags
+
+    def _set_tags(tags, *args, **kwargs):
+        return orig_set_tags(_diag_tags(tags), *args, **kwargs)
+
+    mlflow.set_tags = _set_tags
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dehydron-coeff", type=float, required=True)
@@ -113,6 +138,8 @@ def main() -> int:
     conf_dir.mkdir(parents=True, exist_ok=True)
     conf_name = "confusions_smoke.json" if a.smoke else f"confusions_seed{a.seed}_{'_'.join(folds).replace(':', '')}.json"
     _install_confusion_logger(conf_dir / conf_name)
+
+    _install_tag_rewrite()
 
     orig_card_paths = M._card_paths
 
