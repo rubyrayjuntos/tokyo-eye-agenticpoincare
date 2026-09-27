@@ -230,6 +230,22 @@ The 0.06 threshold was derived from a rough cross-config comparison on fold 0 an
 - Cleanup plan (operator-approved approach: delete-and-recommit, no history rewrite): after the 1IVO c=1.0 run finishes and re-stamps the sealed path once more, `git rm` data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_decoupled_result.json in a new commit that references 71f9308; commit only after the c=0.3 run has recorded its start commit, so both runs keep clean provenance.
 - Still open: (1) the `1IVO:A` c=1.0 run started BEFORE the fix and will overwrite the sealed-path stamp with a `1IVO:A` stamp when it finishes; (2) the committed stamp should be removed from the sealed path (its information is already in the per-fold JSONs in diag_heldout_*/decoupled/). Operator decision.
 
+## 1IVO:A held-out results (seed 0, 400 steps; c=1.0 commit 00cf21f, c=0.3 commit 1726fbd, both git_dirty=False, ~190 min each; code identical between the two commits, diff is the redirect/tag-rewrite fixes and docs only)
+
+| | c=1.0 (b3664684) | c=0.3 (ba58175a) |
+|---|---|---|
+| heldout macro-F1 | 0.3981 | 0.4663 |
+| heldout top1 / majority rate | 0.8885 / 0.9139 | 0.8924 / 0.9139 |
+| train macro-F1 / min-F1 | 0.897 / 0.742 | 0.982 / 0.921 |
+| recall: class0 (n=26) / class1 (n=18) / majority (n=467) | 0.154 / 0.056 / 0.961 | 0.231 / 0.167 / 0.957 |
+| held-out nodes whose prediction differs between the two runs | 45 / 511 | |
+
+- Direction REVERSED from fold 0: here c=0.3 has the higher held-out macro-F1 (gap 0.0682, c=0.3 minus c=1.0). Neither is majority-collapsed (both have nonzero recall on both minority classes; recomputed macro-F1 matches logged to ~1e-16 for both, so the metric and confusion-matrix reasoning check out).
+- Node-level reading (thresholds computed from 1IVO:A's own class counts, pre-registered before this result): T1 (class of 26) ~0.025, T3 (class of 26) ~0.070; class of 18 gives T1~0.035, T3~0.095. Gap 0.0682 sits just under the class-26 T3 and clearly under the class-18 T3, while clearly above both T1s. Per the pre-registered rule this is CLOSE (1-3 nodes), not settled either way -> triggers `2Z6H:A`.
+- Both runs pass g_fit_train (train macro-F1 > floor) and G_grad_spine; the sealed-card gates are not evaluated here (this is the diagnostic wrapper, gates belong to verify_grad_flow_decoupled.py).
+
+## 2Z6H:A held-out comparison (launched per the pre-committed plan; 1IVO:A was "close")
+
 ## Open items
 
 1. DONE (46b6280): git provenance guard in both runners.
