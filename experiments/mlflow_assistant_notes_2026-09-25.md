@@ -256,6 +256,16 @@ Pre-committed reading of 2Z6H:A, decided now rather than after seeing it:
 - 2Z6H:A ALSO lands ambiguous/close (either sign): three folds, no fold reaching its own "meaningful" bar, is treated as the answer, not as insufficient data -- i.e. AT N=3 folds, STOP concluding on held-out grounds. This is positive evidence of no fold-generalizable held-out effect at this sample size, not a call for a 4th fold. Any further fold would be additional description, not a different verdict, unless it lands clearly meaningful in a way that reopens the question.
 - In every branch above: the training-fit result (0.3 improves train macro-F1 and min-F1 on every fold and seed run so far: s0/s1 100-step, 400-step baseline, 1IVO:A) and the clip-rate reduction (also consistent across every run so far) are UNCHANGED and are reported as a separate, higher-confidence claim from the held-out question. The amendment, if any, should state these as two distinct claims with their own confidence levels, not a single blended verdict.
 
+## Gradient/held-out coupling check: plan and data availability (recorded 2026-09-26, BEFORE 2Z6H:A c=0.3 lands)
+
+Question: does the coefficient's effect on gradient magnitude (e.g. final grad_l2_mechanism_head) predict its effect on held-out macro-F1 or on which nodes flip, across the folds run so far?
+
+- Data available:
+  - Aggregate (all 3 folds, both coefficients): grad_l2_{mechanism_head, sdrp_head, attn_layers, moe, projector, euc_skip, _log_c} are logged at every dense/sparse step for every run so far (fold0 02f77ba0/a38122c7, 1IVO b366468/ba58175a, 2Z6H 3cafaff8 + the running c=0.3). So (heldout macro-F1 delta) vs (final or min grad_l2 delta) is computable for all 3 folds.
+  - Per-node flip count: only 2 folds (1IVO:A, 2Z6H:A) have confusion_true_rows_by_pred_cols/y/pred saved. Fold 0's pair (02f77ba0, a38122c7) ran BEFORE the confusion logger was added (commit 00cf21f); no confusions_seed0_1MBNA.json exists on disk for either. This was not caught until checked just now, while looking for it -- worth noting fold 0's per-node data cannot be reconstructed after the fact.
+- Caveat to state alongside any number produced: n=3 folds (aggregate) or n=2 folds (per-node) is far too small for a correlation coefficient to be interpretable as a hypothesis test. Any number reported here is DESCRIPTIVE ONLY (e.g. "the sign was the same in 2 of 3 folds"), not evidence of a real coupling, and should not be used to argue for or against the coefficient amendment on its own.
+- This check runs alongside the pre-registered 2Z6H:A decision rule (see above) once the c=0.3 run finishes, not as a separate follow-up.
+
 ## Open items
 
 1. DONE (46b6280): git provenance guard in both runners.
