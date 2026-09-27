@@ -246,6 +246,16 @@ The 0.06 threshold was derived from a rough cross-config comparison on fold 0 an
 
 ## 2Z6H:A held-out comparison (launched per the pre-committed plan; 1IVO:A was "close")
 
+## Decision rule for the 3-fold outcome (recorded 2026-09-26, BEFORE the 2Z6H:A result)
+
+Signs so far, held-out macro-F1 (c=1.0 minus c=0.3): fold 0 (1MBN:A) = +0.050 (inside its own ambiguous band); 1IVO:A = -0.068 (close, 1-3 nodes). Two folds, two different signs, both in ambiguous/close territory, not in either fold's "meaningful" zone.
+
+Pre-committed reading of 2Z6H:A, decided now rather than after seeing it:
+- 2Z6H:A meaningful AND agrees in sign with 1IVO:A (i.e. c=0.3 higher, gap >= its own T3): treat as 2-of-3 evidence for a real, fold-dependent-in-sign-but-real effect worth naming as "unstable/context-dependent, not a clean win for either coefficient." Does not by itself justify amending the sealed coefficient to 0.3 on held-out grounds; the training-fit and stability case for 0.3 stands on its own.
+- 2Z6H:A meaningful AND agrees with fold 0 (c=1.0 higher): same as above, mirrored -- 2-of-3 for the opposite sign. Same conclusion: no clean, fold-independent held-out story either way.
+- 2Z6H:A ALSO lands ambiguous/close (either sign): three folds, no fold reaching its own "meaningful" bar, is treated as the answer, not as insufficient data -- i.e. AT N=3 folds, STOP concluding on held-out grounds. This is positive evidence of no fold-generalizable held-out effect at this sample size, not a call for a 4th fold. Any further fold would be additional description, not a different verdict, unless it lands clearly meaningful in a way that reopens the question.
+- In every branch above: the training-fit result (0.3 improves train macro-F1 and min-F1 on every fold and seed run so far: s0/s1 100-step, 400-step baseline, 1IVO:A) and the clip-rate reduction (also consistent across every run so far) are UNCHANGED and are reported as a separate, higher-confidence claim from the held-out question. The amendment, if any, should state these as two distinct claims with their own confidence levels, not a single blended verdict.
+
 ## Open items
 
 1. DONE (46b6280): git provenance guard in both runners.
