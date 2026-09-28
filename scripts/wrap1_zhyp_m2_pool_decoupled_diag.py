@@ -15,6 +15,10 @@ finished (it only prints "incomplete fold set" when fewer folds ran than were re
 single-fold request writes data/gates/tokyo_eye_equ_wrap1_zhyp_m2_pool_<arm>_result.json. This wrapper
 therefore redirects the card's result path into the diagnostic results dir, and also refuses to run all 12 folds.
 
+Optional read-only extras (no effect on training; see the install functions): ``--interval-evals`` (held-out and train
+evals at chosen steps), ``--dense-log`` (log every step), ``--step-loggers`` (per-structure BCE every step, per-bucket
+update ratio on a schedule).
+
 OPEN PRECONDITION for the eventual sealed 400-step launch: the verify_grad_flow gates ("min over all
 steps > threshold") fail transiently at 400 steps in the near-fit regime (attn_layers, moe); a
 phase-aware rule is still owed. Not needed for this comparison.
@@ -27,6 +31,7 @@ import dataclasses
 import json
 import random
 import sys
+import time
 from pathlib import Path
 
 import mlflow
@@ -187,6 +192,87 @@ def _install_interval_eval(hold: str, steps_sched: list[int], out_file: Path, sm
     G.run_step_sdrp_only = _shim
 
 
+def _install_step_loggers(hold: str, ur_every: int, ur_dense: tuple[int, int], out_file: Path, smoke: bool) -> None:
+    """Two READ-ONLY per-step loggers (no RNG, no parameter or graph changes), wrapped around G.run_step_sdrp_only.
+
+    1. Per-structure BCE at every step: ``bce_struct_<tag>`` for each of the 11 training structures (the sealed runner
+       logs only their min and max, which cannot say whether the same structure leads across runs). Order of the list
+       returned by the step is the order of the batches, which the runner builds as [t for t in all_tags if t != hold].
+    2. Per-bucket update ratio ||delta theta|| / ||theta|| for the optimizer step at step s, logged as
+       ``update_ratio_<bucket>`` when s % ur_every == 0 or ur_dense[0] <= s <= ur_dense[1]. Buckets: spine buckets by
+       ``param_bucket`` (same names as grad_l2_*), plus fe_backbone / fe_proj for the frontend. Only requires_grad
+       parameters. Snapshots are copied to CPU so they add no GPU memory.
+    Under Adam the step follows gradient sign consistency, not gradient size, so this (not grad L2) is the measure of
+    how much a bucket moves. Never raises into the run."""
+    from science.tokyo_eye.v8.grad_reachability import param_bucket
+
+    orig_step = G.run_step_sdrp_only
+    records: list[dict] = []
+
+    def _named(system):
+        for prefix in ("frontend", "spine"):
+            for name, p in getattr(system, prefix).named_parameters():
+                if p.requires_grad:
+                    yield prefix, name, p
+
+    def _bucket(prefix: str, name: str) -> str:
+        if prefix == "spine":
+            return param_bucket(name)
+        return "fe_backbone" if name.startswith("_backbone.") else "fe_proj"
+
+    def _want_ur(step) -> bool:
+        return step is not None and (step % ur_every == 0 or ur_dense[0] <= step <= ur_dense[1])
+
+    def _update_ratio(system, before) -> dict[str, float]:
+        dsq: dict[str, float] = {}
+        tsq: dict[str, float] = {}
+        for prefix, name, p in _named(system):
+            b0 = before[(prefix, name)]
+            b = _bucket(prefix, name)
+            d = (p.detach().to("cpu") - b0).double()
+            dsq[b] = dsq.get(b, 0.0) + float(d.pow(2).sum())
+            tsq[b] = tsq.get(b, 0.0) + float(b0.double().pow(2).sum())
+        return {b: (dsq[b] ** 0.5) / max(tsq[b] ** 0.5, 1e-12) for b in dsq}
+
+    def _shim(system, optimizer, batches, **kw):
+        step = kw.get("epoch")
+        before = None
+        t_snap = 0.0
+        try:
+            if _want_ur(step):
+                t0 = time.perf_counter()
+                before = {(pf, n): p.detach().to("cpu", copy=True) for pf, n, p in _named(system)}
+                t_snap = time.perf_counter() - t0
+        except Exception as exc:  # noqa: BLE001
+            print(f"[diag] update-ratio snapshot error at step {step} (ignored): {type(exc).__name__}: {exc}", flush=True)
+        metrics = orig_step(system, optimizer, batches, **kw)
+        try:
+            tags = [t for t in G._all_structure_tags() if t != hold]
+            bps = list(metrics.get("bce_per_structure") or [])
+            payload: dict[str, float] = {}
+            rec: dict = {"step": step, "loss_total": metrics.get("loss_total"), "preclip_norm": metrics.get("preclip_norm"),
+                         "bce_per_structure": {t: float(v) for t, v in zip(tags, bps)}}
+            if len(bps) == len(tags):
+                payload.update({f"bce_struct_{t.replace(':', '')}": float(v) for t, v in zip(tags, bps)})
+            if before is not None:
+                t0 = time.perf_counter()
+                ur = _update_ratio(system, before)
+                rec["update_ratio"] = ur
+                rec["ur_seconds"] = t_snap + (time.perf_counter() - t0)
+                rec["ur_tracked_param_mb"] = sum(v.numel() * v.element_size() for v in before.values()) / 1e6
+                payload.update({f"update_ratio_{b}": float(v) for b, v in ur.items()})
+            records.append(rec)
+            if smoke or step % 10 == 0 or step == int(M.STEPS) - 1:
+                out_file.write_text(json.dumps({"hold": hold, "tags": tags, "records": records}))
+            if payload and mlflow.active_run() is not None:
+                mlflow.log_metrics(payload, step=step)
+        except Exception as exc:  # noqa: BLE001 -- a logging problem must never break training
+            print(f"[diag] step logger error at step {step} (ignored): {type(exc).__name__}: {exc}", flush=True)
+        return metrics
+
+    G.run_step_sdrp_only = _shim
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dehydron-coeff", type=float, required=True)
@@ -197,10 +283,22 @@ def main() -> int:
     ap.add_argument("--no-mlflow", action="store_true")
     ap.add_argument("--interval-evals", default="", help="comma-separated training steps at which to evaluate all 12 structures (single fold only)")
     ap.add_argument("--dense-log", action="store_true", help="log every step for the whole run (sets DENSE_LOG_STEPS=400)")
+    ap.add_argument("--step-loggers", action="store_true",
+                    help="read-only per-step loggers: bce_struct_<tag> for all 11 training structures every step, "
+                         "update_ratio_<bucket> on the schedule below")
+    ap.add_argument("--update-ratio-every", type=int, default=10)
+    ap.add_argument("--update-ratio-dense", default="30:70", help="LO:HI inclusive step range logged at every step ('' = none)")
+    ap.add_argument("--smoke-hold", default="", help="with --smoke: hold this tag instead of the first one (training-structure "
+                    "order is unchanged: the hold tag is only moved to the front of the tag list)")
     ap.add_argument("--allow-dirty", action="store_true")
     a = ap.parse_args()
 
     all_tags = G._all_structure_tags()
+    if a.smoke_hold:
+        if not a.smoke or a.smoke_hold not in all_tags:
+            raise SystemExit(f"[diag] STOP: --smoke-hold needs --smoke and a valid tag; valid: {all_tags}")
+        _reordered = [a.smoke_hold] + [t for t in all_tags if t != a.smoke_hold]
+        G._all_structure_tags = lambda: list(_reordered)
     if not a.smoke:
         folds = [t for t in a.folds.split(",") if t]
         if not folds:
@@ -231,6 +329,17 @@ def main() -> int:
         iv_name = "interval_smoke.json" if a.smoke else f"interval_evals_seed{a.seed}_{hold_tag.replace(':', '')}.json"
         _install_interval_eval(hold_tag, sched, conf_dir / iv_name, a.smoke)
         print(f"[diag] interval evals at steps {sorted(set(sched))} (before-step semantics; step {M.STEPS} = runner's end-of-run numbers)", flush=True)
+
+    if a.step_loggers:
+        lo, _, hi = a.update_ratio_dense.partition(":")
+        dense = (int(lo), int(hi)) if lo and hi else (1, 0)
+        if not a.smoke and len(set(folds)) != 1:
+            raise SystemExit("[diag] STOP: --step-loggers supports exactly one fold")
+        sl_hold = (a.smoke_hold or "1MBN:A") if a.smoke else folds[0]
+        sl_name = "step_loggers_smoke.json" if a.smoke else f"step_loggers_seed{a.seed}_{sl_hold.replace(':', '')}.json"
+        _install_step_loggers(sl_hold, int(a.update_ratio_every), dense, conf_dir / sl_name, a.smoke)
+        print(f"[diag] step loggers ON: bce_struct_<tag> every step; update_ratio_<bucket> every {a.update_ratio_every} steps "
+              f"+ every step in {dense[0]}..{dense[1]}", flush=True)
 
     _install_tag_rewrite()
 
