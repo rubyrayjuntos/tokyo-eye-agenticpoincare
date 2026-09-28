@@ -266,6 +266,58 @@ Question: does the coefficient's effect on gradient magnitude (e.g. final grad_l
 - Caveat to state alongside any number produced: n=3 folds (aggregate) or n=2 folds (per-node) is far too small for a correlation coefficient to be interpretable as a hypothesis test. Any number reported here is DESCRIPTIVE ONLY (e.g. "the sign was the same in 2 of 3 folds"), not evidence of a real coupling, and should not be used to argue for or against the coefficient amendment on its own.
 - This check runs alongside the pre-registered 2Z6H:A decision rule (see above) once the c=0.3 run finishes, not as a separate follow-up.
 
+## 2Z6H:A held-out results, and the 3-fold verdict (commit 6aaea27, both git_dirty=False)
+
+Runs: c=1.0 3cafaff898f340a7b26d19cc44e0f5e1, c=0.3 1212cdf8f81d45caaf2630262996f4dd. Class counts 495/30/8 (n=533).
+
+| | c=1.0 | c=0.3 |
+|---|---|---|
+| heldout macro-F1 | 0.4435 | 0.4444 |
+| heldout lift | 1.004 | 1.010 |
+| train macro-F1 / min-F1 | 0.903 / 0.715 | 0.987 / 0.939 |
+| clip_active_fraction | 0.293 | 0.024 |
+| recall class0(n=30)/class1(n=8)/majority(n=495) | 0.133/0.125/0.994 | 0.233/0.000/0.996 |
+| held-out nodes whose prediction differs | 17 / 533 | |
+
+- Gap (c1.0 - c0.3) = -0.0010. Node thresholds from this fold's own class counts: T1(class30)=0.022, T3(class30)=0.062, T1(class8)=0.074, T3(class8)=0.183. The gap (0.001) is far below even the smallest T1 -- i.e. INDISTINGUISHABLE at this fold's resolution, more clearly than merely "close."
+- Recomputed macro-F1 matches logged to ~1e-16 for both runs; neither is majority-collapsed.
+
+### Applying the pre-registered node-level reading to all 3 folds
+
+| fold | gap (c1.0-c0.3) | smallest T1 | smallest T3 | verdict |
+|---|---|---|---|---|
+| 1MBN:A | +0.0499 | 0.075 (class n=3: 0.168; class n=8: 0.075) | -- | below T1: indistinguishable (more precise than the earlier "ambiguous") |
+| 1IVO:A | -0.0682 | 0.025 | 0.070 (class n=26) | between T1 and T3: CLOSE |
+| 2Z6H:A | -0.0010 | 0.022 | 0.062 | below T1: indistinguishable |
+
+No fold reaches its own T3 ("meaningful"). Per the rule pre-registered before this result (see "Decision rule for the 3-fold outcome" above): this is the outcome where all 3 folds land ambiguous/close/indistinguishable -> STOP concluding on held-out grounds. This is treated as positive evidence of no fold-generalizable held-out effect at this sample size (seed 0, 3 of 12 folds), not as a reason to run a 4th fold.
+
+### Coupling check (run now, per the pre-registered plan; both parts DESCRIPTIVE ONLY, not hypothesis tests)
+
+Aggregate (n=3 folds), heldout macro-F1 delta vs final grad_l2_mechanism_head delta (both c1.0 - c0.3):
+| fold | heldout delta | grad_l2_mechanism_head delta | same sign |
+|---|---|---|---|
+| 1MBN:A | +0.0499 | +0.0339 | yes |
+| 1IVO:A | -0.0682 | +0.0235 | no |
+| 2Z6H:A | -0.0010 | +0.0112 | no |
+
+Sign agrees in 1 of 3 folds. grad_l2_mechanism_head delta is positive (c1.0 has the larger mechanism-head gradient, as expected since dehydron_coeff scales that loss term) in ALL 3 folds regardless of which coefficient has the higher held-out score -- i.e. the gradient-magnitude difference does not track the held-out-score difference at all in this data.
+
+Per-node (n=2 folds with confusion data: 1IVO:A, 2Z6H:A), grad_l2_mechanism_head delta vs count of held-out nodes whose prediction differs:
+| fold | grad delta | node flips |
+|---|---|---|
+| 1IVO:A | +0.0235 | 45/511 (8.8%) |
+| 2Z6H:A | +0.0112 | 17/533 (3.2%) |
+
+The two points are consistent in direction (larger grad delta, more flips), but n=2 cannot support any claim beyond "consistent with, not evidence for."
+
+### Two separate claims (per the pre-registered structure)
+
+1. Training fit and stability (HIGH CONFIDENCE, consistent on every fold and seed run: s0/s1 100-step, 400-step baseline, 1MBN:A, 1IVO:A, 2Z6H:A): dehydron_coeff=0.3 improves train macro-F1 and min-F1, and sharply reduces clip_active_fraction, vs 1.0, in every single comparison run so far.
+2. Held-out generalization (NO DETECTED EFFECT at n=3 folds, seed 0): none of the 3 folds tested shows a held-out macro-F1 difference exceeding its own node-level resolution. Direction of the (unresolved) difference is not consistent across folds (+, -, - as tested). This is not evidence that 0.3 helps or hurts held-out performance; it is evidence that if an effect exists, it is smaller than this experiment's resolution at 3 folds / 1 seed.
+
+Any amendment to the sealed 12-fold card's dehydron_coeff should state claim 1 (training stability) as its rationale, and state claim 2 honestly as "no held-out effect detected at this sample size," not as "held-out performance is unaffected" or "held-out performance improves."
+
 ## Open items
 
 1. DONE (46b6280): git provenance guard in both runners.
