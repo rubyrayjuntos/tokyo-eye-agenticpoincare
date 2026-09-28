@@ -318,6 +318,24 @@ The two points are consistent in direction (larger grad delta, more flips), but 
 
 Any amendment to the sealed 12-fold card's dehydron_coeff should state claim 1 (training stability) as its rationale, and state claim 2 honestly as "no held-out effect detected at this sample size," not as "held-out performance is unaffected" or "held-out performance improves."
 
+## Interval-eval option for the diag wrapper: design and verification (2026-09-28)
+
+`wrap1_zhyp_m2_pool_decoupled_diag.py` now has `--interval-evals s1,s2,...` (single fold only) and `--dense-log`. Not launched yet (see "Not done").
+
+- Eval at step s runs BEFORE step s (model after s updates; s=0 = untrained). Step 400 = the runner's own end-of-run numbers, not repeated. Evals score all 12 structures at the runner's fixed tau (cfg tau_end) using the ORIGINAL scoring function (captured before the confusion-logger shim), log `interval_heldout_{macro_f1,top1,lift}`, `interval_train_macro_f1_{mean,min}` and per-structure `interval_train_f1_<tag>` to MLflow at that step, and write `interval_evals_seed<S>_<fold>.json` (per-structure metrics + held-out confusion matrix and per-node predictions at every eval step) into the diag results dir. `--dense-log` sets DENSE_LOG_STEPS=400 (per-step logging throughout; LOG_EVERY unchanged so clip_active_fraction keeps its definition).
+- Findings that shaped the design (measured on the real model, GPU):
+  1. eval->train cycle restores all 14 backbone regularization modules (reg live/total 14/14 -> 0/14 in eval -> 14/14 after train()); module flags all restored. No `.train()`-override problem on this path.
+  2. An eval forward CHANGES the CUDA RNG state (CPU RNG state unchanged). So CPU, CUDA, numpy and python RNG states are saved/restored around every eval.
+  3. Non-perturbation test (3-step smokes, seed 0, c=0.3, GPU): two identical controls agree exactly; a run with evals at steps 1 and 2 matches them exactly (loss 0.3565/0.3726/0.3210, preclip 0.381/1.017/0.413, clip 0/1/0, euc_share identical). Negative control with the CUDA RNG restore DISABLED: step-1 loss 0.3741 (vs 0.3726), preclip 1.071 (vs 1.017), step-2 loss 0.3218 (vs 0.3210). So evals do perturb training without the restore, the test can detect it, and the restore removes it. Limits: 3 steps, 4-decimal printed metrics, smoke has no MLflow logging path; long-run drift not tested.
+- Optimizer: plain `torch.optim.Adam(groups)` (PyTorch default betas 0.9/0.999, eps 1e-8, no weight decay) in both runners.
+- MoE: the M2-pool runner hard-sets `system.set_moe_mode("ablated")`. `grad_l2_moe` in these runs is for an ablated MoE. Any "MoE-live gradient check" needs a different configuration (moe mode live) and a defined check; not built.
+- Suggested schedule from the operator's note: 0,25,40,50,60,75,100,150,200,250,300 via `--interval-evals` (+ 400 from the runner's end-of-run numbers). Suggested launch (fold 1IVO:A, c=0.3 or 1.0 as decided): `python scripts/wrap1_zhyp_m2_pool_decoupled_diag.py --dehydron-coeff <c> --folds 1IVO:A --seed 0 --interval-evals 0,25,40,50,60,75,100,150,200,250,300 --dense-log --device cuda`.
+
+### Not done (as of this entry)
+- Interval run not launched: the operator's precondition (ebbdd89 pushed) was not met when checked (`master` 2 ahead of `origin`), and the assistant cannot push.
+- The "four free analyses" (overlay on bce_per_structure_min, lead-lag over steps 35-60, early gradient energy vs hinge step, first-100-step window-average coupling rerun) were referenced from a message that is not in this session; their exact definitions, and what "hinge step" means, are not known here. Not run.
+- Coefficient decision: not applied to the sealed card (operator's call). 
+
 ## Open items
 
 1. DONE (46b6280): git provenance guard in both runners.

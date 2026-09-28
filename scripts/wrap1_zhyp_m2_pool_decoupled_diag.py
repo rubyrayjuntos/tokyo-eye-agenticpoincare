@@ -25,10 +25,12 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
+import random
 import sys
 from pathlib import Path
 
 import mlflow
+import numpy as np
 import torch
 
 SCRIPTS = Path(__file__).resolve().parent
@@ -39,6 +41,8 @@ for p in (str(REPO_ROOT), str(SCRIPTS)):
 
 import wrap1_zhyp_m2_pool_decoupled as M  # noqa: E402
 import wrap1_zhyp_g_fit as G  # noqa: E402
+
+_ORIG_METRICS = G._sdrp_structure_metrics  # captured before the confusion logger replaces it
 
 
 def _install_confusion_logger(out_file: Path) -> None:
@@ -107,6 +111,82 @@ def _install_tag_rewrite() -> None:
     mlflow.set_tags = _set_tags
 
 
+def _install_interval_eval(hold: str, steps_sched: list[int], out_file: Path, smoke: bool) -> None:
+    """Evaluate all 12 structures at chosen training steps WITHOUT perturbing training.
+
+    Hooks G.run_step_sdrp_only (called once per step with epoch=step). An eval at step s runs BEFORE step s, i.e. on
+    the model after s updates (s=0 is the untrained model). Step 400 = the runner's own end-of-run numbers, so it is
+    not repeated. Evals use the same fixed tau (cfg['tau_end']) as the runner's end-of-run scoring.
+    Measured on the real model: an eval forward changes the CUDA RNG state (CPU state is untouched), so CPU, CUDA,
+    numpy and python RNG states are saved and restored around every eval; train mode is restored afterwards
+    (eval->train cycle verified to bring back all 14 backbone regularization modules)."""
+    orig_step = G.run_step_sdrp_only
+    sched = sorted(set(int(s) for s in steps_sched))
+    cfg = M.load_weight_map(M.REPO_ROOT / M.DEFAULT_WEIGHT_MAP)
+    tau_eval = float(cfg["tau_end"])
+    records: list[dict] = []
+    cache: dict = {}
+
+    def _batches(system):
+        if not cache:
+            dev = next(system.parameters()).device
+            cache["hold"] = M._lb(hold, dev)
+            cache["train"] = {t: M._lb(t, dev) for t in G._all_structure_tags() if t != hold}
+        return cache["hold"], cache["train"]
+
+    def _do_eval(system, step):
+        cpu = torch.get_rng_state()
+        cu = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+        nps, pys = np.random.get_state(), random.getstate()
+        was = system.training
+        try:
+            hold_b, train_b = _batches(system)
+            held = _ORIG_METRICS(system, hold_b, tau_ceiling=tau_eval)
+            train_m = {t: _ORIG_METRICS(system, b, tau_ceiling=tau_eval) for t, b in train_b.items()}
+            system.eval()
+            with torch.no_grad():
+                out = system(hold_b["x"], hold_b["edge_index"], hold_b["edge_type"],
+                             tau_ceiling=tau_eval, chem=hold_b.get("gate_chem"))
+                pred = out["sdrp_logits"].argmax(dim=-1).cpu()
+            y = hold_b["sdrp_target"].long().cpu()
+            k = int(out["sdrp_logits"].shape[-1])
+            cm = torch.zeros(k, k, dtype=torch.long)
+            cm.index_put_((y, pred), torch.ones_like(y), accumulate=True)
+            f1s = [m["macro_f1"] for m in train_m.values()]
+            rec = {"step": step, "held": held, "train": train_m,
+                   "held_confusion_true_rows_by_pred_cols": cm.tolist(), "held_pred": pred.tolist(),
+                   "train_macro_f1_mean": float(np.mean(f1s)), "train_macro_f1_min": float(np.min(f1s))}
+            records.append(rec)
+            out_file.write_text(json.dumps({"hold": hold, "tau_eval": tau_eval, "records": records}))
+            if mlflow.active_run() is not None:
+                payload = {"interval_heldout_macro_f1": held["macro_f1"], "interval_heldout_top1": held["sdrp_top1_acc"],
+                           "interval_heldout_lift": held["lift"],
+                           "interval_train_macro_f1_mean": rec["train_macro_f1_mean"],
+                           "interval_train_macro_f1_min": rec["train_macro_f1_min"]}
+                for tg, m in train_m.items():
+                    payload[f"interval_train_f1_{tg.replace(':', '')}"] = m["macro_f1"]
+                mlflow.log_metrics(payload, step=step)
+            print(f"[diag] interval eval step={step} held_f1={held['macro_f1']:.4f} "
+                  f"train_f1_mean={rec['train_macro_f1_mean']:.4f}", flush=True)
+        except Exception as exc:  # noqa: BLE001 -- an eval problem must never break training
+            print(f"[diag] interval eval ERROR at step {step} (ignored): {type(exc).__name__}: {exc}", flush=True)
+        finally:
+            torch.set_rng_state(cpu)
+            if cu is not None:
+                torch.cuda.set_rng_state_all(cu)
+            np.random.set_state(nps)
+            random.setstate(pys)
+            if was:
+                system.train()
+
+    def _shim(system, optimizer, batches, **kw):
+        if kw.get("epoch") in sched:
+            _do_eval(system, int(kw["epoch"]))
+        return orig_step(system, optimizer, batches, **kw)
+
+    G.run_step_sdrp_only = _shim
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dehydron-coeff", type=float, required=True)
@@ -115,6 +195,8 @@ def main() -> int:
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--smoke", action="store_true", help="1 fold, 3 steps, no MLflow, writes nothing")
     ap.add_argument("--no-mlflow", action="store_true")
+    ap.add_argument("--interval-evals", default="", help="comma-separated training steps at which to evaluate all 12 structures (single fold only)")
+    ap.add_argument("--dense-log", action="store_true", help="log every step for the whole run (sets DENSE_LOG_STEPS=400)")
     ap.add_argument("--allow-dirty", action="store_true")
     a = ap.parse_args()
 
@@ -138,6 +220,17 @@ def main() -> int:
     conf_dir.mkdir(parents=True, exist_ok=True)
     conf_name = "confusions_smoke.json" if a.smoke else f"confusions_seed{a.seed}_{'_'.join(folds).replace(':', '')}.json"
     _install_confusion_logger(conf_dir / conf_name)
+
+    if a.dense_log:
+        M.DENSE_LOG_STEPS = int(M.STEPS)  # per-step logging throughout; LOG_EVERY (clip_active_fraction definition) unchanged
+    if a.interval_evals:
+        sched = [int(s) for s in a.interval_evals.split(",") if s.strip() != ""]
+        if not a.smoke and len(set(folds)) != 1:
+            raise SystemExit("[diag] STOP: --interval-evals supports exactly one fold")
+        hold_tag = "1MBN:A" if a.smoke else folds[0]
+        iv_name = "interval_smoke.json" if a.smoke else f"interval_evals_seed{a.seed}_{hold_tag.replace(':', '')}.json"
+        _install_interval_eval(hold_tag, sched, conf_dir / iv_name, a.smoke)
+        print(f"[diag] interval evals at steps {sorted(set(sched))} (before-step semantics; step {M.STEPS} = runner's end-of-run numbers)", flush=True)
 
     _install_tag_rewrite()
 
