@@ -124,10 +124,26 @@ def verify_train_mode(system: torch.nn.Module) -> dict[str, Any]:
     return {"live": live, "total": total, "pass": total == 14 and live == total}
 
 
+def _beta2_tag(tag: str, adam_beta2: float | None) -> str:
+    """When --adam-beta2 is given (even at 0.999), append _beta2<value> so the run name, the `variant` tag and the result file
+    differ from the baseline (an explicit-0.999 control must never overwrite verify_grad_flow_decoupled_result.json)."""
+    return tag if adam_beta2 is None else f"{tag}_beta2{float(adam_beta2):g}"
+
+
+def _make_optimizer(groups: list[dict], adam_beta2: float | None) -> torch.optim.Optimizer:
+    """adam_beta2 None -> exactly the historical construction torch.optim.Adam(groups) (betas default 0.9/0.999).
+    Otherwise betas=(0.9, adam_beta2); beta1 stays at the default 0.9."""
+    if adam_beta2 is None:
+        return torch.optim.Adam(groups)
+    return torch.optim.Adam(groups, betas=(0.9, float(adam_beta2)))
+
+
 def verify_grad_flow(
     device: torch.device, steps: int, seed: int, no_mlflow: bool,
     dehydron_coeff: float = DEHYDRON_COEFF, mech_lr_scale: float = 1.0, tag: str = "",
+    adam_beta2: float | None = None,
 ) -> dict[str, Any]:
+    tag = _beta2_tag(tag, adam_beta2)
     torch.manual_seed(seed)
     cfg = load_weight_map(REPO_ROOT / DEFAULT_WEIGHT_MAP)
     all_tags = G._all_structure_tags()
@@ -156,7 +172,7 @@ def verify_grad_flow(
                        "lr": lr_hyp * float(mech_lr_scale), "name": "mechanism_head"})
     else:  # baseline grouping, unchanged
         groups.append({"params": spine_params, "lr": lr_hyp, "name": "hyperbolic"})
-    optimizer = torch.optim.Adam(groups)
+    optimizer = _make_optimizer(groups, adam_beta2)
     radius = CurriculumRadiusController(float(cfg["tau_start"]), float(cfg["tau_end"]), steps)
     gumbel = GumbelTemperatureSchedule(
         float(cfg["gumbel_tau_start"]), float(cfg["gumbel_tau_end"]), steps,
@@ -184,6 +200,8 @@ def verify_grad_flow(
         })
         mlflow.log_params({
             "steps": steps, "seed": seed, "dehydron_coeff": dehydron_coeff, "mech_lr_scale": mech_lr_scale,
+            "adam_beta1": 0.9, "adam_beta2": 0.999 if adam_beta2 is None else float(adam_beta2),
+            "adam_beta2_explicit": adam_beta2 is not None,
             "sdrp_coeff": M2.SDRP_COEFF, "lr_frontend": 1e-4,
             "lr_hyperbolic": float(cfg["lr_hyperbolic"]), "max_neighbors": M2.MAX_NEIGHBORS,
             **{f"summary_{k}": v for k, v in system.spine.model_summary().items()},
@@ -267,9 +285,14 @@ def main() -> int:
     ap.add_argument("--mech-lr-scale", type=float, default=1.0,
                     help="multiplier on lr_hyperbolic for MechanismScoreHead params only")
     ap.add_argument("--tag", default="", help="suffix for run name / result file, e.g. _dcoef0.3")
+    ap.add_argument("--adam-beta2", type=float, default=None,
+                    help="Adam beta2 (beta1 stays 0.9). Omitted = historical torch.optim.Adam(groups) path, unchanged. When given, "
+                         "_beta2<value> is appended to the tag (run name, variant tag, result file), even for 0.999.")
     ap.add_argument("--allow-dirty", action="store_true",
                     help="run even if tracked code differs from HEAD (diff is logged to MLflow)")
     a = ap.parse_args()
+    if a.adam_beta2 is not None and not (0.0 < a.adam_beta2 < 1.0):
+        raise SystemExit(f"[verify] STOP: --adam-beta2 must be in (0, 1); got {a.adam_beta2}")
     git_provenance.require_clean_code(REPO_ROOT, a.allow_dirty)
     device = torch.device(a.device)
     rc = 0
@@ -280,7 +303,7 @@ def main() -> int:
         print(json.dumps(r))
         rc = 0 if r["pass"] else 1
     if a.mode in ("verify-grad-flow", "all"):
-        res = verify_grad_flow(device, a.steps, a.seed, a.no_mlflow, a.dehydron_coeff, a.mech_lr_scale, a.tag)
+        res = verify_grad_flow(device, a.steps, a.seed, a.no_mlflow, a.dehydron_coeff, a.mech_lr_scale, a.tag, a.adam_beta2)
         print(json.dumps(res, indent=2, default=float))
         rc = 0 if res["all_pass"] else 1
     return rc
