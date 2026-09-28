@@ -93,6 +93,9 @@ def _install_confusion_logger(out_file: Path) -> None:
     G._sdrp_structure_metrics = _shim
 
 
+_EXTRA_TAGS: dict[str, str] = {}  # set in main(): variant / results_suffix / interval schedule, so runs with the same name can be told apart
+
+
 def _diag_tags(tags: dict) -> dict:
     """The sealed runner tags its runs diagnostic=false, card=m2_pool_<arm>, gate_id=..._prereg. Rewrite those so a
     diagnostic run can never be mistaken for a sealed-card run by tag (the experiment name differs too)."""
@@ -101,6 +104,7 @@ def _diag_tags(tags: dict) -> dict:
         out["diagnostic"] = "true"
         out["not_a_card_result"] = "true"
         out["diag_wrapper"] = "wrap1_zhyp_m2_pool_decoupled_diag.py"
+        out.update(_EXTRA_TAGS)
     if "card" in out and not str(out["card"]).startswith("DIAG_"):
         out["card"] = "DIAG_" + str(out["card"])
     if "gate_id" in out and not str(out["gate_id"]).startswith("NOT_A_GATE"):
@@ -148,8 +152,8 @@ def _install_interval_eval(hold: str, steps_sched: list[int], out_file: Path, sm
     """Evaluate all 12 structures at chosen training steps WITHOUT perturbing training.
 
     Hooks G.run_step_sdrp_only (called once per step with epoch=step). An eval at step s runs BEFORE step s, i.e. on
-    the model after s updates (s=0 is the untrained model). Step 400 = the runner's own end-of-run numbers, so it is
-    not repeated. Evals use the same fixed tau (cfg['tau_end']) as the runner's end-of-run scoring.
+    the model after s updates (s=0 is the untrained model). An extra eval is taken right after the LAST update (recorded as step STEPS): it is the same model state the runner scores at end of run and
+    must reproduce those numbers exactly. Evals use the same fixed tau (cfg['tau_end']) as the runner's end-of-run scoring.
     Measured on the real model: an eval forward changes the CUDA RNG state (CPU state is untouched), so CPU, CUDA,
     numpy and python RNG states are saved and restored around every eval; train mode is restored afterwards
     (eval->train cycle verified to bring back all 14 backbone regularization modules)."""
@@ -235,10 +239,17 @@ def _install_interval_eval(hold: str, steps_sched: list[int], out_file: Path, sm
             if was:
                 system.train()
 
+    final_step = 2 if smoke else int(M.STEPS) - 1  # smoke runs 3 steps
+
     def _shim(system, optimizer, batches, **kw):
         if kw.get("epoch") in sched:
             _do_eval(system, int(kw["epoch"]))
-        return orig_step(system, optimizer, batches, **kw)
+        res = orig_step(system, optimizer, batches, **kw)
+        if kw.get("epoch") == final_step:
+            # model after ALL updates = the state the runner scores at end of run, so this eval (recorded as step STEPS)
+            # must reproduce the runner's own held-out/train numbers exactly: an identity check of tau and eval path.
+            _do_eval(system, final_step + 1)
+        return res
 
     G.run_step_sdrp_only = _shim
 
@@ -341,6 +352,7 @@ def main() -> int:
     ap.add_argument("--update-ratio-dense", default="30:70", help="LO:HI inclusive step range logged at every step ('' = none)")
     ap.add_argument("--smoke-hold", default="", help="with --smoke: hold this tag instead of the first one (training-structure "
                     "order is unchanged: the hold tag is only moved to the front of the tag list)")
+    ap.add_argument("--variant", default="", help="free-text tag set on the MLflow run (e.g. interval_scores) so runs with the same name are distinguishable")
     ap.add_argument("--results-suffix", default="",
                     help="appended to the results directory name (data/gates/diag_heldout_dcoef<c><suffix>/) so a rerun on a fold that already "
                          "has a result never resume-skips and never overwrites earlier files. MLflow experiment name is unchanged.")
@@ -382,7 +394,7 @@ def main() -> int:
         hold_tag = (a.smoke_hold or "1MBN:A") if a.smoke else folds[0]
         iv_name = "interval_smoke.json" if a.smoke else f"interval_evals_seed{a.seed}_{hold_tag.replace(':', '')}.json"
         _install_interval_eval(hold_tag, sched, conf_dir / iv_name, a.smoke)
-        print(f"[diag] interval evals at steps {sorted(set(sched))} (before-step semantics; step {M.STEPS} = runner's end-of-run numbers)", flush=True)
+        print(f"[diag] interval evals at steps {sorted(set(sched))} (before-step semantics; plus one eval right after the last update, recorded as step {M.STEPS}, which must equal the runner's end-of-run numbers)", flush=True)
 
     if a.step_loggers:
         lo, _, hi = a.update_ratio_dense.partition(":")
@@ -395,6 +407,10 @@ def main() -> int:
         print(f"[diag] step loggers ON: bce_struct_<tag> every step; update_ratio_<bucket> every {a.update_ratio_every} steps "
               f"+ every step in {dense[0]}..{dense[1]}", flush=True)
 
+    for k, v in (("variant", a.variant), ("results_suffix", a.results_suffix), ("interval_evals", a.interval_evals),
+                 ("step_loggers", "true" if a.step_loggers else ""), ("dense_log", "true" if a.dense_log else "")):
+        if v:
+            _EXTRA_TAGS[k] = str(v)
     _install_tag_rewrite()
 
     orig_card_paths = M._card_paths
