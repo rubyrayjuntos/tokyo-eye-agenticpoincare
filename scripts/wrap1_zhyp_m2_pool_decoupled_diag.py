@@ -17,7 +17,8 @@ therefore redirects the card's result path into the diagnostic results dir, and 
 
 Optional read-only extras (no effect on training; see the install functions): ``--interval-evals`` (held-out and train
 evals at chosen steps), ``--dense-log`` (log every step), ``--step-loggers`` (per-structure BCE every step, per-bucket
-update ratio on a schedule).
+update ratio on a schedule). ``--interval-evals`` also saves held-out per-node scores (``interval_scores_*.npz``) and logs
+macro AUROC/AUPRC; ``--results-suffix`` redirects the results directory.
 
 OPEN PRECONDITION for the eventual sealed 400-step launch: the verify_grad_flow gates ("min over all
 steps > threshold") fail transiently at 400 steps in the near-fit regime (attn_layers, moe); a
@@ -116,6 +117,33 @@ def _install_tag_rewrite() -> None:
     mlflow.set_tags = _set_tags
 
 
+def _continuous_metrics(logits: np.ndarray, y: np.ndarray, mech: np.ndarray | None = None,
+                        mech_labels: np.ndarray | None = None) -> dict:
+    """Continuous held-out metrics from per-node scores (one-vs-rest on softmax probabilities per class present with both
+    positives and negatives; macro = mean over those classes). Macro-F1 moves in node-sized jumps; AUROC/AUPRC do not.
+    Optionally also the mechanism (dehydron) head: AUROC/AUPRC of its score against the binary labels."""
+    from sklearn.metrics import average_precision_score, roc_auc_score
+
+    z = logits.astype(np.float64)
+    z = z - z.max(axis=1, keepdims=True)
+    prob = np.exp(z)
+    prob /= prob.sum(axis=1, keepdims=True)
+    out: dict = {"auroc": {}, "auprc": {}}
+    for k in range(prob.shape[1]):
+        pos = (y == k)
+        if pos.any() and (~pos).any():
+            out["auroc"][k] = float(roc_auc_score(pos, prob[:, k]))
+            out["auprc"][k] = float(average_precision_score(pos, prob[:, k]))
+    out["macro_auroc"] = float(np.mean(list(out["auroc"].values()))) if out["auroc"] else float("nan")
+    out["macro_auprc"] = float(np.mean(list(out["auprc"].values()))) if out["auprc"] else float("nan")
+    if mech is not None and mech_labels is not None:
+        m, ml = np.asarray(mech, dtype=np.float64).reshape(-1), np.asarray(mech_labels).reshape(-1) > 0.5
+        if ml.any() and (~ml).any():
+            out["mech_auroc"] = float(roc_auc_score(ml, m))
+            out["mech_auprc"] = float(average_precision_score(ml, m))
+    return out
+
+
 def _install_interval_eval(hold: str, steps_sched: list[int], out_file: Path, smoke: bool) -> None:
     """Evaluate all 12 structures at chosen training steps WITHOUT perturbing training.
 
@@ -131,6 +159,8 @@ def _install_interval_eval(hold: str, steps_sched: list[int], out_file: Path, sm
     tau_eval = float(cfg["tau_end"])
     records: list[dict] = []
     cache: dict = {}
+    score_arrays: dict = {}
+    score_file = out_file.with_name(out_file.stem.replace("interval_evals", "interval_scores") + ".npz")
 
     def _batches(system):
         if not cache:
@@ -157,8 +187,19 @@ def _install_interval_eval(hold: str, steps_sched: list[int], out_file: Path, sm
             k = int(out["sdrp_logits"].shape[-1])
             cm = torch.zeros(k, k, dtype=torch.long)
             cm.index_put_((y, pred), torch.ones_like(y), accumulate=True)
+            cont = None
+            try:  # continuous scores are an add-on; a failure here must not lose the rest of this eval record
+                logits_np = out["sdrp_logits"].detach().float().cpu().numpy()
+                mech_np = out["mechanism_score"].detach().float().cpu().numpy()
+                mech_lab = hold_b["dehydron_labels"].detach().float().cpu().numpy()
+                y_np = y.numpy()
+                cont = _continuous_metrics(logits_np, y_np, mech_np, mech_lab)
+                score_arrays.update({f"logits_step{step}": logits_np, f"mech_step{step}": mech_np, "y": y_np, "mech_labels": mech_lab})
+                np.savez_compressed(score_file, **score_arrays)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[diag] score saving error at step {step} (ignored): {type(exc).__name__}: {exc}", flush=True)
             f1s = [m["macro_f1"] for m in train_m.values()]
-            rec = {"step": step, "held": held, "train": train_m,
+            rec = {"step": step, "held": held, "train": train_m, "held_continuous": cont,
                    "held_confusion_true_rows_by_pred_cols": cm.tolist(), "held_pred": pred.tolist(),
                    "train_macro_f1_mean": float(np.mean(f1s)), "train_macro_f1_min": float(np.min(f1s))}
             records.append(rec)
@@ -170,7 +211,17 @@ def _install_interval_eval(hold: str, steps_sched: list[int], out_file: Path, sm
                            "interval_train_macro_f1_min": rec["train_macro_f1_min"]}
                 for tg, m in train_m.items():
                     payload[f"interval_train_f1_{tg.replace(':', '')}"] = m["macro_f1"]
-                mlflow.log_metrics(payload, step=step)
+                if cont is not None:
+                    payload["interval_heldout_macro_auroc"] = cont["macro_auroc"]
+                    payload["interval_heldout_macro_auprc"] = cont["macro_auprc"]
+                    for k, v in cont["auroc"].items():
+                        payload[f"interval_heldout_auroc_c{k}"] = v
+                    for k, v in cont["auprc"].items():
+                        payload[f"interval_heldout_auprc_c{k}"] = v
+                    for k in ("mech_auroc", "mech_auprc"):
+                        if k in cont:
+                            payload[f"interval_heldout_{k}"] = cont[k]
+                mlflow.log_metrics({k: v for k, v in payload.items() if np.isfinite(v)}, step=step)
             print(f"[diag] interval eval step={step} held_f1={held['macro_f1']:.4f} "
                   f"train_f1_mean={rec['train_macro_f1_mean']:.4f}", flush=True)
         except Exception as exc:  # noqa: BLE001 -- an eval problem must never break training
@@ -290,6 +341,9 @@ def main() -> int:
     ap.add_argument("--update-ratio-dense", default="30:70", help="LO:HI inclusive step range logged at every step ('' = none)")
     ap.add_argument("--smoke-hold", default="", help="with --smoke: hold this tag instead of the first one (training-structure "
                     "order is unchanged: the hold tag is only moved to the front of the tag list)")
+    ap.add_argument("--results-suffix", default="",
+                    help="appended to the results directory name (data/gates/diag_heldout_dcoef<c><suffix>/) so a rerun on a fold that already "
+                         "has a result never resume-skips and never overwrites earlier files. MLflow experiment name is unchanged.")
     ap.add_argument("--allow-dirty", action="store_true")
     a = ap.parse_args()
 
@@ -311,7 +365,7 @@ def main() -> int:
 
     tag = f"dcoef{a.dehydron_coeff:g}"
     M.DEHYDRON_COEFF = float(a.dehydron_coeff)
-    M.RESULT_DIR = REPO_ROOT / "data" / "gates" / f"diag_heldout_{tag}"
+    M.RESULT_DIR = REPO_ROOT / "data" / "gates" / f"diag_heldout_{tag}{a.results_suffix}"
     M.CANONICAL_MLFLOW_EXPERIMENT = f"diag/heldout-{tag}"
 
     conf_dir = Path("/tmp") if a.smoke else M.RESULT_DIR
@@ -325,7 +379,7 @@ def main() -> int:
         sched = [int(s) for s in a.interval_evals.split(",") if s.strip() != ""]
         if not a.smoke and len(set(folds)) != 1:
             raise SystemExit("[diag] STOP: --interval-evals supports exactly one fold")
-        hold_tag = "1MBN:A" if a.smoke else folds[0]
+        hold_tag = (a.smoke_hold or "1MBN:A") if a.smoke else folds[0]
         iv_name = "interval_smoke.json" if a.smoke else f"interval_evals_seed{a.seed}_{hold_tag.replace(':', '')}.json"
         _install_interval_eval(hold_tag, sched, conf_dir / iv_name, a.smoke)
         print(f"[diag] interval evals at steps {sorted(set(sched))} (before-step semantics; step {M.STEPS} = runner's end-of-run numbers)", flush=True)
@@ -347,7 +401,7 @@ def main() -> int:
 
     def _diag_card_paths(arm):  # CardPaths is a frozen dataclass; never let a diagnostic write the sealed card's result
         cp = orig_card_paths(arm)
-        redirected = dataclasses.replace(cp, result=M.RESULT_DIR / f"NOT_A_CARD_RESULT_{tag}.json")
+        redirected = dataclasses.replace(cp, result=M.RESULT_DIR / f"NOT_A_CARD_RESULT_{tag}{a.results_suffix}.json")
         print(f"[diag] card.result redirected: {cp.result.relative_to(REPO_ROOT)} -> "
               f"{redirected.result.relative_to(REPO_ROOT)}", flush=True)
         return redirected
